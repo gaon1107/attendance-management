@@ -3,6 +3,8 @@
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { evaluateOfficeLocation } from "@/lib/location";
+import { getClientIp, ipMatches } from "@/lib/ip";
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 
 // 출근 — 근무형태(사무실/재택/외근)와, 사무실이면 현재 좌표를 받는다.
@@ -29,11 +31,24 @@ export async function clockIn(
   if (mode === "office") {
     const company = await prisma.company.findUnique({
       where: { id: me.companyId },
-      select: { officeLat: true, officeLng: true, officeRadiusM: true },
+      select: { officeLat: true, officeLng: true, officeRadiusM: true, officeIps: true },
     });
-    locationStatus = company
-      ? evaluateOfficeLocation(company, lat, lng)
-      : "unavailable";
+
+    // ① GPS 확인(휴대폰) ② 사내 IP 확인(PC) — 둘 중 하나만 맞아도 확인됨.
+    const gps = company ? evaluateOfficeLocation(company, lat, lng) : "unavailable";
+    const h = await headers();
+    const clientIp = getClientIp(h);
+    const hasIpRule = Boolean(company?.officeIps && company.officeIps.trim());
+    const ipMatch = hasIpRule && ipMatches(clientIp, company?.officeIps);
+
+    if (ipMatch || gps === "verified") {
+      locationStatus = "verified";
+    } else if (gps === "out_of_range" || hasIpRule) {
+      // 확인 수단이 있었는데(GPS 범위 밖이거나 IP 규칙 존재) 못 맞춘 경우
+      locationStatus = "out_of_range";
+    } else {
+      locationStatus = "unavailable";
+    }
   }
 
   await prisma.attendance.create({

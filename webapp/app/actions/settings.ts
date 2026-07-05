@@ -32,3 +32,32 @@ export async function saveOfficeLocation(
   revalidatePath("/settings");
   return { ok: true };
 }
+
+// 사내 네트워크(허용 IP) 저장 — 관리자만. 쉼표로 여러 개, 빈 값이면 사용 안 함.
+export async function saveOfficeNetwork(
+  _prev: { error?: string; ok?: boolean },
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean }> {
+  const me = await getCurrentUser();
+  if (!me || me.role !== "admin") {
+    return { error: "권한이 없습니다." };
+  }
+
+  const raw = String(formData.get("ips") ?? "").trim();
+  // 간단 검증: 각 항목이 숫자·점·콜론(IPv6)만으로 되어 있는지
+  if (raw) {
+    const items = raw.split(",").map((s) => s.trim()).filter(Boolean);
+    const ok = items.every((s) => /^[0-9a-fA-F.:]+$/.test(s));
+    if (!ok) {
+      return { error: "IP는 숫자·점(.)·콜론(:)만 사용할 수 있어요. 쉼표로 구분해주세요." };
+    }
+  }
+
+  await prisma.company.update({
+    where: { id: me.companyId },
+    data: { officeIps: raw || null },
+  });
+
+  revalidatePath("/settings");
+  return { ok: true };
+}

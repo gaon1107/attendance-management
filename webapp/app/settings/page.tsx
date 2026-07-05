@@ -1,9 +1,12 @@
 // 설정 (관리자 전용) — 사업장 위치 등.
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
+import { getClientIp } from "@/lib/ip";
 import { TopNav } from "@/app/components/TopNav";
 import { OfficeLocationForm } from "./OfficeLocationForm";
+import { OfficeNetworkForm } from "./OfficeNetworkForm";
 
 export default async function SettingsPage() {
   const me = await getCurrentUser();
@@ -12,8 +15,10 @@ export default async function SettingsPage() {
 
   const company = await prisma.company.findUnique({
     where: { id: me.companyId },
-    select: { officeLat: true, officeLng: true, officeRadiusM: true },
+    select: { officeLat: true, officeLng: true, officeRadiusM: true, officeIps: true },
   });
+
+  const currentIp = getClientIp(await headers());
 
   return (
     <div style={{ minHeight: "100vh" }}>
@@ -27,6 +32,7 @@ export default async function SettingsPage() {
             radius: company?.officeRadiusM ?? 200,
           }}
         />
+        <OfficeNetworkForm initialIps={company?.officeIps ?? ""} currentIp={currentIp} />
       </main>
     </div>
   );

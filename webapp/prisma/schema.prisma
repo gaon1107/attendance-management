@@ -20,6 +20,8 @@ model Company {
   officeLat     Float?
   officeLng     Float?
   officeRadiusM Int      @default(200) // 허용 반경(m)
+  // 사내 네트워크 허용 IP(들). 쉼표로 구분. 앞부분 일치도 허용(예: "203.0.113." → 203.0.113.* 전체).
+  officeIps     String?
 }
 
 // 사용자 — 관리자(admin) 또는 직원(employee). 반드시 한 회사에 속한다.
