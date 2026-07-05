@@ -75,8 +75,10 @@
 ## 🔄 진행 중
 - [6] 개발 — **walking skeleton 착수함(2026-07-05).** 방식=가볍게 새로(Next.js 16 + 로컬 SQLite, 오픈소스 스타터 안 씀). 앱 폴더 `webapp/`.
   - ✅ 1단계: 앱 뼈대 설치 + 브랜드 랜딩 화면(우리 디자인 토큰 적용) 실제 작동 확인(localhost:3000).
-  - ⏭️ 다음: DB(SQLite) 스키마 → 회사가입/로그인 → 직원등록 → 출퇴근 → 관리자 대시보드 순으로 실제 흐름 연결.
-  - 실행법: `webapp`에서 `npm run dev`. (Next.js 16은 옛 버전과 다름 → 코드 전 `webapp/node_modules/next/dist/docs/` 확인)
+  - ✅ 2단계: DB(Prisma+SQLite) + 회사가입/로그인/로그아웃 **실제 작동 검증 완료**. 테이블=Company/User/Session. 비번=scrypt 해시, 세션=DB토큰+httpOnly쿠키. 틀린 비번 차단 확인. (테스트계정: admin@skytech.co.kr / test1234)
+  - ⏭️ 다음(3단계): 직원 등록 → 출퇴근(출근/퇴근) → 관리자 대시보드에 오늘 현황 표시.
+  - 실행법: `webapp`에서 `npm run dev`. (Next.js 16 + Prisma 6. Prisma 7은 SQLite에 driver adapter 필요해 6으로 고정함.)
+  - ⚠️ 개발용 임시 계정/데이터는 `webapp/prisma/dev.db`에 있음(git 미포함). 실계정 아님.
   - (참고: `docs/05_backend/skeleton-plan.md`는 bkend.ai 기준 초안 → 로컬 SQLite로 변경됨. 데이터 모델·흐름은 유효.)
 
 ## ⏳ 대기 (backlog)

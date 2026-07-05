@@ -52,7 +52,7 @@ export default function Home() {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <Link
-            href="#"
+            href="/login"
             style={{
               padding: "10px 16px",
               fontSize: 14,
@@ -64,7 +64,7 @@ export default function Home() {
             로그인
           </Link>
           <Link
-            href="#"
+            href="/signup"
             style={{
               padding: "10px 16px",
               fontSize: 14,
@@ -106,7 +106,7 @@ export default function Home() {
           중소기업 사무직을 위한 근태관리 SaaS. 복잡하지 않게, 법규는 자동으로.
         </p>
         <Link
-          href="#"
+          href="/signup"
           style={{
             display: "inline-block",
             marginTop: 28,
