@@ -51,6 +51,7 @@ export function TopNav({ user }: { user: NavUser }) {
         <nav style={{ display: "flex", gap: 16 }}>
           {isAdmin && <Link href="/dashboard" style={linkStyle}>대시보드</Link>}
           {isAdmin && <Link href="/employees" style={linkStyle}>직원관리</Link>}
+          {isAdmin && <Link href="/reports" style={linkStyle}>리포트</Link>}
           <Link href="/attendance" style={linkStyle}>내 출퇴근</Link>
           {isAdmin && <Link href="/settings" style={linkStyle}>설정</Link>}
         </nav>
