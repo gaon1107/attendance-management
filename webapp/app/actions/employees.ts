@@ -1,0 +1,45 @@
+"use server";
+// 직원 등록 — 관리자만 가능. 같은 회사 소속으로 직원 계정을 만든다.
+import { prisma } from "@/lib/db";
+import { hashPassword } from "@/lib/password";
+import { getCurrentUser } from "@/lib/session";
+import { revalidatePath } from "next/cache";
+
+export async function addEmployee(
+  _prev: { error?: string; ok?: boolean },
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean }> {
+  const me = await getCurrentUser();
+  if (!me || me.role !== "admin") {
+    return { error: "권한이 없습니다." };
+  }
+
+  const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+
+  if (!name || !email || !password) {
+    return { error: "모든 항목을 입력해주세요." };
+  }
+  if (password.length < 8) {
+    return { error: "비밀번호는 8자 이상이어야 합니다." };
+  }
+
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) {
+    return { error: "이미 사용 중인 이메일입니다." };
+  }
+
+  await prisma.user.create({
+    data: {
+      companyId: me.companyId, // 관리자와 같은 회사로
+      email,
+      name,
+      passwordHash: hashPassword(password),
+      role: "employee",
+    },
+  });
+
+  revalidatePath("/employees");
+  return { ok: true };
+}

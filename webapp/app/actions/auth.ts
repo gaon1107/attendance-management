@@ -62,7 +62,8 @@ export async function login(
   }
 
   await createSession(user.id);
-  redirect("/dashboard");
+  // 관리자는 대시보드로, 직원은 본인 출퇴근 화면으로
+  redirect(user.role === "admin" ? "/dashboard" : "/attendance");
 }
 
 // 로그아웃

@@ -1,79 +1,138 @@
-// 관리자 대시보드 (임시) — 로그인 성공을 확인하는 자리.
-// 다음 단계에서 실제 근태 현황 화면으로 채운다. 로그인 안 했으면 로그인 화면으로 보낸다.
+// 관리자 대시보드 — 오늘 우리 회사 직원들의 출퇴근 현황을 한눈에 본다.
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
-import { logout } from "@/app/actions/auth";
+import { prisma } from "@/lib/db";
+import { TopNav } from "@/app/components/TopNav";
+
+function hhmm(d: Date): string {
+  return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
 
 export default async function DashboardPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  const me = await getCurrentUser();
+  if (!me) redirect("/login");
+  if (me.role !== "admin") redirect("/attendance");
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+
+  const todays = await prisma.attendance.findMany({
+    where: { companyId: me.companyId, clockIn: { gte: startOfToday } },
+    include: { user: true },
+    orderBy: { clockIn: "asc" },
+  });
+  const employeeCount = await prisma.user.count({
+    where: { companyId: me.companyId, role: "employee" },
+  });
+
+  const checkedInPeople = new Set(todays.map((r) => r.userId)).size;
+  const workingNow = todays.filter((r) => !r.clockOut).length;
+
+  const cards = [
+    { label: "등록 직원", value: `${employeeCount}명`, color: "var(--text)" },
+    { label: "오늘 출근", value: `${checkedInPeople}명`, color: "var(--primary)" },
+    { label: "현재 근무 중", value: `${workingNow}명`, color: "var(--success)" },
+  ];
 
   return (
-    <div style={{ minHeight: "100vh", padding: "48px 24px" }}>
-      <div style={{ maxWidth: 720, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: "var(--primary)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#fff",
-              fontWeight: 700,
-              fontSize: 18,
-            }}
-          >
-            근
-          </div>
-          <span style={{ fontSize: 18, fontWeight: 700 }}>근태관리</span>
+    <div style={{ minHeight: "100vh" }}>
+      <TopNav user={me} />
+      <main style={{ maxWidth: 900, margin: "0 auto", padding: "28px 24px" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>대시보드</h1>
+        <p style={{ fontSize: 14, color: "var(--text-sub)", marginBottom: 24 }}>
+          {new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "short" })} · 오늘 근태 현황
+        </p>
+
+        {/* 요약 카드 */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginBottom: 28 }}>
+          {cards.map((c) => (
+            <div
+              key={c.label}
+              style={{
+                background: "var(--card)",
+                border: "1px solid var(--border)",
+                borderRadius: 12,
+                padding: 20,
+              }}
+            >
+              <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 8 }}>{c.label}</div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: c.color }}>{c.value}</div>
+            </div>
+          ))}
         </div>
 
+        {/* 오늘 출퇴근 목록 */}
         <div
           style={{
             background: "var(--card)",
             border: "1px solid var(--border)",
             borderRadius: 12,
-            padding: 28,
+            overflow: "hidden",
           }}
         >
-          <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>
-            {user.name}님, 환영합니다 👋
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr 1fr",
+              padding: "12px 20px",
+              borderBottom: "1px solid var(--border)",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "var(--text-sub)",
+              background: "#F9FAFB",
+            }}
+          >
+            <div>이름</div>
+            <div>출근</div>
+            <div>퇴근</div>
+            <div>상태</div>
           </div>
-          <div style={{ fontSize: 15, color: "var(--text-sub)", lineHeight: 1.7 }}>
-            회사: <b style={{ color: "var(--text)" }}>{user.company.name}</b>
-            <br />
-            역할: {user.role === "admin" ? "관리자" : "직원"}
-            <br />
-            이메일: {user.email}
-          </div>
-          <div style={{ marginTop: 20, fontSize: 13, color: "var(--text-sub)" }}>
-            (다음 단계에서 이 자리에 오늘 출퇴근 현황이 채워집니다.)
-          </div>
-
-          <form action={logout} style={{ marginTop: 24 }}>
-            <button
-              type="submit"
-              style={{
-                height: 44,
-                padding: "0 20px",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                background: "#fff",
-                color: "var(--text)",
-                fontFamily: "inherit",
-                fontSize: 14,
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              로그아웃
-            </button>
-          </form>
+          {todays.length === 0 ? (
+            <div style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+              아직 오늘 출근한 직원이 없습니다.
+            </div>
+          ) : (
+            todays.map((rec) => (
+              <div
+                key={rec.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr 1fr",
+                  padding: "14px 20px",
+                  borderBottom: "1px solid var(--border)",
+                  fontSize: 14,
+                  alignItems: "center",
+                }}
+              >
+                <div style={{ fontWeight: 700 }}>
+                  {rec.user.name}
+                  <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}>
+                    {rec.user.role === "admin" ? " (관리자)" : ""}
+                  </span>
+                </div>
+                <div>{hhmm(rec.clockIn)}</div>
+                <div style={{ color: rec.clockOut ? "var(--text)" : "var(--text-sub)" }}>
+                  {rec.clockOut ? hhmm(rec.clockOut) : "—"}
+                </div>
+                <div>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: rec.clockOut ? "var(--text-sub)" : "var(--success)",
+                      background: rec.clockOut ? "#F3F4F6" : "#DCFCE7",
+                      padding: "3px 10px",
+                      borderRadius: 999,
+                    }}
+                  >
+                    {rec.clockOut ? "퇴근" : "근무 중"}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }
