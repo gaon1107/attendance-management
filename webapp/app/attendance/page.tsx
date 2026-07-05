@@ -47,6 +47,15 @@ export default async function AttendancePage() {
           {new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "short" })}
         </p>
 
+        {!me.authMethod && (
+          <a
+            href="/auth-method"
+            style={{ display: "block", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 14, color: "#1D4ED8", fontWeight: 700, textDecoration: "none" }}
+          >
+            출퇴근 인증방식(얼굴/GPS)을 선택해주세요 →
+          </a>
+        )}
+
         {/* 현재 상태 카드 */}
         <div
           style={{

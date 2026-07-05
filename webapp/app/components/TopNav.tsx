@@ -53,6 +53,7 @@ export function TopNav({ user }: { user: NavUser }) {
           {isAdmin && <Link href="/employees" style={linkStyle}>직원관리</Link>}
           {isAdmin && <Link href="/reports" style={linkStyle}>리포트</Link>}
           <Link href="/attendance" style={linkStyle}>내 출퇴근</Link>
+          <Link href="/auth-method" style={linkStyle}>인증방식</Link>
           {isAdmin && <Link href="/settings" style={linkStyle}>설정</Link>}
         </nav>
       </div>

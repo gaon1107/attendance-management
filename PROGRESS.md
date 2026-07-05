@@ -85,7 +85,9 @@
     - 검증: 사무실(회사안=확인됨/회사밖=벗어남)·재택(위치확인 없음) 모두 대시보드 반영. 재택 집위치 미추적.
   - ✅ 6단계: **사내 WiFi/IP 확인(PC 출퇴근)** 작동 검증 완료(2026-07-05). 사무실 출근 = GPS(휴대폰) OR 사내 IP(PC) 중 하나만 맞아도 확인됨. 브라우저는 WiFi 이름 못 읽으므로 회사 공인 IP로 확인(앞부분 일치=대역 허용). 관리자 설정에 '현재 접속 IP 표시 + 이 IP 추가'. 검증: GPS 끈 PC 상황에서 사내 IP(::1)로 "위치 확인됨". 지도(Leaflet)도 완료.
   - ✅ 7단계: **근태 리포트(일/주/월 실근무 집계) + 법정기록 CSV 내보내기** 작동 검증 완료(2026-07-05). /reports(관리자), 단위 탭·기간 이동, 직원별 실근무·근무일수·외출 집계. CSV=날짜별 상세(이름/날짜/근무형태/위치확인/출근/퇴근/실근무/외출) UTF-8 BOM(엑셀 한글). 브라우저 검증(표+CSV 내용 확인).
-  - ⏭️ 다음(8단계): **얼굴인증(GaonFR 연동)** — 가장 복잡. ⚠️준비물 필요: ClientToken(비밀키, env 전용)·참조코드(newgaon-LMS)·웹캠·생체정보 동의 문안. 착수 전 사장님께 준비물 확인.
+  - 🔄 8단계(얼굴인증) **1phase 완료**(2026-07-05): 비밀키·카메라 없이 되는 **생체정보 동의 화면 + 인증방식 선택(얼굴/GPS)** 작동 검증. User에 authMethod·faceConsentAt 추가. 얼굴 선택→동의(4항목+체크)→기록, 철회→GPS 전환. 동의 문안은 **초안**(전문가 검토 후 확정 표시).
+    - GaonFR API 흐름 파악 완료: `newgaon-LMS/backend/services/faceEnrollService.js` 참조(토큰 get/token→ApiToken, enrollment/unenrollment, FaceId=직원ID·Group=회사, 비밀키 env).
+  - ⏭️ 8단계 2phase(얼굴 등록/인식) — **필요: ① ClientToken을 webapp/.env(FACE_CLIENT_TOKEN)에 추가 ② 웹캠 실기기 테스트 ③ 위수탁계약·전문가자문**. 준비되면 착수.
   - ⚠️ 열린 항목: 재택 GPS 기록 여부 = **노무사·개인정보 전문가 자문 후 결정**(집 위치 추적 리스크). 지금은 미구현.
   - 실행법: `webapp`에서 `npm run dev`. (Next.js 16 + Prisma 6. Prisma 7은 SQLite에 driver adapter 필요해 6으로 고정함.)
   - ⚠️ 개발용 임시 계정/데이터는 `webapp/prisma/dev.db`에 있음(git 미포함). 실계정 아님.

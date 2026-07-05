@@ -36,6 +36,10 @@ model User {
   createdAt    DateTime  @default(now())
   sessions     Session[]
   attendances  Attendance[]
+  // 출퇴근 인증방식: "face"(얼굴) | "gps"(GPS/위치). null=아직 선택 안 함. 얼굴은 강제 아님, 언제든 변경 가능.
+  authMethod     String?
+  // 생체정보(얼굴) 이용 동의 시각. 동의 철회 시 null로 되돌린다.
+  faceConsentAt  DateTime?
 }
 
 // 출퇴근 기록 — 출근 1건마다 한 줄. 퇴근 전에는 clockOut이 비어있음(null).
