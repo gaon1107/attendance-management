@@ -7,21 +7,38 @@
 
 ## 🔜 다음 세션 시작점 (내일 여기서 이어가기) — 새 세션은 이 블록부터 읽기
 
-- **지금까지 (2026-07-04 기준)**: 시장조사 → 기획(PRD) → UX/UI → 시스템설계(ERD/API) → 얼굴(GaonFR)·GPS 전문설계 → 보안·법무 검토 **전부 완료.** 화면 디자인(클로드 디자인) **MVP 48 + 미래확장 24 = 화면 72개**(2026-07-05 미래확장 병합). MVP는 빠진 화면 없음. 뭐가 1차/2차인지 지도: `docs/03_design/화면_웹모바일_구분.md`.
-- **바로 다음 할 일 👉 개발 착수 (walking skeleton)**: **Next.js(오픈소스 SaaS Starter, MIT 뼈대) + 로컬 SQLite** 로, 핵심 흐름부터 실제 작동하게 만들기 →
-  **회사가입 → 로그인 → 직원등록 → 출퇴근(GPS/PC) → 관리자 대시보드.** 이후 얼굴(GaonFR)·옵션B·리포트 순으로 확장.
-- **디자인 파일 위치**: `근태 관리 디자인 스타일-2/` (파일 73개 = MVP 48 + 미래확장 24 + Canvas 1). **개발은 MVP(🅰️)부터**, 미래확장(🅱️)은 보관용. 구분표: `docs/03_design/화면_웹모바일_구분.md`. 웹/모바일 구분표: `docs/03_design/화면_웹모바일_구분.md`.
-- **개발 시 참고 문서**: 데이터/API=`docs/04_architecture/` · 얼굴연동=`docs/07_ai/face-spec.md` · GPS=`docs/07_ai/gps-spec.md` · 보안체크=`docs/08_security/review.md` · 뼈대추천=`docs/05_backend/오픈소스_조사.md`.
-- **개발 중 반드시 지킬 것**: 회사별 데이터 격리(company_id), 비밀값 env 전용, GPS 원본좌표·얼굴 원본 미저장, 얼굴 강제 금지+GPS 대체, 실근무=재실−자리비움−외출.
-- **사장님은 비개발자** → 쉬운 말로, 한 걸음씩 설명 (반자동 모드).
-- 시작 방법: 새 세션에서 "PROGRESS.md 보고 이어서 개발하자"라고 말하면 됨.
+> ⏱️ 최종 갱신: 2026-07-05. 앱은 `webapp/`에 실제 작동 중. 실행법: `cd webapp && npm run dev` → localhost:3000. 테스트계정: admin@skytech.co.kr / test1234 (관리자), kim@skytech.co.kr / emp12345 (직원).
+
+- **지금까지 실제 개발 완료(2026-07-05, webapp/ 에 다 작동·브라우저 검증·git 커밋됨)**:
+  1. 랜딩(완성형 시안) · 회사가입 · 로그인/로그아웃 (Prisma+SQLite, scrypt 해시, DB세션쿠키)
+  2. 직원 등록(관리자) · 출퇴근(출근/퇴근) · 관리자 대시보드 오늘현황
+  3. 실근무시간(=퇴근−출근−외출) · 외출/복귀(사유 드롭다운)
+  4. 위치확인: 근무형태(사무실/재택/외근) — 사무실만 GPS 또는 **사내 IP** 확인, 재택·외근 면제. 회사위치 설정 화면 **+ Leaflet 지도(깃발·반경원)**. GPS 원본좌표 미저장(결과만).
+  5. 근태 리포트(일/주/월 집계) + **법정기록 CSV 내보내기**(/reports)
+  6. 얼굴인증 **1phase만**: 인증방식 선택(얼굴/GPS, 강제 아님) + 생체정보 동의(4항목)·철회. (동의 문안=초안, 전문가 검토 필요)
+- **기술스택**: Next.js 16 + React 19 + Prisma **6**(7 아님-SQLite 이슈) + 로컬 SQLite. ⚠️ Next 16은 옛버전과 다름 → 코드 전 `webapp/node_modules/next/dist/docs/` 확인. 스타일=인라인+디자인토큰(globals.css), 지도=leaflet.
+- **git**: 프로젝트 루트 git 저장소. **작업(마일스톤)마다 자동 커밋**(사장님 지시, 안 물어봄). 마지막 커밋들: 랜딩·로그인·출퇴근·실근무·위치·IP·리포트·얼굴1phase.
+
+- **🚧 바로 다음 할 일 = 얼굴인증 2phase(실제 등록/인식) — 현재 "보류" 상태(막힘)**:
+  - **막힌 이유(2026-07-05)**: ① GaonFR 서버 소스가 로컬에 없고 **SVN 서버(svn.newgaon.com)** 에만 있음 → 받으려면 **SVN 로그인(주소+계정) 필요한데 위치 불명** ② 개발자(김준우·정홍섭) 연락 불가 ③ 운영 얼굴서버 직접조작 리스크 ④ 법적 준비(동의서·위수탁) 미완.
+  - **알아낸 발급 규약(확정)**: 앱이 `POST https://gaonfr.newgaon.com/login/` 에 헤더 `LicenseKey` + `Authorization: Basic base64("ClientId:Password")` 제시 → 서버가 **ClientToken(24h)** 발급 → `POST /get/token` 으로 **ApiToken(15분)** → `/v1/face/enrollment`·`/v1/face/unenrollment` 사용. 즉 한 계정 = **{ClientId + Password + LicenseKey}**.
+  - **저장위치**: 클라이언트/토큰 = **MSSQL `server03.newgaon.com:1433`**(Gaon Face API DB). 라이선스 = `db.newgaon.com/lc`. 서버 = `gaonfr.newgaon.com`(.NET/C#/IIS, 소스는 SVN). 전체 서버지도 = `C:\Users\주인님\Desktop\가온 서버 및 정보\_서버목록_읽기.txt`.
+  - **참고자료 위치**: API정의서=`가온 서버 및 정보\GaonFaceAPI 정의서.xlsx`. 개발용 계정예시(IONE_DEV_SERVICE, **업체 사용중이라 재사용 불가**)=`H:\김준우\온라인버전\웹서비스\GaonFaceAPI_20210413\IOne_Key.txt`. LMS 연동참고코드=`C:\Users\주인님\Desktop\newgaon-LMS\backend\services\faceEnrollService.js`.
+  - **도구**: 이 PC에 **TortoiseSVN 1.14 설치 완료**(GUI). SVN 로그인만 확보되면 체크아웃 가능.
+  - **⚠️ 보안 경고**: `가온 서버 및 정보\가온 서비스.20211025_2.xlsx` 에 **운영서버 실제 비번**들이 평문으로 있음 → 이 폴더/파일 보호 필요.
+  - **다음 세션 재개 조건**: (a) SVN 로그인 확보 → TortoiseSVN으로 GaonFaceAPI(.NET) 소스 체크아웃 → 클라이언트 등록방법 찾기, 또는 (b) 잠깐이라도 개발자 손. **둘 다 어려우면 얼굴은 계속 보류.**
+
+- **💡 얼굴 빼고는 근태 제품이 이미 잘 작동** → 다음 세션 옵션: ⓐ 얼굴 2phase(위 조건 갖춰지면) ⓑ 남은 화면 정식화(72개 시안 중) ⓒ QA·보안 점검 ⓓ 배포 준비(서버 임대+Docker).
+- **개발 시 참고 문서**: 데이터/API=`docs/04_architecture/` · 얼굴=`docs/07_ai/face-spec.md` · GPS=`docs/07_ai/gps-spec.md` · 보안=`docs/08_security/review.md`. 화면지도=`docs/03_design/화면_웹모바일_구분.md`.
+- **불변 규칙**: 회사별 격리(companyId), 비밀값 env 전용, GPS원본·얼굴원본 미저장, 얼굴 강제금지+GPS대체, 실근무=재실−자리비움−외출. **사장님 비개발자** → 쉬운 말·한 걸음씩(반자동). **마일스톤마다 git 커밋 자동.**
+- 시작 방법: 새 세션에서 "PROGRESS.md 보고 이어서 하자".
 
 ---
 
 ## 📍 현재 위치
 
-- **현재 단계**: [6] 개발 — 디자인·설계 준비 100% 완료. **walking skeleton 개발 착수 직전.**
-- **다음 게이트**: 🚦 개발 착수(핵심 흐름 실제 작동) → 중간중간 결과 확인.
+- **현재 단계**: [6] 개발 — **핵심 기능 1~7단계 실제 작동 완료**(webapp/). 얼굴인증만 1phase(동의·선택) 완료, **2phase(실제 등록/인식)는 SVN/개발자/법적준비 막혀 보류.**
+- **다음 게이트**: 🚦 얼굴 2phase 재개조건(SVN 로그인 or 개발자) 확보 여부 → 안 되면 얼굴 보류하고 남은화면·QA·배포로 진행.
 - **진행 모드**: 반자동
 - 디자인 폴더: `근태 관리 디자인 스타일-2/` (파일 73개 = MVP 48 + 미래확장 24 + Canvas 1). canonical 4개: 근무제 기준시간 설정 · 관리자 근태현황 · 실근무시간 리포트 · 생체정보 동의·파기 관리.
 - **창고(DB)**: 지금은 사장님 PC 안 로컬 SQLite로 개발·테스트. **정식 서버는 나중에 임대**해 이전. (클라우드/bkend.ai 보류)
