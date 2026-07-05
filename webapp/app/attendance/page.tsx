@@ -3,8 +3,10 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { TopNav } from "@/app/components/TopNav";
-import { clockIn, clockOut, startBreak, endBreak } from "@/app/actions/attendance";
+import { clockOut, startBreak, endBreak } from "@/app/actions/attendance";
 import { workedMinutes, formatMinutes } from "@/lib/worktime";
+import { workModeLabel, locationStatusLabel } from "@/lib/location";
+import { ClockInPanel } from "./ClockInPanel";
 
 function hhmm(d: Date): string {
   return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -72,16 +74,12 @@ export default async function AttendancePage() {
           </div>
           {working && (
             <div style={{ fontSize: 14, color: "var(--text-sub)", marginBottom: 20 }}>
-              현재까지 실근무 {formatMinutes(workedMinutes(open!))}
+              {workModeLabel(open!.workMode)} · 현재까지 실근무 {formatMinutes(workedMinutes(open!))}
             </div>
           )}
           {!working && <div style={{ marginBottom: 20 }} />}
 
-          {!working && (
-            <form action={clockIn}>
-              <button type="submit" style={bigBtn("var(--primary)")}>출근하기</button>
-            </form>
-          )}
+          {!working && <ClockInPanel />}
 
           {working && !onBreak && (
             <>
@@ -168,7 +166,26 @@ export default async function AttendancePage() {
                       {done ? `퇴근 ${hhmm(rec.clockOut!)}` : "근무 중"}
                     </span>
                   </div>
-                  <div style={{ marginTop: 6, fontSize: 13, color: "var(--text-sub)", display: "flex", justifyContent: "space-between" }}>
+                  <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-sub)", background: "#F3F4F6", padding: "2px 8px", borderRadius: 999 }}>
+                      {workModeLabel(rec.workMode)}
+                    </span>
+                    {rec.workMode === "office" && (
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          color: rec.locationStatus === "verified" ? "var(--success)" : "var(--warning)",
+                          background: rec.locationStatus === "verified" ? "#DCFCE7" : "#FEF3C7",
+                        }}
+                      >
+                        {locationStatusLabel(rec.locationStatus)}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 13, color: "var(--text-sub)", display: "flex", justifyContent: "space-between" }}>
                     <span>외출 {rec.breaks.length}회</span>
                     <span style={{ fontWeight: 700, color: "var(--primary)" }}>
                       실근무 {formatMinutes(workedMinutes(rec))}

@@ -2,21 +2,43 @@
 // 출퇴근 — 로그인한 본인의 출근/퇴근을 기록한다.
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
+import { evaluateOfficeLocation } from "@/lib/location";
 import { revalidatePath } from "next/cache";
 
-// 출근 — 아직 퇴근 안 한 기록이 있으면(=이미 근무 중) 중복 생성하지 않는다.
-export async function clockIn(): Promise<void> {
+// 출근 — 근무형태(사무실/재택/외근)와, 사무실이면 현재 좌표를 받는다.
+// 사무실만 위치 확인. 재택·외근은 위치 확인 없음. 위치가 벗어나도 출근은 막지 않는다(부드럽게).
+// 프라이버시: 좌표 원본은 저장하지 않고 확인 결과만 저장한다.
+export async function clockIn(
+  mode: "office" | "home" | "field" = "office",
+  lat?: number,
+  lng?: number
+): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
 
+  // 이미 근무 중이면 중복 생성 안 함
   const open = await prisma.attendance.findFirst({
     where: { userId: me.id, clockOut: null },
   });
-  if (!open) {
-    await prisma.attendance.create({
-      data: { userId: me.id, companyId: me.companyId },
-    });
+  if (open) {
+    revalidatePath("/attendance");
+    return;
   }
+
+  let locationStatus: string | null = null;
+  if (mode === "office") {
+    const company = await prisma.company.findUnique({
+      where: { id: me.companyId },
+      select: { officeLat: true, officeLng: true, officeRadiusM: true },
+    });
+    locationStatus = company
+      ? evaluateOfficeLocation(company, lat, lng)
+      : "unavailable";
+  }
+
+  await prisma.attendance.create({
+    data: { userId: me.id, companyId: me.companyId, workMode: mode, locationStatus },
+  });
 
   revalidatePath("/attendance");
   revalidatePath("/dashboard");

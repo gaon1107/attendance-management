@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { TopNav } from "@/app/components/TopNav";
 import { workedMinutes, formatMinutes } from "@/lib/worktime";
+import { workModeLabel, locationStatusLabel } from "@/lib/location";
 
 function hhmm(d: Date): string {
   return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -107,10 +108,22 @@ export default async function DashboardPage() {
                 }}
               >
                 <div style={{ fontWeight: 700 }}>
-                  {rec.user.name}
-                  <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}>
-                    {rec.user.role === "admin" ? " (관리자)" : ""}
-                  </span>
+                  <div>
+                    {rec.user.name}
+                    <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}>
+                      {rec.user.role === "admin" ? " (관리자)" : ""}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: 5, marginTop: 5 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-sub)", background: "#F3F4F6", padding: "2px 7px", borderRadius: 999 }}>
+                      {workModeLabel(rec.workMode)}
+                    </span>
+                    {rec.workMode === "office" && rec.locationStatus !== "verified" && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "var(--warning)", background: "#FEF3C7", padding: "2px 7px", borderRadius: 999 }}>
+                        {locationStatusLabel(rec.locationStatus)}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div>{hhmm(rec.clockIn)}</div>
                 <div style={{ color: rec.clockOut ? "var(--text)" : "var(--text-sub)" }}>

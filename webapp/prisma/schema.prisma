@@ -12,10 +12,14 @@ datasource db {
 
 // 회사 (테넌트) — 모든 데이터는 회사 단위로 격리한다.
 model Company {
-  id        String   @id @default(cuid())
-  name      String
-  createdAt DateTime @default(now())
-  users     User[]
+  id            String   @id @default(cuid())
+  name          String
+  createdAt     DateTime @default(now())
+  users         User[]
+  // 사업장 위치(사무실 출근 GPS 확인용). 안 정하면 위치 확인은 건너뜀.
+  officeLat     Float?
+  officeLng     Float?
+  officeRadiusM Int      @default(200) // 허용 반경(m)
 }
 
 // 사용자 — 관리자(admin) 또는 직원(employee). 반드시 한 회사에 속한다.
@@ -42,6 +46,11 @@ model Attendance {
   clockOut  DateTime? // 퇴근 시각(퇴근 전엔 null)
   createdAt DateTime  @default(now())
   breaks    Break[]
+  // 근무형태: "office"(사무실) | "home"(재택) | "field"(외근)
+  workMode  String    @default("office")
+  // 위치 확인 결과(사무실만 의미 있음): "verified"(확인됨) | "out_of_range"(벗어남) | "unavailable"(확인 불가) | null(재택/외근=해당없음)
+  // ※ 프라이버시: GPS 원본 좌표는 저장하지 않고 결과만 남긴다.
+  locationStatus String?
 }
 
 // 외출 기록 — 출근한 상태에서 외출할 때마다 한 줄. 복귀 전에는 endAt이 비어있음(null).
