@@ -1,0 +1,10 @@
+-- CreateTable
+CREATE TABLE "Break" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "attendanceId" TEXT NOT NULL,
+    "reason" TEXT NOT NULL,
+    "startAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "endAt" DATETIME,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "Break_attendanceId_fkey" FOREIGN KEY ("attendanceId") REFERENCES "Attendance" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);

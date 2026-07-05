@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { TopNav } from "@/app/components/TopNav";
+import { workedMinutes, formatMinutes } from "@/lib/worktime";
 
 function hhmm(d: Date): string {
   return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -18,7 +19,7 @@ export default async function DashboardPage() {
 
   const todays = await prisma.attendance.findMany({
     where: { companyId: me.companyId, clockIn: { gte: startOfToday } },
-    include: { user: true },
+    include: { user: true, breaks: true },
     orderBy: { clockIn: "asc" },
   });
   const employeeCount = await prisma.user.count({
@@ -73,7 +74,7 @@ export default async function DashboardPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr 1fr",
+              gridTemplateColumns: "1.2fr 1fr 1fr 1fr 1fr",
               padding: "12px 20px",
               borderBottom: "1px solid var(--border)",
               fontSize: 13,
@@ -85,6 +86,7 @@ export default async function DashboardPage() {
             <div>이름</div>
             <div>출근</div>
             <div>퇴근</div>
+            <div>실근무</div>
             <div>상태</div>
           </div>
           {todays.length === 0 ? (
@@ -97,7 +99,7 @@ export default async function DashboardPage() {
                 key={rec.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 1fr 1fr 1fr",
+                  gridTemplateColumns: "1.2fr 1fr 1fr 1fr 1fr",
                   padding: "14px 20px",
                   borderBottom: "1px solid var(--border)",
                   fontSize: 14,
@@ -113,6 +115,9 @@ export default async function DashboardPage() {
                 <div>{hhmm(rec.clockIn)}</div>
                 <div style={{ color: rec.clockOut ? "var(--text)" : "var(--text-sub)" }}>
                   {rec.clockOut ? hhmm(rec.clockOut) : "—"}
+                </div>
+                <div style={{ fontWeight: 700, color: "var(--primary)" }}>
+                  {formatMinutes(workedMinutes(rec))}
                 </div>
                 <div>
                   <span

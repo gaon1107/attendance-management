@@ -41,6 +41,19 @@ model Attendance {
   clockIn   DateTime  @default(now())
   clockOut  DateTime? // 퇴근 시각(퇴근 전엔 null)
   createdAt DateTime  @default(now())
+  breaks    Break[]
+}
+
+// 외출 기록 — 출근한 상태에서 외출할 때마다 한 줄. 복귀 전에는 endAt이 비어있음(null).
+// 실근무시간 = (퇴근-출근) - 외출시간 합.
+model Break {
+  id           String     @id @default(cuid())
+  attendanceId String
+  attendance   Attendance @relation(fields: [attendanceId], references: [id])
+  reason       String // 식사 | 외근 | 개인용무 | 기타
+  startAt      DateTime   @default(now())
+  endAt        DateTime? // 복귀 시각(복귀 전엔 null)
+  createdAt    DateTime   @default(now())
 }
 
 // 로그인 세션 — 로그인 시 발급하는 "출입증(토큰)". 브라우저 쿠키에 토큰만 담는다.
