@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background:#E5E7EB; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#E5E7EB;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Pretendard,-apple-system,sans-serif;color:#111827;">
+
+  <div style="width:390px;height:844px;background:#F9FAFB;border-radius:36px;overflow:hidden;box-shadow:0 12px 40px rgba(17,24,39,0.18);display:flex;flex-direction:column;position:relative;">
+
+    <div style="height:44px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:13px;font-weight:700;"><span>9:41</span><span style="color:#6B7280;">근태관리</span></div>
+
+    <header style="height:52px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 12px;">
+      <div style="display:flex;align-items:center;">
+        <button style="width:40px;height:40px;border:none;background:transparent;color:#374151;cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span style="font-size:16px;font-weight:700;margin-left:4px;">급여명세서</span>
+      </div>
+      <button style="height:36px;padding:0 12px;margin-right:8px;border:1px solid #D1D5DB;border-radius:8px;background:#fff;color:#374151;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 10l5 5 5-5M5 21h14"/></svg>PDF
+      </button>
+    </header>
+
+    <div style="flex:1;overflow-y:auto;padding:8px 20px 24px;">
+      <!-- Month selector -->
+      <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:16px;">
+        <button style="width:34px;height:34px;border:1px solid #E5E7EB;border-radius:8px;background:#fff;color:#6B7280;cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span style="font-size:15px;font-weight:700;">2026년 6월 급여</span>
+        <button style="width:34px;height:34px;border:1px solid #E5E7EB;border-radius:8px;background:#fff;color:#6B7280;cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>
+      </div>
+
+      <!-- Net pay hero -->
+      <div style="background:#2563EB;border-radius:12px;padding:22px;text-align:center;margin-bottom:14px;">
+        <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,0.8);margin-bottom:8px;">실수령액</div>
+        <div style="font-size:32px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums;line-height:1;">3,187,540<span style="font-size:16px;font-weight:400;margin-left:2px;">원</span></div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.75);margin-top:8px;">6월 25일 지급 · 국민은행 ***123</div>
+      </div>
+
+      <!-- Earnings -->
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid #F3F4F6;">
+          <span style="font-size:15px;font-weight:700;">지급 내역</span>
+          <span style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;">3,620,000</span>
+        </div>
+        <sc-for list="{{ earnings }}" as="e" hint-placeholder-count="4">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid #F9FAFB;">
+            <span style="font-size:15px;color:#6B7280;">{{ e.label }}</span>
+            <span style="font-size:15px;font-variant-numeric:tabular-nums;">{{ e.value }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- Deductions -->
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid #F3F4F6;">
+          <span style="font-size:15px;font-weight:700;">공제 내역</span>
+          <span style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;color:#B91C1C;">- 432,460</span>
+        </div>
+        <sc-for list="{{ deductions }}" as="d" hint-placeholder-count="4">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid #F9FAFB;">
+            <span style="font-size:15px;color:#6B7280;">{{ d.label }}</span>
+            <span style="font-size:15px;font-variant-numeric:tabular-nums;color:#6B7280;">{{ d.value }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- Attendance basis -->
+      <div style="display:flex;align-items:center;gap:8px;background:#EFF6FF;border-radius:10px;padding:12px 14px;">
+        <span style="width:16px;height:16px;color:#2563EB;display:flex;flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span>
+        <span style="font-size:13px;color:#1D4ED8;font-weight:700;">근태 기준: 실근무 176h · 초과근무 6h · 연차 1일</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      earnings: [
+        { label:'기본급', value:'2,900,000' },
+        { label:'직책수당', value:'300,000' },
+        { label:'연장근로수당', value:'270,000' },
+        { label:'식대 (비과세)', value:'150,000' },
+      ],
+      deductions: [
+        { label:'국민연금', value:'145,800' },
+        { label:'건강보험', value:'114,900' },
+        { label:'고용보험', value:'29,160' },
+        { label:'소득세·지방세', value:'142,600' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

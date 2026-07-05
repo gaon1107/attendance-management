@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#F9FAFB;font-family:Pretendard,-apple-system,sans-serif;color:#111827;">
+
+  <!-- Top bar -->
+  <header style="height:56px;background:#fff;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;padding:0 24px;">
+    <div style="display:flex;align-items:center;gap:9px;">
+      <div style="width:28px;height:28px;border-radius:7px;background:#2563EB;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:15px;font-weight:700;">근</span></div>
+      <span style="font-size:16px;font-weight:700;letter-spacing:-0.01em;">근태관리</span>
+    </div>
+  </header>
+
+  <div style="max-width:600px;margin:0 auto;padding:32px 24px 64px;">
+    <div style="margin-bottom:24px;">
+      <div style="font-size:22px;font-weight:700;line-height:1.2;">계정 설정</div>
+      <div style="font-size:13px;color:#6B7280;margin-top:3px;">홍길동 · admin@skytech.co.kr</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px;">
+
+      <!-- 비밀번호 변경 -->
+      <section style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:24px 24px;">
+        <div style="font-size:16px;font-weight:700;margin-bottom:2px;">비밀번호 변경</div>
+        <div style="font-size:13px;color:#6B7280;margin-bottom:18px;">주기적으로 변경하면 계정이 더 안전해요.</div>
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          <div>
+            <label style="display:block;font-size:13px;font-weight:700;margin-bottom:8px;">현재 비밀번호</label>
+            <input type="password" value="password1234" style="width:100%;height:44px;padding:0 14px;border:1px solid #D1D5DB;border-radius:8px;font-family:inherit;font-size:16px;color:#111827;outline:none;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);" />
+          </div>
+          <div>
+            <label style="display:block;font-size:13px;font-weight:700;margin-bottom:8px;">새 비밀번호</label>
+            <input type="password" value="{{ pw }}" onInput="{{ onPw }}" style="width:100%;height:44px;padding:0 14px;border:1px solid #D1D5DB;border-radius:8px;font-family:inherit;font-size:16px;color:#111827;outline:none;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);" />
+            <div style="font-size:13px;color:#6B7280;margin-top:8px;">8자 이상, 영문·숫자 포함</div>
+          </div>
+          <div>
+            <label style="display:block;font-size:13px;font-weight:700;margin-bottom:8px;">새 비밀번호 확인</label>
+            <input type="password" value="{{ pw2 }}" onInput="{{ onPw2 }}" style="width:100%;height:44px;padding:0 14px;border:1px solid {{ pw2Border }};border-radius:8px;font-family:inherit;font-size:16px;color:#111827;outline:none;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);" />
+            <sc-if value="{{ mismatch }}" hint-placeholder-val="{{ false }}"><div style="font-size:13px;color:#DC2626;margin-top:8px;">비밀번호가 일치하지 않습니다</div></sc-if>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:18px;">
+          <button style="height:44px;padding:0 20px;border:none;border-radius:8px;background:#2563EB;color:#fff;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;" style-hover="background:#1D4ED8;">저장</button>
+        </div>
+      </section>
+
+      <!-- 이메일 변경 -->
+      <section style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px 24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+          <div style="min-width:0;">
+            <div style="font-size:16px;font-weight:700;margin-bottom:3px;">이메일 변경</div>
+            <div style="font-size:13px;color:#6B7280;">현재 <strong style="color:#374151;">admin@skytech.co.kr</strong> · 로그인·알림에 사용됩니다.</div>
+          </div>
+          <button style="height:40px;padding:0 16px;border:1px solid #D1D5DB;border-radius:8px;background:#fff;color:#374151;font-family:inherit;font-size:15px;font-weight:700;white-space:nowrap;cursor:pointer;" style-hover="background:#F9FAFB;">변경</button>
+        </div>
+      </section>
+
+      <!-- 2단계 인증 (OTP) -->
+      <section style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px 24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+          <div style="min-width:0;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
+              <span style="font-size:16px;font-weight:700;">2단계 인증 (OTP)</span>
+              <span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:6px;background:#F3F4F6;"><span style="width:6px;height:6px;border-radius:50%;background:{{ otpDot }};"></span><span style="font-size:13px;font-weight:700;color:#374151;">{{ otpLabel }}</span></span>
+            </div>
+            <div style="font-size:13px;color:#6B7280;">로그인 시 인증 앱의 코드를 추가로 입력합니다.</div>
+          </div>
+          <button onClick="{{ toggleOtp }}" style="width:48px;height:28px;flex-shrink:0;border:none;border-radius:14px;background:{{ otpTrack }};cursor:pointer;position:relative;"><span style="position:absolute;top:3px;left:{{ otpKnob }};width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.2);transition:left 0.15s;"></span></button>
+        </div>
+        <sc-if value="{{ otpOn }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:12px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:14px 16px;margin-top:16px;">
+            <span style="width:32px;height:32px;flex-shrink:0;border-radius:8px;background:#EFF6FF;color:#2563EB;display:flex;align-items:center;justify-content:center;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg></span>
+            <div style="flex:1;min-width:0;font-size:13px;color:#6B7280;line-height:1.5;">인증 앱(Google Authenticator 등)에 등록되어 있습니다.</div>
+            <button style="height:34px;padding:0 12px;border:1px solid #D1D5DB;border-radius:7px;background:#fff;color:#374151;font-family:inherit;font-size:13px;font-weight:700;white-space:nowrap;cursor:pointer;" style-hover="background:#F3F4F6;">재설정</button>
+          </div>
+        </sc-if>
+      </section>
+
+      <!-- 소셜 계정 연동 -->
+      <section style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px 24px;">
+        <div style="font-size:16px;font-weight:700;margin-bottom:2px;">소셜 계정 연동</div>
+        <div style="font-size:13px;color:#6B7280;margin-bottom:14px;">연동하면 간편 로그인을 사용할 수 있어요.</div>
+        <div style="display:flex;flex-direction:column;">
+          <sc-for list="{{ socials }}" as="s" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #F3F4F6;">
+              <span style="width:34px;height:34px;flex-shrink:0;border-radius:8px;background:{{ s.badgeBg }};border:1px solid {{ s.badgeBorder }};display:flex;align-items:center;justify-content:center;" dangerouslySetInnerHTML="{{ s.icon }}"></span>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:15px;font-weight:700;">{{ s.name }}</div>
+                <div style="font-size:13px;color:#9CA3AF;">{{ s.sub }}</div>
+              </div>
+              <button onClick="{{ s.toggle }}" style="height:36px;padding:0 14px;border:1px solid {{ s.btnBorder }};border-radius:7px;background:#fff;color:{{ s.btnColor }};font-family:inherit;font-size:13px;font-weight:700;white-space:nowrap;cursor:pointer;" style-hover="background:#F9FAFB;">{{ s.btnLabel }}</button>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+      <!-- 로그인 기기 관리 -->
+      <section style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px 24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px;">
+          <div style="min-width:0;">
+            <div style="font-size:16px;font-weight:700;margin-bottom:3px;">로그인 기기 관리</div>
+            <div style="font-size:13px;color:#6B7280;">현재 로그인된 기기 {{ deviceCount }}대 · 낯선 기기는 로그아웃하세요.</div>
+          </div>
+          <button style="height:36px;padding:0 14px;border:1px solid #D1D5DB;border-radius:7px;background:#fff;color:#374151;font-family:inherit;font-size:13px;font-weight:700;white-space:nowrap;cursor:pointer;" style-hover="background:#F9FAFB;">전체 로그아웃</button>
+        </div>
+        <div style="display:flex;flex-direction:column;">
+          <sc-for list="{{ devices }}" as="d" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #F3F4F6;">
+              <span style="width:34px;height:34px;flex-shrink:0;border-radius:8px;background:#F3F4F6;color:#374151;display:flex;align-items:center;justify-content:center;" dangerouslySetInnerHTML="{{ d.icon }}"></span>
+              <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ d.name }}</span>
+                  <sc-if value="{{ d.current }}" hint-placeholder-val="{{ false }}"><span style="height:20px;padding:0 7px;border-radius:6px;background:#EFF6FF;font-size:13px;font-weight:700;color:#1D4ED8;display:inline-flex;align-items:center;flex-shrink:0;">이 기기</span></sc-if>
+                </div>
+                <div style="font-size:13px;color:#9CA3AF;">{{ d.meta }}</div>
+              </div>
+              <sc-if value="{{ d.removable }}" hint-placeholder-val="{{ true }}">
+                <button style="height:34px;padding:0 12px;border:1px solid #D1D5DB;border-radius:7px;background:#fff;color:#374151;font-family:inherit;font-size:13px;font-weight:700;white-space:nowrap;cursor:pointer;" style-hover="background:#F9FAFB;">로그아웃</button>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+      <!-- 알림 설정 -->
+      <section style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px 24px;">
+        <div style="font-size:16px;font-weight:700;margin-bottom:2px;">알림 설정</div>
+        <div style="font-size:13px;color:#6B7280;margin-bottom:6px;">받고 싶은 알림을 선택하세요.</div>
+        <div style="display:flex;flex-direction:column;">
+          <sc-for list="{{ notis }}" as="n" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 0;border-top:1px solid #F3F4F6;">
+              <div style="min-width:0;">
+                <div style="font-size:15px;font-weight:700;">{{ n.title }}</div>
+                <div style="font-size:13px;color:#9CA3AF;">{{ n.desc }}</div>
+              </div>
+              <button onClick="{{ n.toggle }}" style="width:48px;height:28px;flex-shrink:0;border:none;border-radius:14px;background:{{ n.track }};cursor:pointer;position:relative;"><span style="position:absolute;top:3px;left:{{ n.knob }};width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.2);transition:left 0.15s;"></span></button>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+      <!-- 언어 설정 -->
+      <section style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px 24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+          <div style="min-width:0;">
+            <div style="font-size:16px;font-weight:700;margin-bottom:3px;">언어 설정</div>
+            <div style="font-size:13px;color:#6B7280;">앱에 표시되는 언어를 선택합니다.</div>
+          </div>
+          <select style="height:40px;padding:0 12px;border:1px solid #D1D5DB;border-radius:8px;font-family:inherit;font-size:15px;color:#111827;outline:none;background:#fff;min-width:130px;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);">
+            <option>한국어</option>
+            <option>English</option>
+            <option>日本語</option>
+            <option>中文 (简体)</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- 회원 탈퇴 -->
+      <section style="background:#fff;border:1px solid #FCA5A5;border-radius:12px;padding:20px 24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+          <div style="min-width:0;">
+            <div style="font-size:16px;font-weight:700;color:#B91C1C;margin-bottom:3px;">회원 탈퇴</div>
+            <div style="font-size:13px;color:#6B7280;">탈퇴 시 계정과 생체정보가 즉시 파기됩니다. 되돌릴 수 없어요.</div>
+          </div>
+          <button onClick="{{ openLeave }}" style="height:40px;padding:0 16px;border:1px solid #FCA5A5;border-radius:8px;background:#fff;color:#DC2626;font-family:inherit;font-size:15px;font-weight:700;white-space:nowrap;cursor:pointer;" style-hover="background:#FEF2F2;">탈퇴하기</button>
+        </div>
+      </section>
+
+      <!-- 로그아웃 -->
+      <button style="width:100%;height:48px;border:1px solid #D1D5DB;border-radius:10px;background:#fff;color:#374151;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;" style-hover="background:#F9FAFB;">
+        <span style="width:17px;height:17px;display:flex;color:#6B7280;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></span>
+        로그아웃
+      </button>
+    </div>
+  </div>
+
+  <!-- ===== 탈퇴 확인 모달 ===== -->
+  <sc-if value="{{ showLeave }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(17,24,39,0.45);display:flex;align-items:center;justify-content:center;padding:24px;">
+      <div style="width:100%;max-width:420px;background:#fff;border-radius:16px;box-shadow:0 24px 48px rgba(17,24,39,0.20);padding:26px 26px 22px;">
+        <div style="width:48px;height:48px;border-radius:12px;background:#FEE2E2;color:#DC2626;display:flex;align-items:center;justify-content:center;margin-bottom:16px;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:10px;">정말 탈퇴하시겠어요?</div>
+        <div style="font-size:15px;color:#374151;line-height:1.6;margin-bottom:22px;">계정과 <strong style="color:#111827;">생체정보가 즉시 파기</strong>되며 근태 기록은 조회할 수 없게 됩니다. 이 동작은 되돌릴 수 없습니다.</div>
+        <div style="display:flex;gap:12px;">
+          <button onClick="{{ closeLeave }}" style="flex:1;height:48px;border:1px solid #D1D5DB;border-radius:8px;background:#fff;color:#111827;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#F9FAFB;">취소</button>
+          <button onClick="{{ closeLeave }}" style="flex:1;height:48px;border:none;border-radius:8px;background:#DC2626;color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#B91C1C;">탈퇴하기</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    pw: '', pw2: '',
+    otp: false,
+    social: { kakao: true, naver: false, google: false },
+    noti: { approval: true, late: true, overtime: false, notice: true },
+    leave: false,
+  };
+  renderVals() {
+    const s = this.state;
+    const mismatch = s.pw2.length > 0 && s.pw !== s.pw2;
+
+    const dv = (p) => ({ __html: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>' });
+
+    const notiDefs = [
+      ['approval', '휴가·정정 승인 결과', '내 신청이 승인/반려되면 알림'],
+      ['late', '지각·결근 알림', '출근 기록 이상 시 알림'],
+      ['overtime', '초과근무 한도 임박', '주 12시간 근접 시 알림'],
+      ['notice', '공지사항', '새 공지가 등록되면 알림'],
+    ];
+    const notis = notiDefs.map(([key, title, desc]) => {
+      const on = s.noti[key];
+      return { title, desc,
+        toggle: () => this.setState(st => ({ noti: { ...st.noti, [key]: !st.noti[key] } })),
+        track: on ? '#2563EB' : '#D1D5DB', knob: on ? '23px' : '3px' };
+    });
+
+    const kakaoIcon = { __html: '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#191600" d="M12 4C6.9 4 3 7.2 3 11.1c0 2.5 1.7 4.7 4.2 6-.2.6-.7 2.3-.8 2.7 0 0 0 .2.1.2.1.1.2 0 .2 0 .3 0 3-2 3.5-2.3.6.1 1.2.1 1.8.1 5.1 0 9-3.2 9-7.1S17.1 4 12 4z"/></svg>' };
+    const naverIcon = { __html: '<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path fill="#03C75A" d="M16.27 12.84 7.35 0H0v24h7.73V11.16L16.65 24H24V0h-7.73z"/></svg>' };
+    const googleIcon = { __html: '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.7 1.2 9.2 3.6l6.9-6.9C35.9 2.4 30.5 0 24 0 14.6 0 6.5 5.4 2.6 13.2l8 6.2C12.4 13.7 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M47 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.9c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 7.1-10.4 7.1-17.7z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.5-.8-3-.8-4.6s.3-3.1.8-4.6l-8-6.2C.9 16.5 0 20.1 0 24s.9 7.5 2.6 10.8l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.1 1.4-4.9 2.3-8.2 2.3-6.3 0-11.6-4.2-13.5-9.9l-8 6.2C6.5 42.6 14.6 48 24 48z"/></svg>' };
+
+    const mk = (id, name, icon, bg, border) => {
+      const on = s.social[id];
+      return {
+        name, icon, badgeBg: bg, badgeBorder: border,
+        sub: on ? '연결됨' : '연결 안 됨',
+        toggle: () => this.setState(st => ({ social: { ...st.social, [id]: !st.social[id] } })),
+        btnLabel: on ? '연결 해제' : '연결',
+        btnColor: on ? '#DC2626' : '#2563EB',
+        btnBorder: on ? '#FCA5A5' : '#D1D5DB',
+      };
+    };
+
+    return {
+      pw: s.pw, pw2: s.pw2, mismatch,
+      pw2Border: mismatch ? '#DC2626' : '#D1D5DB',
+      onPw: (e) => this.setState({ pw: e.target.value }),
+      onPw2: (e) => this.setState({ pw2: e.target.value }),
+
+      otpOn: s.otp,
+      otpLabel: s.otp ? '사용 중' : '사용 안 함',
+      otpDot: s.otp ? '#16A34A' : '#9CA3AF',
+      otpTrack: s.otp ? '#2563EB' : '#D1D5DB',
+      otpKnob: s.otp ? '23px' : '3px',
+      toggleOtp: () => this.setState(st => ({ otp: !st.otp })),
+
+      socials: [
+        mk('kakao', '카카오', kakaoIcon, '#FEE500', '#FEE500'),
+        mk('naver', '네이버', naverIcon, '#03C75A', '#03C75A'),
+        mk('google', 'Google', googleIcon, '#fff', '#E5E7EB'),
+      ],
+
+      deviceCount: 3,
+      devices: [
+        { icon: dv('<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M11 18h2"/>'), name: 'iPhone 15 · 홍길동', meta: '서울 · 방금 활동', current: true, removable: false },
+        { icon: dv('<rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 21h8M12 18v3"/>'), name: 'Windows · Chrome', meta: '사무실 PC · 2시간 전', removable: true },
+        { icon: dv('<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M11 18h2"/>'), name: 'Galaxy S24', meta: '인천 · 3일 전', removable: true },
+      ],
+      notis: notis,
+
+      showLeave: s.leave,
+      openLeave: () => this.setState({ leave: true }),
+      closeLeave: () => this.setState({ leave: false }),
+    };
+  }
+}
+</script>
+</body>
+</html>

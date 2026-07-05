@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background:#E5E7EB; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#E5E7EB;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Pretendard,-apple-system,sans-serif;color:#111827;">
+
+  <!-- Phone frame -->
+  <div style="width:390px;height:844px;background:#F9FAFB;border-radius:36px;overflow:hidden;box-shadow:0 12px 40px rgba(17,24,39,0.18);display:flex;flex-direction:column;position:relative;">
+
+    <!-- Status bar -->
+    <div style="height:44px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:13px;font-weight:700;">
+      <span>9:41</span>
+      <span style="color:#6B7280;">근태관리</span>
+    </div>
+
+    <!-- Top bar -->
+    <header style="height:52px;flex-shrink:0;display:flex;align-items:center;padding:0 12px;">
+      <button style="width:40px;height:40px;border:none;background:transparent;color:#374151;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <span style="font-size:16px;font-weight:700;margin-left:4px;">내 정보</span>
+    </header>
+
+    <!-- Body -->
+    <div style="flex:1;overflow-y:auto;padding:8px 24px 30px;">
+
+      <!-- Profile -->
+      <div style="display:flex;align-items:center;gap:16px;padding:12px 4px 24px;">
+        <div style="width:64px;height:64px;border-radius:50%;background:#EEF2F7;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:#374151;">홍</div>
+        <div>
+          <div style="font-size:20px;font-weight:700;">홍길동</div>
+          <div style="font-size:16px;color:#6B7280;">영업팀 · ㈜하늘테크</div>
+        </div>
+      </div>
+
+      <!-- Info card -->
+      <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;margin-bottom:24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid #F3F4F6;">
+          <span style="font-size:15px;color:#6B7280;">이름</span>
+          <span style="font-size:15px;font-weight:700;">홍길동</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid #F3F4F6;">
+          <span style="font-size:15px;color:#6B7280;">사번</span>
+          <span style="font-size:15px;font-weight:700;">EMP-1024</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 18px;">
+          <span style="font-size:15px;color:#6B7280;">인증방식</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:6px;background:#F3F4F6;">
+            <span style="width:6px;height:6px;border-radius:50%;background:#2563EB;"></span>
+            <span style="font-size:13px;font-weight:700;color:#374151;">얼굴인증</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Face management -->
+      <div style="font-size:13px;font-weight:700;color:#6B7280;margin:0 4px 10px;">얼굴 인증 관리</div>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <button style="width:100%;height:52px;border:1px solid #D1D5DB;border-radius:10px;background:#fff;color:#111827;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;" style-hover="background:#F9FAFB;">
+          <span style="width:18px;height:18px;display:flex;color:#374151;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
+          얼굴 다시 등록하기
+        </button>
+        <button onClick="{{ openConfirm }}" style="width:100%;height:52px;border:1px solid #FCA5A5;border-radius:10px;background:#fff;color:#DC2626;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;" style-hover="background:#FEF2F2;">
+          <span style="width:18px;height:18px;display:flex;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span>
+          얼굴 데이터 삭제 (동의 철회)
+        </button>
+      </div>
+      <div style="font-size:13px;color:#9CA3AF;line-height:1.5;margin:12px 4px 0;">삭제하면 등록된 얼굴 데이터가 지체 없이 파기되며, 이후에는 GPS 방식으로 출퇴근합니다.</div>
+
+    </div>
+
+    <!-- ===== Confirm dialog ===== -->
+    <sc-if value="{{ showConfirm }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;background:rgba(17,24,39,0.45);display:flex;align-items:center;justify-content:center;padding:24px;">
+        <div style="width:100%;background:#FFFFFF;border-radius:16px;padding:26px 24px 24px;">
+          <div style="width:52px;height:52px;border-radius:12px;background:#FEE2E2;color:#DC2626;display:flex;align-items:center;justify-content:center;margin-bottom:16px;">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+          </div>
+          <div style="font-size:20px;font-weight:700;margin-bottom:10px;">정말 삭제할까요?</div>
+          <div style="font-size:16px;color:#374151;line-height:1.6;margin-bottom:24px;">삭제 후에는 GPS 방식으로만 출퇴근할 수 있어요. 이 동작은 되돌릴 수 없습니다.</div>
+          <div style="display:flex;gap:12px;">
+            <button onClick="{{ closeConfirm }}" style="flex:1;height:52px;border:1px solid #D1D5DB;border-radius:10px;background:#fff;color:#111827;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#F9FAFB;">취소</button>
+            <button onClick="{{ closeConfirm }}" style="flex:1;height:52px;border:none;border-radius:10px;background:#DC2626;color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#B91C1C;">삭제하기</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { confirm: false };
+  renderVals() {
+    return {
+      showConfirm: this.state.confirm,
+      openConfirm: () => this.setState({ confirm: true }),
+      closeConfirm: () => this.setState({ confirm: false }),
+    };
+  }
+}
+</script>
+</body>
+</html>

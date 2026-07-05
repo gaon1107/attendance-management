@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#F9FAFB;font-family:Pretendard,-apple-system,sans-serif;color:#111827;padding:40px 48px 80px;">
+
+  <!-- Header -->
+  <div style="max-width:1120px;margin:0 auto 40px;">
+    <div style="font-size:13px;font-weight:700;letter-spacing:0.04em;color:#2563EB;text-transform:uppercase;margin-bottom:8px;">Design Foundation</div>
+    <div style="font-size:28px;font-weight:700;line-height:1.25;margin-bottom:8px;">근태관리 공통 스타일 가이드</div>
+    <div style="font-size:16px;color:#6B7280;line-height:1.5;max-width:640px;">중소기업 업무용 SaaS를 위한 기본 요소. 신뢰감 있고 군더더기 없는 담백한 톤. 모든 화면은 이 규칙을 기준으로 만들어집니다.</div>
+  </div>
+
+  <div style="max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:24px;">
+
+    <!-- Colors -->
+    <section style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;padding:28px 32px;">
+      <div style="font-size:20px;font-weight:700;margin-bottom:4px;">색상</div>
+      <div style="font-size:13px;color:#6B7280;margin-bottom:24px;">주색과 상태색, 그리고 중립 계열. 글자-배경 명도대비 4.5:1 이상 준수.</div>
+      <div style="font-size:13px;font-weight:700;color:#6B7280;margin-bottom:12px;">브랜드 · 상태</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px;">
+        <sc-for list="{{ statusColors }}" as="c" hint-placeholder-count="4">
+          <div style="border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;">
+            <div style="height:72px;background:{{ c.hex }};"></div>
+            <div style="padding:12px 14px;">
+              <div style="font-size:16px;font-weight:700;">{{ c.name }}</div>
+              <div style="font-size:13px;color:#6B7280;margin-top:2px;">{{ c.hex }}</div>
+              <div style="font-size:13px;color:#6B7280;">{{ c.use }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="font-size:13px;font-weight:700;color:#6B7280;margin-bottom:12px;">중립</div>
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:16px;">
+        <sc-for list="{{ neutralColors }}" as="c" hint-placeholder-count="6">
+          <div style="border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;">
+            <div style="height:56px;background:{{ c.hex }};border-bottom:1px solid #E5E7EB;"></div>
+            <div style="padding:10px 12px;">
+              <div style="font-size:13px;font-weight:700;">{{ c.name }}</div>
+              <div style="font-size:13px;color:#6B7280;margin-top:2px;">{{ c.hex }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <!-- Typography -->
+    <section style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;padding:28px 32px;">
+      <div style="font-size:20px;font-weight:700;margin-bottom:4px;">타이포그래피</div>
+      <div style="font-size:13px;color:#6B7280;margin-bottom:24px;">Pretendard · 굵기는 보통(400)/굵게(700) 2단계만 사용.</div>
+      <div style="display:flex;flex-direction:column;gap:20px;">
+        <div style="display:flex;align-items:baseline;gap:24px;border-bottom:1px solid #F3F4F6;padding-bottom:20px;">
+          <div style="width:120px;flex-shrink:0;font-size:13px;color:#6B7280;">큰 숫자 · 28px</div>
+          <div style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;">08:57:12</div>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:24px;border-bottom:1px solid #F3F4F6;padding-bottom:20px;">
+          <div style="width:120px;flex-shrink:0;font-size:13px;color:#6B7280;">제목 · 20px</div>
+          <div style="font-size:20px;font-weight:700;">이번 주 근태 현황</div>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:24px;border-bottom:1px solid #F3F4F6;padding-bottom:20px;">
+          <div style="width:120px;flex-shrink:0;font-size:13px;color:#6B7280;">본문 · 16px</div>
+          <div style="font-size:16px;font-weight:400;">출근 기록은 실시간으로 반영되며, 관리자 승인 후 확정됩니다.</div>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:24px;">
+          <div style="width:120px;flex-shrink:0;font-size:13px;color:#6B7280;">보조 · 13px</div>
+          <div style="font-size:13px;font-weight:400;color:#6B7280;">마지막 동기화 2분 전 · GPS 기반 위치 확인</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Buttons -->
+    <section style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;padding:28px 32px;">
+      <div style="font-size:20px;font-weight:700;margin-bottom:4px;">버튼</div>
+      <div style="font-size:13px;color:#6B7280;margin-bottom:24px;">높이 44px, 모서리 8px. 한 화면에 주 버튼은 하나만.</div>
+
+      <div style="font-size:13px;font-weight:700;color:#6B7280;margin-bottom:14px;">종류</div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:28px;">
+        <button style="height:44px;padding:0 20px;border:none;border-radius:8px;background:#2563EB;color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#1D4ED8;">출근하기</button>
+        <button style="height:44px;padding:0 20px;border:1px solid #D1D5DB;border-radius:8px;background:#fff;color:#111827;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#F9FAFB;">취소</button>
+        <button style="height:44px;padding:0 20px;border:none;border-radius:8px;background:#16A34A;color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#15803D;">승인</button>
+        <button style="height:44px;padding:0 20px;border:none;border-radius:8px;background:#DC2626;color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#B91C1C;">반려</button>
+        <button style="height:44px;padding:0 16px;border:none;border-radius:8px;background:transparent;color:#2563EB;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#EFF6FF;">자세히 보기</button>
+        <button disabled style="height:44px;padding:0 20px;border:none;border-radius:8px;background:#E5E7EB;color:#9CA3AF;font-family:inherit;font-size:16px;font-weight:700;cursor:not-allowed;">비활성</button>
+      </div>
+
+      <div style="font-size:13px;font-weight:700;color:#6B7280;margin-bottom:14px;">크기</div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;">
+        <button style="height:36px;padding:0 14px;border:none;border-radius:8px;background:#2563EB;color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">작게 36px</button>
+        <button style="height:44px;padding:0 20px;border:none;border-radius:8px;background:#2563EB;color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;">기본 44px</button>
+        <button style="height:52px;padding:0 28px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;">크게 52px</button>
+      </div>
+    </section>
+
+    <!-- Inputs -->
+    <section style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;padding:28px 32px;">
+      <div style="font-size:20px;font-weight:700;margin-bottom:4px;">입력칸</div>
+      <div style="font-size:13px;color:#6B7280;margin-bottom:24px;">높이 44px, 모서리 8px. 포커스 시 주색 테두리.</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:24px;max-width:720px;">
+        <div>
+          <label style="display:block;font-size:13px;font-weight:700;margin-bottom:8px;">이름</label>
+          <input value="김서연" style="width:100%;height:44px;padding:0 14px;border:1px solid #D1D5DB;border-radius:8px;font-family:inherit;font-size:16px;color:#111827;outline:none;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);" />
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;font-weight:700;margin-bottom:8px;">부서</label>
+          <select style="width:100%;height:44px;padding:0 14px;border:1px solid #D1D5DB;border-radius:8px;font-family:inherit;font-size:16px;color:#111827;outline:none;background:#fff;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);">
+            <option>개발팀</option>
+            <option>디자인팀</option>
+            <option>경영지원팀</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;font-weight:700;margin-bottom:8px;">사번</label>
+          <input placeholder="예: EMP-1024" style="width:100%;height:44px;padding:0 14px;border:1px solid #D1D5DB;border-radius:8px;font-family:inherit;font-size:16px;color:#111827;outline:none;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);" />
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;font-weight:700;margin-bottom:8px;">연차 잔여일</label>
+          <input value="15.5일" style="width:100%;height:44px;padding:0 14px;border:1px solid #DC2626;border-radius:8px;font-family:inherit;font-size:16px;color:#111827;outline:none;" />
+          <div style="font-size:13px;color:#DC2626;margin-top:6px;">숫자만 입력해 주세요.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Status badges -->
+    <section style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;padding:28px 32px;">
+      <div style="font-size:20px;font-weight:700;margin-bottom:4px;">상태 배지</div>
+      <div style="font-size:13px;color:#6B7280;margin-bottom:24px;">근태 상태는 색이 아니라 라벨로도 구분되게. 배경은 옅게, 글자는 진하게.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;">
+        <sc-for list="{{ badges }}" as="b" hint-placeholder-count="6">
+          <div style="display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 12px;border-radius:8px;background:{{ b.bg }};">
+            <span style="width:7px;height:7px;border-radius:50%;background:{{ b.dot }};"></span>
+            <span style="font-size:13px;font-weight:700;color:{{ b.fg }};">{{ b.label }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <!-- Card samples (metric) -->
+    <section>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:24px;">
+        <sc-for list="{{ metrics }}" as="m" hint-placeholder-count="4">
+          <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;padding:22px 24px;">
+            <div style="font-size:13px;color:#6B7280;margin-bottom:10px;">{{ m.label }}</div>
+            <div style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;">{{ m.value }}</div>
+            <div style="font-size:13px;font-weight:700;color:{{ m.deltaColor }};margin-top:6px;">{{ m.delta }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <!-- Table -->
+    <section style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;">
+      <div style="padding:24px 28px 20px;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-size:20px;font-weight:700;">오늘 출근 현황</div>
+          <div style="font-size:13px;color:#6B7280;margin-top:2px;">2026년 7월 4일 · 총 6명</div>
+        </div>
+        <button style="height:44px;padding:0 18px;border:1px solid #D1D5DB;border-radius:8px;background:#fff;color:#111827;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#F9FAFB;">내보내기</button>
+      </div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="background:#F9FAFB;border-top:1px solid #E5E7EB;border-bottom:1px solid #E5E7EB;">
+            <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:12px 28px;">이름</th>
+            <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:12px 16px;">부서</th>
+            <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:12px 16px;">출근</th>
+            <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:12px 16px;">퇴근</th>
+            <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:12px 16px;">근무시간</th>
+            <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:12px 28px;">상태</th>
+          </tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{ rows }}" as="r" hint-placeholder-count="6">
+            <tr style="border-bottom:1px solid #F3F4F6;">
+              <td style="padding:16px 28px;font-size:16px;font-weight:700;">{{ r.name }}</td>
+              <td style="padding:16px 16px;font-size:16px;color:#111827;">{{ r.dept }}</td>
+              <td style="padding:16px 16px;font-size:16px;font-variant-numeric:tabular-nums;">{{ r.in }}</td>
+              <td style="padding:16px 16px;font-size:16px;font-variant-numeric:tabular-nums;color:#6B7280;">{{ r.out }}</td>
+              <td style="padding:16px 16px;font-size:16px;font-variant-numeric:tabular-nums;">{{ r.hours }}</td>
+              <td style="padding:16px 28px;">
+                <span style="display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 11px;border-radius:8px;background:{{ r.badge.bg }};">
+                  <span style="width:7px;height:7px;border-radius:50%;background:{{ r.badge.dot }};"></span>
+                  <span style="font-size:13px;font-weight:700;color:{{ r.badge.fg }};">{{ r.badge.label }}</span>
+                </span>
+              </td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+    </section>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const B = {
+      work:   { label: '출근',   bg: '#DCFCE7', dot: '#16A34A', fg: '#15803D' },
+      late:   { label: '지각',   bg: '#FEF3C7', dot: '#F59E0B', fg: '#B45309' },
+      absent: { label: '결근',   bg: '#FEE2E2', dot: '#DC2626', fg: '#B91C1C' },
+      leave:  { label: '휴가',   bg: '#DBEAFE', dot: '#2563EB', fg: '#1D4ED8' },
+      remote: { label: '재택',   bg: '#EDE9FE', dot: '#7C3AED', fg: '#6D28D9' },
+      off:    { label: '미출근', bg: '#F3F4F6', dot: '#9CA3AF', fg: '#4B5563' },
+    };
+    return {
+      statusColors: [
+        { name: '주색',   hex: '#2563EB', use: '주요 동작·강조' },
+        { name: '성공',   hex: '#16A34A', use: '승인·정상 출근' },
+        { name: '주의',   hex: '#F59E0B', use: '지각·경고' },
+        { name: '위험',   hex: '#DC2626', use: '결근·반려' },
+      ],
+      neutralColors: [
+        { name: '본문',   hex: '#111827' },
+        { name: '보조',   hex: '#6B7280' },
+        { name: '테두리', hex: '#E5E7EB' },
+        { name: '배경',   hex: '#F9FAFB' },
+        { name: '카드',   hex: '#FFFFFF' },
+        { name: '입력선', hex: '#D1D5DB' },
+      ],
+      badges: [B.work, B.late, B.absent, B.leave, B.remote, B.off],
+      metrics: [
+        { label: '오늘 출근',     value: '42명',    delta: '전체 48명 중', deltaColor: '#6B7280' },
+        { label: '지각',         value: '3명',     delta: '▲ 어제보다 1명', deltaColor: '#B45309' },
+        { label: '휴가 · 재택',   value: '5명',     delta: '승인 완료',    deltaColor: '#6B7280' },
+        { label: '평균 근무시간', value: '8.2h',    delta: '▼ 0.3h',      deltaColor: '#15803D' },
+      ],
+      rows: [
+        { name: '김서연', dept: '개발팀',     in: '08:52', out: '—',     hours: '진행 중', badge: B.work },
+        { name: '이준호', dept: '디자인팀',   in: '09:14', out: '—',     hours: '진행 중', badge: B.late },
+        { name: '박민지', dept: '경영지원팀', in: '08:47', out: '—',     hours: '진행 중', badge: B.work },
+        { name: '정우성', dept: '개발팀',     in: '—',     out: '—',     hours: '—',      badge: B.leave },
+        { name: '최유진', dept: '영업팀',     in: '09:02', out: '—',     hours: '진행 중', badge: B.remote },
+        { name: '한도윤', dept: '개발팀',     in: '—',     out: '—',     hours: '—',      badge: B.absent },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

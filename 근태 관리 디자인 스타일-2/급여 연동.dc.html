@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#F9FAFB;font-family:Pretendard,-apple-system,sans-serif;color:#111827;display:flex;">
+
+  <aside style="width:220px;flex-shrink:0;background:#FFFFFF;border-right:1px solid #E5E7EB;min-height:100vh;display:flex;flex-direction:column;padding:20px 12px;">
+    <div style="display:flex;align-items:center;gap:9px;padding:0 8px;margin-bottom:22px;">
+      <div style="width:28px;height:28px;border-radius:7px;background:#2563EB;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:15px;font-weight:700;">근</span></div>
+      <span style="font-size:16px;font-weight:700;letter-spacing:-0.01em;">근태관리</span>
+    </div>
+    <nav style="display:flex;flex-direction:column;gap:1px;">
+      <sc-for list="{{ menu }}" as="m" hint-placeholder-count="8">
+        <a href="#" style="display:flex;align-items:center;gap:10px;height:38px;padding:0 10px;border-radius:7px;text-decoration:none;font-size:15px;font-weight:{{ m.weight }};color:{{ m.color }};background:{{ m.bg }};" style-hover="background:#F3F4F6;">
+          <span style="width:17px;height:17px;display:flex;color:{{ m.iconColor }};" dangerouslySetInnerHTML="{{ m.icon }}"></span>
+          {{ m.label }}
+        </a>
+      </sc-for>
+    </nav>
+    <div style="margin-top:auto;display:flex;align-items:center;gap:9px;padding:10px 8px;border-top:1px solid #F3F4F6;">
+      <div style="width:30px;height:30px;border-radius:50%;background:#EEF2F7;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#374151;">관</div>
+      <div style="min-width:0;"><div style="font-size:13px;font-weight:700;">관리자</div><div style="font-size:13px;color:#9CA3AF;">admin@skytech.co.kr</div></div>
+    </div>
+  </aside>
+
+  <main style="flex:1;min-width:0;padding:24px 28px 48px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <div>
+        <div style="font-size:22px;font-weight:700;line-height:1.2;">급여 연동</div>
+        <div style="font-size:13px;color:#6B7280;margin-top:3px;">근태 데이터를 급여 시스템으로 전송합니다.</div>
+      </div>
+      <button style="height:40px;padding:0 18px;border:none;border-radius:7px;background:#2563EB;color:#fff;font-family:inherit;font-size:15px;font-weight:700;white-space:nowrap;cursor:pointer;" style-hover="background:#1D4ED8;">지금 동기화</button>
+    </div>
+
+    <div style="max-width:900px;">
+      <!-- Connection status -->
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:18px 22px;display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+        <div style="width:44px;height:44px;flex-shrink:0;border-radius:9px;background:#EFF6FF;color:#2563EB;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;">DZ</div>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:16px;font-weight:700;">더존 iCUBE 급여</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:6px;background:#F3F4F6;"><span style="width:6px;height:6px;border-radius:50%;background:#16A34A;"></span><span style="font-size:13px;font-weight:700;color:#374151;">연결됨</span></span>
+          </div>
+          <div style="font-size:13px;color:#6B7280;margin-top:3px;">마지막 동기화 2026-07-01 09:12 · 자동 매월 25일</div>
+        </div>
+        <button style="height:36px;padding:0 14px;border:1px solid #D1D5DB;border-radius:7px;background:#fff;color:#374151;font-family:inherit;font-size:13px;font-weight:700;white-space:nowrap;cursor:pointer;" style-hover="background:#F9FAFB;">연결 관리</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px;align-items:start;">
+        <!-- Field mapping -->
+        <section style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;">
+          <div style="padding:14px 20px;border-bottom:1px solid #E5E7EB;font-size:16px;font-weight:700;">항목 매핑</div>
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB;">
+                <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:9px 20px;">근태 항목</th>
+                <th style="width:24px;"></th>
+                <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:9px 20px;">급여 항목</th>
+              </tr>
+            </thead>
+            <tbody>
+              <sc-for list="{{ mappings }}" as="m" hint-placeholder-count="5">
+                <tr style="border-bottom:1px solid #F3F4F6;">
+                  <td style="padding:11px 20px;font-size:15px;font-weight:700;">{{ m.from }}</td>
+                  <td style="text-align:center;color:#C7CDD4;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></td>
+                  <td style="padding:11px 20px;font-size:15px;color:#374151;">{{ m.to }}</td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- Sync settings + log -->
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          <section style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:18px 20px;">
+            <div style="font-size:16px;font-weight:700;margin-bottom:14px;">동기화 설정</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #F3F4F6;">
+              <span style="font-size:15px;color:#6B7280;">주기</span>
+              <select style="height:36px;padding:0 12px;border:1px solid #D1D5DB;border-radius:7px;font-family:inherit;font-size:15px;outline:none;background:#fff;"><option>매월 25일</option><option>매주 월요일</option><option>수동</option></select>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0 2px;">
+              <span style="font-size:15px;color:#6B7280;">확정 전 검토</span>
+              <button onClick="{{ toggle }}" style="width:48px;height:28px;border:none;border-radius:14px;background:{{ trackBg }};cursor:pointer;position:relative;"><span style="position:absolute;top:3px;left:{{ knobLeft }};width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.2);transition:left 0.15s;"></span></button>
+            </div>
+          </section>
+          <section style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;">
+            <div style="padding:14px 20px;border-bottom:1px solid #E5E7EB;font-size:16px;font-weight:700;">최근 동기화</div>
+            <sc-for list="{{ logs }}" as="l" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:10px;padding:12px 20px;border-bottom:1px solid #F3F4F6;">
+                <span style="width:7px;height:7px;border-radius:50%;background:{{ l.dot }};flex-shrink:0;"></span>
+                <div style="flex:1;min-width:0;"><div style="font-size:15px;font-weight:700;">{{ l.title }}</div><div style="font-size:13px;color:#9CA3AF;">{{ l.time }}</div></div>
+                <span style="font-size:13px;font-weight:700;color:#6B7280;">{{ l.result }}</span>
+              </div>
+            </sc-for>
+          </section>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { review: true };
+  renderVals() {
+    const ic = (p) => ({ __html: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>' });
+    const raw = [
+      ['대시보드', false, '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>'],
+      ['직원관리', false, '<circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1"/><path d="M16 3.5a3 3 0 0 1 0 6"/>'],
+      ['근태현황', false, '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
+      ['초과근무', false, '<circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/><path d="M9 2h6"/>'],
+      ['휴가관리', false, '<path d="M8 2v4M16 2v4M3 10h18"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M9 16l2 2 4-4"/>'],
+      ['리포트', false,   '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'],
+      ['급여연동', true,  '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="12" cy="15" r="1.5"/>'],
+      ['설정', false,     '<circle cx="12" cy="12" r="3"/><path d="M20 12a8 8 0 1 0-8 8"/><path d="M12 8v4l3 2"/>'],
+    ];
+    const menu = raw.map(([label, active, p]) => ({
+      label, icon: ic(p),
+      weight: active ? 700 : 400,
+      color: active ? '#2563EB' : '#374151',
+      bg: active ? '#EFF6FF' : 'transparent',
+      iconColor: active ? '#2563EB' : '#9CA3AF',
+    }));
+    const on = this.state.review;
+    return {
+      menu,
+      mappings: [
+        { from:'실근무시간', to:'기본급 산정 시간' },
+        { from:'초과근무', to:'연장근로수당' },
+        { from:'야간근무', to:'야간근로수당' },
+        { from:'지각·결근', to:'공제 항목' },
+        { from:'연차 사용', to:'연차수당 정산' },
+      ],
+      logs: [
+        { dot:'#16A34A', title:'2026년 6월 급여 반영', time:'2026-07-01 09:12', result:'성공 20건' },
+        { dot:'#16A34A', title:'2026년 5월 급여 반영', time:'2026-06-01 09:08', result:'성공 20건' },
+        { dot:'#F59E0B', title:'2026년 4월 급여 반영', time:'2026-05-01 09:15', result:'경고 1건' },
+      ],
+      toggle: () => this.setState(s => ({ review: !s.review })),
+      trackBg: on ? '#2563EB' : '#D1D5DB',
+      knobLeft: on ? '23px' : '3px',
+    };
+  }
+}
+</script>
+</body>
+</html>

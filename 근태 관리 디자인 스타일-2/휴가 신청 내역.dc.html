@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background:#E5E7EB; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#E5E7EB;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Pretendard,-apple-system,sans-serif;color:#111827;">
+
+  <div style="width:390px;height:844px;background:#F9FAFB;border-radius:36px;overflow:hidden;box-shadow:0 12px 40px rgba(17,24,39,0.18);display:flex;flex-direction:column;position:relative;">
+
+    <div style="height:44px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:13px;font-weight:700;"><span>9:41</span><span style="color:#6B7280;">근태관리</span></div>
+
+    <header style="height:52px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 12px;">
+      <div style="display:flex;align-items:center;">
+        <button style="width:40px;height:40px;border:none;background:transparent;color:#374151;cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span style="font-size:16px;font-weight:700;margin-left:4px;">휴가 신청 내역</span>
+      </div>
+      <button style="height:36px;padding:0 12px;margin-right:8px;border:none;border-radius:8px;background:#2563EB;color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">신청</button>
+    </header>
+
+    <!-- Balance -->
+    <div style="padding:8px 24px 0;flex-shrink:0;">
+      <div style="background:#2563EB;border-radius:14px;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;">
+        <div><div style="font-size:13px;font-weight:700;color:rgba(255,255,255,0.8);margin-bottom:6px;">잔여 연차</div><div style="font-size:28px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums;line-height:1;">15.5<span style="font-size:16px;font-weight:400;margin-left:2px;">일</span></div></div>
+        <div style="text-align:right;font-size:13px;color:rgba(255,255,255,0.8);">총 20일<br/>사용 4.5일</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div style="display:flex;gap:6px;padding:20px 24px 12px;flex-shrink:0;">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+        <button onClick="{{ t.select }}" style="height:36px;padding:0 14px;border:1px solid {{ t.border }};border-radius:18px;background:{{ t.bg }};color:{{ t.fg }};font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">{{ t.label }}</button>
+      </sc-for>
+    </div>
+
+    <!-- List -->
+    <div style="flex:1;overflow-y:auto;padding:0 24px 24px;">
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <sc-for list="{{ items }}" as="r" hint-placeholder-count="4">
+          <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;padding:18px 18px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+              <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:8px;background:{{ r.tag.bg }};font-size:13px;font-weight:700;color:{{ r.tag.fg }};">{{ r.tag.label }}</span>
+              <span style="display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:8px;background:{{ r.status.bg }};">
+                <span style="width:6px;height:6px;border-radius:50%;background:{{ r.status.dot }};"></span>
+                <span style="font-size:13px;font-weight:700;color:{{ r.status.fg }};">{{ r.status.label }}</span>
+              </span>
+            </div>
+            <div style="font-size:16px;font-weight:700;margin-bottom:4px;">{{ r.period }}</div>
+            <div style="font-size:13px;color:#6B7280;">{{ r.days }} · 사유: {{ r.reason }}</div>
+            <div style="font-size:13px;color:#9CA3AF;margin-top:6px;">{{ r.footer }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { tab: '전체' };
+  renderVals() {
+    const tab = this.state.tab;
+    const tabs = ['전체','대기','승인','반려'].map(label => {
+      const a = label === tab;
+      return { label, select: () => this.setState({ tab: label }),
+        bg: a?'#EFF6FF':'#fff', fg: a?'#1D4ED8':'#6B7280', border: a?'#2563EB':'#D1D5DB' };
+    });
+    const T = { 연차:{label:'연차',bg:'#DBEAFE',fg:'#1D4ED8'}, 반차:{label:'반차',bg:'#EDE9FE',fg:'#6D28D9'}, 병가:{label:'병가',bg:'#FEF3C7',fg:'#B45309'} };
+    const S = {
+      wait: {label:'대기',bg:'#F3F4F6',dot:'#9CA3AF',fg:'#4B5563'},
+      ok:   {label:'승인',bg:'#DCFCE7',dot:'#16A34A',fg:'#15803D'},
+      no:   {label:'반려',bg:'#FEE2E2',dot:'#DC2626',fg:'#B91C1C'},
+    };
+    const all = [
+      { tag:T.연차, status:S.wait, period:'7월 8일 ~ 7월 9일', days:'2일', reason:'개인 사정', footer:'신청 어제 · 승인자 박팀장', bucket:'대기' },
+      { tag:T.반차, status:S.ok,   period:'6월 20일 오후',      days:'0.5일', reason:'병원 방문', footer:'승인 6월 19일 · 박팀장', bucket:'승인' },
+      { tag:T.연차, status:S.ok,   period:'6월 3일 ~ 6월 4일',  days:'2일', reason:'가족 여행', footer:'승인 5월 30일 · 박팀장', bucket:'승인' },
+      { tag:T.연차, status:S.no,   period:'5월 1일 ~ 5월 5일',  days:'5일', reason:'장기 여행', footer:'반려 4월 28일 · 인원 부족', bucket:'반려' },
+    ];
+    const items = tab === '전체' ? all : all.filter(x => x.bucket === tab);
+    return { tabs, items };
+  }
+}
+</script>
+</body>
+</html>

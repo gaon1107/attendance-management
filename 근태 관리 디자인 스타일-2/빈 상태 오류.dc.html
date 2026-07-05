@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background:#E5E7EB; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#E5E7EB;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Pretendard,-apple-system,sans-serif;color:#111827;">
+
+  <div style="width:390px;height:844px;background:#F9FAFB;border-radius:36px;overflow:hidden;box-shadow:0 12px 40px rgba(17,24,39,0.18);display:flex;flex-direction:column;position:relative;">
+
+    <div style="height:44px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:13px;font-weight:700;"><span>9:41</span><span style="color:#6B7280;">근태관리</span></div>
+
+    <header style="height:52px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 12px;">
+      <div style="display:flex;align-items:center;">
+        <button style="width:40px;height:40px;border:none;background:transparent;color:#374151;cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span style="font-size:16px;font-weight:700;margin-left:4px;">{{ pageTitle }}</span>
+      </div>
+      <div style="display:flex;gap:4px;padding-right:6px;">
+        <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+          <button onClick="{{ t.select }}" style="height:28px;padding:0 9px;border:1px solid {{ t.border }};border-radius:7px;background:{{ t.bg }};color:{{ t.fg }};font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">{{ t.label }}</button>
+        </sc-for>
+      </div>
+    </header>
+
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 40px;">
+      <div style="width:96px;height:96px;border-radius:50%;background:{{ iconBg }};display:flex;align-items:center;justify-content:center;margin-bottom:24px;color:{{ iconColor }};" dangerouslySetInnerHTML="{{ icon }}"></div>
+      <div style="font-size:20px;font-weight:700;margin-bottom:10px;">{{ title }}</div>
+      <div style="font-size:16px;color:#6B7280;line-height:1.55;max-width:280px;">{{ desc }}</div>
+      <sc-if value="{{ hasButton }}" hint-placeholder-val="{{ true }}">
+        <button style="height:48px;margin-top:28px;padding:0 28px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#1D4ED8;">{{ buttonLabel }}</button>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { view: 'empty' };
+  renderVals() {
+    const ic = (p) => ({ __html: '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>' });
+    const v = this.state.view;
+    const mk = (id, label) => ({ label, select: () => this.setState({ view: id }),
+      bg: v===id?'#2563EB':'#fff', fg: v===id?'#fff':'#6B7280', border: v===id?'#2563EB':'#E5E7EB' });
+    const map = {
+      empty: {
+        pageTitle:'내 근태 조회', iconBg:'#EFF6FF', iconColor:'#2563EB',
+        icon: ic('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>'),
+        title:'아직 기록이 없어요', desc:'이번 달 출퇴근 기록이 없습니다. 출근하면 여기에 표시됩니다.',
+        hasButton:true, buttonLabel:'출퇴근 화면으로',
+      },
+      network: {
+        pageTitle:'내 근태 조회', iconBg:'#FEF3C7', iconColor:'#B45309',
+        icon: ic('<path d="M5 12.55a11 11 0 0 1 14 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/><path d="M2 2l20 20"/>'),
+        title:'연결이 끊겼어요', desc:'네트워크 상태를 확인한 뒤 다시 시도해 주세요.',
+        hasButton:true, buttonLabel:'다시 시도',
+      },
+      error: {
+        pageTitle:'오류', iconBg:'#FEE2E2', iconColor:'#DC2626',
+        icon: ic('<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>'),
+        title:'문제가 발생했어요', desc:'잠시 후 다시 시도해 주세요. 계속되면 관리자에게 문의하세요.',
+        hasButton:true, buttonLabel:'다시 시도',
+      },
+    };
+    const s = map[v];
+    return {
+      tabs: [ mk('empty','빈'), mk('network','오프라인'), mk('error','오류') ],
+      ...s,
+    };
+  }
+}
+</script>
+</body>
+</html>

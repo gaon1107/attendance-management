@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background:#E5E7EB; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#E5E7EB;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Pretendard,-apple-system,sans-serif;color:#111827;">
+
+  <div style="width:390px;height:844px;background:#F9FAFB;border-radius:36px;overflow:hidden;box-shadow:0 12px 40px rgba(17,24,39,0.18);display:flex;flex-direction:column;position:relative;">
+
+    <div style="height:44px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:13px;font-weight:700;"><span>9:41</span><span style="color:#6B7280;">근태관리</span></div>
+
+    <!-- Top: step + skip -->
+    <div style="height:52px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 20px;">
+      <span style="font-size:13px;font-weight:700;color:#6B7280;">{{ stepNo }} / 4</span>
+      <button style="height:32px;padding:0 10px;border:none;background:transparent;color:#9CA3AF;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">건너뛰기</button>
+    </div>
+
+    <!-- Illustration area -->
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 32px;">
+      <div style="width:120px;height:120px;border-radius:24px;background:#EFF6FF;color:#2563EB;display:flex;align-items:center;justify-content:center;margin-bottom:32px;" dangerouslySetInnerHTML="{{ icon }}"></div>
+      <div style="font-size:22px;font-weight:700;text-align:center;margin-bottom:12px;">{{ title }}</div>
+      <div style="font-size:16px;color:#6B7280;text-align:center;line-height:1.6;max-width:280px;">{{ desc }}</div>
+    </div>
+
+    <!-- Bottom: dots + nav -->
+    <div style="flex-shrink:0;padding:0 24px 30px;">
+      <div style="display:flex;justify-content:center;gap:7px;margin-bottom:24px;">
+        <sc-for list="{{ dots }}" as="d" hint-placeholder-count="4">
+          <span style="height:7px;border-radius:4px;width:{{ d.w }};background:{{ d.bg }};transition:all 0.2s;"></span>
+        </sc-for>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <sc-if value="{{ notFirst }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ prev }}" style="height:52px;padding:0 22px;border:1px solid #D1D5DB;border-radius:10px;background:#fff;color:#374151;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#F3F4F6;">이전</button>
+        </sc-if>
+        <sc-if value="{{ notLast }}" hint-placeholder-val="{{ true }}">
+          <button onClick="{{ next }}" style="flex:1;height:52px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#1D4ED8;">다음</button>
+        </sc-if>
+        <sc-if value="{{ isLast }}" hint-placeholder-val="{{ false }}">
+          <button style="flex:1;height:52px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#1D4ED8;">시작하기</button>
+        </sc-if>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { step: 0 };
+  renderVals() {
+    const ic = (p) => ({ __html: '<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>' });
+    const steps = [
+      { icon: ic('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+        title: '한 번의 터치로 출근', desc: '앱을 열고 큰 버튼만 누르면 출근·퇴근이 기록돼요. 복잡한 절차가 없습니다.' },
+      { icon: ic('<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 10h.01M15 10h.01M9.5 15a3.5 3.5 0 0 0 5 0"/>'),
+        title: '얼굴 또는 위치로 확인', desc: '얼굴인증과 GPS 중 편한 방법을 고르세요. 언제든 [내 정보]에서 바꿀 수 있어요.' },
+      { icon: ic('<path d="M8 2v4M16 2v4M3 10h18"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M9 16l2 2 4-4"/>'),
+        title: '휴가도 앱에서', desc: '연차·반차 신청과 승인 현황을 앱에서 바로 확인하세요. 잔여 연차도 한눈에 보여요.' },
+      { icon: ic('<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'),
+        title: '준비 완료!', desc: '이제 출근할 준비가 됐어요. 첫 출근을 기록해 볼까요?' },
+    ];
+    const step = this.state.step;
+    const cur = steps[step];
+    const dots = steps.map((_, i) => ({
+      w: i === step ? '20px' : '7px',
+      bg: i === step ? '#2563EB' : '#D1D5DB',
+    }));
+    return {
+      icon: cur.icon, title: cur.title, desc: cur.desc,
+      stepNo: step + 1, dots,
+      notFirst: step > 0, notLast: step < 3, isLast: step === 3,
+      prev: () => this.setState(s => ({ step: Math.max(0, s.step - 1) })),
+      next: () => this.setState(s => ({ step: Math.min(3, s.step + 1) })),
+    };
+  }
+}
+</script>
+</body>
+</html>

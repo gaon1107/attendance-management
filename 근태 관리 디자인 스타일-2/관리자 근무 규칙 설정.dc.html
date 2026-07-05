@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#F9FAFB;font-family:Pretendard,-apple-system,sans-serif;color:#111827;display:flex;">
+
+  <aside style="width:220px;flex-shrink:0;background:#FFFFFF;border-right:1px solid #E5E7EB;min-height:100vh;display:flex;flex-direction:column;padding:20px 12px;">
+    <div style="display:flex;align-items:center;gap:9px;padding:0 8px;margin-bottom:22px;">
+      <div style="width:28px;height:28px;border-radius:7px;background:#2563EB;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:15px;font-weight:700;">근</span></div>
+      <span style="font-size:16px;font-weight:700;letter-spacing:-0.01em;">근태관리</span>
+    </div>
+    <nav style="display:flex;flex-direction:column;gap:1px;">
+      <sc-for list="{{ menu }}" as="m" hint-placeholder-count="7">
+        <a href="#" style="display:flex;align-items:center;gap:10px;height:38px;padding:0 10px;border-radius:7px;text-decoration:none;font-size:15px;font-weight:{{ m.weight }};color:{{ m.color }};background:{{ m.bg }};" style-hover="background:#F3F4F6;">
+          <span style="width:17px;height:17px;display:flex;color:{{ m.iconColor }};" dangerouslySetInnerHTML="{{ m.icon }}"></span>
+          {{ m.label }}
+        </a>
+      </sc-for>
+    </nav>
+    <div style="margin-top:auto;display:flex;align-items:center;gap:9px;padding:10px 8px;border-top:1px solid #F3F4F6;">
+      <div style="width:30px;height:30px;border-radius:50%;background:#EEF2F7;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#374151;">관</div>
+      <div style="min-width:0;"><div style="font-size:13px;font-weight:700;">관리자</div><div style="font-size:13px;color:#9CA3AF;">admin@skytech.co.kr</div></div>
+    </div>
+  </aside>
+
+  <main style="flex:1;min-width:0;padding:24px 28px 48px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <div>
+        <div style="font-size:22px;font-weight:700;line-height:1.2;">근무 규칙 설정</div>
+        <div style="font-size:13px;color:#6B7280;margin-top:3px;">회사 전체에 적용되는 기본 근무 규칙입니다.</div>
+      </div>
+      <button style="height:40px;padding:0 18px;border:none;border-radius:7px;background:#2563EB;color:#fff;font-family:inherit;font-size:15px;font-weight:700;white-space:nowrap;cursor:pointer;" style-hover="background:#1D4ED8;">저장</button>
+    </div>
+
+    <div style="max-width:760px;display:flex;flex-direction:column;gap:12px;">
+
+      <!-- Work hours -->
+      <section style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:10px;padding:20px 24px;">
+        <div style="font-size:16px;font-weight:700;margin-bottom:2px;">근무 시간</div>
+        <div style="font-size:13px;color:#6B7280;margin-bottom:16px;">기본 출퇴근 시간과 지각 기준을 설정합니다.</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+          <div><label style="display:block;font-size:13px;color:#6B7280;margin-bottom:6px;">출근</label><input value="09:00" style="width:100%;height:40px;padding:0 12px;border:1px solid #D1D5DB;border-radius:7px;font-family:inherit;font-size:15px;font-variant-numeric:tabular-nums;outline:none;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);" /></div>
+          <div><label style="display:block;font-size:13px;color:#6B7280;margin-bottom:6px;">퇴근</label><input value="18:00" style="width:100%;height:40px;padding:0 12px;border:1px solid #D1D5DB;border-radius:7px;font-family:inherit;font-size:15px;font-variant-numeric:tabular-nums;outline:none;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);" /></div>
+          <div><label style="display:block;font-size:13px;color:#6B7280;margin-bottom:6px;">지각 허용(분)</label><input value="10" style="width:100%;height:40px;padding:0 12px;border:1px solid #D1D5DB;border-radius:7px;font-family:inherit;font-size:15px;outline:none;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);" /></div>
+          <div><label style="display:block;font-size:13px;color:#6B7280;margin-bottom:6px;">휴게(분)</label><input value="60" style="width:100%;height:40px;padding:0 12px;border:1px solid #D1D5DB;border-radius:7px;font-family:inherit;font-size:15px;outline:none;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);" /></div>
+        </div>
+      </section>
+
+      <!-- Location -->
+      <section style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:10px;padding:20px 24px;">
+        <div style="font-size:16px;font-weight:700;margin-bottom:2px;">사업장 위치</div>
+        <div style="font-size:13px;color:#6B7280;margin-bottom:16px;">GPS 출퇴근이 허용되는 반경을 설정합니다.</div>
+        <div style="margin-bottom:16px;"><label style="display:block;font-size:13px;color:#6B7280;margin-bottom:6px;">주소</label><input value="서울 강남구 테헤란로 123, 하늘빌딩 8층" style="width:100%;height:40px;padding:0 12px;border:1px solid #D1D5DB;border-radius:7px;font-family:inherit;font-size:15px;outline:none;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);" /></div>
+        <label style="display:block;font-size:13px;color:#6B7280;margin-bottom:10px;">허용 반경: <span style="color:#2563EB;font-weight:700;">{{ radius }}m</span></label>
+        <input type="range" min="50" max="500" step="10" value="{{ radius }}" onInput="{{ onRadius }}" style="width:100%;accent-color:#2563EB;" />
+        <div style="display:flex;justify-content:space-between;font-size:13px;color:#9CA3AF;margin-top:6px;"><span>50m</span><span>500m</span></div>
+      </section>
+
+      <!-- Presence check -->
+      <section style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:10px;padding:20px 24px;">
+        <div style="font-size:16px;font-weight:700;margin-bottom:8px;">근무 중 자리 확인</div>
+        <div style="display:flex;flex-direction:column;">
+          <sc-for list="{{ toggles }}" as="t" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-top:1px solid #F3F4F6;">
+              <div style="padding-right:20px;">
+                <div style="font-size:15px;font-weight:700;margin-bottom:2px;">{{ t.title }}</div>
+                <div style="font-size:13px;color:#9CA3AF;">{{ t.desc }}</div>
+              </div>
+              <button onClick="{{ t.toggle }}" style="width:48px;height:28px;flex-shrink:0;border:none;border-radius:14px;background:{{ t.trackBg }};cursor:pointer;position:relative;transition:background 0.15s;">
+                <span style="position:absolute;top:3px;left:{{ t.knobLeft }};width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.2);transition:left 0.15s;"></span>
+              </button>
+            </div>
+          </sc-for>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0 2px;border-top:1px solid #F3F4F6;">
+            <div style="font-size:15px;font-weight:700;">확인 주기</div>
+            <select style="height:40px;padding:0 12px;border:1px solid #D1D5DB;border-radius:7px;font-family:inherit;font-size:15px;outline:none;background:#fff;"><option>10~15분</option><option>20~30분</option><option>사용 안 함</option></select>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { radius: 150, sw: { photo: false, save: false, notify: true } };
+  renderVals() {
+    const ic = (p) => ({ __html: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>' });
+    const raw = [
+      ['대시보드', false, '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>'],
+      ['직원관리', false, '<circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1"/><path d="M16 3.5a3 3 0 0 1 0 6"/>'],
+      ['근태현황', false, '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
+      ['휴가관리', false, '<path d="M8 2v4M16 2v4M3 10h18"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M9 16l2 2 4-4"/>'],
+      ['리포트', false,   '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'],
+      ['생체정보', false, '<path d="M12 11a3 3 0 0 0-3 3v3"/><path d="M6 8a8 8 0 0 1 12 0"/><path d="M4 12a10 10 0 0 1 16 0"/><path d="M12 15v4"/>'],
+      ['설정', true,      '<circle cx="12" cy="12" r="3"/><path d="M20 12a8 8 0 1 0-8 8"/><path d="M12 8v4l3 2"/>'],
+    ];
+    const menu = raw.map(([label, active, p]) => ({
+      label, icon: ic(p),
+      weight: active ? 700 : 400,
+      color: active ? '#2563EB' : '#374151',
+      bg: active ? '#EFF6FF' : 'transparent',
+      iconColor: active ? '#2563EB' : '#9CA3AF',
+    }));
+    const sw = this.state.sw;
+    const mk = (key, title, desc) => {
+      const on = sw[key];
+      return {
+        title, desc,
+        toggle: () => this.setState(s => ({ sw: { ...s.sw, [key]: !s.sw[key] } })),
+        trackBg: on ? '#2563EB' : '#D1D5DB',
+        knobLeft: on ? '23px' : '3px',
+      };
+    };
+    return {
+      menu,
+      radius: this.state.radius,
+      onRadius: (e) => this.setState({ radius: Number(e.target.value) }),
+      toggles: [
+        mk('photo', '카메라로 자리 유무 확인', '근무 중 주기적으로 자리 여부만 확인합니다.'),
+        mk('save', '확인 이미지 저장', '끄면 이미지를 저장하지 않습니다. (권장: 꺼짐)'),
+        mk('notify', '자리비움 알림', '장시간 자리비움 시 관리자에게 알립니다.'),
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

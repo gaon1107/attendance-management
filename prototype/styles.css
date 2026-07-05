@@ -1,0 +1,86 @@
+/* 근태관리 예시 화면 공통 스타일 (디자인 토큰 기반) */
+:root{
+  --primary:#2563EB; --primary-dark:#1D4ED8;
+  --success:#16A34A; --warning:#F59E0B; --danger:#DC2626;
+  --text:#111827; --text-sub:#6B7280;
+  --border:#E5E7EB; --bg:#F9FAFB; --white:#FFFFFF;
+  --radius:8px; --radius-lg:12px;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:"Pretendard",-apple-system,"Malgun Gothic","맑은 고딕",sans-serif;
+  font-size:16px; line-height:1.6;
+}
+a{color:inherit; text-decoration:none;}
+
+/* 예시 안내 배너 */
+.demo-banner{
+  background:#FEF3C7; color:#92400E; text-align:center;
+  font-size:13px; padding:6px 12px;
+}
+
+/* 상단바 */
+.topbar{
+  display:flex; align-items:center; gap:20px; flex-wrap:wrap;
+  background:var(--white); border-bottom:1px solid var(--border);
+  padding:12px 20px;
+}
+.brand{font-weight:700; font-size:17px;}
+.nav{display:flex; gap:16px; flex-wrap:wrap;}
+.nav a{color:var(--text-sub); font-size:14px; padding:4px 2px;}
+.nav a.active{color:var(--primary); font-weight:700; border-bottom:2px solid var(--primary);}
+.spacer{flex:1;}
+
+/* 레이아웃 */
+.container{max-width:920px; margin:24px auto; padding:0 20px;}
+.container-narrow{max-width:420px; margin:40px auto; padding:0 20px;}
+h1{font-size:22px; margin:0 0 4px;}
+h2{font-size:18px; margin:0 0 12px;}
+.muted{color:var(--text-sub); font-size:14px;}
+
+/* 카드 */
+.card{background:var(--white); border:1px solid var(--border); border-radius:var(--radius-lg); padding:20px 22px; margin-bottom:16px;}
+
+/* 폼 */
+.label{display:block; font-size:14px; color:var(--text-sub); margin:14px 0 6px;}
+.input{width:100%; height:44px; border:1px solid var(--border); border-radius:var(--radius); padding:0 12px; font-size:15px;}
+.input:focus{outline:none; border-color:var(--primary);}
+
+/* 버튼 */
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  height:44px; padding:0 18px; border:none; border-radius:var(--radius);
+  background:var(--primary); color:#fff; font-size:16px; font-weight:500; cursor:pointer; width:100%;}
+.btn:hover{background:var(--primary-dark);}
+.btn-line{background:var(--white); color:var(--text); border:1px solid var(--border); width:auto;}
+.btn-line:hover{background:var(--bg);}
+.btn-sm{height:36px; padding:0 12px; font-size:14px; width:auto;}
+.center-link{text-align:center; margin-top:14px; font-size:14px;}
+.center-link a{color:var(--primary);}
+
+/* 지표 카드 */
+.metrics{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px;}
+@media(max-width:640px){.metrics{grid-template-columns:repeat(2,1fr);}}
+.metric{background:var(--white); border-radius:var(--radius); padding:16px; border:1px solid var(--border);}
+.metric .m-label{font-size:13px; color:var(--text-sub);}
+.metric .m-num{font-size:26px; font-weight:700; margin-top:4px;}
+.metric.warn{background:#FFFBEB;} .metric.warn .m-label,.metric.warn .m-num{color:#B45309;}
+
+/* 표 */
+table{width:100%; border-collapse:collapse; font-size:15px;}
+th,td{text-align:left; padding:12px 10px; border-bottom:1px solid var(--border);}
+th{color:var(--text-sub); font-weight:500; font-size:14px;}
+
+/* 배지 */
+.badge{display:inline-block; font-size:12px; padding:3px 10px; border-radius:20px;}
+.b-green{background:#DCFCE7; color:#166534;}
+.b-gray{background:#F3F4F6; color:#4B5563;}
+.b-warn{background:#FEF3C7; color:#92400E;}
+.b-red{background:#FEE2E2; color:#991B1B;}
+
+/* 직원 모바일 화면 */
+.phone{max-width:380px; margin:30px auto; background:var(--white); border:1px solid var(--border); border-radius:24px; padding:22px; min-height:520px;}
+.phone .status{background:#EFF6FF; border-radius:var(--radius); padding:14px; margin:16px 0;}
+.big-btn{height:56px; font-size:18px;}
+.dot{display:inline-block; width:9px; height:9px; border-radius:50%; vertical-align:middle;}
+.dot.green{background:var(--success);}

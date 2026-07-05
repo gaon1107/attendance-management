@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background:#E5E7EB; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 0% { transform: scale(0.9); opacity: 0.7; } 70% { transform: scale(1.5); opacity: 0; } 100% { opacity: 0; } }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#E5E7EB;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Pretendard,-apple-system,sans-serif;color:#111827;">
+
+  <!-- Phone frame -->
+  <div style="width:390px;height:844px;background:#F9FAFB;border-radius:36px;overflow:hidden;box-shadow:0 12px 40px rgba(17,24,39,0.18);display:flex;flex-direction:column;position:relative;">
+
+    <!-- Status bar -->
+    <div style="height:44px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:13px;font-weight:700;">
+      <span>9:41</span>
+      <span style="color:#6B7280;">근태관리</span>
+    </div>
+
+    <!-- Top bar -->
+    <header style="height:52px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 12px;">
+      <button style="width:40px;height:40px;border:none;background:transparent;color:#374151;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div style="display:flex;gap:4px;padding-right:6px;">
+        <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+          <button onClick="{{ t.select }}" style="height:28px;padding:0 10px;border:1px solid {{ t.border }};border-radius:7px;background:{{ t.bg }};color:{{ t.fg }};font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">{{ t.label }}</button>
+        </sc-for>
+      </div>
+    </header>
+
+    <div style="padding:8px 24px 4px;text-align:center;flex-shrink:0;">
+      <div style="font-size:20px;font-weight:700;">위치 확인 출퇴근</div>
+    </div>
+
+    <!-- Map-ish area -->
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 24px;">
+      <div style="position:relative;width:260px;height:260px;border-radius:20px;overflow:hidden;background:#F3F4F6;border:1px solid #E5E7EB;display:flex;align-items:center;justify-content:center;">
+        <!-- fake map grid -->
+        <div style="position:absolute;inset:0;background-image:linear-gradient(#E5E7EB 1px,transparent 1px),linear-gradient(90deg,#E5E7EB 1px,transparent 1px);background-size:32px 32px;opacity:0.7;"></div>
+        <!-- site radius -->
+        <div style="position:absolute;width:150px;height:150px;border-radius:50%;background:{{ radiusBg }};border:2px dashed {{ radiusBorder }};"></div>
+        <!-- pin -->
+        <div style="position:relative;display:flex;flex-direction:column;align-items:center;transform:translate({{ pinX }});">
+          <sc-if value="{{ isLoading }}" hint-placeholder-val="{{ true }}">
+            <span style="position:absolute;width:40px;height:40px;border-radius:50%;background:#2563EB;animation:pulse 1.6s ease-out infinite;"></span>
+          </sc-if>
+          <span style="position:relative;color:{{ pinColor }};"><svg width="40" height="40" viewBox="0 0 24 24" fill="{{ pinColor }}" stroke="#fff" stroke-width="1.5"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3" fill="#fff" stroke="none"/></svg></span>
+        </div>
+      </div>
+
+      <!-- Status text -->
+      <div style="text-align:center;margin-top:28px;min-height:70px;">
+        <div style="font-size:20px;font-weight:700;color:{{ titleColor }};margin-bottom:8px;">{{ title }}</div>
+        <div style="font-size:16px;color:#6B7280;line-height:1.5;">{{ subtitle }}</div>
+      </div>
+    </div>
+
+    <!-- Bottom actions -->
+    <div style="flex-shrink:0;padding:0 24px 30px;">
+      <sc-if value="{{ isLoading }}" hint-placeholder-val="{{ true }}">
+        <button disabled style="width:100%;height:52px;border:none;border-radius:10px;background:#E5E7EB;color:#9CA3AF;font-family:inherit;font-size:16px;font-weight:700;cursor:not-allowed;display:flex;align-items:center;justify-content:center;gap:10px;">
+          <span style="width:18px;height:18px;border:3px solid rgba(156,163,175,0.4);border-top-color:#9CA3AF;border-radius:50%;display:block;animation:spin 0.8s linear infinite;"></span>
+          위치 확인 중...
+        </button>
+      </sc-if>
+      <sc-if value="{{ isInside }}" hint-placeholder-val="{{ false }}">
+        <button style="width:100%;height:52px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#1D4ED8;">확인</button>
+      </sc-if>
+      <sc-if value="{{ isOutside }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ retry }}" style="width:100%;height:52px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#1D4ED8;">다시 시도</button>
+      </sc-if>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { view: 'loading' }; // loading | inside | outside
+  renderVals() {
+    const v = this.state.view;
+    const mk = (id, label) => ({
+      label,
+      select: () => this.setState({ view: id }),
+      bg: v === id ? '#2563EB' : '#FFFFFF',
+      fg: v === id ? '#FFFFFF' : '#6B7280',
+      border: v === id ? '#2563EB' : '#E5E7EB',
+    });
+    const map = {
+      loading: { titleColor: '#111827', title: '위치 확인 중...', subtitle: '현재 위치를 가져오고 있어요',
+                 radiusBg: 'rgba(37,99,235,0.08)', radiusBorder: '#93C5FD', pinColor: '#2563EB', pinX: '0,0' },
+      inside:  { titleColor: '#15803D', title: '출근 확인됨', subtitle: '09:03 기록됨 · 본사 반경 이내',
+                 radiusBg: 'rgba(22,163,74,0.10)', radiusBorder: '#86EFAC', pinColor: '#16A34A', pinX: '0,0' },
+      outside: { titleColor: '#B91C1C', title: '사업장 반경 밖입니다', subtitle: '위치를 다시 확인해주세요',
+                 radiusBg: 'rgba(220,38,38,0.06)', radiusBorder: '#FCA5A5', pinColor: '#DC2626', pinX: '86px,-64px' },
+    };
+    const s = map[v];
+    return {
+      tabs: [ mk('loading','확인중'), mk('inside','반경내'), mk('outside','반경밖') ],
+      isLoading: v === 'loading',
+      isInside: v === 'inside',
+      isOutside: v === 'outside',
+      titleColor: s.titleColor, title: s.title, subtitle: s.subtitle,
+      radiusBg: s.radiusBg, radiusBorder: s.radiusBorder, pinColor: s.pinColor, pinX: s.pinX,
+      retry: () => this.setState({ view: 'loading' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

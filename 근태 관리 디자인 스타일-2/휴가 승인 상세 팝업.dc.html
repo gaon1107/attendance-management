@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#F9FAFB;font-family:Pretendard,-apple-system,sans-serif;color:#111827;position:relative;">
+
+  <!-- Dimmed context -->
+  <div style="display:flex;filter:blur(1.5px);opacity:0.5;pointer-events:none;user-select:none;">
+    <aside style="width:236px;flex-shrink:0;background:#FFFFFF;border-right:1px solid #E5E7EB;min-height:100vh;padding:24px 16px;">
+      <div style="display:flex;align-items:center;gap:10px;padding:0 8px;">
+        <div style="width:32px;height:32px;border-radius:8px;background:#2563EB;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:18px;font-weight:700;">근</span></div>
+        <span style="font-size:18px;font-weight:700;">근태관리</span>
+      </div>
+    </aside>
+    <main style="flex:1;padding:32px 40px;">
+      <div style="font-size:28px;font-weight:700;margin-bottom:6px;">휴가 승인</div>
+      <div style="font-size:16px;color:#6B7280;">직원 휴가 신청을 검토하고 처리하세요.</div>
+    </main>
+  </div>
+
+  <!-- Scrim -->
+  <div style="position:fixed;inset:0;background:rgba(17,24,39,0.45);display:flex;align-items:center;justify-content:center;padding:24px;">
+
+    <!-- Modal -->
+    <div style="width:100%;max-width:540px;background:#FFFFFF;border-radius:16px;box-shadow:0 24px 48px rgba(17,24,39,0.20);overflow:hidden;">
+
+      <!-- Header -->
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:26px 28px 20px;border-bottom:1px solid #E5E7EB;">
+        <div style="display:flex;align-items:center;gap:14px;">
+          <div style="width:48px;height:48px;border-radius:50%;background:#DBEAFE;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#1D4ED8;">이</div>
+          <div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:20px;font-weight:700;">이서윤</span>
+              <span style="display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:8px;background:#DBEAFE;font-size:13px;font-weight:700;color:#1D4ED8;">연차</span>
+            </div>
+            <div style="font-size:13px;color:#6B7280;margin-top:2px;">디자인팀 · 사번 EMP-2041</div>
+          </div>
+        </div>
+        <button style="width:36px;height:36px;border:none;border-radius:8px;background:transparent;color:#6B7280;cursor:pointer;display:flex;align-items:center;justify-content:center;" style-hover="background:#F3F4F6;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      </div>
+
+      <!-- Body -->
+      <div style="padding:24px 28px;">
+        <!-- Period highlight -->
+        <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:20px 22px;display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;">
+          <div>
+            <div style="font-size:13px;color:#6B7280;margin-bottom:6px;">신청 기간</div>
+            <div style="font-size:20px;font-weight:700;">7월 8일 (화) ~ 7월 9일 (수)</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:13px;color:#6B7280;margin-bottom:6px;">사용 연차</div>
+            <div style="font-size:28px;font-weight:700;color:#2563EB;font-variant-numeric:tabular-nums;line-height:1;">2일</div>
+          </div>
+        </div>
+
+        <!-- Detail rows -->
+        <div style="display:flex;flex-direction:column;gap:0;">
+          <div style="display:flex;align-items:flex-start;padding:14px 0;border-bottom:1px solid #F3F4F6;">
+            <span style="width:110px;flex-shrink:0;font-size:16px;color:#6B7280;">신청 사유</span>
+            <span style="flex:1;font-size:16px;color:#111827;line-height:1.5;">개인 사정으로 이틀간 휴가를 신청합니다.</span>
+          </div>
+          <div style="display:flex;align-items:center;padding:14px 0;border-bottom:1px solid #F3F4F6;">
+            <span style="width:110px;flex-shrink:0;font-size:16px;color:#6B7280;">잔여 연차</span>
+            <span style="flex:1;font-size:16px;font-weight:700;">15.5일 <span style="font-weight:400;color:#6B7280;">→ 승인 시 13.5일</span></span>
+          </div>
+          <div style="display:flex;align-items:center;padding:14px 0;border-bottom:1px solid #F3F4F6;">
+            <span style="width:110px;flex-shrink:0;font-size:16px;color:#6B7280;">신청 일시</span>
+            <span style="flex:1;font-size:16px;">2026-07-04 14:22</span>
+          </div>
+          <div style="display:flex;align-items:center;padding:14px 0;">
+            <span style="width:110px;flex-shrink:0;font-size:16px;color:#6B7280;">해당 기간 근무</span>
+            <span style="flex:1;font-size:16px;color:#6B7280;">같은 팀 휴가자 없음</span>
+          </div>
+        </div>
+
+        <!-- Manager memo -->
+        <label style="display:block;font-size:13px;font-weight:700;margin:18px 0 8px;">처리 메모 <span style="color:#9CA3AF;font-weight:400;">(선택)</span></label>
+        <textarea placeholder="반려 시 사유를 남기면 직원에게 전달됩니다." style="width:100%;height:72px;padding:12px 14px;border:1px solid #D1D5DB;border-radius:10px;font-family:inherit;font-size:16px;outline:none;resize:none;line-height:1.5;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);"></textarea>
+      </div>
+
+      <!-- Footer -->
+      <div style="display:flex;gap:12px;padding:20px 28px;border-top:1px solid #E5E7EB;background:#F9FAFB;">
+        <button style="flex:1;height:48px;border:1px solid #FCA5A5;border-radius:8px;background:#fff;color:#DC2626;font-family:inherit;font-size:16px;font-weight:700;white-space:nowrap;cursor:pointer;" style-hover="background:#FEF2F2;">반려</button>
+        <button style="flex:2;height:48px;border:none;border-radius:8px;background:#16A34A;color:#fff;font-family:inherit;font-size:16px;font-weight:700;white-space:nowrap;cursor:pointer;" style-hover="background:#15803D;">승인</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

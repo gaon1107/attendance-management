@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#F9FAFB;font-family:Pretendard,-apple-system,sans-serif;color:#111827;display:flex;flex-direction:column;">
+
+  <!-- Top bar -->
+  <header style="height:56px;flex-shrink:0;background:#fff;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;justify-content:space-between;padding:0 28px;">
+    <div style="display:flex;align-items:center;gap:9px;">
+      <div style="width:28px;height:28px;border-radius:7px;background:#2563EB;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:15px;font-weight:700;">근</span></div>
+      <span style="font-size:16px;font-weight:700;letter-spacing:-0.01em;">근태관리</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:18px;">
+      <a href="#" style="font-size:15px;font-weight:700;color:#2563EB;text-decoration:none;">출퇴근</a>
+      <a href="#" style="font-size:15px;font-weight:400;color:#6B7280;text-decoration:none;">내 근태 조회</a>
+      <a href="#" style="font-size:15px;font-weight:400;color:#6B7280;text-decoration:none;">휴가</a>
+      <div style="width:1px;height:20px;background:#E5E7EB;"></div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:28px;height:28px;border-radius:50%;background:#EEF2F7;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#374151;">홍</div>
+        <span style="font-size:15px;font-weight:700;">홍길동</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Center -->
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px 24px;">
+    <div style="width:100%;max-width:520px;">
+
+      <!-- Greeting -->
+      <div style="text-align:center;margin-bottom:24px;">
+        <div style="font-size:22px;font-weight:700;margin-bottom:4px;">홍길동님, 좋은 아침이에요</div>
+        <div style="font-size:15px;color:#6B7280;">2026년 7월 4일 (금)</div>
+      </div>
+
+      <!-- Main card -->
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:32px;">
+        <!-- Status + schedule -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:22px;border-bottom:1px solid #F3F4F6;margin-bottom:24px;">
+          <div>
+            <div style="font-size:13px;color:#6B7280;margin-bottom:8px;">현재 상태</div>
+            <span style="display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 12px;border-radius:7px;background:#F3F4F6;">
+              <span style="width:7px;height:7px;border-radius:50%;background:#9CA3AF;"></span>
+              <span style="font-size:15px;font-weight:700;color:#374151;">출근 전</span>
+            </span>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:13px;color:#6B7280;margin-bottom:8px;">근무 예정</div>
+            <div style="font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;">09:00 – 18:00</div>
+          </div>
+        </div>
+
+        <!-- Network check -->
+        <div style="display:flex;align-items:center;gap:9px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:12px 14px;margin-bottom:24px;">
+          <span style="width:18px;height:18px;flex-shrink:0;color:#16A34A;display:flex;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span>
+          <span style="font-size:15px;font-weight:700;color:#15803D;">사내 네트워크 확인됨</span>
+          <span style="font-size:13px;color:#16A34A;">SKYTECH-OFFICE</span>
+        </div>
+
+        <!-- Primary action -->
+        <button style="width:100%;height:64px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;" style-hover="background:#1D4ED8;" style-active="transform:translateY(1px);">
+          <span style="font-size:18px;font-weight:700;">출근하기</span>
+          <span style="font-size:14px;font-weight:400;opacity:0.85;font-variant-numeric:tabular-nums;">지금 08:57</span>
+        </button>
+
+        <!-- Face auth note -->
+        <div style="display:flex;align-items:center;justify-content:center;gap:7px;margin-top:14px;">
+          <span style="width:15px;height:15px;color:#9CA3AF;display:flex;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
+          <span style="font-size:13px;color:#9CA3AF;">출근 시 PC 웹캠으로 얼굴을 확인합니다.</span>
+        </div>
+      </div>
+
+      <!-- Secondary actions -->
+      <div style="display:flex;gap:12px;margin-top:16px;">
+        <button style="flex:1;height:44px;border:1px solid #D1D5DB;border-radius:8px;background:#fff;color:#374151;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;" style-hover="background:#F9FAFB;">
+          <span style="width:16px;height:16px;display:flex;color:#6B7280;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></span>
+          외출 / 복귀
+        </button>
+        <button style="flex:1;height:44px;border:1px solid #D1D5DB;border-radius:8px;background:#fff;color:#374151;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;" style-hover="background:#F9FAFB;">
+          <span style="width:16px;height:16px;display:flex;color:#6B7280;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
+          내 근태 조회
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

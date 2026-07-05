@@ -1,0 +1,26 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css');
+@import "tailwindcss";
+
+/* ── 근태관리 디자인 토큰 (디자인 시안의 색·글꼴을 그대로 사용) ── */
+:root {
+  --primary: #2563EB;   /* 주색(파랑) */
+  --success: #16A34A;   /* 성공(초록) */
+  --warning: #F59E0B;   /* 주의(주황) */
+  --danger:  #DC2626;   /* 위험(빨강) */
+  --text:    #111827;   /* 본문 글자 */
+  --text-sub:#6B7280;   /* 보조 글자 */
+  --border:  #E5E7EB;   /* 테두리 */
+  --bg:      #F9FAFB;   /* 배경 */
+  --card:    #FFFFFF;   /* 카드 */
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background:#E5E7EB; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#E5E7EB;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Pretendard,-apple-system,sans-serif;color:#111827;">
+
+  <!-- Phone frame -->
+  <div style="width:390px;height:844px;background:#F9FAFB;border-radius:36px;overflow:hidden;box-shadow:0 12px 40px rgba(17,24,39,0.18);display:flex;flex-direction:column;position:relative;">
+
+    <!-- Status bar -->
+    <div style="height:44px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:13px;font-weight:700;">
+      <span>9:41</span>
+      <span style="color:#6B7280;">근태관리</span>
+    </div>
+
+    <!-- Top bar -->
+    <header style="height:52px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 20px;">
+      <div style="display:flex;align-items:center;gap:9px;">
+        <div style="width:28px;height:28px;border-radius:7px;background:#2563EB;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:15px;font-weight:700;">근</span></div>
+        <span style="font-size:16px;font-weight:700;">근태관리</span>
+      </div>
+      <button style="width:40px;height:40px;border:none;background:transparent;color:#374151;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+    </header>
+
+    <!-- Body -->
+    <div style="flex:1;display:flex;flex-direction:column;padding:16px 24px 0;">
+
+      <!-- Greeting -->
+      <div style="margin-bottom:20px;">
+        <div style="font-size:20px;font-weight:700;margin-bottom:4px;">홍길동님, 근무 중이에요</div>
+        <div style="font-size:13px;color:#6B7280;">2026년 7월 5일 (토)</div>
+      </div>
+
+      <!-- Working status card -->
+      <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;padding:20px 22px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+          <span style="font-size:13px;font-weight:700;color:#6B7280;">현재 상태</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:6px;background:#F3F4F6;">
+            <span style="width:6px;height:6px;border-radius:50%;background:#16A34A;"></span>
+            <span style="font-size:13px;font-weight:700;color:#374151;">근무 중</span>
+          </span>
+        </div>
+        <div style="display:flex;align-items:stretch;">
+          <div style="flex:1;">
+            <div style="font-size:13px;color:#6B7280;margin-bottom:6px;">출근</div>
+            <div style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1;">09:02</div>
+          </div>
+          <div style="width:1px;background:#F3F4F6;margin:0 4px;"></div>
+          <div style="flex:1;padding-left:20px;">
+            <div style="font-size:13px;color:#6B7280;margin-bottom:6px;">경과</div>
+            <div style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1;color:#2563EB;">3:41</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex:1;"></div>
+
+      <!-- Presence footer (only when banner dismissed) -->
+      <sc-if value="{{ dismissed }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:8px;padding:0 2px 14px;">
+          <span style="width:14px;height:14px;border-radius:50%;background:#16A34A;display:flex;flex-shrink:0;"></span>
+          <span style="font-size:13px;color:#6B7280;">자리 상태: 자리 있음 · 5분 전 확인</span>
+        </div>
+      </sc-if>
+
+      <!-- Clock out -->
+      <button style="width:100%;height:88px;border:none;border-radius:18px;background:#2563EB;color:#fff;font-family:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;box-shadow:0 6px 16px rgba(37,99,235,0.28);margin-bottom:26px;" style-hover="background:#1D4ED8;" style-active="transform:translateY(1px);">
+        <span style="font-size:20px;font-weight:700;">퇴근하기</span>
+        <span style="font-size:13px;font-weight:400;opacity:0.85;">지금 시각 12:43</span>
+      </button>
+
+    </div>
+
+    <!-- ===== First-time banner (overlay) ===== -->
+    <sc-if value="{{ showBanner }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;inset:0;background:rgba(17,24,39,0.35);display:flex;align-items:flex-end;">
+        <div style="width:100%;background:#FFFFFF;border-radius:20px 20px 0 0;padding:26px 24px 30px;">
+          <div style="width:52px;height:52px;border-radius:12px;background:#EFF6FF;color:#2563EB;display:flex;align-items:center;justify-content:center;margin-bottom:16px;">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          </div>
+          <div style="font-size:20px;font-weight:700;margin-bottom:10px;">근무 중 자리 확인 안내</div>
+          <div style="font-size:16px;color:#374151;line-height:1.6;margin-bottom:16px;">근무 중 10~15분마다 카메라가 짧게 자리 유무만 확인해요. <strong style="color:#111827;font-weight:700;">사진은 저장되지 않습니다.</strong></div>          <div style="display:flex;align-items:center;gap:8px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;margin-bottom:20px;">
+            <span style="width:16px;height:16px;flex-shrink:0;color:#16A34A;display:flex;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <span style="font-size:13px;color:#6B7280;">자리 유무만 확인 · 이미지 미저장 · 경로 추적 없음</span>
+          </div>
+          <button onClick="{{ dismiss }}" style="width:100%;height:52px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#1D4ED8;">알겠어요</button>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { dismissed: false };
+  renderVals() {
+    return {
+      showBanner: !this.state.dismissed,
+      dismissed: this.state.dismissed,
+      dismiss: () => this.setState({ dismissed: true }),
+    };
+  }
+}
+</script>
+</body>
+</html>

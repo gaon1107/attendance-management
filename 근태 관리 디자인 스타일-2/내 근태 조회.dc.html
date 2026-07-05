@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background:#E5E7EB; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#E5E7EB;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Pretendard,-apple-system,sans-serif;color:#111827;">
+
+  <div style="width:390px;height:844px;background:#F9FAFB;border-radius:36px;overflow:hidden;box-shadow:0 12px 40px rgba(17,24,39,0.18);display:flex;flex-direction:column;position:relative;">
+
+    <div style="height:44px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:13px;font-weight:700;"><span>9:41</span><span style="color:#6B7280;">근태관리</span></div>
+
+    <header style="height:52px;flex-shrink:0;display:flex;align-items:center;padding:0 12px;">
+      <button style="width:40px;height:40px;border:none;background:transparent;color:#374151;cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <span style="font-size:16px;font-weight:700;margin-left:4px;">내 근태 조회</span>
+    </header>
+
+    <div style="flex:1;overflow-y:auto;padding:8px 24px 24px;">
+      <!-- Month selector -->
+      <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:20px;">
+        <button style="width:36px;height:36px;border:1px solid #E5E7EB;border-radius:8px;background:#fff;color:#6B7280;cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span style="font-size:16px;font-weight:700;">2026년 7월</span>
+        <button style="width:36px;height:36px;border:1px solid #E5E7EB;border-radius:8px;background:#fff;color:#6B7280;cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>
+      </div>
+
+      <!-- Summary -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:24px;">
+        <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;padding:16px 14px;text-align:center;">
+          <div style="font-size:13px;color:#6B7280;margin-bottom:6px;">실근무</div>
+          <div style="font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;">86h</div>
+        </div>
+        <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;padding:16px 14px;text-align:center;">
+          <div style="font-size:13px;color:#6B7280;margin-bottom:6px;">지각</div>
+          <div style="font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;color:#B45309;">1</div>
+        </div>
+        <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;padding:16px 14px;text-align:center;">
+          <div style="font-size:13px;color:#6B7280;margin-bottom:6px;">연차</div>
+          <div style="font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;color:#1D4ED8;">1</div>
+        </div>
+      </div>
+
+      <!-- Day records -->
+      <div style="font-size:13px;font-weight:700;color:#6B7280;margin-bottom:12px;">일별 기록</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <sc-for list="{{ days }}" as="d" hint-placeholder-count="6">
+          <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:14px;">
+            <div style="width:44px;flex-shrink:0;text-align:center;">
+              <div style="font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1;">{{ d.day }}</div>
+              <div style="font-size:13px;color:#9CA3AF;margin-top:2px;">{{ d.dow }}</div>
+            </div>
+            <div style="width:1px;align-self:stretch;background:#F3F4F6;"></div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;">{{ d.time }}</div>
+              <div style="font-size:13px;color:#6B7280;margin-top:2px;">{{ d.sub }}</div>
+            </div>
+            <span style="display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:8px;background:{{ d.badge.bg }};flex-shrink:0;">
+              <span style="width:6px;height:6px;border-radius:50%;background:{{ d.badge.dot }};"></span>
+              <span style="font-size:13px;font-weight:700;color:{{ d.badge.fg }};">{{ d.badge.label }}</span>
+            </span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const B = {
+      ok:   { label:'정상', bg:'#DCFCE7', dot:'#16A34A', fg:'#15803D' },
+      late: { label:'지각', bg:'#FEF3C7', dot:'#F59E0B', fg:'#B45309' },
+      off:  { label:'연차', bg:'#DBEAFE', dot:'#2563EB', fg:'#1D4ED8' },
+    };
+    return {
+      days: [
+        { day:'04', dow:'금', time:'08:52 – 18:10', sub:'실근무 8시간 48분', badge:B.ok },
+        { day:'03', dow:'목', time:'09:20 – 18:05', sub:'실근무 8시간 15분 · 20분 지각', badge:B.late },
+        { day:'02', dow:'수', time:'연차 사용', sub:'개인 사정', badge:B.off },
+        { day:'01', dow:'화', time:'08:47 – 18:02', sub:'실근무 8시간 45분', badge:B.ok },
+        { day:'30', dow:'월', time:'08:55 – 19:30', sub:'실근무 9시간 35분', badge:B.ok },
+        { day:'27', dow:'금', time:'08:49 – 18:08', sub:'실근무 8시간 49분', badge:B.ok },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

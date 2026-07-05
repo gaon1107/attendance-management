@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background:#E5E7EB; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#E5E7EB;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Pretendard,-apple-system,sans-serif;color:#111827;">
+
+  <div style="width:390px;height:844px;background:#F9FAFB;border-radius:36px;overflow:hidden;box-shadow:0 12px 40px rgba(17,24,39,0.18);display:flex;flex-direction:column;position:relative;">
+
+    <div style="height:44px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:13px;font-weight:700;"><span>9:41</span><span style="color:#6B7280;">근태관리</span></div>
+
+    <header style="height:52px;flex-shrink:0;display:flex;align-items:center;padding:0 12px;">
+      <button style="width:40px;height:40px;border:none;background:transparent;color:#374151;cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <span style="font-size:16px;font-weight:700;margin-left:4px;">근태 정정 요청</span>
+    </header>
+
+    <div style="flex:1;overflow-y:auto;padding:8px 24px 8px;">
+      <div style="font-size:16px;color:#6B7280;line-height:1.55;margin-bottom:20px;">잘못 기록된 출퇴근 시각의 수정을 요청할 수 있어요. 관리자 승인 후 반영됩니다.</div>
+
+      <!-- Target date -->
+      <label style="display:block;font-size:13px;font-weight:700;margin-bottom:10px;">정정할 날짜</label>
+      <div style="display:flex;align-items:center;gap:10px;height:48px;padding:0 14px;border:1px solid #D1D5DB;border-radius:10px;background:#fff;margin-bottom:20px;">
+        <span style="width:18px;height:18px;color:#6B7280;display:flex;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
+        <span style="font-size:16px;font-weight:700;">2026년 7월 1일 (화)</span>
+      </div>
+
+      <!-- Current record -->
+      <div style="background:#F3F4F6;border-radius:12px;padding:16px 18px;margin-bottom:20px;">
+        <div style="font-size:13px;font-weight:700;color:#6B7280;margin-bottom:10px;">현재 기록</div>
+        <div style="display:flex;gap:24px;">
+          <div><div style="font-size:13px;color:#6B7280;margin-bottom:2px;">출근</div><div style="font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;">08:55</div></div>
+          <div><div style="font-size:13px;color:#6B7280;margin-bottom:2px;">퇴근</div><div style="font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;color:#DC2626;">17:00</div></div>
+        </div>
+      </div>
+
+      <!-- What to fix -->
+      <label style="display:block;font-size:13px;font-weight:700;margin-bottom:10px;">정정 항목</label>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:20px;">
+        <sc-for list="{{ fields }}" as="f" hint-placeholder-count="2">
+          <button onClick="{{ f.select }}" style="height:48px;border:1px solid {{ f.border }};border-radius:10px;background:{{ f.bg }};color:{{ f.fg }};font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;">{{ f.label }}</button>
+        </sc-for>
+      </div>
+
+      <!-- New time -->
+      <label style="display:block;font-size:13px;font-weight:700;margin-bottom:10px;">수정할 {{ selectedField }} 시각</label>
+      <input value="18:05" style="width:100%;height:48px;padding:0 14px;border:1px solid #D1D5DB;border-radius:10px;font-family:inherit;font-size:16px;font-variant-numeric:tabular-nums;outline:none;margin-bottom:20px;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);" />
+
+      <!-- Reason -->
+      <label style="display:block;font-size:13px;font-weight:700;margin-bottom:10px;">정정 사유</label>
+      <textarea placeholder="예: 외근 후 복귀하여 퇴근 체크를 놓쳤습니다." style="width:100%;height:88px;padding:12px 14px;border:1px solid #D1D5DB;border-radius:10px;font-family:inherit;font-size:16px;outline:none;resize:none;line-height:1.5;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);"></textarea>
+    </div>
+
+    <div style="flex-shrink:0;border-top:1px solid #E5E7EB;background:#FFFFFF;padding:16px 24px 26px;">
+      <button style="width:100%;height:52px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#1D4ED8;">정정 요청 보내기</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { field: '퇴근' };
+  renderVals() {
+    const sel = this.state.field;
+    return {
+      selectedField: sel,
+      fields: ['출근','퇴근'].map(label => {
+        const a = label === sel;
+        return { label, select: () => this.setState({ field: label }),
+          bg: a?'#EFF6FF':'#fff', fg: a?'#1D4ED8':'#374151', border: a?'#2563EB':'#D1D5DB' };
+      }),
+    };
+  }
+}
+</script>
+</body>
+</html>

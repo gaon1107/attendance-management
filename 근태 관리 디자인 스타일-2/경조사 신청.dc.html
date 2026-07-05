@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background:#E5E7EB; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#E5E7EB;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Pretendard,-apple-system,sans-serif;color:#111827;">
+
+  <div style="width:390px;height:844px;background:#F9FAFB;border-radius:36px;overflow:hidden;box-shadow:0 12px 40px rgba(17,24,39,0.18);display:flex;flex-direction:column;position:relative;">
+
+    <div style="height:44px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:13px;font-weight:700;"><span>9:41</span><span style="color:#6B7280;">근태관리</span></div>
+
+    <header style="height:52px;flex-shrink:0;display:flex;align-items:center;padding:0 12px;">
+      <button style="width:40px;height:40px;border:none;background:transparent;color:#374151;cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <span style="font-size:16px;font-weight:700;margin-left:4px;">경조사 신청</span>
+    </header>
+
+    <div style="flex:1;overflow-y:auto;padding:8px 24px 8px;">
+      <!-- Type -->
+      <label style="display:block;font-size:13px;font-weight:700;margin-bottom:10px;">경조 구분</label>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:22px;">
+        <sc-for list="{{ types }}" as="t" hint-placeholder-count="6">
+          <button onClick="{{ t.select }}" style="height:56px;border:1px solid {{ t.border }};border-radius:9px;background:{{ t.bg }};cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:10px;padding:0 14px;" style-hover="border-color:#2563EB;">
+            <span style="font-size:15px;font-weight:700;color:{{ t.fg }};">{{ t.label }}</span>
+            <span style="margin-left:auto;font-size:13px;color:#9CA3AF;">{{ t.days }}</span>
+          </button>
+        </sc-for>
+      </div>
+
+      <!-- Benefit summary -->
+      <div style="display:flex;align-items:center;gap:10px;background:#EFF6FF;border-radius:10px;padding:14px 16px;margin-bottom:20px;">
+        <span style="width:36px;height:36px;flex-shrink:0;border-radius:9px;background:#fff;color:#2563EB;display:flex;align-items:center;justify-content:center;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg></span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:15px;font-weight:700;color:#1D4ED8;">{{ benefitTitle }}</div>
+          <div style="font-size:13px;color:#2563EB;">유급휴가 {{ benefitDays }} · 경조금 {{ benefitMoney }}</div>
+        </div>
+      </div>
+
+      <!-- Date -->
+      <label style="display:block;font-size:13px;font-weight:700;margin-bottom:8px;">경조일</label>
+      <div style="display:flex;align-items:center;gap:10px;height:48px;padding:0 14px;border:1px solid #D1D5DB;border-radius:9px;background:#fff;margin-bottom:20px;">
+        <span style="width:18px;height:18px;color:#6B7280;display:flex;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
+        <span style="font-size:15px;font-weight:700;">2026년 7월 12일 (토)</span>
+      </div>
+
+      <!-- Relation -->
+      <label style="display:block;font-size:13px;font-weight:700;margin-bottom:8px;">대상 (본인과의 관계)</label>
+      <select style="width:100%;height:48px;padding:0 14px;border:1px solid #D1D5DB;border-radius:9px;font-family:inherit;font-size:15px;color:#111827;outline:none;background:#fff;margin-bottom:20px;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);"><option>본인</option><option>배우자</option><option>자녀</option><option>부모</option><option>배우자의 부모</option><option>형제·자매</option><option>조부모</option></select>
+
+      <!-- Proof -->
+      <label style="display:block;font-size:13px;font-weight:700;margin-bottom:8px;">증빙 서류 <span style="color:#9CA3AF;font-weight:400;">(청첩장·부고 등)</span></label>
+      <button style="width:100%;height:88px;border:1px dashed #C7CDD4;border-radius:10px;background:#fff;color:#6B7280;font-family:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;" style-hover="background:#F9FAFB;border-color:#2563EB;">
+        <span style="width:24px;height:24px;color:#9CA3AF;display:flex;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M5 21h14"/></svg></span>
+        <span style="font-size:15px;font-weight:700;">파일 첨부 <span style="color:#9CA3AF;font-weight:400;">(선택)</span></span>
+      </button>
+    </div>
+
+    <div style="flex-shrink:0;border-top:1px solid #E5E7EB;background:#FFFFFF;padding:16px 24px 26px;">
+      <button style="width:100%;height:52px;border:none;border-radius:10px;background:#2563EB;color:#fff;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;" style-hover="background:#1D4ED8;">경조사 신청하기</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { type: '본인 결혼' };
+  renderVals() {
+    const defs = [
+      { label:'본인 결혼', days:'5일', money:'300,000원' },
+      { label:'자녀 결혼', days:'1일', money:'200,000원' },
+      { label:'배우자 출산', days:'10일', money:'100,000원' },
+      { label:'부모상', days:'5일', money:'500,000원' },
+      { label:'배우자상', days:'5일', money:'500,000원' },
+      { label:'형제·자매상', days:'3일', money:'200,000원' },
+    ];
+    const sel = this.state.type;
+    const cur = defs.find(d => d.label === sel) || defs[0];
+    return {
+      types: defs.map(d => {
+        const a = d.label === sel;
+        return { label:d.label, days:d.days, select: () => this.setState({ type: d.label }),
+          bg: a?'#EFF6FF':'#fff', fg: a?'#1D4ED8':'#374151', border: a?'#2563EB':'#D1D5DB' };
+      }),
+      benefitTitle: cur.label + ' 경조 지원',
+      benefitDays: cur.days,
+      benefitMoney: cur.money,
+    };
+  }
+}
+</script>
+</body>
+</html>

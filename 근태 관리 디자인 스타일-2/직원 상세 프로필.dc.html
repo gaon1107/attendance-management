@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#F9FAFB;font-family:Pretendard,-apple-system,sans-serif;color:#111827;display:flex;">
+
+  <aside style="width:220px;flex-shrink:0;background:#FFFFFF;border-right:1px solid #E5E7EB;min-height:100vh;display:flex;flex-direction:column;padding:20px 12px;">
+    <div style="display:flex;align-items:center;gap:9px;padding:0 8px;margin-bottom:22px;">
+      <div style="width:28px;height:28px;border-radius:7px;background:#2563EB;display:flex;align-items:center;justify-content:center;"><span style="color:#fff;font-size:15px;font-weight:700;">근</span></div>
+      <span style="font-size:16px;font-weight:700;letter-spacing:-0.01em;">근태관리</span>
+    </div>
+    <nav style="display:flex;flex-direction:column;gap:1px;">
+      <sc-for list="{{ menu }}" as="m" hint-placeholder-count="7">
+        <a href="#" style="display:flex;align-items:center;gap:10px;height:38px;padding:0 10px;border-radius:7px;text-decoration:none;font-size:15px;font-weight:{{ m.weight }};color:{{ m.color }};background:{{ m.bg }};" style-hover="background:#F3F4F6;">
+          <span style="width:17px;height:17px;display:flex;color:{{ m.iconColor }};" dangerouslySetInnerHTML="{{ m.icon }}"></span>
+          {{ m.label }}
+        </a>
+      </sc-for>
+    </nav>
+    <div style="margin-top:auto;display:flex;align-items:center;gap:9px;padding:10px 8px;border-top:1px solid #F3F4F6;">
+      <div style="width:30px;height:30px;border-radius:50%;background:#EEF2F7;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#374151;">관</div>
+      <div style="min-width:0;"><div style="font-size:13px;font-weight:700;">관리자</div><div style="font-size:13px;color:#9CA3AF;">admin@skytech.co.kr</div></div>
+    </div>
+  </aside>
+
+  <main style="flex:1;min-width:0;padding:24px 28px 48px;">
+    <div style="display:flex;align-items:center;gap:7px;font-size:13px;color:#6B7280;margin-bottom:14px;">
+      <a href="#" style="color:#6B7280;text-decoration:none;font-weight:700;">직원관리</a><span>›</span><span style="color:#111827;font-weight:700;">홍길동</span>
+    </div>
+
+    <!-- Profile header -->
+    <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:10px;padding:20px 24px;display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+      <div style="width:56px;height:56px;flex-shrink:0;border-radius:50%;background:#EEF2F7;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#374151;">홍</div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:4px;">
+          <span style="font-size:22px;font-weight:700;line-height:1;">홍길동</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:6px;background:#F3F4F6;"><span style="width:6px;height:6px;border-radius:50%;background:#16A34A;"></span><span style="font-size:13px;font-weight:700;color:#374151;">재직중</span></span>
+        </div>
+        <div style="font-size:13px;color:#6B7280;">영업팀 · 대리 · 사번 EMP-1024 · hong@skytech.co.kr</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0;">
+        <button style="height:40px;padding:0 16px;border:1px solid #D1D5DB;border-radius:7px;background:#fff;color:#374151;font-family:inherit;font-size:15px;font-weight:700;white-space:nowrap;cursor:pointer;" style-hover="background:#F9FAFB;">정보 수정</button>
+        <button onClick="{{ openResign }}" style="height:40px;padding:0 16px;border:1px solid #FCA5A5;border-radius:7px;background:#fff;color:#DC2626;font-family:inherit;font-size:15px;font-weight:700;white-space:nowrap;cursor:pointer;" style-hover="background:#FEF2F2;">퇴사 처리</button>
+      </div>
+    </div>
+
+    <!-- Two columns -->
+    <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:12px;">
+
+      <!-- Left: info -->
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <section style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:10px;padding:20px 24px;">
+          <div style="font-size:16px;font-weight:700;margin-bottom:6px;">기본 정보</div>
+          <div style="display:flex;flex-direction:column;">
+            <sc-for list="{{ info }}" as="i" hint-placeholder-count="6">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-top:1px solid #F3F4F6;">
+                <span style="font-size:15px;color:#6B7280;">{{ i.k }}</span>
+                <span style="font-size:15px;font-weight:700;">{{ i.v }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+
+        <section style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:10px;padding:20px 24px;">
+          <div style="font-size:16px;font-weight:700;margin-bottom:6px;">인증 · 생체정보</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-top:1px solid #F3F4F6;">
+            <span style="font-size:15px;color:#6B7280;">인증방식</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:6px;background:#F3F4F6;"><span style="width:6px;height:6px;border-radius:50%;background:#2563EB;"></span><span style="font-size:13px;font-weight:700;color:#374151;">얼굴인증</span></span>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-top:1px solid #F3F4F6;">
+            <span style="font-size:15px;color:#6B7280;">생체정보 동의</span>
+            <span style="font-size:13px;font-weight:700;color:#374151;">동의함 · 2026-06-01</span>
+          </div>
+        </section>
+      </div>
+
+      <!-- Right: stats + recent -->
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+          <sc-for list="{{ stats }}" as="s" hint-placeholder-count="3">
+            <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:10px;padding:16px 18px;">
+              <div style="font-size:13px;color:#6B7280;font-weight:700;margin-bottom:10px;">{{ s.label }}</div>
+              <div style="font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;color:{{ s.color }};">{{ s.value }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <section style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;">
+          <div style="padding:16px 20px 12px;font-size:16px;font-weight:700;">최근 근태</div>
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="background:#F9FAFB;border-top:1px solid #E5E7EB;border-bottom:1px solid #E5E7EB;">
+                <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:10px 20px;">날짜</th>
+                <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:10px 14px;">출근</th>
+                <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:10px 14px;">퇴근</th>
+                <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:10px 20px;">상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              <sc-for list="{{ recent }}" as="r" hint-placeholder-count="5">
+                <tr style="border-bottom:1px solid #F3F4F6;">
+                  <td style="padding:11px 20px;font-size:15px;font-variant-numeric:tabular-nums;">{{ r.date }}</td>
+                  <td style="padding:11px 14px;font-size:15px;font-variant-numeric:tabular-nums;color:{{ r.inColor }};">{{ r.in }}</td>
+                  <td style="padding:11px 14px;font-size:15px;font-variant-numeric:tabular-nums;color:#6B7280;">{{ r.out }}</td>
+                  <td style="padding:11px 20px;"><span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:6px;background:#F3F4F6;"><span style="width:6px;height:6px;border-radius:50%;background:{{ r.dot }};"></span><span style="font-size:13px;font-weight:700;color:#374151;">{{ r.status }}</span></span></td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===== Resign confirm dialog ===== -->
+  <sc-if value="{{ showResign }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(17,24,39,0.45);display:flex;align-items:center;justify-content:center;padding:24px;">
+      <div style="width:100%;max-width:440px;background:#FFFFFF;border-radius:14px;box-shadow:0 24px 48px rgba(17,24,39,0.20);padding:24px 26px 22px;">
+        <div style="width:48px;height:48px;border-radius:11px;background:#FEE2E2;color:#DC2626;display:flex;align-items:center;justify-content:center;margin-bottom:14px;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        </div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:8px;">홍길동님을 퇴사 처리할까요?</div>
+        <div style="font-size:15px;color:#374151;line-height:1.6;margin-bottom:18px;">퇴사 처리 시 <strong style="color:#111827;">등록된 생체정보가 자동 파기</strong>되며, 이후 출퇴근 기록은 조회만 가능합니다. 되돌릴 수 없습니다.</div>
+        <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:12px 14px;margin-bottom:20px;">
+          <label style="display:block;font-size:13px;font-weight:700;margin-bottom:7px;">퇴사일</label>
+          <input value="2026-07-31" style="width:100%;height:40px;padding:0 12px;border:1px solid #D1D5DB;border-radius:7px;font-family:inherit;font-size:15px;font-variant-numeric:tabular-nums;outline:none;background:#fff;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);" />
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button onClick="{{ closeResign }}" style="flex:1;height:44px;border:1px solid #D1D5DB;border-radius:7px;background:#fff;color:#111827;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;" style-hover="background:#F9FAFB;">취소</button>
+          <button onClick="{{ closeResign }}" style="flex:1;height:44px;border:none;border-radius:7px;background:#DC2626;color:#fff;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;" style-hover="background:#B91C1C;">퇴사 처리</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { resign: false };
+  renderVals() {
+    const ic = (p) => ({ __html: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>' });
+    const raw = [
+      ['대시보드', false, '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>'],
+      ['직원관리', true,  '<circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1"/><path d="M16 3.5a3 3 0 0 1 0 6"/>'],
+      ['근태현황', false, '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
+      ['휴가관리', false, '<path d="M8 2v4M16 2v4M3 10h18"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M9 16l2 2 4-4"/>'],
+      ['리포트', false,   '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'],
+      ['생체정보', false, '<path d="M12 11a3 3 0 0 0-3 3v3"/><path d="M6 8a8 8 0 0 1 12 0"/><path d="M4 12a10 10 0 0 1 16 0"/><path d="M12 15v4"/>'],
+      ['설정', false,     '<circle cx="12" cy="12" r="3"/><path d="M20 12a8 8 0 1 0-8 8"/><path d="M12 8v4l3 2"/>'],
+    ];
+    const menu = raw.map(([label, active, p]) => ({
+      label, icon: ic(p),
+      weight: active ? 700 : 400,
+      color: active ? '#2563EB' : '#374151',
+      bg: active ? '#EFF6FF' : 'transparent',
+      iconColor: active ? '#2563EB' : '#9CA3AF',
+    }));
+    const B = {
+      ok:   { status:'정상', dot:'#16A34A' },
+      late: { status:'지각', dot:'#F59E0B' },
+      off:  { status:'연차', dot:'#2563EB' },
+    };
+    return {
+      menu,
+      showResign: this.state.resign,
+      openResign: () => this.setState({ resign: true }),
+      closeResign: () => this.setState({ resign: false }),
+      info: [
+        { k:'입사일', v:'2024-03-11' },
+        { k:'부서', v:'영업팀' },
+        { k:'직급', v:'대리' },
+        { k:'연락처', v:'010-1234-5678' },
+        { k:'근무 유형', v:'주 40시간' },
+        { k:'잔여 연차', v:'15.5일' },
+      ],
+      stats: [
+        { label:'이번 달 실근무', value:'86h', color:'#111827' },
+        { label:'지각', value:'1', color:'#B45309' },
+        { label:'연차 사용', value:'4.5일', color:'#1D4ED8' },
+      ],
+      recent: [
+        { date:'07-04', in:'08:52', out:'18:10', inColor:'#111827', ...B.ok },
+        { date:'07-03', in:'09:20', out:'18:05', inColor:'#B45309', ...B.late },
+        { date:'07-02', in:'연차',  out:'—',     inColor:'#1D4ED8', ...B.off },
+        { date:'07-01', in:'08:47', out:'18:02', inColor:'#111827', ...B.ok },
+        { date:'06-30', in:'08:55', out:'19:30', inColor:'#111827', ...B.ok },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>
