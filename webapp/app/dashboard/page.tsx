@@ -1,8 +1,8 @@
-// 관리자 대시보드 — 오늘 우리 회사 직원들의 출퇴근 현황을 한눈에 본다.
+// 관리자 대시보드 — 오늘 우리 회사 직원들의 출퇴근 현황을 한눈에 본다. (리뉴얼 디자인)
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
-import { TopNav } from "@/app/components/TopNav";
+import { Sidebar } from "@/app/components/Sidebar";
 import { workedMinutes, formatMinutes } from "@/lib/worktime";
 import { workModeLabel, locationStatusLabel } from "@/lib/location";
 
@@ -27,128 +27,267 @@ export default async function DashboardPage() {
     where: { companyId: me.companyId, role: "employee" },
   });
 
+  // 실제 데이터로만 집계 (DB에 없는 값은 만들지 않는다)
   const checkedInPeople = new Set(todays.map((r) => r.userId)).size;
   const workingNow = todays.filter((r) => !r.clockOut).length;
+  const clockedOut = todays.filter((r) => r.clockOut).length;
+  const onBreakNow = todays.filter((r) => !r.clockOut && r.breaks.some((b) => !b.endAt)).length;
+  const avgMinutes =
+    todays.length > 0
+      ? Math.round(todays.reduce((sum, r) => sum + workedMinutes(r), 0) / todays.length)
+      : 0;
 
-  const cards = [
-    { label: "등록 직원", value: `${employeeCount}명`, color: "var(--text)" },
-    { label: "오늘 출근", value: `${checkedInPeople}명`, color: "var(--primary)" },
-    { label: "현재 근무 중", value: `${workingNow}명`, color: "var(--success)" },
+  const todayLabel = new Date().toLocaleDateString("ko-KR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  });
+
+  const kpis = [
+    { label: "등록 직원", value: `${employeeCount}`, unit: "명", color: "var(--text)" },
+    { label: "오늘 출근", value: `${checkedInPeople}`, unit: "명", color: "var(--primary)" },
+    { label: "현재 근무 중", value: `${workingNow}`, unit: "명", color: "var(--success)" },
+    { label: "오늘 실근무 평균", value: formatMinutes(avgMinutes), unit: "", color: "var(--text)" },
   ];
 
+  const th: React.CSSProperties = {
+    textAlign: "left",
+    fontSize: 13,
+    fontWeight: 700,
+    color: "var(--text-sub)",
+    padding: "10px 20px",
+  };
+  const td: React.CSSProperties = { padding: "12px 20px", fontSize: 15, verticalAlign: "middle" };
+
   return (
-    <div style={{ minHeight: "100vh" }}>
-      <TopNav user={me} />
-      <main style={{ maxWidth: 900, margin: "0 auto", padding: "28px 24px" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>대시보드</h1>
-        <p style={{ fontSize: 14, color: "var(--text-sub)", marginBottom: 24 }}>
-          {new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "short" })} · 오늘 근태 현황
-        </p>
+    <div style={{ minHeight: "100vh", display: "flex", background: "var(--bg)" }}>
+      <Sidebar user={me} active="dashboard" />
 
-        {/* 요약 카드 */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginBottom: 28 }}>
-          {cards.map((c) => (
-            <div
-              key={c.label}
-              style={{
-                background: "var(--card)",
-                border: "1px solid var(--border)",
-                borderRadius: 12,
-                padding: 20,
-              }}
-            >
-              <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 8 }}>{c.label}</div>
-              <div style={{ fontSize: 28, fontWeight: 700, color: c.color }}>{c.value}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* 오늘 출퇴근 목록 */}
-        <div
+      <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        {/* 상단 바 */}
+        <header
           style={{
-            background: "var(--card)",
-            border: "1px solid var(--border)",
-            borderRadius: 12,
-            overflow: "hidden",
+            height: 60,
+            flexShrink: 0,
+            background: "#fff",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0 28px",
           }}
         >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 18, fontWeight: 700 }}>대시보드</span>
+            <span style={{ fontSize: 13, color: "#9CA3AF" }}>{me.company.name}</span>
+          </div>
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: "1.2fr 1fr 1fr 1fr 1fr",
-              padding: "12px 20px",
-              borderBottom: "1px solid var(--border)",
-              fontSize: 13,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              height: 38,
+              padding: "0 14px",
+              background: "var(--bg)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              fontSize: 14,
               fontWeight: 700,
               color: "var(--text-sub)",
-              background: "#F9FAFB",
             }}
           >
-            <div>이름</div>
-            <div>출근</div>
-            <div>퇴근</div>
-            <div>실근무</div>
-            <div>상태</div>
+            {todayLabel}
           </div>
-          {todays.length === 0 ? (
-            <div style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
-              아직 오늘 출근한 직원이 없습니다.
-            </div>
-          ) : (
-            todays.map((rec) => (
-              <div
-                key={rec.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1.2fr 1fr 1fr 1fr 1fr",
-                  padding: "14px 20px",
-                  borderBottom: "1px solid var(--border)",
-                  fontSize: 14,
-                  alignItems: "center",
-                }}
-              >
-                <div style={{ fontWeight: 700 }}>
-                  <div>
-                    {rec.user.name}
-                    <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}>
-                      {rec.user.role === "admin" ? " (관리자)" : ""}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", gap: 5, marginTop: 5 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-sub)", background: "#F3F4F6", padding: "2px 7px", borderRadius: 999 }}>
-                      {workModeLabel(rec.workMode)}
-                    </span>
-                    {rec.workMode === "office" && rec.locationStatus !== "verified" && (
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "var(--warning)", background: "#FEF3C7", padding: "2px 7px", borderRadius: 999 }}>
-                        {locationStatusLabel(rec.locationStatus)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div>{hhmm(rec.clockIn)}</div>
-                <div style={{ color: rec.clockOut ? "var(--text)" : "var(--text-sub)" }}>
-                  {rec.clockOut ? hhmm(rec.clockOut) : "—"}
-                </div>
-                <div style={{ fontWeight: 700, color: "var(--primary)" }}>
-                  {formatMinutes(workedMinutes(rec))}
-                </div>
-                <div>
-                  <span
+        </header>
+
+        <div style={{ flex: 1, minWidth: 0, padding: "20px 28px 40px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 16, alignItems: "start" }}>
+            {/* 왼쪽 */}
+            <div style={{ minWidth: 0 }}>
+              {/* KPI */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 16 }}>
+                {kpis.map((k) => (
+                  <div
+                    key={k.label}
                     style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: rec.clockOut ? "var(--text-sub)" : "var(--success)",
-                      background: rec.clockOut ? "#F3F4F6" : "#DCFCE7",
-                      padding: "3px 10px",
-                      borderRadius: 999,
+                      background: "#fff",
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      padding: "18px 20px",
                     }}
                   >
-                    {rec.clockOut ? "퇴근" : "근무 중"}
+                    <div style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700, marginBottom: 14, whiteSpace: "nowrap" }}>
+                      {k.label}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 28,
+                        fontWeight: 700,
+                        fontVariantNumeric: "tabular-nums",
+                        lineHeight: 1,
+                        color: k.color,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {k.value}
+                      {k.unit && (
+                        <span style={{ fontSize: 15, fontWeight: 400, color: "var(--text-sub)", marginLeft: 2 }}>
+                          {k.unit}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* 오늘 출퇴근 현황 표 */}
+              <section
+                style={{
+                  background: "#fff",
+                  border: "1px solid var(--border)",
+                  borderRadius: 12,
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    padding: "16px 20px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    borderBottom: "1px solid var(--border)",
+                  }}
+                >
+                  <div style={{ fontSize: 16, fontWeight: 700 }}>오늘 출퇴근 현황</div>
+                  <span style={{ fontSize: 13, color: "var(--text-sub)" }}>
+                    전체 <strong style={{ color: "var(--text)" }}>{employeeCount}명</strong> 기준
                   </span>
                 </div>
-              </div>
-            ))
-          )}
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
+                      <th style={th}>이름</th>
+                      <th style={th}>인증방식</th>
+                      <th style={th}>출근</th>
+                      <th style={th}>퇴근</th>
+                      <th style={th}>실근무</th>
+                      <th style={th}>상태</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {todays.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                          아직 오늘 출근한 직원이 없습니다.
+                        </td>
+                      </tr>
+                    ) : (
+                      todays.map((rec) => {
+                        const working = !rec.clockOut;
+                        return (
+                          <tr key={rec.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
+                            <td style={td}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                <div
+                                  style={{
+                                    width: 30,
+                                    height: 30,
+                                    borderRadius: "50%",
+                                    background: "#EEF2F7",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: 13,
+                                    fontWeight: 700,
+                                    color: "#374151",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {rec.user.name.slice(0, 1)}
+                                </div>
+                                <div>
+                                  <span style={{ fontWeight: 700 }}>{rec.user.name}</span>
+                                  {rec.user.role === "admin" && (
+                                    <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}> (관리자)</span>
+                                  )}
+                                  <div style={{ display: "flex", gap: 5, marginTop: 3 }}>
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-sub)", background: "#F3F4F6", padding: "2px 7px", borderRadius: 999 }}>
+                                      {workModeLabel(rec.workMode)}
+                                    </span>
+                                    {rec.workMode === "office" && rec.locationStatus !== "verified" && rec.locationStatus && (
+                                      <span style={{ fontSize: 11, fontWeight: 700, color: "var(--warning)", background: "#FEF3C7", padding: "2px 7px", borderRadius: 999 }}>
+                                        {locationStatusLabel(rec.locationStatus)}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td style={{ ...td, color: "var(--text-sub)" }}>
+                              {rec.user.authMethod === "face" ? "얼굴인증" : rec.user.authMethod === "gps" ? "GPS" : "—"}
+                            </td>
+                            <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{hhmm(rec.clockIn)}</td>
+                            <td style={{ ...td, fontVariantNumeric: "tabular-nums", color: rec.clockOut ? "var(--text)" : "var(--text-sub)" }}>
+                              {rec.clockOut ? hhmm(rec.clockOut) : "—"}
+                            </td>
+                            <td style={{ ...td, fontWeight: 700, color: "var(--primary)", fontVariantNumeric: "tabular-nums" }}>
+                              {formatMinutes(workedMinutes(rec))}
+                            </td>
+                            <td style={td}>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                  height: 24,
+                                  padding: "0 9px",
+                                  borderRadius: 6,
+                                  background: working ? "#DCFCE7" : "#F3F4F6",
+                                }}
+                              >
+                                <span style={{ width: 6, height: 6, borderRadius: "50%", background: working ? "var(--success)" : "#9CA3AF" }} />
+                                <span style={{ fontSize: 13, fontWeight: 700, color: working ? "#15803D" : "#374151" }}>
+                                  {working ? "근무 중" : "퇴근"}
+                                </span>
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </section>
+            </div>
+
+            {/* 오른쪽: 실시간 근무 인원 (실제 데이터) */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <section style={{ background: "var(--primary)", borderRadius: 12, padding: "20px 22px", color: "#fff" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.8)", marginBottom: 8 }}>
+                  실시간 근무 인원
+                </div>
+                <div style={{ fontSize: 32, fontWeight: 700, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+                  {workingNow}
+                  <span style={{ fontSize: 15, fontWeight: 400, color: "rgba(255,255,255,0.8)", marginLeft: 2 }}>명 근무 중</span>
+                </div>
+                <div style={{ display: "flex", gap: 16, marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.18)" }}>
+                  <div>
+                    <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>외출 중</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{onBreakNow}명</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>퇴근</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{clockedOut}명</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>오늘 출근</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{checkedInPeople}명</div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
         </div>
       </main>
     </div>
