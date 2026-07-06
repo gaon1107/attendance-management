@@ -27,3 +27,14 @@ export function formatMinutes(mins: number): string {
   if (h > 0) return `${h}시간`;
   return `${m}분`;
 }
+
+// 지각 여부 판정 — 회사가 정한 출근 기준시각 + 유예(분) 이후 출근이면 지각.
+// 기준시각이 없으면(회사 미설정) null을 반환한다(지각 판정 안 함).
+export function isLate(clockIn: Date, workStartTime: string | null, graceMin: number): boolean | null {
+  if (!workStartTime) return null;
+  const [h, m] = workStartTime.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  const limit = h * 60 + m + graceMin; // 기준시각+유예를 분으로
+  const inMinutes = clockIn.getHours() * 60 + clockIn.getMinutes();
+  return inMinutes > limit;
+}

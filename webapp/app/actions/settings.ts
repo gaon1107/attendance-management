@@ -61,3 +61,41 @@ export async function saveOfficeNetwork(
   revalidatePath("/settings");
   return { ok: true };
 }
+
+// 근무제·기준시간 저장 — 관리자만. 지각/정상 판정의 기준(표준 출퇴근 시각 + 지각 유예).
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/; // "HH:MM" 24시간
+
+export async function saveWorkRules(
+  _prev: { error?: string; ok?: boolean },
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean }> {
+  const me = await getCurrentUser();
+  if (!me || me.role !== "admin") {
+    return { error: "권한이 없습니다." };
+  }
+
+  const start = String(formData.get("workStartTime") ?? "").trim();
+  const end = String(formData.get("workEndTime") ?? "").trim();
+  const graceRaw = String(formData.get("lateGraceMin") ?? "").trim();
+
+  // 빈 값이면 "미설정"으로 저장(지각 판정 건너뜀). 값이 있으면 형식 검증.
+  if (start && !TIME_RE.test(start)) return { error: "출근 기준시각을 HH:MM 형식으로 입력해주세요. (예: 09:00)" };
+  if (end && !TIME_RE.test(end)) return { error: "퇴근 기준시각을 HH:MM 형식으로 입력해주세요. (예: 18:00)" };
+
+  const grace = graceRaw === "" ? 0 : Number(graceRaw);
+  if (Number.isNaN(grace) || grace < 0 || grace > 120) {
+    return { error: "지각 유예는 0~120분 사이로 입력해주세요." };
+  }
+
+  await prisma.company.update({
+    where: { id: me.companyId },
+    data: {
+      workStartTime: start || null,
+      workEndTime: end || null,
+      lateGraceMin: Math.round(grace),
+    },
+  });
+
+  revalidatePath("/settings");
+  return { ok: true };
+}

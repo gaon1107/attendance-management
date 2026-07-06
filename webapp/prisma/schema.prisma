@@ -22,6 +22,10 @@ model Company {
   officeRadiusM Int      @default(200) // 허용 반경(m)
   // 사내 네트워크 허용 IP(들). 쉼표로 구분. 앞부분 일치도 허용(예: "203.0.113." → 203.0.113.* 전체).
   officeIps     String?
+  // 근무제·기준시간(지각/정상 판정 기준). 안 정하면 지각 판정은 건너뜀.
+  workStartTime String?  // 표준 출근 기준시각 "HH:MM" (예: "09:00")
+  workEndTime   String?  // 표준 퇴근 기준시각 "HH:MM" (예: "18:00")
+  lateGraceMin  Int      @default(0) // 지각 유예(분). 기준시각 + 유예 이후 출근이면 지각.
 }
 
 // 사용자 — 관리자(admin) 또는 직원(employee). 반드시 한 회사에 속한다.
