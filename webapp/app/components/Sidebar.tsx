@@ -1,5 +1,5 @@
 // 공통 왼쪽 아이콘 사이드바 — 리뉴얼 디자인의 세로 네비게이션.
-// 링크 구성은 기존 TopNav와 동일(역할별). 겉모습만 아이콘 레일로 바꾼 것.
+// 링크 구성은 역할별(관리자/직원)로 나뉜다. 아이콘 레일 형태의 세로 네비게이션.
 import Link from "next/link";
 import { logout } from "@/app/actions/auth";
 
