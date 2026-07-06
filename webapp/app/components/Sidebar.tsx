@@ -1,7 +1,6 @@
 // 공통 왼쪽 아이콘 사이드바 — 리뉴얼 디자인의 세로 네비게이션.
 // 링크 구성은 역할별(관리자/직원)로 나뉜다. 아이콘 레일 형태의 세로 네비게이션.
 import Link from "next/link";
-import { logout } from "@/app/actions/auth";
 
 type NavUser = {
   name: string;
@@ -109,8 +108,8 @@ export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
         })}
       </nav>
 
-      {/* 아래: 프로필 + 로그아웃 */}
-      <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+      {/* 아래: 프로필 (로그아웃은 상단바 우측 공통 버튼으로 이동) */}
+      <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", alignItems: "center" }}>
         <div
           title={`${user.name} (${user.role === "admin" ? "관리자" : "직원"})`}
           style={{
@@ -128,28 +127,6 @@ export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
         >
           {initial}
         </div>
-        <form action={logout}>
-          <button
-            type="submit"
-            title="로그아웃"
-            style={{
-              width: 34,
-              height: 34,
-              border: "1px solid var(--border)",
-              borderRadius: 9,
-              background: "#fff",
-              color: "#9CA3AF",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            dangerouslySetInnerHTML={{
-              __html:
-                '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>',
-            }}
-          />
-        </form>
       </div>
     </aside>
   );

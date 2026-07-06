@@ -2,6 +2,7 @@
 // 모든 로그인 화면이 이걸 통해 같은 레이아웃 기준(폭·여백·반응형)을 쓴다.
 import type { ReactNode } from "react";
 import { Sidebar, type NavKey } from "@/app/components/Sidebar";
+import { LogoutButton } from "@/app/components/LogoutButton";
 
 type ShellUser = { name: string; role: string; company: { name: string } };
 
@@ -35,7 +36,10 @@ export function AppShell({
               </span>
             )}
           </div>
-          {right && <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>{right}</div>}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+            {right}
+            <LogoutButton />
+          </div>
         </header>
         <div className="page">{narrow ? <div className="narrow">{children}</div> : children}</div>
       </main>
