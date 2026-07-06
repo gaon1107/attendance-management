@@ -40,7 +40,8 @@ export async function signup(
   });
 
   await createSession(user.id);
-  redirect("/dashboard");
+  // 가입 직후에는 회사 기본 설정(근무기준·위치)을 잡도록 온보딩으로 안내(건너뛰기 가능).
+  redirect("/onboarding");
 }
 
 // 로그인 — 이메일/비밀번호 확인 후 세션 발급.
