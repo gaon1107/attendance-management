@@ -11,7 +11,8 @@ type NavUser = {
 // 사이드바에서 현재 화면을 표시하기 위한 키.
 export type NavKey =
   | "dashboard" | "employees" | "records" | "reports" | "biometrics"
-  | "attendance" | "my-records" | "auth-method" | "settings";
+  | "attendance" | "my-records" | "auth-method" | "settings"
+  | "account"; // 계정 설정 — 사이드바 메뉴엔 없고(프로필 아바타로 진입) 하이라이트용 키
 
 type Item = { key: NavKey; href: string; label: string; icon: string };
 
@@ -26,6 +27,7 @@ const ICON: Record<NavKey, string> = {
   "my-records": '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>',
   "auth-method": '<path d="M12 11a3 3 0 0 0-3 3v3"/><path d="M6 8a8 8 0 0 1 12 0"/><path d="M4 12a10 10 0 0 1 16 0"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M20 12a8 8 0 1 0-8 8"/><path d="M12 8v4l3 2"/>',
+  account: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
 };
 
 const LABEL: Record<NavKey, string> = {
@@ -38,6 +40,7 @@ const LABEL: Record<NavKey, string> = {
   "my-records": "내근태",
   "auth-method": "인증방식",
   settings: "설정",
+  account: "계정",
 };
 
 // 화면 키 → 실제 경로(키와 경로가 다른 항목만 지정, 없으면 "/키")
