@@ -9,7 +9,9 @@ type NavUser = {
 };
 
 // 사이드바에서 현재 화면을 표시하기 위한 키.
-export type NavKey = "dashboard" | "employees" | "reports" | "attendance" | "auth-method" | "settings";
+export type NavKey =
+  | "dashboard" | "employees" | "records" | "reports" | "biometrics"
+  | "attendance" | "my-records" | "auth-method" | "settings";
 
 type Item = { key: NavKey; href: string; label: string; icon: string };
 
@@ -17,8 +19,11 @@ type Item = { key: NavKey; href: string; label: string; icon: string };
 const ICON: Record<NavKey, string> = {
   dashboard: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
   employees: '<circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1"/><path d="M16 3.5a3 3 0 0 1 0 6"/>',
+  records: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
   reports: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  biometrics: '<path d="M12 3l7 3v5c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/><path d="M9 12l2 2 4-4"/>',
   attendance: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  "my-records": '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>',
   "auth-method": '<path d="M12 11a3 3 0 0 0-3 3v3"/><path d="M6 8a8 8 0 0 1 12 0"/><path d="M4 12a10 10 0 0 1 16 0"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M20 12a8 8 0 1 0-8 8"/><path d="M12 8v4l3 2"/>',
 };
@@ -26,18 +31,26 @@ const ICON: Record<NavKey, string> = {
 const LABEL: Record<NavKey, string> = {
   dashboard: "대시보드",
   employees: "직원관리",
+  records: "근태현황",
   reports: "리포트",
+  biometrics: "생체정보",
   attendance: "출퇴근",
+  "my-records": "내근태",
   "auth-method": "인증방식",
   settings: "설정",
+};
+
+// 화면 키 → 실제 경로(키와 경로가 다른 항목만 지정, 없으면 "/키")
+const HREF: Partial<Record<NavKey, string>> = {
+  "my-records": "/my-records",
 };
 
 function itemsFor(role: string): Item[] {
   const keys: NavKey[] =
     role === "admin"
-      ? ["dashboard", "employees", "reports", "attendance", "auth-method", "settings"]
-      : ["attendance", "auth-method"];
-  return keys.map((key) => ({ key, href: `/${key}`, label: LABEL[key], icon: ICON[key] }));
+      ? ["dashboard", "employees", "records", "reports", "biometrics", "attendance", "auth-method", "settings"]
+      : ["attendance", "my-records", "auth-method"];
+  return keys.map((key) => ({ key, href: HREF[key] ?? `/${key}`, label: LABEL[key], icon: ICON[key] }));
 }
 
 export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
@@ -108,10 +121,11 @@ export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
         })}
       </nav>
 
-      {/* 아래: 프로필 (로그아웃은 상단바 우측 공통 버튼으로 이동) */}
+      {/* 아래: 프로필(클릭 시 계정 설정) — 로그아웃은 상단바 우측 공통 버튼으로 이동 */}
       <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", alignItems: "center" }}>
-        <div
-          title={`${user.name} (${user.role === "admin" ? "관리자" : "직원"})`}
+        <Link
+          href="/account"
+          title={`${user.name} (${user.role === "admin" ? "관리자" : "직원"}) · 계정 설정`}
           style={{
             width: 32,
             height: 32,
@@ -123,10 +137,11 @@ export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
             fontSize: 13,
             fontWeight: 700,
             color: "#374151",
+            textDecoration: "none",
           }}
         >
           {initial}
-        </div>
+        </Link>
       </div>
     </aside>
   );
