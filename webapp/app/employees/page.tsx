@@ -1,5 +1,6 @@
 // 직원 관리 (관리자 전용) — 직원 목록 + 직원 추가. (리뉴얼 디자인)
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
@@ -81,12 +82,12 @@ export default async function EmployeesPage() {
                   return (
                     <tr key={emp.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                       <td style={td}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <Link href={`/employees/${emp.id}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "var(--text)" }}>
                           <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#EEF2F7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>
                             {emp.name.slice(0, 1)}
                           </div>
                           <span style={{ fontWeight: 700 }}>{emp.name}</span>
-                        </div>
+                        </Link>
                       </td>
                       <td style={{ ...td, color: "var(--text-sub)" }}>{emp.email}</td>
                       <td style={{ ...td, color: authColor }}>{auth}</td>
