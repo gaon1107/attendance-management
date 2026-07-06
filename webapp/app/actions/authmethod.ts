@@ -41,3 +41,18 @@ export async function withdrawBiometric(): Promise<void> {
   revalidatePath("/auth-method");
   redirect("/auth-method");
 }
+
+// 관리자 파기 — 특정 직원의 생체정보 동의를 파기(철회)한다. 반드시 내 회사 소속만(회사 격리).
+// 퇴사 처리 등으로 관리자가 파기할 때 사용. (실제 얼굴 데이터 삭제는 2단계 GaonFR 연동)
+export async function adminRevokeBiometric(formData: FormData): Promise<void> {
+  const me = await getCurrentUser();
+  if (!me || me.role !== "admin") return;
+  const userId = String(formData.get("userId") ?? "");
+  const target = await prisma.user.findFirst({ where: { id: userId, companyId: me.companyId } });
+  if (!target) return;
+  await prisma.user.update({
+    where: { id: target.id },
+    data: { authMethod: "gps", faceConsentAt: null },
+  });
+  revalidatePath("/biometrics");
+}
