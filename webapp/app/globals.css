@@ -27,7 +27,7 @@ body {
 
 /* ── 리뉴얼 공통 레이아웃 기준 (PC/모바일 반응형) ──
    모든 로그인 화면은 AppShell을 통해 이 기준을 쓴다.
-   - .page: 콘텐츠는 항상 최대폭 1180px로 '중앙 정렬'(넓은 화면에서 좌우 여백 대칭)
+   - .page: 콘텐츠는 항상 최대폭 1536px로 '중앙 정렬'(넓은 화면에서 좌우 여백 대칭)
    - 카드 격자·2단 구성은 화면이 좁아지면 자동으로 열 수가 줄어든다(태블릿 2열 → 폰 세로) */
 .app-row { display: flex; min-height: 100vh; background: var(--bg); }
 /* app-main은 일반 블록 흐름 — 그래야 .page의 margin:0 auto 중앙정렬이 먹는다 */
@@ -39,7 +39,7 @@ body {
   gap: 12px; padding: 0 28px;
 }
 .app-topbar-title { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.page { width: 100%; max-width: 1180px; margin: 0 auto; padding: 20px 28px 48px; }
+.page { width: 100%; max-width: 1536px; margin: 0 auto; padding: 20px 28px 48px; }
 .narrow { width: 100%; max-width: 640px; margin: 0 auto; }
 .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .kpi-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
