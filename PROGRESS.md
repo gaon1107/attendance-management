@@ -7,7 +7,16 @@
 
 ## 🔜 다음 세션 시작점 (내일 여기서 이어가기) — 새 세션은 이 블록부터 읽기
 
-> ⏱️ 최종 갱신: 2026-07-05. 앱은 `webapp/`에 실제 작동 중. 실행법: `cd webapp && npm run dev` → localhost:3000. 테스트계정: admin@skytech.co.kr / test1234 (관리자), kim@skytech.co.kr / emp12345 (직원).
+> ⏱️ 최종 갱신: 2026-07-07. 앱은 `webapp/`에 실제 작동 중. 실행법: `cd webapp && npm run dev` → localhost:3000. 테스트계정: admin@skytech.co.kr / test1234 (관리자), kim@skytech.co.kr / emp12345 (직원).
+
+- **✅ A단계(MVP 화면 완성) 완료(2026-07-07)** — 설계 P0 중 미구현이던 8개 화면을 추가(얼굴 3종 제외). 커밋 `31ab533`~`a80bfe4`:
+  1. 근무제·기준시간 설정(설정 화면, Company에 workStartTime/workEndTime/lateGraceMin 추가) — 지각/정상 판정 근거
+  2. 근태 현황 조회(전체) `/records` + 직원별 상세 `/records/[id]` (지각 표시, 회사격리)
+  3. 내 근태 조회(직원) `/my-records` · 4. 직원 상세/수정 `/employees/[id]`
+  5. 생체정보 동의·파기 관리(관리자) `/biometrics` · 6. 계정 설정/비번변경 `/account`(프로필 아바타로 진입)
+  7. 회사 초기설정 온보딩 `/onboarding`(가입 후 이동) · 8. 에러화면 `not-found`/`error`
+  - 공통: 로그아웃 버튼을 상단바 우측 공통화, consent 화면 AppShell 통일, PeriodNav·lib/labels 공통 컴포넌트.
+  - ✅ 검증: `tsc --noEmit` 통과 + 실서버 스모크(신규 필드 안 쓰는 화면 200, 404/권한리다이렉트 정상). **⚠️ 근무기준 필드 쓰는 5개 화면은 dev 서버 재시작 1회 필요**(구동 중 서버가 옛 Prisma 클라이언트를 메모리에 물고 있어 500 → 재시작 시 해소, 새 프로세스 쿼리로 정상 확인함).
 
 - **지금까지 실제 개발 완료(2026-07-05, webapp/ 에 다 작동·브라우저 검증·git 커밋됨)**:
   1. 랜딩(완성형 시안) · 회사가입 · 로그인/로그아웃 (Prisma+SQLite, scrypt 해시, DB세션쿠키)
