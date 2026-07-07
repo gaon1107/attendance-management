@@ -54,3 +54,9 @@ body {
   .page { padding: 16px 16px 40px; }
   .kpi-grid, .kpi-grid-3 { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ── 랜딩 FAQ 아코디언 (JS 없이 <details>로 동작) ── */
+details.faq > summary { list-style: none; cursor: pointer; }
+details.faq > summary::-webkit-details-marker { display: none; }
+details.faq > summary .faq-chevron { transition: transform 0.15s ease; }
+details.faq[open] > summary .faq-chevron { transform: rotate(180deg); }
