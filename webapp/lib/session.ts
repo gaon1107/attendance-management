@@ -32,7 +32,12 @@ export async function getCurrentUser() {
     where: { token },
     include: { user: { include: { company: true } } },
   });
-  if (!session || session.expiresAt < new Date()) return null;
+  if (!session) return null;
+  // 만료된 세션은 즉시 정리(DB에 쌓이지 않게)하고 로그아웃 처리
+  if (session.expiresAt < new Date()) {
+    await prisma.session.deleteMany({ where: { token } });
+    return null;
+  }
   return session.user;
 }
 

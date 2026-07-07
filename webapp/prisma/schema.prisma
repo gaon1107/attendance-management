@@ -49,6 +49,9 @@ model User {
   faceConsentAt  DateTime?
   // 직원별 근무요일 예외(CSV). null이면 회사 기본(Company.workDays)을 따른다.
   workDays       String?
+  // 로그인 무차별 대입(비번 찍기) 방어: 연속 실패 횟수 + 잠금 해제 시각.
+  failedLoginCount Int      @default(0)
+  lockedUntil      DateTime?
 }
 
 // 출퇴근 기록 — 출근 1건마다 한 줄. 퇴근 전에는 clockOut이 비어있음(null).
