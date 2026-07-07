@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
-import { workedMinutes, formatMinutes } from "@/lib/worktime";
+import { workedMinutes, formatMinutes, isLate } from "@/lib/worktime";
 import { workModeLabel, locationStatusLabel } from "@/lib/location";
 
 function hhmm(d: Date): string {
@@ -26,6 +26,17 @@ export default async function DashboardPage() {
   const employeeCount = await prisma.user.count({
     where: { companyId: me.companyId, role: "employee" },
   });
+
+  // 근무기준(지각 판정용) — 설정 안 했으면 지각 판정은 건너뜀
+  const company = await prisma.company.findUnique({
+    where: { id: me.companyId },
+    select: { workStartTime: true, lateGraceMin: true },
+  });
+  const hasRule = !!company?.workStartTime;
+  const lateUserIds = new Set(
+    todays.filter((r) => isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0)).map((r) => r.userId)
+  );
+  const lateCount = lateUserIds.size;
 
   // 실제 데이터로만 집계 (DB에 없는 값은 만들지 않는다)
   const checkedInPeople = new Set(todays.map((r) => r.userId)).size;
@@ -90,6 +101,9 @@ export default async function DashboardPage() {
               <div style={{ fontSize: 16, fontWeight: 700 }}>오늘 출퇴근 현황</div>
               <span style={{ fontSize: 13, color: "var(--text-sub)" }}>
                 전체 <strong style={{ color: "var(--text)" }}>{employeeCount}명</strong> 기준
+                {hasRule && lateCount > 0 && (
+                  <span style={{ color: "var(--warning)", fontWeight: 700, marginLeft: 8 }}>· 지각 {lateCount}명</span>
+                )}
               </span>
             </div>
             <div style={{ overflowX: "auto" }}>
@@ -114,6 +128,7 @@ export default async function DashboardPage() {
                   ) : (
                     todays.map((rec) => {
                       const working = !rec.clockOut;
+                      const late = isLate(rec.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0);
                       return (
                         <tr key={rec.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                           <td style={td}>
@@ -128,6 +143,11 @@ export default async function DashboardPage() {
                                   <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-sub)", background: "#F3F4F6", padding: "2px 7px", borderRadius: 999 }}>
                                     {workModeLabel(rec.workMode)}
                                   </span>
+                                  {late && (
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: "#B45309", background: "#FEF3C7", padding: "2px 7px", borderRadius: 999 }}>
+                                      지각
+                                    </span>
+                                  )}
                                   {rec.workMode === "office" && rec.locationStatus !== "verified" && rec.locationStatus && (
                                     <span style={{ fontSize: 11, fontWeight: 700, color: "var(--warning)", background: "#FEF3C7", padding: "2px 7px", borderRadius: 999 }}>
                                       {locationStatusLabel(rec.locationStatus)}
