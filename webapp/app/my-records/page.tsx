@@ -51,7 +51,7 @@ export default async function MyRecordsPage({
   const td: React.CSSProperties = { padding: "12px 20px", fontSize: 15, verticalAlign: "middle", whiteSpace: "nowrap" };
 
   return (
-    <AppShell user={me} active="my-records" title="내 근태" subtitle={`${me.name} 님`} narrow>
+    <AppShell user={me} active="my-records" title="내 근태" subtitle={`${me.name} 님`}>
       <PeriodNav basePath="/my-records" unit={unit} anchor={anchor} label={label} />
 
       <div className="kpi-grid-3" style={{ marginBottom: 16 }}>
