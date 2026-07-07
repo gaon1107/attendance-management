@@ -1,4 +1,5 @@
 // 관리자 대시보드 — 오늘 우리 회사 직원들의 출퇴근 현황을 한눈에 본다. (리뉴얼 디자인)
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
@@ -59,10 +60,24 @@ export default async function DashboardPage() {
 
   // 오늘 미출근 = 오늘이 근무일인데 아직 출근 기록이 없고, 휴가도 아닌 직원
   const clockedInIds = new Set(todays.map((r) => r.userId));
-  const absentCount = employees.filter((e) => {
-    const wd = effectiveWorkDays(e.workDays, company?.workDays);
-    return isWorkDay(now, wd) && !clockedInIds.has(e.id) && !onLeaveTodayIds.has(e.id);
-  }).length;
+  const absentNames = employees
+    .filter((e) => {
+      const wd = effectiveWorkDays(e.workDays, company?.workDays);
+      return isWorkDay(now, wd) && !clockedInIds.has(e.id) && !onLeaveTodayIds.has(e.id);
+    })
+    .map((e) => e.name);
+  const absentCount = absentNames.length;
+
+  // 지각 직원 이름(오늘 출근기록 기준)
+  const lateNames = [...lateUserIds].map((id) => todays.find((r) => r.userId === id)?.user.name ?? "직원");
+
+  // 승인 대기 휴가 건수 + 최신 공지(오늘 알림 카드용)
+  const pendingLeaveCount = await prisma.leaveRequest.count({ where: { companyId: me.companyId, status: "pending" } });
+  const latestNotice = await prisma.announcement.findFirst({
+    where: { companyId: me.companyId },
+    orderBy: { createdAt: "desc" },
+    select: { title: true, createdAt: true },
+  });
 
   // 실제 데이터로만 집계 (DB에 없는 값은 만들지 않는다)
   const checkedInPeople = new Set(todays.map((r) => r.userId)).size;
@@ -220,8 +235,43 @@ export default async function DashboardPage() {
           </section>
         </div>
 
-        {/* 오른쪽: 실시간 근무 인원 (실제 데이터) */}
+        {/* 오른쪽: 오늘 알림 + 실시간 근무 인원 (실제 데이터) */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* 오늘 알림 — 미출근·지각 명단 + 대기 휴가 + 최신 공지 (모두 실데이터) */}
+          <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", fontSize: 15, fontWeight: 700 }}>오늘 알림</div>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {/* 미출근 */}
+              <Link href="/records" style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6", textDecoration: "none", color: "var(--text)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}>미출근</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: absentCount > 0 ? "var(--danger)" : "var(--text-sub)" }}>{absentCount}명</span>
+                </div>
+                {absentCount > 0 && <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 4, lineHeight: 1.5 }}>{absentNames.join(", ")}</div>}
+              </Link>
+              {/* 지각 */}
+              <Link href="/records" style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6", textDecoration: "none", color: "var(--text)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}>지각</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: hasRule && lateCount > 0 ? "var(--warning)" : "var(--text-sub)" }}>{hasRule ? `${lateCount}명` : "—"}</span>
+                </div>
+                {hasRule && lateCount > 0 && <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 4, lineHeight: 1.5 }}>{lateNames.join(", ")}</div>}
+              </Link>
+              {/* 승인 대기 휴가 */}
+              <Link href="/leave/approvals" style={{ padding: "12px 18px", borderBottom: latestNotice ? "1px solid #F3F4F6" : "none", textDecoration: "none", color: "var(--text)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}>승인 대기 휴가</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: pendingLeaveCount > 0 ? "var(--primary)" : "var(--text-sub)" }}>{pendingLeaveCount}건</span>
+              </Link>
+              {/* 최신 공지 */}
+              {latestNotice && (
+                <Link href="/notice" style={{ padding: "12px 18px", textDecoration: "none", color: "var(--text)" }}>
+                  <div style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700, marginBottom: 4 }}>📢 최신 공지</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{latestNotice.title}</div>
+                </Link>
+              )}
+            </div>
+          </section>
+
           <section style={{ background: "var(--primary)", borderRadius: 12, padding: "20px 22px", color: "#fff" }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.8)", marginBottom: 8 }}>실시간 근무 인원</div>
             <div style={{ fontSize: 32, fontWeight: 700, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>

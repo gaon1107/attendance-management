@@ -18,6 +18,7 @@ model Company {
   users         User[]
   invites       Invite[]
   leaveRequests LeaveRequest[]
+  announcements Announcement[]
   // 사업장 위치(사무실 출근 GPS 확인용). 안 정하면 위치 확인은 건너뜀.
   officeLat     Float?
   officeLng     Float?
@@ -118,6 +119,17 @@ model LeaveRequest {
   status     String    @default("pending")
   decidedAt  DateTime? // 승인/반려 처리 시각
   createdAt  DateTime  @default(now())
+}
+
+// 사내 공지사항 — 관리자가 작성하고 모든 직원이 열람한다.
+model Announcement {
+  id         String   @id @default(cuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id])
+  title      String
+  body       String
+  authorName String   // 작성 시점의 관리자 이름(스냅샷)
+  createdAt  DateTime @default(now())
 }
 
 // 로그인 세션 — 로그인 시 발급하는 "출입증(토큰)". 브라우저 쿠키에 토큰만 담는다.

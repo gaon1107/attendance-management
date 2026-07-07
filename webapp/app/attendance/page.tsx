@@ -35,6 +35,13 @@ export default async function AttendancePage() {
     include: { breaks: true },
   });
 
+  // 최신 사내 공지(있으면 배너로 안내)
+  const latestNotice = await prisma.announcement.findFirst({
+    where: { companyId: me.companyId },
+    orderBy: { createdAt: "desc" },
+    select: { title: true },
+  });
+
   const working = Boolean(open);
   const onBreak = Boolean(openBreak);
 
@@ -59,6 +66,16 @@ export default async function AttendancePage() {
           style={{ display: "block", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 14, color: "#1D4ED8", fontWeight: 700, textDecoration: "none" }}
         >
           출퇴근 인증방식(얼굴/GPS)을 선택해주세요 →
+        </a>
+      )}
+
+      {latestNotice && (
+        <a
+          href="/notice"
+          style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 14, color: "var(--text)", fontWeight: 700, textDecoration: "none" }}
+        >
+          <span style={{ flexShrink: 0 }}>📢</span>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{latestNotice.title}</span>
         </a>
       )}
 
