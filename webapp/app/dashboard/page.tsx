@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { workedMinutes, formatMinutes, isLate } from "@/lib/worktime";
 import { workModeLabel, locationStatusLabel } from "@/lib/location";
+import { effectiveWorkDays, isWorkDay } from "@/lib/workdays";
 
 function hhmm(d: Date): string {
   return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -23,20 +24,38 @@ export default async function DashboardPage() {
     include: { user: true, breaks: true },
     orderBy: { clockIn: "asc" },
   });
-  const employeeCount = await prisma.user.count({
+  // 직원 목록(근무요일·미출근 계산용)
+  const employees = await prisma.user.findMany({
     where: { companyId: me.companyId, role: "employee" },
+    select: { id: true, name: true, workDays: true },
   });
+  const employeeCount = employees.length;
 
-  // 근무기준(지각 판정용) — 설정 안 했으면 지각 판정은 건너뜀
+  // 근무기준(지각 판정용) + 회사 기본 근무요일
   const company = await prisma.company.findUnique({
     where: { id: me.companyId },
-    select: { workStartTime: true, lateGraceMin: true },
+    select: { workStartTime: true, lateGraceMin: true, workDays: true },
   });
   const hasRule = !!company?.workStartTime;
+
+  // 지각 = 근무일 + 기준시각 이후 출근일 때만
   const lateUserIds = new Set(
-    todays.filter((r) => isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0)).map((r) => r.userId)
+    todays
+      .filter((r) => {
+        const wd = effectiveWorkDays(r.user.workDays, company?.workDays);
+        return isWorkDay(r.clockIn, wd) && isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0);
+      })
+      .map((r) => r.userId)
   );
   const lateCount = lateUserIds.size;
+
+  // 오늘 미출근 = 오늘이 근무일인데 아직 출근 기록이 없는 직원
+  const now = new Date();
+  const clockedInIds = new Set(todays.map((r) => r.userId));
+  const absentCount = employees.filter((e) => {
+    const wd = effectiveWorkDays(e.workDays, company?.workDays);
+    return isWorkDay(now, wd) && !clockedInIds.has(e.id);
+  }).length;
 
   // 실제 데이터로만 집계 (DB에 없는 값은 만들지 않는다)
   const checkedInPeople = new Set(todays.map((r) => r.userId)).size;
@@ -101,6 +120,9 @@ export default async function DashboardPage() {
               <div style={{ fontSize: 16, fontWeight: 700 }}>오늘 출퇴근 현황</div>
               <span style={{ fontSize: 13, color: "var(--text-sub)" }}>
                 전체 <strong style={{ color: "var(--text)" }}>{employeeCount}명</strong> 기준
+                {absentCount > 0 && (
+                  <span style={{ color: "var(--text-sub)", fontWeight: 700, marginLeft: 8 }}>· 미출근 {absentCount}명</span>
+                )}
                 {hasRule && lateCount > 0 && (
                   <span style={{ color: "var(--warning)", fontWeight: 700, marginLeft: 8 }}>· 지각 {lateCount}명</span>
                 )}
@@ -128,7 +150,10 @@ export default async function DashboardPage() {
                   ) : (
                     todays.map((rec) => {
                       const working = !rec.clockOut;
-                      const late = isLate(rec.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0);
+                      const wd = effectiveWorkDays(rec.user.workDays, company?.workDays);
+                      const onWorkDay = isWorkDay(rec.clockIn, wd);
+                      const late = onWorkDay && isLate(rec.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0);
+                      const holiday = !onWorkDay; // 근무일 아닌 날 근무 = 휴일근무
                       return (
                         <tr key={rec.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                           <td style={td}>
@@ -146,6 +171,11 @@ export default async function DashboardPage() {
                                   {late && (
                                     <span style={{ fontSize: 11, fontWeight: 700, color: "#B45309", background: "#FEF3C7", padding: "2px 7px", borderRadius: 999 }}>
                                       지각
+                                    </span>
+                                  )}
+                                  {holiday && (
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: "#6D28D9", background: "#EDE9FE", padding: "2px 7px", borderRadius: 999 }}>
+                                      휴일근무
                                     </span>
                                   )}
                                   {rec.workMode === "office" && rec.locationStatus !== "verified" && rec.locationStatus && (

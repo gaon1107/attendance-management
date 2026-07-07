@@ -9,6 +9,7 @@ import { PeriodNav } from "@/app/components/PeriodNav";
 import { workedMinutes, formatMinutes, isLate } from "@/lib/worktime";
 import { normalizeUnit, parseAnchor, rangeFor, toISODate } from "@/lib/period";
 import { workModeLabel, locationLabel, hhmm, monthDayDow } from "@/lib/labels";
+import { effectiveWorkDays, isWorkDay } from "@/lib/workdays";
 
 export default async function RecordsPage({
   searchParams,
@@ -27,7 +28,7 @@ export default async function RecordsPage({
 
   const company = await prisma.company.findUnique({
     where: { id: me.companyId },
-    select: { workStartTime: true, lateGraceMin: true },
+    select: { workStartTime: true, lateGraceMin: true, workDays: true },
   });
 
   const rows = await prisma.attendance.findMany({
@@ -36,12 +37,15 @@ export default async function RecordsPage({
     orderBy: { clockIn: "desc" },
   });
 
-  // 실제 데이터로만 집계
+  // 각 기록의 근무일 여부(직원 예외 우선)
+  const onWorkDayOf = (r: (typeof rows)[number]) => isWorkDay(r.clockIn, effectiveWorkDays(r.user.workDays, company?.workDays));
+
+  // 실제 데이터로만 집계 — 지각은 근무일 + 기준시각 이후일 때만
   const total = rows.length;
   const working = rows.filter((r) => !r.clockOut).length;
   let lateCount = 0;
   for (const r of rows) {
-    if (isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0)) lateCount++;
+    if (onWorkDayOf(r) && isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0)) lateCount++;
   }
   const hasRule = !!company?.workStartTime;
 
@@ -94,7 +98,9 @@ export default async function RecordsPage({
                 </tr>
               ) : (
                 rows.map((r) => {
-                  const late = isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0);
+                  const onWorkDay = onWorkDayOf(r);
+                  const holiday = !onWorkDay;
+                  const late = onWorkDay ? isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0) : null;
                   return (
                     <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                       <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{monthDayDow(r.clockIn)}</td>
@@ -113,7 +119,9 @@ export default async function RecordsPage({
                         {r.clockOut ? hhmm(r.clockOut) : "근무 중"}
                       </td>
                       <td style={td}>
-                        {late === null ? (
+                        {holiday ? (
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "#6D28D9" }}>휴일근무</span>
+                        ) : late === null ? (
                           <span style={{ color: "#9CA3AF" }}>—</span>
                         ) : late ? (
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px", borderRadius: 6, background: "#FEF3C7" }}>

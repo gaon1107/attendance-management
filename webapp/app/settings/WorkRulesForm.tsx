@@ -3,6 +3,7 @@
 // 지각/정상 판정의 기준. 시각을 "없음"으로 두면 지각 판정을 하지 않는다.
 import { useActionState, useState } from "react";
 import { saveWorkRules } from "@/app/actions/settings";
+import { WEEK_ORDER, DAY_LABELS, parseDays, daysToCsv } from "@/lib/workdays";
 
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
 const MINUTES = ["00", "10", "20", "30", "40", "50"];
@@ -52,7 +53,7 @@ function TimePicker({ h, m, onH, onM }: { h: string; m: string; onH: (v: string)
 export function WorkRulesForm({
   initial,
 }: {
-  initial: { start: string; end: string; grace: number };
+  initial: { start: string; end: string; grace: number; workDays: string };
 }) {
   const [state, formAction, pending] = useActionState(saveWorkRules, {});
   const s = splitTime(initial.start);
@@ -62,10 +63,20 @@ export function WorkRulesForm({
   const [endH, setEndH] = useState(e.h);
   const [endM, setEndM] = useState(e.m);
   const [grace, setGrace] = useState(String(initial.grace));
+  const [days, setDays] = useState<Set<number>>(() => parseDays(initial.workDays));
 
   // 서버로는 기존과 똑같이 "HH:MM"(없으면 빈 값)으로 보낸다.
   const startVal = startH === "" ? "" : `${startH}:${startM}`;
   const endVal = endH === "" ? "" : `${endH}:${endM}`;
+
+  function toggleDay(d: number) {
+    setDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(d)) next.delete(d);
+      else next.add(d);
+      return next;
+    });
+  }
 
   return (
     <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 20 }}>
@@ -79,6 +90,36 @@ export function WorkRulesForm({
       <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <input type="hidden" name="workStartTime" value={startVal} />
         <input type="hidden" name="workEndTime" value={endVal} />
+        <input type="hidden" name="workDays" value={daysToCsv(days)} />
+
+        {/* 근무요일 — 이 요일에만 지각·결근을 판정한다 */}
+        <div>
+          <label style={labelStyle}>근무요일</label>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {WEEK_ORDER.map((d) => {
+              const on = days.has(d);
+              const weekend = d === 0 || d === 6;
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => toggleDay(d)}
+                  style={{
+                    width: 46, height: 42, borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 15, fontWeight: 700,
+                    border: `1px solid ${on ? "var(--primary)" : "var(--border)"}`,
+                    background: on ? "var(--primary)" : "#fff",
+                    color: on ? "#fff" : weekend ? "var(--danger)" : "var(--text)",
+                  }}
+                >
+                  {DAY_LABELS[d]}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 8 }}>
+            선택한 요일에만 지각·결근을 판정합니다. 요일이 다른 직원은 [직원 상세]에서 따로 지정할 수 있어요.
+          </div>
+        </div>
 
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 200 }}>

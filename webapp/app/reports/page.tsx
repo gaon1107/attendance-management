@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { workedMinutes, formatMinutes } from "@/lib/worktime";
 import { normalizeUnit, parseAnchor, rangeFor, shiftAnchor, toISODate, type Unit } from "@/lib/period";
+import { effectiveWorkDays, isWorkDay } from "@/lib/workdays";
 
 const UNITS: { key: Unit; label: string }[] = [
   { key: "day", label: "일" },
@@ -27,6 +28,8 @@ export default async function ReportsPage({
   const anchor = parseAnchor(sp.date);
   const { start, end, label } = rangeFor(unit, anchor);
 
+  const company = await prisma.company.findUnique({ where: { id: me.companyId }, select: { workDays: true } });
+
   // 기간 내 우리 회사 출퇴근 기록
   const rows = await prisma.attendance.findMany({
     where: { companyId: me.companyId, clockIn: { gte: start, lt: end } },
@@ -35,15 +38,31 @@ export default async function ReportsPage({
   });
 
   // 직원별 집계
-  const byUser = new Map<string, { name: string; role: string; minutes: number; breaks: number; days: Set<string> }>();
+  const byUser = new Map<string, { name: string; role: string; minutes: number; breaks: number; days: Set<string>; workDays: string | null }>();
   for (const r of rows) {
-    const cur = byUser.get(r.userId) ?? { name: r.user.name, role: r.user.role, minutes: 0, breaks: 0, days: new Set<string>() };
+    const cur = byUser.get(r.userId) ?? { name: r.user.name, role: r.user.role, minutes: 0, breaks: 0, days: new Set<string>(), workDays: r.user.workDays };
     cur.minutes += workedMinutes(r);
     cur.breaks += r.breaks.length;
     cur.days.add(toISODate(r.clockIn));
     byUser.set(r.userId, cur);
   }
-  const summary = [...byUser.values()].sort((a, b) => b.minutes - a.minutes);
+
+  // 결근 = 과거(오늘 이전) 근무일 중 출근 기록이 없는 날
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const absLimit = end < startOfToday ? end : startOfToday;
+  function absentCountFor(userWorkDays: string | null, attended: Set<string>): number {
+    const wd = effectiveWorkDays(userWorkDays, company?.workDays);
+    let n = 0;
+    for (let cur = new Date(start); cur < absLimit; cur = new Date(cur.getTime() + 86400000)) {
+      if (isWorkDay(cur, wd) && !attended.has(toISODate(cur))) n++;
+    }
+    return n;
+  }
+
+  const summary = [...byUser.values()]
+    .map((u) => ({ ...u, absent: absentCountFor(u.workDays, u.days) }))
+    .sort((a, b) => b.minutes - a.minutes);
 
   // 요약 지표 (실제 집계값만)
   const totalMinutes = summary.reduce((s, u) => s + u.minutes, 0);
@@ -123,13 +142,14 @@ export default async function ReportsPage({
                 <th style={th}>이름</th>
                 <th style={{ ...th, textAlign: "right" }}>근무일수</th>
                 <th style={{ ...th, textAlign: "right" }}>실근무 합계</th>
+                <th style={{ ...th, textAlign: "right" }}>결근</th>
                 <th style={{ ...th, textAlign: "right" }}>외출</th>
               </tr>
             </thead>
             <tbody>
               {summary.length === 0 ? (
                 <tr>
-                  <td colSpan={4} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={5} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     이 기간에 출퇴근 기록이 없습니다.
                   </td>
                 </tr>
@@ -149,6 +169,7 @@ export default async function ReportsPage({
                     </td>
                     <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{s.days.size}일</td>
                     <td style={{ ...td, textAlign: "right", fontWeight: 700, color: "var(--primary)", fontVariantNumeric: "tabular-nums" }}>{formatMinutes(s.minutes)}</td>
+                    <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: s.absent > 0 ? "var(--danger)" : "var(--text-sub)" }}>{s.absent}일</td>
                     <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{s.breaks}회</td>
                   </tr>
                 ))

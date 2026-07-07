@@ -27,6 +27,8 @@ model Company {
   workStartTime String?  // 표준 출근 기준시각 "HH:MM" (예: "09:00")
   workEndTime   String?  // 표준 퇴근 기준시각 "HH:MM" (예: "18:00")
   lateGraceMin  Int      @default(0) // 지각 유예(분). 기준시각 + 유예 이후 출근이면 지각.
+  // 회사 기본 근무요일(JS getDay 기준: 0=일 … 6=토) CSV. 기본 월~금. 이 요일에만 지각·결근 판정.
+  workDays      String   @default("1,2,3,4,5")
 }
 
 // 사용자 — 관리자(admin) 또는 직원(employee). 반드시 한 회사에 속한다.
@@ -45,6 +47,8 @@ model User {
   authMethod     String?
   // 생체정보(얼굴) 이용 동의 시각. 동의 철회 시 null로 되돌린다.
   faceConsentAt  DateTime?
+  // 직원별 근무요일 예외(CSV). null이면 회사 기본(Company.workDays)을 따른다.
+  workDays       String?
 }
 
 // 출퇴근 기록 — 출근 1건마다 한 줄. 퇴근 전에는 clockOut이 비어있음(null).

@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
+import { parseDays, daysToCsv } from "@/lib/workdays";
 
 export async function saveOfficeLocation(
   _prev: { error?: string; ok?: boolean },
@@ -87,12 +88,16 @@ export async function saveWorkRules(
     return { error: "지각 유예는 0~120분 사이로 입력해주세요." };
   }
 
+  // 근무요일(CSV) — 0~6만 허용. 정규화해서 저장(월요일부터 정렬).
+  const workDays = daysToCsv(parseDays(String(formData.get("workDays") ?? "")));
+
   await prisma.company.update({
     where: { id: me.companyId },
     data: {
       workStartTime: start || null,
       workEndTime: end || null,
       lateGraceMin: Math.round(grace),
+      workDays,
     },
   });
 

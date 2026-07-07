@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
+import { parseDays, daysToCsv } from "@/lib/workdays";
 
 export async function addEmployee(
   _prev: { error?: string; ok?: boolean },
@@ -65,5 +66,29 @@ export async function updateEmployeeName(
 
   revalidatePath(`/employees/${id}`);
   revalidatePath("/employees");
+  return { ok: true };
+}
+
+// 직원 근무요일 예외 저장 — 관리자만. 빈 값이면 "회사 기본 따름"(null). 회사 격리.
+export async function updateEmployeeWorkDays(
+  _prev: { error?: string; ok?: boolean },
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean }> {
+  const me = await getCurrentUser();
+  if (!me || me.role !== "admin") {
+    return { error: "권한이 없습니다." };
+  }
+
+  const id = String(formData.get("id") ?? "");
+  const raw = String(formData.get("workDays") ?? "").trim();
+
+  const target = await prisma.user.findFirst({ where: { id, companyId: me.companyId } });
+  if (!target) return { error: "직원을 찾을 수 없습니다." };
+
+  // 빈 값 = 회사 기본 따름(null). 값이 있으면 정규화해서 저장.
+  const value = raw ? daysToCsv(parseDays(raw)) : null;
+  await prisma.user.update({ where: { id: target.id }, data: { workDays: value } });
+
+  revalidatePath(`/employees/${id}`);
   return { ok: true };
 }

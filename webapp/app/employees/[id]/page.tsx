@@ -6,6 +6,8 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { EditEmployeeForm } from "./EditEmployeeForm";
+import { WorkDaysForm } from "./WorkDaysForm";
+import { parseDays, effectiveWorkDays, daysLabel } from "@/lib/workdays";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
@@ -20,6 +22,10 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   const emp = await prisma.user.findFirst({ where: { id, companyId: me.companyId } });
   if (!emp) notFound();
 
+  const company = await prisma.company.findUnique({ where: { id: me.companyId }, select: { workDays: true } });
+  const companyDaysLabel = daysLabel(parseDays(company?.workDays));
+  const effectiveLabel = daysLabel(effectiveWorkDays(emp.workDays, company?.workDays));
+
   const authLabel = emp.authMethod === "face" ? "얼굴인증" : emp.authMethod === "gps" ? "GPS(위치)" : "미설정";
   const consented = !!emp.faceConsentAt;
 
@@ -33,6 +39,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         ? <span style={{ color: "#15803D", fontWeight: 700 }}>동의함 {emp.faceConsentAt ? `(${ymd(emp.faceConsentAt)})` : ""}</span>
         : <span style={{ color: "#9CA3AF" }}>동의 안 함</span>,
     },
+    { label: "근무요일", value: <span>{effectiveLabel}<span style={{ color: "var(--text-sub)", fontWeight: 400 }}>{emp.workDays ? " (직접 지정)" : " (회사 기본)"}</span></span> },
     { label: "가입일", value: ymd(emp.createdAt) },
   ];
 
@@ -77,6 +84,15 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           이름을 수정할 수 있습니다. 인증방식·생체정보 동의는 직원 본인이 [인증방식] 화면에서 직접 정합니다.
         </p>
         <EditEmployeeForm id={emp.id} initialName={emp.name} />
+      </div>
+
+      {/* 근무요일 (회사 기본 따름 or 직접 지정) */}
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginTop: 20 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>근무요일</div>
+        <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
+          이 직원이 일하는 요일입니다. 회사 기본과 같으면 그대로 두고, 다르면 직접 지정하세요. 선택한 요일에만 지각·결근을 판정합니다.
+        </p>
+        <WorkDaysForm id={emp.id} initialDays={emp.workDays} companyDaysLabel={companyDaysLabel} />
       </div>
     </AppShell>
   );

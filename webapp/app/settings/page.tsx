@@ -18,7 +18,7 @@ export default async function SettingsPage() {
     where: { id: me.companyId },
     select: {
       officeLat: true, officeLng: true, officeRadiusM: true, officeIps: true,
-      workStartTime: true, workEndTime: true, lateGraceMin: true,
+      workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true,
     },
   });
 
@@ -31,6 +31,7 @@ export default async function SettingsPage() {
           start: company?.workStartTime ?? "",
           end: company?.workEndTime ?? "",
           grace: company?.lateGraceMin ?? 0,
+          workDays: company?.workDays ?? "1,2,3,4,5",
         }}
       />
       <OfficeLocationForm
