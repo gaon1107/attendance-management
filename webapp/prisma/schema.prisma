@@ -16,6 +16,7 @@ model Company {
   name          String
   createdAt     DateTime @default(now())
   users         User[]
+  invites       Invite[]
   // 사업장 위치(사무실 출근 GPS 확인용). 안 정하면 위치 확인은 건너뜀.
   officeLat     Float?
   officeLng     Float?
@@ -73,6 +74,17 @@ model Break {
   startAt      DateTime   @default(now())
   endAt        DateTime? // 복귀 시각(복귀 전엔 null)
   createdAt    DateTime   @default(now())
+}
+
+// 직원 초대 — 관리자가 만든 초대 링크. 직원이 이 링크로 스스로 가입(비밀번호 직접 설정)한다.
+model Invite {
+  id        String    @id @default(cuid())
+  companyId String
+  company   Company   @relation(fields: [companyId], references: [id])
+  token     String    @unique // 링크에 들어가는 비밀 값
+  createdAt DateTime  @default(now())
+  expiresAt DateTime // 이 시각 이후엔 사용 불가(기본 7일)
+  usedAt    DateTime? // 사용된 시각(가입 완료). null이면 아직 미사용.
 }
 
 // 로그인 세션 — 로그인 시 발급하는 "출입증(토큰)". 브라우저 쿠키에 토큰만 담는다.

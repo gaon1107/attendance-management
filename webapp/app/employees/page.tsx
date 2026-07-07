@@ -5,6 +5,8 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { AddEmployeeForm } from "./AddEmployeeForm";
+import { InviteLink } from "./InviteLink";
+import { createInvite, cancelInvite } from "@/app/actions/invites";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
@@ -18,6 +20,12 @@ export default async function EmployeesPage() {
   const employees = await prisma.user.findMany({
     where: { companyId: me.companyId, role: "employee" },
     orderBy: { createdAt: "asc" },
+  });
+
+  // 아직 안 쓴(미만료) 초대 링크
+  const invites = await prisma.invite.findMany({
+    where: { companyId: me.companyId, usedAt: null, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: "desc" },
   });
 
   // 실제 데이터로만 집계
@@ -50,7 +58,44 @@ export default async function EmployeesPage() {
         ))}
       </div>
 
-      {/* 직원 추가 폼 (기존 기능 유지) */}
+      {/* 직원 초대 (링크 방식 — 직원이 스스로 가입) */}
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 16 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>직원 초대</div>
+        <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
+          초대 링크를 만들어 직원에게 보내면(카톡·문자 등), 직원이 링크로 <b>직접 가입</b>합니다. 비밀번호는 직원 본인이 정합니다. (링크는 7일간, 1회만 사용 가능)
+        </p>
+        <form action={createInvite}>
+          <button
+            type="submit"
+            style={{ height: 44, padding: "0 18px", border: "none", borderRadius: 8, background: "var(--primary)", color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
+          >
+            + 초대 링크 만들기
+          </button>
+        </form>
+
+        {invites.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
+            {invites.map((inv) => (
+              <div key={inv.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 12 }}>
+                  <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 700, whiteSpace: "nowrap" }}>
+                    만료 {inv.expiresAt.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" })}까지
+                  </span>
+                  <form action={cancelInvite}>
+                    <input type="hidden" name="id" value={inv.id} />
+                    <button type="submit" style={{ height: 28, padding: "0 10px", border: "1px solid var(--border)", borderRadius: 6, background: "#fff", color: "var(--text-sub)", fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                      취소
+                    </button>
+                  </form>
+                </div>
+                <InviteLink path={`/invite/${inv.token}`} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 직원 직접 등록 (관리자가 계정을 바로 만들 때) */}
       <AddEmployeeForm />
 
       {/* 직원 목록 표 */}
