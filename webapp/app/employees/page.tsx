@@ -17,10 +17,13 @@ export default async function EmployeesPage() {
   if (!me) redirect("/login");
   if (me.role !== "admin") redirect("/attendance");
 
-  const employees = await prisma.user.findMany({
+  const allEmployees = await prisma.user.findMany({
     where: { companyId: me.companyId, role: "employee" },
     orderBy: { createdAt: "asc" },
   });
+  // 재직중(퇴사 안 한) / 퇴사(비활성화) 분리
+  const employees = allEmployees.filter((e) => !e.deactivatedAt);
+  const retired = allEmployees.filter((e) => e.deactivatedAt);
 
   // 아직 안 쓴(미만료) 초대 링크
   const invites = await prisma.invite.findMany({
@@ -28,13 +31,13 @@ export default async function EmployeesPage() {
     orderBy: { createdAt: "desc" },
   });
 
-  // 실제 데이터로만 집계
+  // 실제 데이터로만 집계 (재직중 기준)
   const faceCount = employees.filter((e) => e.authMethod === "face").length;
   const gpsCount = employees.filter((e) => e.authMethod === "gps").length;
   const unsetCount = employees.filter((e) => e.authMethod !== "face" && e.authMethod !== "gps").length;
 
   const kpis = [
-    { label: "전체 직원", value: `${employees.length}`, unit: "명", color: "var(--text)" },
+    { label: "재직 직원", value: `${employees.length}`, unit: "명", color: "var(--text)" },
     { label: "얼굴인증 사용", value: `${faceCount}`, unit: "명", color: "var(--text)" },
     { label: "GPS 사용", value: `${gpsCount}`, unit: "명", color: "var(--text)" },
     { label: "인증 미설정", value: `${unsetCount}`, unit: "명", color: unsetCount > 0 ? "var(--warning)" : "var(--text)" },
@@ -44,7 +47,7 @@ export default async function EmployeesPage() {
   const td: React.CSSProperties = { padding: "12px 20px", fontSize: 15, verticalAlign: "middle" };
 
   return (
-    <AppShell user={me} active="employees" title="직원 관리" subtitle={`${me.company.name} · 총 ${employees.length}명`}>
+    <AppShell user={me} active="employees" title="직원 관리" subtitle={`${me.company.name} · 재직 ${employees.length}명`}>
       {/* KPI */}
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
         {kpis.map((k) => (
@@ -152,6 +155,49 @@ export default async function EmployeesPage() {
           </table>
         </div>
       </section>
+
+      {/* 퇴사한 직원 (비활성화) — 과거 근태 기록은 리포트에 그대로 남는다. 복직은 이름 클릭 후 상세에서. */}
+      {retired.length > 0 && (
+        <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", marginTop: 20 }}>
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", fontSize: 15, fontWeight: 700, color: "var(--text-sub)" }}>
+            퇴사한 직원 {retired.length}명 <span style={{ fontWeight: 400 }}>(과거 근태 기록은 리포트에 보존됩니다)</span>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
+              <thead>
+                <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
+                  <th style={th}>이름</th>
+                  <th style={th}>이메일</th>
+                  <th style={th}>퇴사일</th>
+                  <th style={th}>상태</th>
+                </tr>
+              </thead>
+              <tbody>
+                {retired.map((emp) => (
+                  <tr key={emp.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
+                    <td style={td}>
+                      <Link href={`/employees/${emp.id}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "var(--text-sub)" }}>
+                        <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#F3F4F6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#9CA3AF", flexShrink: 0 }}>
+                          {emp.name.slice(0, 1)}
+                        </div>
+                        <span style={{ fontWeight: 700 }}>{emp.name}</span>
+                      </Link>
+                    </td>
+                    <td style={{ ...td, color: "var(--text-sub)" }}>{emp.email}</td>
+                    <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{emp.deactivatedAt ? ymd(emp.deactivatedAt) : "—"}</td>
+                    <td style={td}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px", borderRadius: 6, background: "#F3F4F6" }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#9CA3AF" }} />
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#6B7280" }}>퇴사</span>
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </AppShell>
   );
 }

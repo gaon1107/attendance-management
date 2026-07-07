@@ -38,6 +38,8 @@ export async function getCurrentUser() {
     await prisma.session.deleteMany({ where: { token } });
     return null;
   }
+  // 퇴사(비활성화)된 계정이면 로그인 상태로 보지 않는다(방어).
+  if (session.user.deactivatedAt) return null;
   return session.user;
 }
 

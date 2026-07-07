@@ -62,6 +62,11 @@ export async function login(
 
   const user = await prisma.user.findUnique({ where: { email } });
 
+  // 퇴사(비활성화)된 계정은 로그인 불가.
+  if (user?.deactivatedAt) {
+    return { error: "이 계정은 비활성화되었습니다. 관리자에게 문의하세요." };
+  }
+
   // 계정이 잠겨 있으면(연속 실패로 잠금) 비번이 맞아도 잠금 해제 시각까지 거부.
   if (user?.lockedUntil && user.lockedUntil > new Date()) {
     const mins = Math.max(1, Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000));

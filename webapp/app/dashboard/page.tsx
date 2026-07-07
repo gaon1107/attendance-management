@@ -24,9 +24,9 @@ export default async function DashboardPage() {
     include: { user: true, breaks: true },
     orderBy: { clockIn: "asc" },
   });
-  // 직원 목록(근무요일·미출근 계산용)
+  // 직원 목록(근무요일·미출근 계산용) — 재직중(퇴사 안 한) 직원만
   const employees = await prisma.user.findMany({
-    where: { companyId: me.companyId, role: "employee" },
+    where: { companyId: me.companyId, role: "employee", deactivatedAt: null },
     select: { id: true, name: true, workDays: true },
   });
   const employeeCount = employees.length;

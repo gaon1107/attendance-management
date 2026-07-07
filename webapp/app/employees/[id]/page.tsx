@@ -7,6 +7,8 @@ import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { EditEmployeeForm } from "./EditEmployeeForm";
 import { WorkDaysForm } from "./WorkDaysForm";
+import { ResetPasswordForm } from "./ResetPasswordForm";
+import { EmployeeStatusActions } from "./EmployeeStatusActions";
 import { parseDays, effectiveWorkDays, daysLabel } from "@/lib/workdays";
 
 function ymd(d: Date): string {
@@ -28,10 +30,17 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
 
   const authLabel = emp.authMethod === "face" ? "얼굴인증" : emp.authMethod === "gps" ? "GPS(위치)" : "미설정";
   const consented = !!emp.faceConsentAt;
+  const active = !emp.deactivatedAt;
 
   const rows: { label: string; value: React.ReactNode }[] = [
     { label: "이메일", value: emp.email },
     { label: "역할", value: emp.role === "admin" ? "관리자" : "직원" },
+    {
+      label: "상태",
+      value: active
+        ? <span style={{ color: "#15803D", fontWeight: 700 }}>재직중</span>
+        : <span style={{ color: "#6B7280", fontWeight: 700 }}>퇴사 {emp.deactivatedAt ? `(${ymd(emp.deactivatedAt)})` : ""}</span>,
+    },
     { label: "인증방식", value: <span style={{ color: emp.authMethod ? "var(--text)" : "#9CA3AF" }}>{authLabel}</span> },
     {
       label: "생체정보 동의",
@@ -93,6 +102,28 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           이 직원이 일하는 요일입니다. 회사 기본과 같으면 그대로 두고, 다르면 직접 지정하세요. 선택한 요일에만 지각·결근을 판정합니다.
         </p>
         <WorkDaysForm id={emp.id} initialDays={emp.workDays} companyDaysLabel={companyDaysLabel} />
+      </div>
+
+      {/* 비밀번호 재설정 (재직중일 때만) */}
+      {active && (
+        <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginTop: 20 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>비밀번호 재설정</div>
+          <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
+            직원이 비밀번호를 잊었을 때 새 임시 비밀번호를 정해 알려주세요. 재설정하면 직원의 기존 로그인은 풀리고, 새 비밀번호로 다시 로그인합니다.
+          </p>
+          <ResetPasswordForm id={emp.id} />
+        </div>
+      )}
+
+      {/* 퇴사 처리 / 복직 */}
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginTop: 20 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{active ? "퇴사 처리" : "복직"}</div>
+        <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
+          {active
+            ? "퇴사 처리하면 이 직원은 로그인할 수 없고 직원 목록에서 내려갑니다. 과거 근태 기록은 리포트에 그대로 보존되며, 나중에 복직할 수 있습니다."
+            : "이 직원은 현재 퇴사(비활성화) 상태입니다. 복직시키면 다시 로그인할 수 있습니다."}
+        </p>
+        <EmployeeStatusActions id={emp.id} name={emp.name} active={active} />
       </div>
     </AppShell>
   );

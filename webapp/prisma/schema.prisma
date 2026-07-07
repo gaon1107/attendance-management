@@ -52,6 +52,8 @@ model User {
   // 로그인 무차별 대입(비번 찍기) 방어: 연속 실패 횟수 + 잠금 해제 시각.
   failedLoginCount Int      @default(0)
   lockedUntil      DateTime?
+  // 퇴사(비활성화) 시각. null이면 재직중. 값이 있으면 로그인 불가·집계 제외(단, 과거 근태 기록은 보존).
+  deactivatedAt    DateTime?
 }
 
 // 출퇴근 기록 — 출근 1건마다 한 줄. 퇴근 전에는 clockOut이 비어있음(null).
