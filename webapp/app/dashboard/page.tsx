@@ -49,12 +49,19 @@ export default async function DashboardPage() {
   );
   const lateCount = lateUserIds.size;
 
-  // 오늘 미출근 = 오늘이 근무일인데 아직 출근 기록이 없는 직원
+  // 오늘 승인된 휴가자(연차·병가 등)는 미출근에서 제외
   const now = new Date();
+  const onLeaveToday = await prisma.leaveRequest.findMany({
+    where: { companyId: me.companyId, status: "approved", startDate: { lte: now }, endDate: { gte: startOfToday } },
+    select: { userId: true },
+  });
+  const onLeaveTodayIds = new Set(onLeaveToday.map((l) => l.userId));
+
+  // 오늘 미출근 = 오늘이 근무일인데 아직 출근 기록이 없고, 휴가도 아닌 직원
   const clockedInIds = new Set(todays.map((r) => r.userId));
   const absentCount = employees.filter((e) => {
     const wd = effectiveWorkDays(e.workDays, company?.workDays);
-    return isWorkDay(now, wd) && !clockedInIds.has(e.id);
+    return isWorkDay(now, wd) && !clockedInIds.has(e.id) && !onLeaveTodayIds.has(e.id);
   }).length;
 
   // 실제 데이터로만 집계 (DB에 없는 값은 만들지 않는다)

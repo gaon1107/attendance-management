@@ -9,7 +9,9 @@ import { EditEmployeeForm } from "./EditEmployeeForm";
 import { WorkDaysForm } from "./WorkDaysForm";
 import { ResetPasswordForm } from "./ResetPasswordForm";
 import { EmployeeStatusActions } from "./EmployeeStatusActions";
+import { AnnualLeaveForm } from "./AnnualLeaveForm";
 import { parseDays, effectiveWorkDays, daysLabel } from "@/lib/workdays";
+import { usedLeaveDays } from "@/lib/leave";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
@@ -27,6 +29,14 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   const company = await prisma.company.findUnique({ where: { id: me.companyId }, select: { workDays: true } });
   const companyDaysLabel = daysLabel(parseDays(company?.workDays));
   const effectiveLabel = daysLabel(effectiveWorkDays(emp.workDays, company?.workDays));
+
+  // 이 직원의 연차 사용/잔여(승인된 연차·반차 합)
+  const empLeaves = await prisma.leaveRequest.findMany({
+    where: { userId: emp.id, companyId: me.companyId },
+    select: { type: true, days: true, status: true },
+  });
+  const leaveUsed = usedLeaveDays(empLeaves);
+  const leaveRemaining = emp.annualLeaveDays - leaveUsed;
 
   const authLabel = emp.authMethod === "face" ? "얼굴인증" : emp.authMethod === "gps" ? "GPS(위치)" : "미설정";
   const consented = !!emp.faceConsentAt;
@@ -102,6 +112,15 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           이 직원이 일하는 요일입니다. 회사 기본과 같으면 그대로 두고, 다르면 직접 지정하세요. 선택한 요일에만 지각·결근을 판정합니다.
         </p>
         <WorkDaysForm id={emp.id} initialDays={emp.workDays} companyDaysLabel={companyDaysLabel} />
+      </div>
+
+      {/* 연차 부여 / 잔여 */}
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginTop: 20 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>연차</div>
+        <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
+          올해 부여할 연차 일수입니다. 사용 <b>{leaveUsed}일</b> · 잔여 <b style={{ color: leaveRemaining > 0 ? "var(--primary)" : "var(--danger)" }}>{leaveRemaining}일</b>. (직원이 신청·승인한 연차·반차가 사용에 반영됩니다.)
+        </p>
+        <AnnualLeaveForm id={emp.id} initialDays={emp.annualLeaveDays} />
       </div>
 
       {/* 비밀번호 재설정 (재직중일 때만) */}

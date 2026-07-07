@@ -12,6 +12,7 @@ type NavUser = {
 export type NavKey =
   | "dashboard" | "employees" | "records" | "reports" | "biometrics"
   | "attendance" | "my-records" | "auth-method" | "settings"
+  | "leave" | "leave-approvals"
   | "account"; // 계정 설정 — 사이드바 메뉴엔 없고(프로필 아바타로 진입) 하이라이트용 키
 
 type Item = { key: NavKey; href: string; label: string; icon: string };
@@ -28,6 +29,8 @@ const ICON: Record<NavKey, string> = {
   "auth-method": '<path d="M12 11a3 3 0 0 0-3 3v3"/><path d="M6 8a8 8 0 0 1 12 0"/><path d="M4 12a10 10 0 0 1 16 0"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M20 12a8 8 0 1 0-8 8"/><path d="M12 8v4l3 2"/>',
   account: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
+  leave: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M9 14l2 2 4-4"/>',
+  "leave-approvals": '<path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/>',
 };
 
 const LABEL: Record<NavKey, string> = {
@@ -41,18 +44,21 @@ const LABEL: Record<NavKey, string> = {
   "auth-method": "인증방식",
   settings: "설정",
   account: "계정",
+  leave: "휴가",
+  "leave-approvals": "휴가승인",
 };
 
 // 화면 키 → 실제 경로(키와 경로가 다른 항목만 지정, 없으면 "/키")
 const HREF: Partial<Record<NavKey, string>> = {
   "my-records": "/my-records",
+  "leave-approvals": "/leave/approvals",
 };
 
 function itemsFor(role: string): Item[] {
   const keys: NavKey[] =
     role === "admin"
-      ? ["dashboard", "employees", "records", "reports", "biometrics", "attendance", "auth-method", "settings"]
-      : ["attendance", "my-records", "auth-method"];
+      ? ["dashboard", "employees", "records", "reports", "leave-approvals", "biometrics", "attendance", "auth-method", "settings"]
+      : ["attendance", "my-records", "leave", "auth-method"];
   return keys.map((key) => ({ key, href: HREF[key] ?? `/${key}`, label: LABEL[key], icon: ICON[key] }));
 }
 

@@ -1,0 +1,124 @@
+// 휴가(직원 본인) — 잔여 연차 + 휴가 신청 + 내 신청 내역. (리뉴얼 디자인)
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/session";
+import { prisma } from "@/lib/db";
+import { AppShell } from "@/app/components/AppShell";
+import { LeaveRequestForm } from "./LeaveRequestForm";
+import { cancelLeave } from "@/app/actions/leave";
+import { leaveTypeLabel, leaveStatusLabel, usedLeaveDays } from "@/lib/leave";
+
+function ymd(d: Date): string {
+  return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
+}
+function rangeLabel(start: Date, end: Date): string {
+  const s = ymd(start);
+  const e = ymd(end);
+  return s === e ? s : `${s} ~ ${e}`;
+}
+
+const STATUS_STYLE: Record<string, { bg: string; dot: string; color: string }> = {
+  pending: { bg: "#FEF3C7", dot: "#B45309", color: "#B45309" },
+  approved: { bg: "#DCFCE7", dot: "#15803D", color: "#15803D" },
+  rejected: { bg: "#FEE2E2", dot: "#B91C1C", color: "#B91C1C" },
+};
+
+export default async function LeavePage() {
+  const me = await getCurrentUser();
+  if (!me) redirect("/login");
+
+  const requests = await prisma.leaveRequest.findMany({
+    where: { userId: me.id, companyId: me.companyId },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const used = usedLeaveDays(requests);
+  const remaining = me.annualLeaveDays - used;
+
+  const kpis = [
+    { label: "부여 연차", value: me.annualLeaveDays, color: "var(--text)" },
+    { label: "사용", value: used, color: "var(--text)" },
+    { label: "잔여", value: remaining, color: remaining > 0 ? "var(--primary)" : "var(--danger)" },
+  ];
+
+  const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 16px", whiteSpace: "nowrap" };
+  const td: React.CSSProperties = { padding: "12px 16px", fontSize: 14, verticalAlign: "middle" };
+
+  return (
+    <AppShell user={me} active="leave" title="휴가" subtitle={`${me.name} 님`} narrow>
+      {/* 잔여 연차 */}
+      <div className="kpi-grid-3" style={{ marginBottom: 20 }}>
+        {kpis.map((k) => (
+          <div key={k.label} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px" }}>
+            <div style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700, marginBottom: 8 }}>{k.label}</div>
+            <div style={{ fontSize: 26, fontWeight: 700, fontVariantNumeric: "tabular-nums", lineHeight: 1, color: k.color }}>
+              {k.value}<span style={{ fontSize: 14, fontWeight: 400, color: "var(--text-sub)", marginLeft: 2 }}>일</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 신청 폼 */}
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 20 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>휴가 신청</div>
+        <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 18, lineHeight: 1.6 }}>
+          연차·반차는 잔여에서 차감되고, 병가는 차감되지 않습니다. 승인되면 그 날은 결근이 아니라 휴가로 처리됩니다.
+        </p>
+        <LeaveRequestForm />
+      </div>
+
+      {/* 내 신청 내역 */}
+      <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)", fontSize: 15, fontWeight: 700 }}>내 신청 내역</div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 520 }}>
+            <thead>
+              <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
+                <th style={th}>종류</th>
+                <th style={th}>기간</th>
+                <th style={{ ...th, textAlign: "right" }}>일수</th>
+                <th style={th}>상태</th>
+                <th style={{ ...th, textAlign: "right" }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {requests.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ padding: "28px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                    아직 신청한 휴가가 없습니다.
+                  </td>
+                </tr>
+              ) : (
+                requests.map((r) => {
+                  const s = STATUS_STYLE[r.status] ?? STATUS_STYLE.pending;
+                  return (
+                    <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
+                      <td style={{ ...td, fontWeight: 700 }}>{leaveTypeLabel(r.type)}</td>
+                      <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{rangeLabel(r.startDate, r.endDate)}</td>
+                      <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{r.days}일</td>
+                      <td style={td}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px", borderRadius: 6, background: s.bg }}>
+                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.dot }} />
+                          <span style={{ fontSize: 13, fontWeight: 700, color: s.color }}>{leaveStatusLabel(r.status)}</span>
+                        </span>
+                      </td>
+                      <td style={{ ...td, textAlign: "right" }}>
+                        {r.status === "pending" && (
+                          <form action={cancelLeave}>
+                            <input type="hidden" name="id" value={r.id} />
+                            <button type="submit" style={{ height: 30, padding: "0 12px", border: "1px solid var(--border)", borderRadius: 6, background: "#fff", color: "var(--text-sub)", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                              취소
+                            </button>
+                          </form>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </AppShell>
+  );
+}

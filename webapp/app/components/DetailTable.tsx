@@ -65,6 +65,17 @@ export function DetailTable({ detail }: { detail: DayDetail }) {
                       </tr>
                     );
                   }
+                  if (e.type === "leave") {
+                    return (
+                      <tr key={`l${i}`} style={{ borderBottom: "1px solid #F3F4F6", background: "#EFF6FF" }}>
+                        <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{monthDayDow(e.date)}</td>
+                        <td style={{ ...td, color: "#9CA3AF" }} colSpan={4}>—</td>
+                        <td style={td}><span style={{ fontSize: 13, fontWeight: 700, color: "var(--primary)" }}>휴가 · {e.label}</span></td>
+                        <td style={{ ...td, textAlign: "right", color: "#9CA3AF" }}>—</td>
+                        <td style={{ ...td, textAlign: "right", color: "#9CA3AF" }}>—</td>
+                      </tr>
+                    );
+                  }
                   const r = e.rec;
                   return (
                     <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>

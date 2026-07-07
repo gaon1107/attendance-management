@@ -16,19 +16,29 @@ type Company = { workStartTime: string | null; lateGraceMin: number; workDays: s
 
 export type DayEntry =
   | { type: "att"; date: Date; rec: AttRow; holiday: boolean; late: boolean | null; minutes: number }
-  | { type: "absent"; date: Date };
+  | { type: "absent"; date: Date }
+  | { type: "leave"; date: Date; label: string };
 
 export type DayDetail = {
-  entries: DayEntry[]; // 날짜 내림차순(출퇴근 기록 + 결근)
+  entries: DayEntry[]; // 날짜 내림차순(출퇴근 기록 + 결근 + 휴가)
   totalMinutes: number;
   days: number; // 출근한 날 수
   lateCount: number;
   absentCount: number; // 결근 일수
+  leaveDaysCount: number; // 이 기간에 휴가로 처리된 근무일 수
   hasRule: boolean; // 근무 기준시각이 설정돼 있는가(지각 판정 가능 여부)
 };
 
 // rows: 기간 내 출퇴근 기록. start/end: 조회 기간(end 미포함).
-export function buildDayEntries(rows: AttRow[], userWorkDays: string | null, company: Company, start: Date, end: Date): DayDetail {
+// leaveByDate: 승인된 휴가일(ISO) → 종류 라벨. 이 날은 결근이 아니라 "휴가"로 처리한다.
+export function buildDayEntries(
+  rows: AttRow[],
+  userWorkDays: string | null,
+  company: Company,
+  start: Date,
+  end: Date,
+  leaveByDate: Map<string, string> = new Map()
+): DayDetail {
   const wd = effectiveWorkDays(userWorkDays, company?.workDays);
   const hasRule = !!company?.workStartTime;
 
@@ -38,22 +48,31 @@ export function buildDayEntries(rows: AttRow[], userWorkDays: string | null, com
     return { type: "att", date: r.clockIn, rec: r, holiday: !onWorkDay, late, minutes: workedMinutes(r) };
   });
 
-  // 결근 = 과거(오늘 이전) 근무일 중 출근 기록이 없는 날. 오늘·미래는 아직 결근 아님.
+  // 결근 = 과거(오늘 이전) 근무일 중 출근 기록이 없는 날. 단, 승인된 휴가일은 결근이 아니라 "휴가".
+  // 오늘·미래는 아직 결근 아님.
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const attendedISO = new Set(rows.map((r) => toISODate(r.clockIn)));
   const limit = end < startOfToday ? end : startOfToday;
-  const absentEntries: DayEntry[] = [];
+  const extraEntries: DayEntry[] = [];
+  let absentCount = 0;
+  let leaveDaysCount = 0;
   for (let cur = new Date(start); cur < limit; cur = new Date(cur.getTime() + 86400000)) {
-    if (isWorkDay(cur, wd) && !attendedISO.has(toISODate(cur))) {
-      absentEntries.push({ type: "absent", date: new Date(cur) });
+    const iso = toISODate(cur);
+    if (attendedISO.has(iso)) continue; // 출근한 날은 위 attEntries에 있음
+    if (leaveByDate.has(iso) && isWorkDay(cur, wd)) {
+      extraEntries.push({ type: "leave", date: new Date(cur), label: leaveByDate.get(iso)! });
+      leaveDaysCount++;
+    } else if (isWorkDay(cur, wd)) {
+      extraEntries.push({ type: "absent", date: new Date(cur) });
+      absentCount++;
     }
   }
 
-  const entries = [...attEntries, ...absentEntries].sort((a, b) => b.date.getTime() - a.date.getTime());
+  const entries = [...attEntries, ...extraEntries].sort((a, b) => b.date.getTime() - a.date.getTime());
   const totalMinutes = attEntries.reduce((s, e) => s + (e.type === "att" ? e.minutes : 0), 0);
   const days = new Set(rows.map((r) => toISODate(r.clockIn))).size;
   const lateCount = attEntries.filter((e) => e.type === "att" && e.late === true).length;
 
-  return { entries, totalMinutes, days, lateCount, absentCount: absentEntries.length, hasRule };
+  return { entries, totalMinutes, days, lateCount, absentCount, leaveDaysCount, hasRule };
 }

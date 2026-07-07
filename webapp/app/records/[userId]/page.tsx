@@ -8,6 +8,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { PeriodNav } from "@/app/components/PeriodNav";
 import { DetailTable } from "@/app/components/DetailTable";
 import { buildDayEntries } from "@/lib/dayentries";
+import { leaveLabelByDate } from "@/lib/leave";
 import { normalizeUnit, parseAnchor, rangeFor } from "@/lib/period";
 
 export default async function RecordDetailPage({
@@ -42,7 +43,14 @@ export default async function RecordDetailPage({
     orderBy: { clockIn: "desc" },
   });
 
-  const detail = buildDayEntries(rows, target.workDays, company, start, end);
+  // 이 기간에 걸치는 승인된 이 직원의 휴가 → 날짜별 라벨(결근 대신 "휴가")
+  const leaves = await prisma.leaveRequest.findMany({
+    where: { userId: target.id, companyId: me.companyId, status: "approved", startDate: { lt: end }, endDate: { gte: start } },
+    select: { type: true, startDate: true, endDate: true },
+  });
+  const leaveByDate = leaveLabelByDate(leaves);
+
+  const detail = buildDayEntries(rows, target.workDays, company, start, end, leaveByDate);
 
   const backBtn = (
     <Link href="/records" style={{ height: 38, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 8, border: "1px solid var(--border)", background: "#fff", color: "var(--text-sub)", fontSize: 14, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}>

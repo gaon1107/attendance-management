@@ -7,6 +7,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { workedMinutes, formatMinutes } from "@/lib/worktime";
 import { normalizeUnit, parseAnchor, rangeFor, shiftAnchor, toISODate, type Unit } from "@/lib/period";
 import { effectiveWorkDays, isWorkDay } from "@/lib/workdays";
+import { leaveDateSet } from "@/lib/leave";
 
 const UNITS: { key: Unit; label: string }[] = [
   { key: "day", label: "일" },
@@ -38,30 +39,46 @@ export default async function ReportsPage({
   });
 
   // 직원별 집계
-  const byUser = new Map<string, { name: string; role: string; minutes: number; breaks: number; days: Set<string>; workDays: string | null }>();
+  const byUser = new Map<string, { id: string; name: string; role: string; minutes: number; breaks: number; days: Set<string>; workDays: string | null }>();
   for (const r of rows) {
-    const cur = byUser.get(r.userId) ?? { name: r.user.name, role: r.user.role, minutes: 0, breaks: 0, days: new Set<string>(), workDays: r.user.workDays };
+    const cur = byUser.get(r.userId) ?? { id: r.userId, name: r.user.name, role: r.user.role, minutes: 0, breaks: 0, days: new Set<string>(), workDays: r.user.workDays };
     cur.minutes += workedMinutes(r);
     cur.breaks += r.breaks.length;
     cur.days.add(toISODate(r.clockIn));
     byUser.set(r.userId, cur);
   }
 
-  // 결근 = 과거(오늘 이전) 근무일 중 출근 기록이 없는 날
+  // 기간에 걸치는 승인된 휴가 → 직원별 휴가일 집합(결근에서 제외)
+  const leaves = await prisma.leaveRequest.findMany({
+    where: { companyId: me.companyId, status: "approved", startDate: { lt: end }, endDate: { gte: start } },
+    select: { userId: true, startDate: true, endDate: true },
+  });
+  const leaveByUser = new Map<string, Set<string>>();
+  for (const [uid, list] of Object.entries(
+    leaves.reduce<Record<string, { startDate: Date; endDate: Date }[]>>((acc, l) => {
+      (acc[l.userId] ??= []).push(l);
+      return acc;
+    }, {})
+  )) {
+    leaveByUser.set(uid, leaveDateSet(list));
+  }
+
+  // 결근 = 과거(오늘 이전) 근무일 중 출근 기록도 없고 승인 휴가도 아닌 날
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const absLimit = end < startOfToday ? end : startOfToday;
-  function absentCountFor(userWorkDays: string | null, attended: Set<string>): number {
+  function absentCountFor(userWorkDays: string | null, attended: Set<string>, leaveDays: Set<string>): number {
     const wd = effectiveWorkDays(userWorkDays, company?.workDays);
     let n = 0;
     for (let cur = new Date(start); cur < absLimit; cur = new Date(cur.getTime() + 86400000)) {
-      if (isWorkDay(cur, wd) && !attended.has(toISODate(cur))) n++;
+      const iso = toISODate(cur);
+      if (isWorkDay(cur, wd) && !attended.has(iso) && !leaveDays.has(iso)) n++;
     }
     return n;
   }
 
   const summary = [...byUser.values()]
-    .map((u) => ({ ...u, absent: absentCountFor(u.workDays, u.days) }))
+    .map((u) => ({ ...u, absent: absentCountFor(u.workDays, u.days, leaveByUser.get(u.id) ?? new Set()) }))
     .sort((a, b) => b.minutes - a.minutes);
 
   // 요약 지표 (실제 집계값만)

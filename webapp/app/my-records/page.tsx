@@ -6,6 +6,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { PeriodNav } from "@/app/components/PeriodNav";
 import { DetailTable } from "@/app/components/DetailTable";
 import { buildDayEntries } from "@/lib/dayentries";
+import { leaveLabelByDate } from "@/lib/leave";
 import { normalizeUnit, parseAnchor, rangeFor } from "@/lib/period";
 
 export default async function MyRecordsPage({
@@ -32,8 +33,15 @@ export default async function MyRecordsPage({
     orderBy: { clockIn: "desc" },
   });
 
-  // 내 근무요일(예외 없으면 회사 기본)로 결근·지각 판정
-  const detail = buildDayEntries(rows, me.workDays, company, start, end);
+  // 이 기간에 걸치는 승인된 내 휴가 → 날짜별 라벨(결근 대신 "휴가"로 표시)
+  const leaves = await prisma.leaveRequest.findMany({
+    where: { userId: me.id, companyId: me.companyId, status: "approved", startDate: { lt: end }, endDate: { gte: start } },
+    select: { type: true, startDate: true, endDate: true },
+  });
+  const leaveByDate = leaveLabelByDate(leaves);
+
+  // 내 근무요일(예외 없으면 회사 기본)로 결근·지각 판정(휴가일은 결근 제외)
+  const detail = buildDayEntries(rows, me.workDays, company, start, end, leaveByDate);
 
   return (
     <AppShell user={me} active="my-records" title="내 근태" subtitle={`${me.name} 님`}>

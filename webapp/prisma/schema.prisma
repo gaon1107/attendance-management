@@ -17,6 +17,7 @@ model Company {
   createdAt     DateTime @default(now())
   users         User[]
   invites       Invite[]
+  leaveRequests LeaveRequest[]
   // 사업장 위치(사무실 출근 GPS 확인용). 안 정하면 위치 확인은 건너뜀.
   officeLat     Float?
   officeLng     Float?
@@ -43,6 +44,7 @@ model User {
   createdAt    DateTime  @default(now())
   sessions     Session[]
   attendances  Attendance[]
+  leaveRequests LeaveRequest[]
   // 출퇴근 인증방식: "face"(얼굴) | "gps"(GPS/위치). null=아직 선택 안 함. 얼굴은 강제 아님, 언제든 변경 가능.
   authMethod     String?
   // 생체정보(얼굴) 이용 동의 시각. 동의 철회 시 null로 되돌린다.
@@ -54,6 +56,8 @@ model User {
   lockedUntil      DateTime?
   // 퇴사(비활성화) 시각. null이면 재직중. 값이 있으면 로그인 불가·집계 제외(단, 과거 근태 기록은 보존).
   deactivatedAt    DateTime?
+  // 관리자가 부여한 올해 연차 총 일수. 잔여 = 이 값 − 승인된 연차·반차 사용합.
+  annualLeaveDays  Float     @default(15)
 }
 
 // 출퇴근 기록 — 출근 1건마다 한 줄. 퇴근 전에는 clockOut이 비어있음(null).
@@ -94,6 +98,26 @@ model Invite {
   createdAt DateTime  @default(now())
   expiresAt DateTime // 이 시각 이후엔 사용 불가(기본 7일)
   usedAt    DateTime? // 사용된 시각(가입 완료). null이면 아직 미사용.
+}
+
+// 휴가 신청 — 직원이 신청하고 관리자가 승인/반려한다.
+// 승인된 휴가일은 결근/미출근이 아니라 "휴가"로 처리된다.
+model LeaveRequest {
+  id         String    @id @default(cuid())
+  companyId  String
+  company    Company   @relation(fields: [companyId], references: [id])
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  // 종류: "annual"(연차) | "half"(반차, 0.5일) | "sick"(병가, 연차 차감 없음)
+  type       String
+  startDate  DateTime  // 시작일(자정 기준). 반차·병가 단일일은 start==end.
+  endDate    DateTime  // 종료일(자정 기준, 포함)
+  days       Float     // 사용 일수(신청 시 근무요일 기준으로 계산해 저장). 연차/반차만 잔여에서 차감.
+  reason     String?
+  // 상태: "pending"(대기) | "approved"(승인) | "rejected"(반려)
+  status     String    @default("pending")
+  decidedAt  DateTime? // 승인/반려 처리 시각
+  createdAt  DateTime  @default(now())
 }
 
 // 로그인 세션 — 로그인 시 발급하는 "출입증(토큰)". 브라우저 쿠키에 토큰만 담는다.
