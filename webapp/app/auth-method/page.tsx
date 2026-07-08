@@ -25,7 +25,7 @@ export default async function AuthMethodPage({
 
       {sp.consented === "1" && (
         <div style={{ background: "#DCFCE7", border: "1px solid #86EFAC", borderRadius: 10, padding: "14px 16px", marginBottom: 16, fontSize: 14, color: "#166534" }}>
-          생체정보 이용에 동의하셨습니다. (얼굴 등록·촬영 기능은 준비 중이며, 준비되면 안내드립니다.)
+          생체정보 이용에 동의하셨습니다. 이제 아래 <b>[얼굴 등록하기]</b>로 본인 얼굴을 등록해 주세요.
         </div>
       )}
 
@@ -37,6 +37,21 @@ export default async function AuthMethodPage({
         </b>
         {method === "face" && consentDate && <span style={{ color: "var(--text-sub)" }}> · 생체정보 동의일 {consentDate}</span>}
       </div>
+
+      {/* 얼굴 선택·동의한 경우: 얼굴 등록 화면으로 */}
+      {method === "face" && (
+        <div style={{ marginBottom: 20 }}>
+          <Link
+            href="/face-enroll"
+            style={{ display: "block", width: "100%", height: 46, lineHeight: "46px", textAlign: "center", background: "var(--primary)", color: "#fff", borderRadius: 8, fontWeight: 700, fontSize: 15, textDecoration: "none" }}
+          >
+            얼굴 등록하기 →
+          </Link>
+          <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 8, textAlign: "center" }}>
+            웹캠으로 본인 얼굴을 등록하면 출퇴근에서 얼굴로 본인 확인을 할 수 있습니다.
+          </div>
+        </div>
+      )}
 
       {/* 선택 카드 2개 — 같은 크기·비중 */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

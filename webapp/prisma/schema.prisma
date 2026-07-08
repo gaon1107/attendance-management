@@ -56,6 +56,11 @@ model User {
   authMethod     String?
   // 생체정보(얼굴) 이용 동의 시각. 동의 철회 시 null로 되돌린다.
   faceConsentAt  DateTime?
+  // 얼굴서버(GaonFR)에 얼굴 등록을 완료한 시각(마지막). null=미등록. 등록/철회 시 갱신.
+  // ※ 얼굴 원본·특징값은 우리 DB에 저장하지 않는다(얼굴서버에만). 여긴 "등록했다"는 참조 표시만.
+  faceEnrolledAt DateTime?
+  // 얼굴 등록 횟수(각도를 다르게 최대 3회). 여러 각도로 등록하면 인식 정확도가 올라간다. 삭제 시 0으로.
+  faceEnrollCount Int @default(0)
   // 직원별 근무요일 예외(CSV). null이면 회사 기본(Company.workDays)을 따른다.
   workDays       String?
   // 로그인 무차별 대입(비번 찍기) 방어: 연속 실패 횟수 + 잠금 해제 시각.
