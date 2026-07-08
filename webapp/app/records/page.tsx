@@ -37,6 +37,20 @@ export default async function RecordsPage({
     orderBy: { clockIn: "desc" },
   });
 
+  // 대기 중인 근태 정정 요청 수(상단 버튼 배지용)
+  const pendingCorrectionCount = await prisma.attendanceCorrection.count({
+    where: { companyId: me.companyId, status: "pending" },
+  });
+
+  const correctionBtn = (
+    <Link
+      href="/corrections/approvals"
+      style={{ height: 38, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 8, border: "1px solid var(--border)", background: "#fff", color: pendingCorrectionCount > 0 ? "var(--primary)" : "var(--text-sub)", fontSize: 14, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}
+    >
+      📝 근태 정정 승인{pendingCorrectionCount > 0 ? ` ${pendingCorrectionCount}` : ""}
+    </Link>
+  );
+
   // 각 기록의 근무일 여부(직원 예외 우선)
   const onWorkDayOf = (r: (typeof rows)[number]) => isWorkDay(r.clockIn, effectiveWorkDays(r.user.workDays, company?.workDays));
 
@@ -59,7 +73,7 @@ export default async function RecordsPage({
   const td: React.CSSProperties = { padding: "12px 20px", fontSize: 15, verticalAlign: "middle", whiteSpace: "nowrap" };
 
   return (
-    <AppShell user={me} active="records" title="근태 현황" subtitle={me.company.name}>
+    <AppShell user={me} active="records" title="근태 현황" subtitle={me.company.name} right={correctionBtn}>
       <PeriodNav basePath="/records" unit={unit} anchor={anchor} label={label} />
 
       <div className="kpi-grid-3" style={{ marginBottom: 16 }}>

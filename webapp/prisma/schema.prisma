@@ -21,6 +21,7 @@ model Company {
   announcements Announcement[]
   passwordResetRequests PasswordResetRequest[]
   departments   Department[]
+  attendanceCorrections AttendanceCorrection[]
   // 사업장 위치(사무실 출근 GPS 확인용). 안 정하면 위치 확인은 건너뜀.
   officeLat     Float?
   officeLng     Float?
@@ -67,6 +68,7 @@ model User {
   // 소속 부서(선택). null이면 부서 미배정. 부서가 삭제되면 소속 직원은 자동으로 null(미배정)이 된다.
   departmentId   String?
   department     Department? @relation(fields: [departmentId], references: [id])
+  attendanceCorrections AttendanceCorrection[]
 }
 
 // 출퇴근 기록 — 출근 1건마다 한 줄. 퇴근 전에는 clockOut이 비어있음(null).
@@ -138,6 +140,24 @@ model Announcement {
   body       String
   authorName String   // 작성 시점의 관리자 이름(스냅샷)
   createdAt  DateTime @default(now())
+}
+
+// 근태 정정 요청 — 직원이 특정 날짜의 출퇴근을 고쳐달라고 요청하고, 관리자가 승인/반려한다.
+// 승인하면 그 날의 출퇴근 기록(Attendance)에 실제로 반영된다. (실근무시간 재계산)
+model AttendanceCorrection {
+  id           String    @id @default(cuid())
+  companyId    String
+  company      Company   @relation(fields: [companyId], references: [id])
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  targetDate   DateTime  // 정정 대상 날짜(자정 기준)
+  requestedIn  String?   // 요청 출근 시각 "HH:MM" (비우면 출근은 그대로)
+  requestedOut String?   // 요청 퇴근 시각 "HH:MM" (비우면 퇴근은 그대로)
+  reason       String    // 정정 사유(필수)
+  // 상태: "pending"(대기) | "approved"(승인·반영됨) | "rejected"(반려)
+  status       String    @default("pending")
+  decidedAt    DateTime?
+  createdAt    DateTime  @default(now())
 }
 
 // 부서 — 회사 안의 조직 단위. 관리자가 만들고, 직원을 부서에 배정한다.
