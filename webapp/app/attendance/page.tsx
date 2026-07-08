@@ -8,6 +8,7 @@ import { workedMinutes, formatMinutes } from "@/lib/worktime";
 import { workModeLabel, locationStatusLabel } from "@/lib/location";
 import { ClockInPanel } from "./ClockInPanel";
 import { OnboardingTour } from "./OnboardingTour";
+import { AddToHomeHint } from "./AddToHomeHint";
 
 function hhmm(d: Date): string {
   return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -68,6 +69,9 @@ export default async function AttendancePage() {
     <AppShell user={me} active="attendance" title="내 출퇴근" subtitle={`${me.name} 님`} right={datePill} narrow>
       {/* 첫 사용 안내(온보딩 투어) — 아직 안 본 사람에게만 */}
       {!me.tourSeenAt && <OnboardingTour />}
+
+      {/* 홈 화면에 추가(PWA) 안내 */}
+      <AddToHomeHint />
 
       {!me.authMethod && (
         <a
