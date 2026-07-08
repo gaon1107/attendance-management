@@ -88,6 +88,13 @@ export async function saveWorkRules(
     return { error: "지각 유예는 0~120분 사이로 입력해주세요." };
   }
 
+  // 기준 일 근무시간(초과근무 판정 기준). 1~24시간, 0.5 단위 허용.
+  const stdRaw = String(formData.get("standardWorkHours") ?? "").trim();
+  const std = stdRaw === "" ? 8 : Number(stdRaw);
+  if (Number.isNaN(std) || std < 1 || std > 24) {
+    return { error: "기준 일 근무시간은 1~24시간 사이로 입력해주세요." };
+  }
+
   // 근무요일(CSV) — 0~6만 허용. 정규화해서 저장(월요일부터 정렬).
   const workDays = daysToCsv(parseDays(String(formData.get("workDays") ?? "")));
 
@@ -97,6 +104,7 @@ export async function saveWorkRules(
       workStartTime: start || null,
       workEndTime: end || null,
       lateGraceMin: Math.round(grace),
+      standardWorkHours: std,
       workDays,
     },
   });

@@ -29,7 +29,9 @@ export default async function ReportsPage({
   const anchor = parseAnchor(sp.date);
   const { start, end, label } = rangeFor(unit, anchor);
 
-  const company = await prisma.company.findUnique({ where: { id: me.companyId }, select: { workDays: true } });
+  const company = await prisma.company.findUnique({ where: { id: me.companyId }, select: { workDays: true, standardWorkHours: true } });
+  // 초과근무 판정 기준 = 기준 일 근무시간(분). 하루 실근무가 이보다 많으면 초과분을 연장으로 집계.
+  const standardMin = Math.round((company?.standardWorkHours ?? 8) * 60);
 
   // 기간 내 우리 회사 출퇴근 기록
   const rows = await prisma.attendance.findMany({
@@ -38,14 +40,24 @@ export default async function ReportsPage({
     orderBy: { clockIn: "asc" },
   });
 
-  // 직원별 집계
-  const byUser = new Map<string, { id: string; name: string; role: string; minutes: number; breaks: number; days: Set<string>; workDays: string | null }>();
+  // 직원별 집계 (+ 초과근무를 위해 날짜별 실근무 분도 모은다)
+  const byUser = new Map<string, { id: string; name: string; role: string; minutes: number; breaks: number; days: Set<string>; workDays: string | null; dayMinutes: Map<string, number> }>();
   for (const r of rows) {
-    const cur = byUser.get(r.userId) ?? { id: r.userId, name: r.user.name, role: r.user.role, minutes: 0, breaks: 0, days: new Set<string>(), workDays: r.user.workDays };
-    cur.minutes += workedMinutes(r);
+    const cur = byUser.get(r.userId) ?? { id: r.userId, name: r.user.name, role: r.user.role, minutes: 0, breaks: 0, days: new Set<string>(), workDays: r.user.workDays, dayMinutes: new Map<string, number>() };
+    const wm = workedMinutes(r);
+    const iso = toISODate(r.clockIn);
+    cur.minutes += wm;
     cur.breaks += r.breaks.length;
-    cur.days.add(toISODate(r.clockIn));
+    cur.days.add(iso);
+    cur.dayMinutes.set(iso, (cur.dayMinutes.get(iso) ?? 0) + wm); // 같은 날 여러 기록이면 합산
     byUser.set(r.userId, cur);
+  }
+
+  // 초과근무 = 날짜별로 (그 날 실근무 − 기준 일 근무시간)이 양수면 그 합. 기준 이하인 날은 0.
+  function overtimeMinutesOf(dayMinutes: Map<string, number>): number {
+    let ot = 0;
+    for (const dm of dayMinutes.values()) ot += Math.max(0, dm - standardMin);
+    return ot;
   }
 
   // 기간에 걸치는 승인된 휴가 → 직원별 휴가일 집합(결근에서 제외)
@@ -78,12 +90,13 @@ export default async function ReportsPage({
   }
 
   const summary = [...byUser.values()]
-    .map((u) => ({ ...u, absent: absentCountFor(u.workDays, u.days, leaveByUser.get(u.id) ?? new Set()) }))
+    .map((u) => ({ ...u, absent: absentCountFor(u.workDays, u.days, leaveByUser.get(u.id) ?? new Set()), overtime: overtimeMinutesOf(u.dayMinutes) }))
     .sort((a, b) => b.minutes - a.minutes);
 
   // 요약 지표 (실제 집계값만)
   const totalMinutes = summary.reduce((s, u) => s + u.minutes, 0);
   const avgMinutes = summary.length > 0 ? Math.round(totalMinutes / summary.length) : 0;
+  const totalOvertime = summary.reduce((s, u) => s + u.overtime, 0);
 
   const prev = toISODate(shiftAnchor(unit, anchor, -1));
   const next = toISODate(shiftAnchor(unit, anchor, 1));
@@ -93,6 +106,7 @@ export default async function ReportsPage({
     { label: "집계 인원", value: `${summary.length}`, unit: "명" },
     { label: "총 실근무", value: formatMinutes(totalMinutes), unit: "" },
     { label: "1인 평균 실근무", value: formatMinutes(avgMinutes), unit: "" },
+    { label: `총 초과근무 (기준 ${company?.standardWorkHours ?? 8}h)`, value: totalOvertime > 0 ? formatMinutes(totalOvertime) : "0분", unit: "" },
   ];
 
   const navBtn: React.CSSProperties = {
@@ -138,7 +152,7 @@ export default async function ReportsPage({
       </div>
 
       {/* KPI */}
-      <div className="kpi-grid-3" style={{ marginBottom: 16 }}>
+      <div className="kpi-grid" style={{ marginBottom: 16 }}>
         {kpis.map((k) => (
           <div key={k.label} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 20px" }}>
             <div style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700, marginBottom: 10, whiteSpace: "nowrap" }}>{k.label}</div>
@@ -153,12 +167,13 @@ export default async function ReportsPage({
       {/* 집계 표 */}
       <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 660 }}>
             <thead>
               <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                 <th style={th}>이름</th>
                 <th style={{ ...th, textAlign: "right" }}>근무일수</th>
                 <th style={{ ...th, textAlign: "right" }}>실근무 합계</th>
+                <th style={{ ...th, textAlign: "right" }}>초과근무</th>
                 <th style={{ ...th, textAlign: "right" }}>결근</th>
                 <th style={{ ...th, textAlign: "right" }}>외출</th>
               </tr>
@@ -166,7 +181,7 @@ export default async function ReportsPage({
             <tbody>
               {summary.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={6} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     이 기간에 출퇴근 기록이 없습니다.
                   </td>
                 </tr>
@@ -186,6 +201,7 @@ export default async function ReportsPage({
                     </td>
                     <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{s.days.size}일</td>
                     <td style={{ ...td, textAlign: "right", fontWeight: 700, color: "var(--primary)", fontVariantNumeric: "tabular-nums" }}>{formatMinutes(s.minutes)}</td>
+                    <td style={{ ...td, textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: s.overtime > 0 ? "var(--warning)" : "var(--text-sub)" }}>{s.overtime > 0 ? formatMinutes(s.overtime) : "—"}</td>
                     <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: s.absent > 0 ? "var(--danger)" : "var(--text-sub)" }}>{s.absent}일</td>
                     <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{s.breaks}회</td>
                   </tr>
@@ -198,6 +214,7 @@ export default async function ReportsPage({
 
       <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 12, lineHeight: 1.6 }}>
         실근무 = (퇴근−출근) − 외출. 근무 중인 기록은 현재 시각까지로 계산됩니다.
+        초과근무 = 하루 실근무가 [설정 → 기준 일 근무시간]({company?.standardWorkHours ?? 8}시간)을 넘은 날의 초과분 합계입니다.
         CSV 내보내기는 날짜별 상세(출근·퇴근·근무형태)를 담아 법정 근로기록 증빙에 쓸 수 있습니다.
       </div>
     </AppShell>

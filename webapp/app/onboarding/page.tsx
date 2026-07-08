@@ -14,7 +14,7 @@ export default async function OnboardingPage() {
 
   const company = await prisma.company.findUnique({
     where: { id: me.companyId },
-    select: { officeLat: true, officeLng: true, officeRadiusM: true, workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true },
+    select: { officeLat: true, officeLng: true, officeRadiusM: true, workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true, standardWorkHours: true },
   });
 
   return (
@@ -40,6 +40,7 @@ export default async function OnboardingPage() {
               end: company?.workEndTime ?? "",
               grace: company?.lateGraceMin ?? 0,
               workDays: company?.workDays ?? "1,2,3,4,5",
+              standardHours: company?.standardWorkHours ?? 8,
             }}
           />
         </div>

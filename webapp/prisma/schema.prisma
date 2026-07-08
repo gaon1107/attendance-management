@@ -32,6 +32,8 @@ model Company {
   workStartTime String?  // 표준 출근 기준시각 "HH:MM" (예: "09:00")
   workEndTime   String?  // 표준 퇴근 기준시각 "HH:MM" (예: "18:00")
   lateGraceMin  Int      @default(0) // 지각 유예(분). 기준시각 + 유예 이후 출근이면 지각.
+  // 기준 일 근무시간(소정근로시간, 시간 단위). 하루 실근무가 이 시간을 넘으면 초과분을 연장근무로 집계. 기본 8시간.
+  standardWorkHours Float @default(8)
   // 회사 기본 근무요일(JS getDay 기준: 0=일 … 6=토) CSV. 기본 월~금. 이 요일에만 지각·결근 판정.
   workDays      String   @default("1,2,3,4,5")
 }

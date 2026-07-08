@@ -53,7 +53,7 @@ function TimePicker({ h, m, onH, onM }: { h: string; m: string; onH: (v: string)
 export function WorkRulesForm({
   initial,
 }: {
-  initial: { start: string; end: string; grace: number; workDays: string };
+  initial: { start: string; end: string; grace: number; workDays: string; standardHours: number };
 }) {
   const [state, formAction, pending] = useActionState(saveWorkRules, {});
   const s = splitTime(initial.start);
@@ -63,6 +63,7 @@ export function WorkRulesForm({
   const [endH, setEndH] = useState(e.h);
   const [endM, setEndM] = useState(e.m);
   const [grace, setGrace] = useState(String(initial.grace));
+  const [stdHours, setStdHours] = useState(String(initial.standardHours));
   const [days, setDays] = useState<Set<number>>(() => parseDays(initial.workDays));
 
   // 서버로는 기존과 똑같이 "HH:MM"(없으면 빈 값)으로 보낸다.
@@ -91,6 +92,7 @@ export function WorkRulesForm({
         <input type="hidden" name="workStartTime" value={startVal} />
         <input type="hidden" name="workEndTime" value={endVal} />
         <input type="hidden" name="workDays" value={daysToCsv(days)} />
+        <input type="hidden" name="standardWorkHours" value={stdHours} />
 
         {/* 근무요일 — 이 요일에만 지각·결근을 판정한다 */}
         <div>
@@ -134,6 +136,22 @@ export function WorkRulesForm({
             <label style={labelStyle}>지각 유예(분)</label>
             <input name="lateGraceMin" type="number" min={0} max={120} value={grace} onChange={(ev) => setGrace(ev.target.value)}
               style={{ height: 44, padding: "0 14px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 15, outline: "none", width: "100%" }} />
+          </div>
+        </div>
+
+        {/* 기준 일 근무시간 — 하루 실근무가 이 시간을 넘으면 초과분을 연장근무로 집계 */}
+        <div style={{ width: 200 }}>
+          <label style={labelStyle}>기준 일 근무시간</label>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="number" min={1} max={24} step={0.5} value={stdHours}
+              onChange={(ev) => setStdHours(ev.target.value)}
+              style={{ height: 44, padding: "0 14px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 15, outline: "none", width: 100 }}
+            />
+            <span style={{ fontSize: 15, color: "var(--text-sub)", fontWeight: 700 }}>시간</span>
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 8 }}>
+            하루 실근무가 이 시간을 넘으면 <b>초과분을 초과근무(연장)</b>로 리포트에 집계합니다. (기본 8시간)
           </div>
         </div>
 
