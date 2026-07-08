@@ -22,7 +22,11 @@ export async function changePassword(
   if (!verifyPassword(current, me.passwordHash)) return { error: "현재 비밀번호가 올바르지 않습니다." };
   if (current === next) return { error: "새 비밀번호가 현재 비밀번호와 같습니다." };
 
-  await prisma.user.update({ where: { id: me.id }, data: { passwordHash: hashPassword(next) } });
+  // 비밀번호를 바꾸면 "임시 비밀번호 → 변경 강제" 표시도 함께 내려준다(정상 변경도 무해).
+  await prisma.user.update({
+    where: { id: me.id },
+    data: { passwordHash: hashPassword(next), mustChangePassword: false },
+  });
 
   revalidatePath("/account");
   return { ok: true };

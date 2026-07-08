@@ -19,6 +19,7 @@ model Company {
   invites       Invite[]
   leaveRequests LeaveRequest[]
   announcements Announcement[]
+  passwordResetRequests PasswordResetRequest[]
   // 사업장 위치(사무실 출근 GPS 확인용). 안 정하면 위치 확인은 건너뜀.
   officeLat     Float?
   officeLng     Float?
@@ -46,6 +47,7 @@ model User {
   sessions     Session[]
   attendances  Attendance[]
   leaveRequests LeaveRequest[]
+  passwordResetRequests PasswordResetRequest[]
   // 출퇴근 인증방식: "face"(얼굴) | "gps"(GPS/위치). null=아직 선택 안 함. 얼굴은 강제 아님, 언제든 변경 가능.
   authMethod     String?
   // 생체정보(얼굴) 이용 동의 시각. 동의 철회 시 null로 되돌린다.
@@ -59,6 +61,8 @@ model User {
   deactivatedAt    DateTime?
   // 관리자가 부여한 올해 연차 총 일수. 잔여 = 이 값 − 승인된 연차·반차 사용합.
   annualLeaveDays  Float     @default(15)
+  // 임시 비밀번호로 로그인한 경우 true → 로그인 직후 새 비밀번호를 정하도록 강제한다. 변경하면 false로 되돌린다.
+  mustChangePassword Boolean @default(false)
 }
 
 // 출퇴근 기록 — 출근 1건마다 한 줄. 퇴근 전에는 clockOut이 비어있음(null).
@@ -130,6 +134,21 @@ model Announcement {
   body       String
   authorName String   // 작성 시점의 관리자 이름(스냅샷)
   createdAt  DateTime @default(now())
+}
+
+// 비밀번호 재설정 요청 — 직원이 로그인 화면에서 "비밀번호 찾기"로 접수한다.
+// 관리자가 확인 후 임시 비밀번호를 발급하면 status가 "resolved"로 바뀐다.
+// ※ 이메일 존재 여부 노출 방지: 실제로 있는 계정에 대해서만 요청이 만들어진다.
+model PasswordResetRequest {
+  id         String    @id @default(cuid())
+  companyId  String
+  company    Company   @relation(fields: [companyId], references: [id])
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  // 상태: "pending"(대기) | "resolved"(임시 비밀번호 발급 완료)
+  status     String    @default("pending")
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime? // 관리자가 임시 비밀번호를 발급한 시각
 }
 
 // 로그인 세션 — 로그인 시 발급하는 "출입증(토큰)". 브라우저 쿠키에 토큰만 담는다.

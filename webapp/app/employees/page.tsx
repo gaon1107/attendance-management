@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { AddEmployeeForm } from "./AddEmployeeForm";
 import { InviteLink } from "./InviteLink";
+import { PendingResetRequests } from "./PendingResetRequests";
 import { createInvite, cancelInvite } from "@/app/actions/invites";
 
 function ymd(d: Date): string {
@@ -30,6 +31,19 @@ export default async function EmployeesPage() {
     where: { companyId: me.companyId, usedAt: null, expiresAt: { gt: new Date() } },
     orderBy: { createdAt: "desc" },
   });
+
+  // 비밀번호 재설정 대기 요청(직원이 접수한 것) — 관리자가 임시 비밀번호를 발급한다.
+  const resetRequests = await prisma.passwordResetRequest.findMany({
+    where: { companyId: me.companyId, status: "pending" },
+    include: { user: { select: { name: true, email: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  const resetReqData = resetRequests.map((r) => ({
+    id: r.id,
+    name: r.user.name,
+    email: r.user.email,
+    createdAtLabel: r.createdAt.toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }),
+  }));
 
   // 실제 데이터로만 집계 (재직중 기준)
   const faceCount = employees.filter((e) => e.authMethod === "face").length;
@@ -60,6 +74,9 @@ export default async function EmployeesPage() {
           </div>
         ))}
       </div>
+
+      {/* 비밀번호 재설정 대기 요청 (있을 때만 표시) */}
+      <PendingResetRequests requests={resetReqData} />
 
       {/* 직원 초대 (링크 방식 — 직원이 스스로 가입) */}
       <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 16 }}>

@@ -98,6 +98,8 @@ export async function login(
   }
 
   await createSession(user.id);
+  // 임시 비밀번호로 로그인했으면 먼저 새 비밀번호를 정하도록 강제한다.
+  if (user.mustChangePassword) redirect("/change-password");
   // 관리자는 대시보드로, 직원은 본인 출퇴근 화면으로
   redirect(user.role === "admin" ? "/dashboard" : "/attendance");
 }

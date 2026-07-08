@@ -17,6 +17,7 @@ const REASONS = ["식사", "외근", "개인용무", "기타"];
 export default async function AttendancePage() {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
+  if (me.mustChangePassword) redirect("/change-password");
 
   // 퇴근 안 한(=근무 중) 기록 + 외출 내역
   const open = await prisma.attendance.findFirst({

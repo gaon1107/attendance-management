@@ -79,7 +79,12 @@ export default function LoginPage() {
             <input name="email" type="email" placeholder="admin@skytech.co.kr" style={inputStyle} />
           </div>
           <div>
-            <label style={labelStyle}>비밀번호</label>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <label style={{ ...labelStyle, marginBottom: 0 }}>비밀번호</label>
+              <Link href="/forgot-password" style={{ fontSize: 12, fontWeight: 700, color: "var(--text-sub)", textDecoration: "none" }}>
+                비밀번호를 잊으셨나요?
+              </Link>
+            </div>
             <input name="password" type="password" placeholder="비밀번호" style={inputStyle} />
           </div>
 
