@@ -24,6 +24,15 @@ export async function createNotice(
   return { ok: true };
 }
 
+// 공지(알림) 모두 읽음 처리 — 현재 사용자의 "확인 시각"을 지금으로 갱신한다.
+// 공지 화면을 열면 자동으로 호출되어 "새 알림" 배지를 지운다.
+export async function markNoticesSeen(): Promise<void> {
+  const me = await getCurrentUser();
+  if (!me) return;
+  await prisma.user.update({ where: { id: me.id }, data: { noticesSeenAt: new Date() } });
+  revalidatePath("/attendance");
+}
+
 // 공지 삭제 — 관리자만. 반드시 내 회사 공지만(회사 격리).
 export async function deleteNotice(formData: FormData): Promise<void> {
   const me = await getCurrentUser();

@@ -42,6 +42,10 @@ export default async function AttendancePage() {
     orderBy: { createdAt: "desc" },
     select: { title: true },
   });
+  // 안 읽은 공지(알림) 수 = 마지막 확인 시각 이후 올라온 공지. (확인 시각 없으면 전부)
+  const unreadNotices = await prisma.announcement.count({
+    where: { companyId: me.companyId, ...(me.noticesSeenAt ? { createdAt: { gt: me.noticesSeenAt } } : {}) },
+  });
 
   const working = Boolean(open);
   const onBreak = Boolean(openBreak);
@@ -73,9 +77,14 @@ export default async function AttendancePage() {
       {latestNotice && (
         <a
           href="/notice"
-          style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 14, color: "var(--text)", fontWeight: 700, textDecoration: "none" }}
+          style={{ display: "flex", alignItems: "center", gap: 8, background: unreadNotices > 0 ? "#FEF2F2" : "var(--bg)", border: `1px solid ${unreadNotices > 0 ? "#FECACA" : "var(--border)"}`, borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 14, color: "var(--text)", fontWeight: 700, textDecoration: "none" }}
         >
-          <span style={{ flexShrink: 0 }}>📢</span>
+          <span style={{ flexShrink: 0 }}>{unreadNotices > 0 ? "🔔" : "📢"}</span>
+          {unreadNotices > 0 && (
+            <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, color: "#fff", background: "var(--danger)", borderRadius: 999, padding: "2px 7px" }}>
+              새 알림 {unreadNotices}
+            </span>
+          )}
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{latestNotice.title}</span>
         </a>
       )}

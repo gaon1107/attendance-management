@@ -71,6 +71,8 @@ model User {
   departmentId   String?
   department     Department? @relation(fields: [departmentId], references: [id])
   attendanceCorrections AttendanceCorrection[]
+  // 공지(알림)를 마지막으로 확인한 시각. 이 시각 이후 올라온 공지는 "새 알림(NEW)"으로 본다.
+  noticesSeenAt  DateTime?
 }
 
 // 출퇴근 기록 — 출근 1건마다 한 줄. 퇴근 전에는 clockOut이 비어있음(null).

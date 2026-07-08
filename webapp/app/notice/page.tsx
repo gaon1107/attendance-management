@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { NoticeForm } from "./NoticeForm";
+import { MarkNoticesSeen } from "./MarkNoticesSeen";
 import { deleteNotice } from "@/app/actions/notice";
 
 function ymd(d: Date): string {
@@ -20,8 +21,14 @@ export default async function NoticePage() {
     orderBy: { createdAt: "desc" },
   });
 
+  // 마지막으로 확인한 시각 이후 올라온 공지 = "새 알림(NEW)". (확인 시각이 없으면 전부 새 알림)
+  const seenAt = me.noticesSeenAt;
+  const isNew = (createdAt: Date) => !seenAt || createdAt > seenAt;
+
   return (
     <AppShell user={me} active="notice" title="공지사항" subtitle={me.company.name} narrow>
+      {/* 이 화면을 열면 자동으로 모두 읽음 처리 */}
+      <MarkNoticesSeen />
       {isAdmin && (
         <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 20 }}>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>새 공지 작성</div>
@@ -38,7 +45,12 @@ export default async function NoticePage() {
           {notices.map((n) => (
             <article key={n.id} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "18px 20px" }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
-                <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.4 }}>{n.title}</div>
+                <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.4 }}>
+                  {isNew(n.createdAt) && (
+                    <span style={{ fontSize: 11, fontWeight: 800, color: "#fff", background: "var(--danger)", borderRadius: 5, padding: "2px 6px", marginRight: 8, verticalAlign: "middle" }}>NEW</span>
+                  )}
+                  {n.title}
+                </div>
                 {isAdmin && (
                   <form action={deleteNotice}>
                     <input type="hidden" name="id" value={n.id} />
