@@ -7,6 +7,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { AddEmployeeForm } from "./AddEmployeeForm";
 import { InviteLink } from "./InviteLink";
 import { PendingResetRequests } from "./PendingResetRequests";
+import { DepartmentManager } from "./DepartmentManager";
 import { createInvite, cancelInvite } from "@/app/actions/invites";
 
 function ymd(d: Date): string {
@@ -21,10 +22,22 @@ export default async function EmployeesPage() {
   const allEmployees = await prisma.user.findMany({
     where: { companyId: me.companyId, role: "employee" },
     orderBy: { createdAt: "asc" },
+    include: { department: { select: { name: true } } },
   });
   // 재직중(퇴사 안 한) / 퇴사(비활성화) 분리
   const employees = allEmployees.filter((e) => !e.deactivatedAt);
   const retired = allEmployees.filter((e) => e.deactivatedAt);
+
+  // 부서 목록 + 부서별 재직 인원 수(부서 관리 섹션용)
+  const departments = await prisma.department.findMany({
+    where: { companyId: me.companyId },
+    orderBy: { name: "asc" },
+  });
+  const deptData = departments.map((d) => ({
+    id: d.id,
+    name: d.name,
+    memberCount: employees.filter((e) => e.departmentId === d.id).length,
+  }));
 
   // 아직 안 쓴(미만료) 초대 링크
   const invites = await prisma.invite.findMany({
@@ -78,6 +91,9 @@ export default async function EmployeesPage() {
       {/* 비밀번호 재설정 대기 요청 (있을 때만 표시) */}
       <PendingResetRequests requests={resetReqData} />
 
+      {/* 부서 관리 */}
+      <DepartmentManager departments={deptData} />
+
       {/* 직원 초대 (링크 방식 — 직원이 스스로 가입) */}
       <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 16 }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>직원 초대</div>
@@ -121,10 +137,11 @@ export default async function EmployeesPage() {
       {/* 직원 목록 표 */}
       <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 800 }}>
             <thead>
               <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                 <th style={th}>이름</th>
+                <th style={th}>부서</th>
                 <th style={th}>이메일</th>
                 <th style={th}>인증방식</th>
                 <th style={th}>생체동의</th>
@@ -135,7 +152,7 @@ export default async function EmployeesPage() {
             <tbody>
               {employees.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={7} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     아직 등록된 직원이 없습니다. 위에서 첫 직원을 추가해보세요.
                   </td>
                 </tr>
@@ -154,6 +171,7 @@ export default async function EmployeesPage() {
                           <span style={{ fontWeight: 700 }}>{emp.name}</span>
                         </Link>
                       </td>
+                      <td style={{ ...td, color: emp.department ? "var(--text)" : "#9CA3AF" }}>{emp.department?.name ?? "미배정"}</td>
                       <td style={{ ...td, color: "var(--text-sub)" }}>{emp.email}</td>
                       <td style={{ ...td, color: authColor }}>{auth}</td>
                       <td style={{ ...td, color: consented ? "#15803D" : "#9CA3AF" }}>{consented ? "동의함" : "—"}</td>

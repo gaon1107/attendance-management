@@ -10,6 +10,7 @@ import { WorkDaysForm } from "./WorkDaysForm";
 import { ResetPasswordForm } from "./ResetPasswordForm";
 import { EmployeeStatusActions } from "./EmployeeStatusActions";
 import { AnnualLeaveForm } from "./AnnualLeaveForm";
+import { DepartmentAssignForm } from "./DepartmentAssignForm";
 import { parseDays, effectiveWorkDays, daysLabel } from "@/lib/workdays";
 import { usedLeaveDays } from "@/lib/leave";
 
@@ -23,8 +24,18 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   if (me.role !== "admin") redirect("/attendance");
 
   const { id } = await params;
-  const emp = await prisma.user.findFirst({ where: { id, companyId: me.companyId } });
+  const emp = await prisma.user.findFirst({
+    where: { id, companyId: me.companyId },
+    include: { department: { select: { name: true } } },
+  });
   if (!emp) notFound();
+
+  // 회사 부서 목록(배정 드롭다운용)
+  const departments = await prisma.department.findMany({
+    where: { companyId: me.companyId },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
 
   const company = await prisma.company.findUnique({ where: { id: me.companyId }, select: { workDays: true } });
   const companyDaysLabel = daysLabel(parseDays(company?.workDays));
@@ -44,6 +55,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
 
   const rows: { label: string; value: React.ReactNode }[] = [
     { label: "이메일", value: emp.email },
+    { label: "부서", value: <span style={{ color: emp.department ? "var(--text)" : "#9CA3AF" }}>{emp.department?.name ?? "미배정"}</span> },
     { label: "역할", value: emp.role === "admin" ? "관리자" : "직원" },
     {
       label: "상태",
@@ -103,6 +115,15 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           이름을 수정할 수 있습니다. 인증방식·생체정보 동의는 직원 본인이 [인증방식] 화면에서 직접 정합니다.
         </p>
         <EditEmployeeForm id={emp.id} initialName={emp.name} />
+      </div>
+
+      {/* 부서 배정 */}
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginTop: 20 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>부서</div>
+        <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
+          이 직원의 소속 부서입니다. 부서는 <b>직원 관리</b> 화면에서 먼저 만들어야 목록에 나옵니다.
+        </p>
+        <DepartmentAssignForm id={emp.id} initialDepartmentId={emp.departmentId} departments={departments} />
       </div>
 
       {/* 근무요일 (회사 기본 따름 or 직접 지정) */}

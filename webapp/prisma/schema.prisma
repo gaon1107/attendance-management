@@ -20,6 +20,7 @@ model Company {
   leaveRequests LeaveRequest[]
   announcements Announcement[]
   passwordResetRequests PasswordResetRequest[]
+  departments   Department[]
   // 사업장 위치(사무실 출근 GPS 확인용). 안 정하면 위치 확인은 건너뜀.
   officeLat     Float?
   officeLng     Float?
@@ -63,6 +64,9 @@ model User {
   annualLeaveDays  Float     @default(15)
   // 임시 비밀번호로 로그인한 경우 true → 로그인 직후 새 비밀번호를 정하도록 강제한다. 변경하면 false로 되돌린다.
   mustChangePassword Boolean @default(false)
+  // 소속 부서(선택). null이면 부서 미배정. 부서가 삭제되면 소속 직원은 자동으로 null(미배정)이 된다.
+  departmentId   String?
+  department     Department? @relation(fields: [departmentId], references: [id])
 }
 
 // 출퇴근 기록 — 출근 1건마다 한 줄. 퇴근 전에는 clockOut이 비어있음(null).
@@ -134,6 +138,16 @@ model Announcement {
   body       String
   authorName String   // 작성 시점의 관리자 이름(스냅샷)
   createdAt  DateTime @default(now())
+}
+
+// 부서 — 회사 안의 조직 단위. 관리자가 만들고, 직원을 부서에 배정한다.
+model Department {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  name      String
+  createdAt DateTime @default(now())
+  users     User[]
 }
 
 // 비밀번호 재설정 요청 — 직원이 로그인 화면에서 "비밀번호 찾기"로 접수한다.
