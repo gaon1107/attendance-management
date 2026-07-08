@@ -73,6 +73,8 @@ model User {
   attendanceCorrections AttendanceCorrection[]
   // 공지(알림)를 마지막으로 확인한 시각. 이 시각 이후 올라온 공지는 "새 알림(NEW)"으로 본다.
   noticesSeenAt  DateTime?
+  // 첫 사용 안내(온보딩 투어)를 본 시각. 값이 있으면 다시 띄우지 않는다.
+  tourSeenAt     DateTime?
 }
 
 // 출퇴근 기록 — 출근 1건마다 한 줄. 퇴근 전에는 clockOut이 비어있음(null).
