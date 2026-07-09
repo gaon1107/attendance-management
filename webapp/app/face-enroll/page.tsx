@@ -21,6 +21,8 @@ export default async function FaceEnrollPage() {
 
   return (
     <AppShell user={me} active="auth-method" title="얼굴 등록" subtitle={`${me.name} 님`}>
+      {/* 웹캠 촬영 화면 — 영상이 화면 중앙에 오도록 이 화면만 가운데 정렬(사장님 결정 2026-07-10) */}
+      <div style={{ maxWidth: 640, margin: "0 auto" }}>
       {/* 법적/프라이버시 안내 */}
       <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "14px 16px", marginBottom: 16, fontSize: 13, color: "#1E40AF", lineHeight: 1.6 }}>
         얼굴은 <b>생체정보(민감정보)</b>입니다. 등록한 얼굴은 <b>얼굴인식 서버에만</b> 저장되고, 이 앱에는 원본이 저장되지 않습니다.
@@ -48,8 +50,7 @@ export default async function FaceEnrollPage() {
       )}
 
       {ready && !needConsent && (
-        <div className="split-2">
-          <div>
+        <>
           {/* 현재 등록 상태 */}
           <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", marginBottom: 16, fontSize: 14 }}>
             현재 상태:{" "}
@@ -63,12 +64,11 @@ export default async function FaceEnrollPage() {
             )}
           </div>
 
-          </div>
-
           {/* 웹캠 촬영 + 등록 + 삭제 (클라이언트, 각도 다르게 최대 3회) */}
           <FaceCapture initialCount={me.faceEnrollCount} />
-        </div>
+        </>
       )}
+      </div>
     </AppShell>
   );
 }
