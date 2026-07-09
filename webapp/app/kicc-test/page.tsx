@@ -1,25 +1,31 @@
 "use client";
-// 아이원(ione24) 결제 연동 — 1단계 테스트 화면
+// 아이원(ione24) 결제 연동 — 호출 테스트 화면
 //
-// 목적: 정소장님이 준 주소를 실제로 호출해서 "어떤 값(JSON)이 돌아오는지" 눈으로 확인한다.
+// 목적: 아이원이 준 실제 파라미터로 서버를 호출해서
+//   ① 응답 값(및 message)을 확인하고
+//   ② 실제 카드 결제 화면이 뜨는지까지 확인한다.
 //  - 근태관리 본체와 분리된 별도 테스트 페이지다. (주소: /kicc-test)
-//  - 버튼을 누르면 우리 서버(/api/kicc-test)를 거쳐 아이원 서버를 호출하고, 응답을 그대로 보여준다.
-//
-// 이 화면은 사이드바에 넣지 않았다. 테스트가 끝나면 통째로 지워도 근태관리에 영향이 없다.
+//  - 테스트가 끝나면 통째로 지워도 근태관리에 영향이 없다.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-// 정소장님이 준 기본 호출 주소
-const DEFAULT_URL = "http://tapprsys.ione24.com/_appr/card_appr.ashx?pkind=appr";
+// 기본 호출 주소 (파라미터는 아래에서 따로 보냄)
+const DEFAULT_URL = "http://tapprsys.ione24.com/_appr/card_appr.ashx";
 
-// 보낼 내용 예시 — ⚠️ 정소장님께 받은 실제 값으로 바꿔서 테스트하세요.
-// (KICC 앱카드 승인 API 예시를 기준으로 넣어둠. 1단계에서는 에러 응답이 와도 정상입니다)
-const SAMPLE_BODY = `{
-  "shopTransactionId": "20260709000000000001",
-  "approvalReqDate": "20260709",
-  "vanTid": "0788888",
-  "certControlNo": "테스트"
-}`;
+// 14자리 유니크 요청번호 생성: 연월일시분초(12) + 순번 2자리
+function genRequestKey(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  const ts =
+    String(d.getFullYear()).slice(2) +
+    p(d.getMonth() + 1) +
+    p(d.getDate()) +
+    p(d.getHours()) +
+    p(d.getMinutes()) +
+    p(d.getSeconds());
+  const seq = p(Math.floor(Math.random() * 100));
+  return ts + seq; // 12 + 2 = 14자리
+}
 
 const card: React.CSSProperties = {
   background: "var(--card)",
@@ -68,22 +74,48 @@ type Result = {
 };
 
 export default function KiccTestPage() {
+  // 호출 주소
   const [url, setUrl] = useState(DEFAULT_URL);
-  const [method, setMethod] = useState("POST");
-  const [contentType, setContentType] = useState("application/json");
-  const [authorization, setAuthorization] = useState("");
-  const [body, setBody] = useState(SAMPLE_BODY);
+
+  // 매번 바뀌는 값
+  const [amt, setAmt] = useState("11000");
+  const [requestkey, setRequestkey] = useState("");
+
+  // 고정 값 (아이원/학원 정보)
+  const [pkind, setPkind] = useState("appr");
+  const [sitekey, setSitekey] = useState("2008");
+  const [terminal, setTerminal] = useState("0788888");
+  const [cpname, setCpname] = useState("gaon");
+  const [cpnum, setCpnum] = useState("1178119949");
+
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
 
-  async function call() {
+  // 화면 처음 열릴 때 requestkey 자동 생성 (서버/브라우저 시간 차이로 인한 오류 방지 위해 마운트 후 생성)
+  useEffect(() => {
+    setRequestkey(genRequestKey());
+  }, []);
+
+  // 보낼 파라미터 7개를 한 곳에서 만든다
+  function buildParams(): Record<string, string> {
+    return { pkind, sitekey, amt, requestkey, terminal, cpname, cpnum };
+  }
+
+  // ① 값 확인 — 우리 서버를 거쳐 호출하고 응답을 보여준다
+  async function checkValue() {
     setLoading(true);
     setResult(null);
     try {
+      const body = new URLSearchParams(buildParams()).toString();
       const res = await fetch("/api/kicc-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, method, contentType, authorization, body }),
+        body: JSON.stringify({
+          url,
+          method: "POST",
+          contentType: "application/x-www-form-urlencoded",
+          body,
+        }),
       });
       const data = (await res.json()) as Result;
       setResult(data);
@@ -97,93 +129,152 @@ export default function KiccTestPage() {
     }
   }
 
+  // ② 실제 결제화면 열기 — 브라우저가 직접 그 주소로 폼을 보내 진짜 결제 화면을 새 창에 띄운다
+  function openPaymentScreen() {
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = url;
+    form.target = "_blank"; // 새 탭에서 결제 화면 열기
+    Object.entries(buildParams()).forEach(([k, v]) => {
+      const inp = document.createElement("input");
+      inp.type = "hidden";
+      inp.name = k;
+      inp.value = v;
+      form.appendChild(inp);
+    });
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+  }
+
   function copyResult() {
     if (!result) return;
     const text = result.rawText ?? result.error ?? JSON.stringify(result, null, 2);
     navigator.clipboard?.writeText(text);
   }
 
+  // 응답 JSON에서 message 뽑기 (에러 시 사용자에게 보여줄 내용)
+  const message =
+    result?.json && typeof result.json === "object" && result.json !== null
+      ? (result.json as Record<string, unknown>).message
+      : null;
+  const messageText = typeof message === "string" && message.trim() ? message : null;
+
   return (
     <div style={{ maxWidth: 820, margin: "0 auto", padding: "32px 20px 80px" }}>
       <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 6px" }}>
-        아이원 결제 연동 — 1단계 호출 테스트
+        아이원 결제 연동 — 호출 테스트
       </h1>
       <p style={{ color: "var(--text-sub)", fontSize: 14, margin: "0 0 20px", lineHeight: 1.6 }}>
-        아래 <b>「아이원 서버 호출하기」</b> 버튼을 누르면 결과가 아래에 그대로 표시됩니다.
-        (에러 응답이 와도 1단계는 정상입니다 — 값이 읽히는지 보는 게 목적)
+        아래 값으로 아이원 서버를 호출합니다.
+        <br />
+        <b>「실제 결제화면 열기」</b>를 누르면 새 창에 진짜 카드 결제 화면이 뜨고,
+        <b>「값 확인」</b>을 누르면 서버가 돌려준 응답을 아래에서 볼 수 있습니다.
       </p>
 
-      {/* 입력 영역 */}
+      {/* 결제 정보 — 매번 바뀌는 값 */}
       <div style={{ ...card, marginBottom: 16 }}>
-        <div style={{ marginBottom: 14 }}>
-          <label style={label}>호출 주소</label>
-          <input style={input} value={url} onChange={(e) => setUrl(e.target.value)} />
-        </div>
-
-        <div style={{ display: "flex", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
-          <div style={{ flex: "0 0 130px" }}>
-            <label style={label}>요청 방식</label>
-            <select
-              style={{ ...input, padding: "0 8px" }}
-              value={method}
-              onChange={(e) => setMethod(e.target.value)}
-            >
-              <option value="POST">POST</option>
-              <option value="GET">GET</option>
-            </select>
-          </div>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <label style={label}>Content-Type</label>
-            <input
-              style={input}
-              value={contentType}
-              onChange={(e) => setContentType(e.target.value)}
-            />
-          </div>
-        </div>
+        <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 14 }}>결제 정보</div>
 
         <div style={{ marginBottom: 14 }}>
-          <label style={label}>Authorization</label>
+          <label style={label}>금액 (amt) · 원</label>
           <input
             style={input}
-            value={authorization}
-            placeholder="비워두어도 됩니다"
-            onChange={(e) => setAuthorization(e.target.value)}
+            value={amt}
+            inputMode="numeric"
+            onChange={(e) => setAmt(e.target.value.replace(/[^0-9]/g, ""))}
           />
         </div>
 
         <div>
-          <label style={label}>
-            보낼 내용 (Body){" "}
-            <span style={{ fontWeight: 400, color: "var(--danger)" }}>
-              ⚠️ 실제 값으로 바꿔서 테스트하세요
-            </span>
-          </label>
-          <textarea
-            style={{ ...input, height: 180, padding: "10px 12px", ...mono }}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-          />
+          <label style={label}>요청 고유번호 (requestkey) · 14자리, 매 결제마다 새로</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              style={{ ...input, flex: 1 }}
+              value={requestkey}
+              onChange={(e) => setRequestkey(e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={() => setRequestkey(genRequestKey())}
+              style={{
+                flex: "0 0 auto",
+                height: 42,
+                padding: "0 16px",
+                borderRadius: 8,
+                border: "1px solid var(--primary)",
+                background: "#fff",
+                color: "var(--primary)",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              새로 생성
+            </button>
+          </div>
         </div>
       </div>
 
-      <button
-        onClick={call}
-        disabled={loading}
-        style={{
-          width: "100%",
-          height: 50,
-          borderRadius: 10,
-          border: "none",
-          background: loading ? "#93C5FD" : "var(--primary)",
-          color: "#fff",
-          fontSize: 16,
-          fontWeight: 800,
-          cursor: loading ? "default" : "pointer",
-        }}
-      >
-        {loading ? "호출 중… (최대 30초)" : "아이원 서버 호출하기 →"}
-      </button>
+      {/* 고정 정보 — 아이원/학원 정보 */}
+      <div style={{ ...card, marginBottom: 16, background: "#F9FAFB" }}>
+        <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>고정 정보</div>
+        <div style={{ fontSize: 12, color: "var(--text-sub)", marginBottom: 14 }}>
+          아이원·학원 정보라 평소엔 바꾸지 않습니다. (안내가 있을 때만 수정)
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <Field label="pkind (처리종류)" value={pkind} onChange={setPkind} />
+          <Field label="sitekey (사이트키)" value={sitekey} onChange={setSitekey} />
+          <Field label="terminal (터미널ID)" value={terminal} onChange={setTerminal} />
+          <Field label="cpname (학원명)" value={cpname} onChange={setCpname} />
+          <Field label="cpnum (사업자번호)" value={cpnum} onChange={setCpnum} />
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <label style={label}>호출 주소</label>
+          <input style={input} value={url} onChange={(e) => setUrl(e.target.value)} />
+        </div>
+      </div>
+
+      {/* 두 개의 실행 버튼 */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <button
+          onClick={checkValue}
+          disabled={loading}
+          style={{
+            flex: 1,
+            minWidth: 200,
+            height: 50,
+            borderRadius: 10,
+            border: "1px solid var(--primary)",
+            background: "#fff",
+            color: "var(--primary)",
+            fontSize: 16,
+            fontWeight: 800,
+            cursor: loading ? "default" : "pointer",
+          }}
+        >
+          {loading ? "호출 중… (최대 30초)" : "값 확인 (응답 보기)"}
+        </button>
+        <button
+          onClick={openPaymentScreen}
+          style={{
+            flex: 1,
+            minWidth: 200,
+            height: 50,
+            borderRadius: 10,
+            border: "none",
+            background: "var(--primary)",
+            color: "#fff",
+            fontSize: 16,
+            fontWeight: 800,
+            cursor: "pointer",
+          }}
+        >
+          실제 결제화면 열기 →
+        </button>
+      </div>
 
       {/* 결과 영역 */}
       {result && (
@@ -222,6 +313,24 @@ export default function KiccTestPage() {
             </button>
           </div>
 
+          {/* 사용자에게 보여줄 message (아이원 지시: message에 내용 있으면 사용자에게 표시) */}
+          {messageText && (
+            <div
+              style={{
+                background: "#FFFBEB",
+                border: "1px solid #FDE68A",
+                borderRadius: 8,
+                padding: 14,
+                marginBottom: 14,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--warning)", marginBottom: 4 }}>
+                🔔 사용자에게 보여줄 안내(message)
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>{messageText}</div>
+            </div>
+          )}
+
           {/* 실패(네트워크 등) 메시지 */}
           {!result.ok && result.error && (
             <div
@@ -254,7 +363,7 @@ export default function KiccTestPage() {
             )}
           </dl>
 
-          {/* JSON 값 (정소장님이 body에 떨어뜨리는 결과값) */}
+          {/* JSON 값 */}
           {result.json != null && (
             <div style={{ marginTop: 16 }}>
               <div style={{ ...label, marginBottom: 8 }}>📦 돌아온 값 (JSON — 서버가 준 결과값)</div>
@@ -275,7 +384,7 @@ export default function KiccTestPage() {
 
           {result.jsonError && (
             <p style={{ marginTop: 10, fontSize: 13, color: "var(--warning)" }}>
-              (참고: 본문이 완전한 JSON은 아닙니다 — {result.jsonError})
+              (참고: 본문이 완전한 JSON은 아닙니다 — 정상 결제 화면(HTML)일 수 있어요. 아래 원본 확인)
             </p>
           )}
 
@@ -300,6 +409,24 @@ export default function KiccTestPage() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// 고정 정보 입력 한 칸
+function Field({
+  label: lbl,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <label style={label}>{lbl}</label>
+      <input style={input} value={value} onChange={(e) => onChange(e.target.value)} />
     </div>
   );
 }
