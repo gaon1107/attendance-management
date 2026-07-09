@@ -19,7 +19,9 @@
 > **직원 본인 셀프 등록 방식**(관리자 아님, 사장님 결정). 파일: 화면 `webapp/app/face-enroll/`(page + FaceCapture.tsx 웹캠촬영), 연동 `webapp/lib/face.ts`(login→ClientToken→ApiToken→enroll/unenroll), 액션 `webapp/app/actions/face.ts`. User에 `faceEnrolledAt`·`faceEnrollCount`(migration `face_enroll`,`face_enroll_count`). 진입=인증방식 화면 "얼굴 등록하기" 버튼. **FaceId=직원id, Group=회사id(회사격리)**, 얼굴원본은 우리 DB 미저장(얼굴서버에만).
 > 기능: **각도 다르게 최대 3회 등록**(1정면·2왼쪽·3오른쪽 안내) + 매회 "추가 등록?" 권유 + 진행표시 N/3 + **삭제하면 얼굴서버 전부 삭제 후 1회차부터 리셋**.
 > **검증 완료**: 실웹캠 1~3회 등록 성공(**얼굴서버가 같은 사람 다각도 다중등록 받아줌 확인**), 화면 전상태 렌더·tsc·콘솔0. 삭제후 4/3 되던 버그 고침(삭제=클라 count 리셋).
-> **⏳ 다음 세션 첫 할 일**: (a) **사장님 웹캠으로 삭제→리셋→1회차 재시작 최종확인** → (b) **2조각=얼굴로 출퇴근 인식** 착수: 출퇴근 화면에 "얼굴로 출근/퇴근"(웹캠→recognize→본인확인→처리). **recognize API 형식 확인 필요**(요청본문 JSON `"Group":"..."`+이미지 포함방식, sample02.js 또는 실측), `lib/face.ts`에 recognizeFace 추가.
+> ### 🟢 [2조각=얼굴로 출퇴근] 코드 완성(2026-07-09) — 사장님 웹캠 검증 대기
+> recognize API 형식 확인 완료(sample02.js: enrollment과 동일한 multipart Image+Group, 응답 Faces[].FaceId·Similarity, 미일치=**"Unknown"**). 구현: `lib/face.ts` recognizeFace(10초 타임아웃) + `actions/face.ts` faceClockIn/faceClockOut(**본인확인 FaceId==직원id 후 기존 clockIn/clockOut 재사용** — 화면조작 우회 불가) + `attendance/FaceClockPanel.tsx`(웹캠 촬영→확인→처리, **일반 방식 대체 버튼 항상 제공**=강제금지) + page.tsx 분기(faceUser=얼굴선택+등록완료만). DB 변경 없음. code-reviewer 검수로 치명1(좌표 null→0,0 둔갑)·중간3(타임아웃·더블클릭 중복출근·웹캠 미종료) 발견 즉시 수정. tsc·브라우저 검증 완료.
+> **⏳ 다음 첫 할 일**: (a) 사장님 웹캠으로 **얼굴 등록(현재 DB상 등록 0 — 삭제 테스트로 초기화됨) → 얼굴로 출근 → 얼굴로 퇴근** 실검증 + 삭제→리셋 재확인 → (b) 통과 시 **3조각=실근무시간 얼굴검출 샘플링(옵션 B)** 착수. ⚠️ 남긴 항목: 유사도(Similarity) 하한선(실서버 응답 형식 확인 후)·라이브니스 대체책(보안 단계)·인증수단 기록(추후).
 > **⚠️ 개발서버 재시작 규칙(또 겪음)**: prisma 스키마에 칸 추가 후 **dev서버 재시작 필수**(안 하면 옛 Prisma 클라 물고 있어 새 칸이 빈칸으로 나옴). 실행=`webapp`에서 `npm run dev`, http://localhost:3000. 테스트=관리자 `admin@admin.com`/`admin`(홍길동, 회사=하늘테크).
 >
 > ### (이전) 다음 세션에서 바로 이어서 할 일 = **얼굴인증 2phase(실제 등록/인식)** — 사장님과 합의(2026-07-08).

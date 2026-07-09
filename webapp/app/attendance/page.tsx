@@ -7,6 +7,7 @@ import { clockOut, startBreak, endBreak } from "@/app/actions/attendance";
 import { workedMinutes, formatMinutes } from "@/lib/worktime";
 import { workModeLabel, locationStatusLabel } from "@/lib/location";
 import { ClockInPanel } from "./ClockInPanel";
+import { FaceClockPanel } from "./FaceClockPanel";
 import { OnboardingTour } from "./OnboardingTour";
 import { AddToHomeHint } from "./AddToHomeHint";
 
@@ -51,6 +52,8 @@ export default async function AttendancePage() {
 
   const working = Boolean(open);
   const onBreak = Boolean(openBreak);
+  // 얼굴인증 직원(얼굴 선택 + 등록 완료) → 얼굴로 출퇴근. 그 외는 기존 방식 그대로.
+  const faceUser = me.authMethod === "face" && Boolean(me.faceEnrolledAt);
 
   // 출근/퇴근 요약(가장 최근 기록 기준) — 실제 데이터만
   const latest = open ?? (todays.length > 0 ? todays[todays.length - 1] : null);
@@ -79,6 +82,15 @@ export default async function AttendancePage() {
           style={{ display: "block", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 14, color: "#1D4ED8", fontWeight: 700, textDecoration: "none" }}
         >
           출퇴근 인증방식(얼굴/GPS)을 선택해주세요 →
+        </a>
+      )}
+
+      {me.authMethod === "face" && !me.faceEnrolledAt && (
+        <a
+          href="/face-enroll"
+          style={{ display: "block", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 14, color: "#1D4ED8", fontWeight: 700, textDecoration: "none" }}
+        >
+          얼굴 등록을 마치면 얼굴로 출퇴근할 수 있어요. 등록하러 가기 →
         </a>
       )}
 
@@ -129,13 +141,19 @@ export default async function AttendancePage() {
           )}
         </div>
 
-        {!working && <ClockInPanel />}
+        {!working && (faceUser ? <FaceClockPanel action="in" /> : <ClockInPanel />)}
 
         {working && !onBreak && (
           <>
-            <form action={clockOut} style={{ marginBottom: 10 }}>
-              <button type="submit" style={bigBtn("var(--danger)")}>퇴근하기</button>
-            </form>
+            {faceUser ? (
+              <div style={{ marginBottom: 10 }}>
+                <FaceClockPanel action="out" />
+              </div>
+            ) : (
+              <form action={clockOut} style={{ marginBottom: 10 }}>
+                <button type="submit" style={bigBtn("var(--danger)")}>퇴근하기</button>
+              </form>
+            )}
             {/* 외출: 사유 선택 + 외출 시작 */}
             <form action={startBreak} style={{ display: "flex", gap: 8 }}>
               <select name="reason" defaultValue="식사" style={{ flex: 1, height: 48, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 10, fontFamily: "inherit", fontSize: 15, background: "#fff" }}>

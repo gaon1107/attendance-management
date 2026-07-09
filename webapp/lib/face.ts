@@ -34,6 +34,7 @@ async function login(): Promise<string> {
   const res = await fetch(`${BASE_URL}/login/`, {
     method: "POST",
     headers: { LicenseKey: LICENSE_KEY, Authorization: `Basic ${basic}` },
+    signal: AbortSignal.timeout(10_000), // 서버 무응답 시 무한 대기 방지
   });
   const token = res.headers.get("ClientToken");
   if (!res.ok || !token) {
@@ -54,13 +55,14 @@ async function fetchApiToken(): Promise<string> {
   const res = await fetch(`${BASE_URL}/get/token/`, {
     method: "POST",
     headers: { ClientToken: ct },
+    signal: AbortSignal.timeout(10_000), // 서버 무응답 시 무한 대기 방지
   });
   const token = res.headers.get("ApiToken");
   if (!res.ok || !token) {
     // ClientToken이 만료됐을 수 있으니 한 번 다시 로그인해서 재시도
     clientToken = null;
     const ct2 = await getClientToken();
-    const res2 = await fetch(`${BASE_URL}/get/token/`, { method: "POST", headers: { ClientToken: ct2 } });
+    const res2 = await fetch(`${BASE_URL}/get/token/`, { method: "POST", headers: { ClientToken: ct2 }, signal: AbortSignal.timeout(10_000) });
     const token2 = res2.headers.get("ApiToken");
     if (!res2.ok || !token2) throw new Error(`얼굴서버 ApiToken 발급 실패 (HTTP ${res2.status})`);
     apiToken = { value: token2, at: Date.now() };
@@ -118,6 +120,66 @@ export async function enrollFace(imageBuffer: Buffer, faceId: string, group: str
     return { success: false, message: b.StatusMessage || b.Message || `얼굴 등록 실패 (HTTP ${res.status})` };
   } catch (e) {
     return { success: false, message: e instanceof Error ? e.message : "얼굴 등록 중 오류" };
+  }
+}
+
+type RecognizeResult = { success: boolean; message?: string; faceId?: string; similarity?: number; faceCount?: number };
+
+// [얼굴 인식] 사진 1장을 회사(Group) 안에서 "누구인지" 확인한다. (출퇴근 본인확인용)
+// 성공 = 얼굴 정확히 1개 + FaceId가 "Unknown"이 아님. 본인 여부(FaceId == 직원 id) 판단은 호출한 쪽에서 한다.
+export async function recognizeFace(imageBuffer: Buffer, group: string): Promise<RecognizeResult> {
+  const doRequest = async (token: string) => {
+    const form = new FormData();
+    form.append("Image", new Blob([new Uint8Array(imageBuffer)], { type: "image/jpeg" }), "face.jpg");
+    form.append("Group", String(group));
+    const res = await fetch(`${BASE_URL}/v1/face/recognize/`, {
+      method: "POST",
+      headers: { ApiToken: token },
+      body: form,
+      signal: AbortSignal.timeout(10_000), // 얼굴서버가 멈춰도 화면이 무한 대기하지 않도록 10초 제한
+    });
+    const body = await res.json().catch(() => ({}));
+    return { res, body };
+  };
+
+  try {
+    let token = await getApiToken();
+    let { res, body } = await doRequest(token);
+    if (isTokenExpired(res.status, body)) {
+      apiToken = null;
+      token = await getApiToken();
+      ({ res, body } = await doRequest(token));
+    }
+    if (res.status === 429) {
+      return { success: false, message: "요청이 몰려 있습니다. 잠시 후 다시 시도해 주세요." };
+    }
+    const sc = (body as { StatusCode?: number }).StatusCode;
+    if (!res.ok || (typeof sc === "number" && sc >= 4000)) {
+      const b = body as { StatusMessage?: string; Message?: string };
+      return { success: false, message: b.StatusMessage || b.Message || `얼굴 인식 실패 (HTTP ${res.status})` };
+    }
+    const faces = (body as { Faces?: Array<{ FaceId?: string; Similarity?: number }> }).Faces;
+    if (!Array.isArray(faces) || faces.length === 0) {
+      return { success: false, message: "얼굴을 찾지 못했습니다. 밝은 곳에서 정면으로 다시 시도해 주세요.", faceCount: 0 };
+    }
+    if (faces.length > 1) {
+      return { success: false, message: "얼굴이 여러 개 감지되었습니다. 혼자 화면에 나오도록 다시 시도해 주세요.", faceCount: faces.length };
+    }
+    const face = faces[0];
+    if (!face.FaceId || face.FaceId === "Unknown") {
+      return { success: false, message: "등록된 얼굴과 일치하지 않습니다.", faceCount: 1 };
+    }
+    return { success: true, faceId: String(face.FaceId), similarity: face.Similarity, faceCount: 1 };
+  } catch (e) {
+    // 통신 실패/시간 초과 — 영어 원문 대신 한국어 안내로 (자세한 원인은 서버 로그로)
+    console.error("[face] recognize 요청 실패:", e);
+    const timedOut = e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError");
+    return {
+      success: false,
+      message: timedOut
+        ? "얼굴서버 응답이 늦어지고 있습니다. 잠시 후 다시 시도하거나 일반 방식을 이용해 주세요."
+        : "얼굴서버에 연결하지 못했습니다. 잠시 후 다시 시도하거나 일반 방식을 이용해 주세요.",
+    };
   }
 }
 
