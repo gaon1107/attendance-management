@@ -25,7 +25,9 @@ export default async function AuthMethodPage({
 
       {sp.consented === "1" && (
         <div style={{ background: "#DCFCE7", border: "1px solid #86EFAC", borderRadius: 10, padding: "14px 16px", marginBottom: 16, fontSize: 14, color: "#166534" }}>
-          생체정보 이용에 동의하셨습니다. 이제 아래 <b>[얼굴 등록하기]</b>로 본인 얼굴을 등록해 주세요.
+          {me.faceEnrolledAt
+            ? <>생체정보 이용에 다시 동의하셨습니다. 이미 등록된 얼굴로 계속 사용합니다. (변경은 아래 <b>[얼굴 관리]</b>)</>
+            : <>생체정보 이용에 동의하셨습니다. 이제 아래 <b>얼굴인증 카드의 [얼굴 등록하기]</b>로 본인 얼굴을 등록해 주세요.</>}
         </div>
       )}
 
@@ -38,22 +40,7 @@ export default async function AuthMethodPage({
         {method === "face" && consentDate && <span style={{ color: "var(--text-sub)" }}> · 생체정보 동의일 {consentDate}</span>}
       </div>
 
-      {/* 얼굴 선택·동의한 경우: 얼굴 등록 화면으로 */}
-      {method === "face" && (
-        <div style={{ marginBottom: 20 }}>
-          <Link
-            href="/face-enroll"
-            style={{ display: "block", width: "100%", height: 46, lineHeight: "46px", textAlign: "center", background: "var(--primary)", color: "#fff", borderRadius: 8, fontWeight: 700, fontSize: 15, textDecoration: "none" }}
-          >
-            얼굴 등록하기 →
-          </Link>
-          <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 8, textAlign: "center" }}>
-            웹캠으로 본인 얼굴을 등록하면 출퇴근에서 얼굴로 본인 확인을 할 수 있습니다.
-          </div>
-        </div>
-      )}
-
-      {/* 선택 카드 2개 — 같은 크기·비중 */}
+      {/* 선택 카드 2개 — 같은 크기·비중. 얼굴 카드는 상태(미선택→동의→등록)에 따라 버튼이 바뀐다 */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div style={cardStyle(method === "face")}>
           <div style={{ fontSize: 30, marginBottom: 8 }}>🙂</div>
@@ -61,9 +48,32 @@ export default async function AuthMethodPage({
           <div style={{ fontSize: 13, color: "var(--text-sub)", lineHeight: 1.5, marginBottom: 14 }}>
             카메라로 본인 확인. 생체정보 동의가 필요합니다.
           </div>
-          <Link href="/consent" style={btnStyle("var(--primary)", "#fff")}>
-            {method === "face" ? "동의 다시 보기" : "선택"}
-          </Link>
+          {method !== "face" ? (
+            // 1단계: 아직 얼굴을 선택 안 함 → 동의 화면으로
+            <Link href="/consent" style={btnStyle("var(--primary)", "#fff")}>선택</Link>
+          ) : !me.faceEnrolledAt ? (
+            // 2단계: 동의 완료·미등록 → 얼굴 등록
+            <>
+              <Link href="/face-enroll" style={btnStyle("var(--primary)", "#fff")}>얼굴 등록하기 →</Link>
+              <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 8 }}>
+                웹캠으로 등록하면 출퇴근에서 얼굴로 본인 확인을 합니다.
+              </div>
+              <Link href="/consent" style={{ display: "inline-block", marginTop: 8, fontSize: 12, color: "var(--text-sub)", textDecoration: "underline" }}>
+                동의 내용 다시 보기
+              </Link>
+            </>
+          ) : (
+            // 3단계: 등록 완료 → 관리(추가등록·삭제)
+            <>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--success)", marginBottom: 10 }}>
+                ✅ 얼굴 등록됨 ({me.faceEnrollCount}/3회)
+              </div>
+              <Link href="/face-enroll" style={btnStyle("#fff", "var(--text)", true)}>얼굴 관리 (추가등록·삭제)</Link>
+              <Link href="/consent" style={{ display: "inline-block", marginTop: 8, fontSize: 12, color: "var(--text-sub)", textDecoration: "underline" }}>
+                동의 내용 다시 보기
+              </Link>
+            </>
+          )}
         </div>
 
         <div style={cardStyle(method === "gps")}>
