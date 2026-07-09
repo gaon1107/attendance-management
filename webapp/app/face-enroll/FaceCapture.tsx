@@ -274,6 +274,18 @@ export function FaceCapture({ initialCount }: { initialCount: number }) {
               <button type="button" onClick={capture} disabled={phase !== "camera"} style={btn("var(--primary)", "#fff")}>📷 촬영하기</button>
             )}
           </div>
+
+          {/* 이미 1회 이상 등록했다면 추가 촬영 없이 여기서 마칠 수 있게 */}
+          {count > 0 && (
+            <button
+              type="button"
+              onClick={finish}
+              disabled={submitting}
+              style={{ width: "100%", marginTop: 10, height: 44, border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--text)", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
+            >
+              ✓ 여기까지 등록하고 완료 ({count}/{MAX}회)
+            </button>
+          )}
         </>
       )}
 
