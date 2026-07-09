@@ -78,6 +78,7 @@ export default function KiccTestPage() {
   const [url, setUrl] = useState(DEFAULT_URL);
 
   // 매번 바뀌는 값
+  const [itemname, setItemname] = useState("근태관리 이용료");
   const [amt, setAmt] = useState("11000");
   const [requestkey, setRequestkey] = useState("");
 
@@ -98,7 +99,7 @@ export default function KiccTestPage() {
 
   // 보낼 파라미터 7개를 한 곳에서 만든다
   function buildParams(): Record<string, string> {
-    return { pkind, sitekey, amt, requestkey, terminal, cpname, cpnum };
+    return { pkind, sitekey, amt, requestkey, terminal, cpname, cpnum, itemname };
   }
 
   // ① 값 확인 — 우리 서버를 거쳐 호출하고 응답을 보여준다
@@ -175,6 +176,15 @@ export default function KiccTestPage() {
       {/* 결제 정보 — 매번 바뀌는 값 */}
       <div style={{ ...card, marginBottom: 16 }}>
         <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 14 }}>결제 정보</div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={label}>주문 상품 (itemname) · 결제창에 표시될 상품명</label>
+          <input
+            style={input}
+            value={itemname}
+            onChange={(e) => setItemname(e.target.value)}
+          />
+        </div>
 
         <div style={{ marginBottom: 14 }}>
           <label style={label}>금액 (amt) · 원</label>
