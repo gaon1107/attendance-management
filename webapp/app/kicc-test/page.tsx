@@ -109,8 +109,6 @@ export default function KiccTestPage() {
         아이원 결제 연동 — 1단계 호출 테스트
       </h1>
       <p style={{ color: "var(--text-sub)", fontSize: 14, margin: "0 0 20px", lineHeight: 1.6 }}>
-        정소장님이 준 주소를 실제로 호출해서 <b>어떤 값이 돌아오는지</b> 확인하는 화면입니다.
-        <br />
         아래 <b>「아이원 서버 호출하기」</b> 버튼을 누르면 결과가 아래에 그대로 표시됩니다.
         (에러 응답이 와도 1단계는 정상입니다 — 값이 읽히는지 보는 게 목적)
       </p>
@@ -118,7 +116,7 @@ export default function KiccTestPage() {
       {/* 입력 영역 */}
       <div style={{ ...card, marginBottom: 16 }}>
         <div style={{ marginBottom: 14 }}>
-          <label style={label}>호출 주소 (정소장님이 준 URL)</label>
+          <label style={label}>호출 주소</label>
           <input style={input} value={url} onChange={(e) => setUrl(e.target.value)} />
         </div>
 
@@ -145,9 +143,7 @@ export default function KiccTestPage() {
         </div>
 
         <div style={{ marginBottom: 14 }}>
-          <label style={label}>
-            Authorization <span style={{ fontWeight: 400, color: "var(--text-sub)" }}>(선택 — 필요 시 정소장님 안내대로)</span>
-          </label>
+          <label style={label}>Authorization</label>
           <input
             style={input}
             value={authorization}
@@ -160,7 +156,7 @@ export default function KiccTestPage() {
           <label style={label}>
             보낼 내용 (Body){" "}
             <span style={{ fontWeight: 400, color: "var(--danger)" }}>
-              ⚠️ 정소장님께 받은 실제 값으로 바꿔서 테스트하세요
+              ⚠️ 실제 값으로 바꿔서 테스트하세요
             </span>
           </label>
           <textarea
@@ -261,7 +257,7 @@ export default function KiccTestPage() {
           {/* JSON 값 (정소장님이 body에 떨어뜨리는 결과값) */}
           {result.json != null && (
             <div style={{ marginTop: 16 }}>
-              <div style={{ ...label, marginBottom: 8 }}>📦 돌아온 값 (JSON — 이게 정소장님이 준 결과값)</div>
+              <div style={{ ...label, marginBottom: 8 }}>📦 돌아온 값 (JSON — 서버가 준 결과값)</div>
               <pre
                 style={{
                   ...mono,
