@@ -26,16 +26,19 @@ export default async function NoticePage() {
   const isNew = (createdAt: Date) => !seenAt || createdAt > seenAt;
 
   return (
-    <AppShell user={me} active="notice" title="공지사항" subtitle={me.company.name} narrow>
+    <AppShell user={me} active="notice" title="공지사항" subtitle={me.company.name}>
       {/* 이 화면을 열면 자동으로 모두 읽음 처리 */}
       <MarkNoticesSeen />
+      {/* 관리자는 PC에서 2단(작성 | 목록), 직원은 목록 전체 폭. 좁은 화면은 세로 */}
+      <div className={isAdmin ? "split-2" : undefined}>
       {isAdmin && (
-        <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 20 }}>
+        <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>새 공지 작성</div>
           <NoticeForm />
         </div>
       )}
 
+      <div>
       {notices.length === 0 ? (
         <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "40px 20px", textAlign: "center", fontSize: 14, color: "var(--text-sub)" }}>
           아직 등록된 공지가 없습니다.
@@ -68,6 +71,8 @@ export default async function NoticePage() {
           ))}
         </div>
       )}
+      </div>
+      </div>
     </AppShell>
   );
 }

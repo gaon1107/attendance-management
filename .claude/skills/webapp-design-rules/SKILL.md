@@ -36,8 +36,7 @@ export default async function XxxPage() {
       title="화면 제목"
       subtitle={me.company.name}    // 선택
       right={<버튼이나 날짜 등>}     // 선택: 상단바 오른쪽
-      narrow                        // 선택: 입력 폼/좁은 콘텐츠 화면이면 붙인다 (640px 중앙정렬)
-    >
+    >                               // ⚠️ narrow 옵션은 2026-07-09부로 사용하지 않는다(전 화면 전체 폭)
       {/* 콘텐츠 */}
     </AppShell>
   );
@@ -49,11 +48,12 @@ export default async function XxxPage() {
 
 ---
 
-## 2. 콘텐츠 폭 규칙 (중요 — 사장님 확정)
+## 2. 콘텐츠 폭 규칙 (중요 — 사장님 확정 2026-07-09 갱신)
 
-- **넓은 화면(대시보드·목록·리포트 등)** → 화면 폭을 **꽉 채운다.** `.page`에는 max-width가 없다(좌우 28px 패딩만). AppShell 기본값.
-- **입력 폼 화면(설정·출퇴근·인증방식 등)** → `narrow` 옵션을 붙여 **640px로 좁게 중앙정렬.** 폼은 넓으면 오히려 쓰기 불편.
-- 규칙은 `webapp/app/globals.css`의 `.page` / `.narrow`에 정의. **여기 폭을 바꾸면 전 화면에 반영된다.**
+- **모든 화면(관리자·직원)이 PC에서 화면 폭을 꽉 채운다.** `.page`에는 max-width가 없다(좌우 28px 패딩만). AppShell 기본값 그대로 쓰면 된다.
+- **`narrow` 옵션은 더 이상 쓰지 않는다.** (구 규칙 "폼=640px 중앙"은 2026-07-09 폐지 — 페이지마다 폭이 달라 들쭉날쭉하다는 사장님 지적)
+- 폼 화면이 넓어서 어색하면 **`.split-2`로 2단 카드 배치**한다(폼 | 목록, 정보 | 수정 등). 좁은 화면에선 자동으로 세로로 접힌다.
+- 규칙은 `webapp/app/globals.css`의 `.page` / `.split-2`에 정의. **여기 폭을 바꾸면 전 화면에 반영된다.**
 
 ---
 
@@ -66,6 +66,7 @@ export default async function XxxPage() {
 | `.kpi-grid` | 4열 | 2열 | 2열 |
 | `.kpi-grid-3` | 3열 | 3열 | 2열 |
 | `.dash-split` | 콘텐츠 + 320px 패널 | 세로 스택 | 세로 스택 |
+| `.split-2` | 균등 2열 (폼\|목록 등) | 세로 스택 | 세로 스택 |
 
 예) `<div className="kpi-grid" style={{ marginBottom: 16 }}> ...카드 4개... </div>`
 
@@ -141,8 +142,8 @@ const td = { padding:"12px 20px", fontSize:15, verticalAlign:"middle" };
 
 - `webapp/app/components/AppShell.tsx` — 공통 뼈대(사이드바+상단바+콘텐츠)
 - `webapp/app/components/Sidebar.tsx` — 왼쪽 아이콘 네비게이션(역할별)
-- `webapp/app/globals.css` — 디자인 토큰 + 레이아웃/반응형 클래스 (`.page`, `.narrow`, `.kpi-grid`, `.dash-split` 등)
-- 화면 예시(이 규칙을 이미 따름): `app/dashboard`, `app/employees`, `app/reports`(넓게) / `app/settings`, `app/attendance`, `app/auth-method`(narrow)
+- `webapp/app/globals.css` — 디자인 토큰 + 레이아웃/반응형 클래스 (`.page`, `.split-2`, `.kpi-grid`, `.dash-split` 등)
+- 화면 예시(이 규칙을 이미 따름): `app/dashboard`(dash-split), `app/settings`·`app/leave`·`app/attendance`(split-2 2단), `app/records`(표 전체 폭)
 - 원본 디자인 목업: `근태 관리 디자인 스타일/리뉴얼_화면/*.dc.html`
 
 ---
@@ -150,8 +151,8 @@ const td = { padding:"12px 20px", fontSize:15, verticalAlign:"middle" };
 ## 8. 새 화면 만들 때 체크리스트
 
 - [ ] `AppShell`로 감쌌는가? (직접 사이드바/상단바 만들지 않음)
-- [ ] 입력 폼 화면이면 `narrow`를 붙였는가?
-- [ ] 카드 격자에 `.kpi-grid`/`.kpi-grid-3`, 2단에 `.dash-split`을 썼는가? (인라인 grid 금지)
+- [ ] `narrow`를 쓰지 않았는가? (전 화면 전체 폭 — 폼이 넓어 어색하면 `.split-2` 2단 배치)
+- [ ] 카드 격자에 `.kpi-grid`/`.kpi-grid-3`, 2단에 `.dash-split`/`.split-2`를 썼는가? (인라인 grid 금지)
 - [ ] 표를 `overflowX:auto`로 감싸고 `minWidth`를 줬는가?
 - [ ] 색을 CSS 변수(`var(--...)`)로 썼는가? (하드코딩 금지)
 - [ ] **DB에 없는 가짜 데이터를 넣지 않았는가?**

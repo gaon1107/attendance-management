@@ -21,7 +21,7 @@ export function OfficeNetworkForm({
   }
 
   return (
-    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginTop: 20 }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
       <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>사내 네트워크 (PC 출퇴근용)</div>
       <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
         직원이 회사 네트워크(사내 WiFi·유선)로 접속하면 IP로 사무실 출근을 확인합니다. PC는 GPS가 없으니 이 방법을 씁니다.

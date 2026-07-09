@@ -80,7 +80,7 @@ export function WorkRulesForm({
   }
 
   return (
-    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 20 }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
       <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>근무제·기준시간</div>
       <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
         표준 출근·퇴근 기준시각을 정하면 <b>지각·정상</b>을 판정할 수 있습니다. (기준시각 + 유예 이후 출근 = 지각)

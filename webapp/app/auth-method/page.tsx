@@ -18,7 +18,7 @@ export default async function AuthMethodPage({
   const consentDate = me.faceConsentAt ? new Date(me.faceConsentAt).toLocaleDateString("ko-KR") : null;
 
   return (
-    <AppShell user={me} active="auth-method" title="출퇴근 인증방식" subtitle={`${me.name} 님`} narrow>
+    <AppShell user={me} active="auth-method" title="출퇴근 인증방식" subtitle={`${me.name} 님`}>
       <p style={{ fontSize: 14, color: "var(--text-sub)", marginBottom: 20, lineHeight: 1.6 }}>
         둘 중 하나를 꼭 골라야 하는 건 아니며, 나중에 언제든 바꿀 수 있습니다.
       </p>

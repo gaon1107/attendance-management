@@ -44,7 +44,7 @@ export default async function LeavePage() {
   const td: React.CSSProperties = { padding: "12px 16px", fontSize: 14, verticalAlign: "middle" };
 
   return (
-    <AppShell user={me} active="leave" title="휴가" subtitle={`${me.name} 님`} narrow>
+    <AppShell user={me} active="leave" title="휴가" subtitle={`${me.name} 님`}>
       {/* 잔여 연차 */}
       <div className="kpi-grid-3" style={{ marginBottom: 20 }}>
         {kpis.map((k) => (
@@ -57,8 +57,10 @@ export default async function LeavePage() {
         ))}
       </div>
 
+      {/* PC=2단(신청 폼 | 내역), 좁은 화면=세로 */}
+      <div className="split-2">
       {/* 신청 폼 */}
-      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 20 }}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>휴가 신청</div>
         <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 18, lineHeight: 1.6 }}>
           연차·반차는 잔여에서 차감되고, 병가는 차감되지 않습니다. 승인되면 그 날은 결근이 아니라 휴가로 처리됩니다.
@@ -119,6 +121,7 @@ export default async function LeavePage() {
           </table>
         </div>
       </section>
+      </div>
     </AppShell>
   );
 }

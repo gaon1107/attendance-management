@@ -69,7 +69,7 @@ export default async function AttendancePage() {
   const datePill = <span style={{ fontSize: 13, color: "var(--text-sub)", whiteSpace: "nowrap" }}>{todayLabel}</span>;
 
   return (
-    <AppShell user={me} active="attendance" title="내 출퇴근" subtitle={`${me.name} 님`} right={datePill} narrow>
+    <AppShell user={me} active="attendance" title="내 출퇴근" subtitle={`${me.name} 님`} right={datePill}>
       {/* 첫 사용 안내(온보딩 투어) — 아직 안 본 사람에게만 */}
       {!me.tourSeenAt && <OnboardingTour />}
 
@@ -109,6 +109,8 @@ export default async function AttendancePage() {
         </a>
       )}
 
+      {/* PC=2단(상태·버튼 | 오늘 기록), 좁은 화면=세로 */}
+      <div className="split-2">
       {/* 현재 상태 카드 */}
       <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 14, padding: 24 }}>
         {/* 출근 → 퇴근 요약 */}
@@ -182,7 +184,7 @@ export default async function AttendancePage() {
       </div>
 
       {/* 오늘 기록 */}
-      <div style={{ marginTop: 24 }}>
+      <div>
         <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>오늘 기록</div>
         {todays.length === 0 ? (
           <div style={{ fontSize: 14, color: "var(--text-sub)" }}>아직 오늘 출근 기록이 없습니다.</div>
@@ -217,6 +219,7 @@ export default async function AttendancePage() {
             );
           })
         )}
+      </div>
       </div>
     </AppShell>
   );

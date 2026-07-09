@@ -37,9 +37,11 @@ export default async function CorrectionsPage() {
   }
 
   return (
-    <AppShell user={me} active="corrections" title="근태 정정" subtitle={`${me.name} 님`} narrow>
+    <AppShell user={me} active="corrections" title="근태 정정" subtitle={`${me.name} 님`}>
+      {/* PC=2단(요청 폼 | 내역), 좁은 화면=세로 */}
+      <div className="split-2">
       {/* 요청 폼 */}
-      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 20 }}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>근태 정정 요청</div>
         <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 18, lineHeight: 1.6 }}>
           출근·퇴근을 깜빡했거나 시각이 잘못된 날을 정정 요청할 수 있습니다. 관리자가 승인하면 그 날 기록에 반영됩니다.
@@ -100,6 +102,7 @@ export default async function CorrectionsPage() {
           </table>
         </div>
       </section>
+      </div>
     </AppShell>
   );
 }

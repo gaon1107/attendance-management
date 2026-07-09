@@ -26,16 +26,20 @@ export default async function SettingsPage() {
   const currentIp = getClientIp(await headers());
 
   return (
-    <AppShell user={me} active="settings" title="설정" subtitle={`${me.company.name} · 관리자 ${me.name}`} narrow>
-      <WorkRulesForm
-        initial={{
-          start: company?.workStartTime ?? "",
-          end: company?.workEndTime ?? "",
-          grace: company?.lateGraceMin ?? 0,
-          workDays: company?.workDays ?? "1,2,3,4,5",
-          standardHours: company?.standardWorkHours ?? 8,
-        }}
-      />
+    <AppShell user={me} active="settings" title="설정" subtitle={`${me.company.name} · 관리자 ${me.name}`}>
+      {/* PC=2단(근무제 | 사내 네트워크), 좁은 화면=세로. 지도는 전체 폭 */}
+      <div className="split-2" style={{ marginBottom: 16 }}>
+        <WorkRulesForm
+          initial={{
+            start: company?.workStartTime ?? "",
+            end: company?.workEndTime ?? "",
+            grace: company?.lateGraceMin ?? 0,
+            workDays: company?.workDays ?? "1,2,3,4,5",
+            standardHours: company?.standardWorkHours ?? 8,
+          }}
+        />
+        <OfficeNetworkForm initialIps={company?.officeIps ?? ""} currentIp={currentIp} />
+      </div>
       <OfficeLocationForm
         initial={{
           lat: company?.officeLat ?? null,
@@ -43,7 +47,6 @@ export default async function SettingsPage() {
           radius: company?.officeRadiusM ?? 200,
         }}
       />
-      <OfficeNetworkForm initialIps={company?.officeIps ?? ""} currentIp={currentIp} />
     </AppShell>
   );
 }

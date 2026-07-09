@@ -27,7 +27,8 @@ body {
 
 /* ── 리뉴얼 공통 레이아웃 기준 (PC/모바일 반응형) ──
    모든 로그인 화면은 AppShell을 통해 이 기준을 쓴다.
-   - .page: 콘텐츠는 화면 폭을 꽉 채운다(좌우 여백은 28px 패딩만). 폼 화면만 .narrow(640)로 좁게.
+   - .page: 모든 화면이 PC에서 폭을 꽉 채운다(좌우 여백은 28px 패딩만). 2026-07-09 사장님 확정.
+   - 폼+목록 화면은 .split-2로 2단 배치 → 태블릿·폰에선 자동으로 세로로 접힌다.
    - 카드 격자·2단 구성은 화면이 좁아지면 자동으로 열 수가 줄어든다(태블릿 2열 → 폰 세로) */
 .app-row { display: flex; min-height: 100vh; background: var(--bg); }
 /* app-main은 일반 블록 흐름 — 그래야 .page의 margin:0 auto 중앙정렬이 먹는다 */
@@ -44,10 +45,13 @@ body {
 .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .kpi-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .dash-split { display: grid; grid-template-columns: 1fr 320px; gap: 16px; align-items: start; }
+/* 2단 균등 배치(폼|목록 등) — PC에선 나란히, 태블릿·폰(≤920px)에선 세로로 접힘 */
+.split-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 
 @media (max-width: 920px) {
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
   .dash-split { grid-template-columns: 1fr; }
+  .split-2 { grid-template-columns: 1fr; }
 }
 @media (max-width: 600px) {
   .app-topbar { padding: 0 16px; }

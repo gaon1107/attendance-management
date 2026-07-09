@@ -16,9 +16,10 @@ export default async function AccountPage() {
   ];
 
   return (
-    <AppShell user={me} active="account" title="계정 설정" subtitle={`${me.name} 님`} narrow>
+    <AppShell user={me} active="account" title="계정 설정" subtitle={`${me.name} 님`}>
+      <div className="split-2">
       {/* 내 정보 */}
-      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 20 }}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>내 정보</div>
         <div style={{ display: "flex", flexDirection: "column" }}>
           {info.map((r, i) => (
@@ -37,6 +38,7 @@ export default async function AccountPage() {
           현재 비밀번호를 확인한 뒤 새 비밀번호로 바꿉니다.
         </p>
         <ChangePasswordForm />
+      </div>
       </div>
     </AppShell>
   );

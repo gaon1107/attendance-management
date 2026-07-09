@@ -81,9 +81,12 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   );
 
   return (
-    <AppShell user={me} active="employees" title={`${emp.name} 님`} subtitle={me.company.name} right={backBtn} narrow>
+    <AppShell user={me} active="employees" title={`${emp.name} 님`} subtitle={me.company.name} right={backBtn}>
+      {/* PC=2단(정보 | 관리 폼), 좁은 화면=세로 */}
+      <div className="split-2">
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* 정보 카드 */}
-      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 20 }}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
           <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#EEF2F7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: "#374151", flexShrink: 0 }}>
             {emp.name.slice(0, 1)}
@@ -116,9 +119,11 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         </p>
         <EditEmployeeForm id={emp.id} initialName={emp.name} />
       </div>
+      </div>
 
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* 부서 배정 */}
-      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginTop: 20 }}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>부서</div>
         <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
           이 직원의 소속 부서입니다. 부서는 <b>직원 관리</b> 화면에서 먼저 만들어야 목록에 나옵니다.
@@ -127,7 +132,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
       </div>
 
       {/* 근무요일 (회사 기본 따름 or 직접 지정) */}
-      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginTop: 20 }}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>근무요일</div>
         <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
           이 직원이 일하는 요일입니다. 회사 기본과 같으면 그대로 두고, 다르면 직접 지정하세요. 선택한 요일에만 지각·결근을 판정합니다.
@@ -136,7 +141,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
       </div>
 
       {/* 연차 부여 / 잔여 */}
-      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginTop: 20 }}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>연차</div>
         <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
           올해 부여할 연차 일수입니다. 사용 <b>{leaveUsed}일</b> · 잔여 <b style={{ color: leaveRemaining > 0 ? "var(--primary)" : "var(--danger)" }}>{leaveRemaining}일</b>. (직원이 신청·승인한 연차·반차가 사용에 반영됩니다.)
@@ -146,7 +151,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
 
       {/* 비밀번호 재설정 (재직중일 때만) */}
       {active && (
-        <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginTop: 20 }}>
+        <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>비밀번호 재설정</div>
           <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
             직원이 비밀번호를 잊었을 때 새 임시 비밀번호를 정해 알려주세요. 재설정하면 직원의 기존 로그인은 풀리고, 새 비밀번호로 다시 로그인합니다.
@@ -156,7 +161,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
       )}
 
       {/* 퇴사 처리 / 복직 */}
-      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginTop: 20 }}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{active ? "퇴사 처리" : "복직"}</div>
         <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
           {active
@@ -164,6 +169,8 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
             : "이 직원은 현재 퇴사(비활성화) 상태입니다. 복직시키면 다시 로그인할 수 있습니다."}
         </p>
         <EmployeeStatusActions id={emp.id} name={emp.name} active={active} />
+      </div>
+      </div>
       </div>
     </AppShell>
   );
