@@ -83,7 +83,33 @@ function isTokenExpired(status: number, body: unknown): boolean {
   return !!(body && typeof (body as { StatusCode?: unknown }).StatusCode === "number" && (body as { StatusCode: number }).StatusCode === 4016);
 }
 
-type FaceResult = { success: boolean; message?: string; faceId?: string };
+export type FaceRect = { x: number; y: number; width: number; height: number };
+type FaceResult = {
+  success: boolean;
+  message?: string;
+  faceId?: string;
+  // 등록 시 서버가 실제로 인식한 얼굴 위치(보낸 사진 좌표계) — 화면에 검출 영역을 그릴 때 사용
+  faceRect?: FaceRect;
+  imageSize?: { width: number; height: number };
+};
+
+// 서버 응답(PascalCase)에서 얼굴 위치·이미지 크기를 안전하게 꺼낸다(없으면 undefined)
+function parseRect(body: unknown): { faceRect?: FaceRect; imageSize?: { width: number; height: number } } {
+  const b = body as {
+    ImageSize?: { Width?: number; Height?: number };
+    Faces?: Array<{ FaceRect?: { X?: number; Y?: number; Width?: number; Height?: number } }>;
+  };
+  const r = Array.isArray(b.Faces) ? b.Faces[0]?.FaceRect : undefined;
+  const faceRect =
+    r && [r.X, r.Y, r.Width, r.Height].every((v) => typeof v === "number")
+      ? { x: r.X!, y: r.Y!, width: r.Width!, height: r.Height! }
+      : undefined;
+  const imageSize =
+    typeof b.ImageSize?.Width === "number" && typeof b.ImageSize?.Height === "number"
+      ? { width: b.ImageSize.Width, height: b.ImageSize.Height }
+      : undefined;
+  return { faceRect, imageSize };
+}
 
 // [얼굴 등록] 사진 1장을 회사(Group) 안에 직원(FaceId)로 등록한다. (토큰 만료 시 1회 자동 재시도)
 export async function enrollFace(imageBuffer: Buffer, faceId: string, group: string): Promise<FaceResult> {
@@ -114,7 +140,7 @@ export async function enrollFace(imageBuffer: Buffer, faceId: string, group: str
     if (res.ok && !(typeof sc === "number" && sc >= 4000)) {
       const faces = (body as { Faces?: Array<{ FaceId?: string }> }).Faces;
       const enrolledId = Array.isArray(faces) && faces[0]?.FaceId ? faces[0].FaceId : String(faceId);
-      return { success: true, faceId: enrolledId };
+      return { success: true, faceId: enrolledId, ...parseRect(body) };
     }
     const b = body as { StatusMessage?: string; Message?: string };
     return { success: false, message: b.StatusMessage || b.Message || `얼굴 등록 실패 (HTTP ${res.status})` };

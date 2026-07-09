@@ -7,7 +7,14 @@ import { revalidatePath } from "next/cache";
 import { enrollFace, unenrollFace, recognizeFace, isFaceConfigured } from "@/lib/face";
 import { clockIn, clockOut } from "@/app/actions/attendance";
 
-type ActionResult = { ok: boolean; message: string; count?: number };
+type ActionResult = {
+  ok: boolean;
+  message: string;
+  count?: number;
+  // 등록 시 서버가 인식한 얼굴 위치(보낸 사진 좌표계) — 화면에 검출 영역 표시용
+  faceRect?: { x: number; y: number; width: number; height: number };
+  imageSize?: { width: number; height: number };
+};
 
 const MAX_ENROLL = 3; // 각도를 다르게 최대 3회까지 등록(인식 정확도 향상)
 
@@ -40,7 +47,7 @@ export async function enrollMyFace(formData: FormData): Promise<ActionResult> {
   await prisma.user.update({ where: { id: me.id }, data: { faceEnrolledAt: new Date(), faceEnrollCount: newCount } });
   revalidatePath("/face-enroll");
   revalidatePath("/attendance");
-  return { ok: true, message: `${newCount}번째 얼굴 등록 완료`, count: newCount };
+  return { ok: true, message: `${newCount}번째 얼굴 등록 완료`, count: newCount, faceRect: result.faceRect, imageSize: result.imageSize };
 }
 
 // [본인확인 공통] 웹캠 사진을 얼굴서버에 물어 "본인 얼굴"인지 확인한다.
