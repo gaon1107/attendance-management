@@ -6,6 +6,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["webapp/node_modules/next/dist/bin/next", "dev", "webapp", "--port", "3000"],
       "port": 3000
+    },
+    {
+      "name": "liveness-demo",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["liveness-demo/node_modules/next/dist/bin/next", "dev", "liveness-demo", "--port", "3100"],
+      "port": 3100
     }
   ]
 }
