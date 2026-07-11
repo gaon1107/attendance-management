@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 출퇴근 촬영 사진(암호화 저장) — 생체정보, 저장소에 올리지 않음
+/storage/

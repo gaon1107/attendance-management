@@ -149,7 +149,16 @@ export async function enrollFace(imageBuffer: Buffer, faceId: string, group: str
   }
 }
 
-type RecognizeResult = { success: boolean; message?: string; faceId?: string; similarity?: number; faceCount?: number };
+type RecognizeResult = {
+  success: boolean;
+  message?: string;
+  faceId?: string;
+  similarity?: number;
+  faceCount?: number;
+  // 인식된 얼굴 위치·이미지 크기(라이브니스 판독 크롭용) — 응답에 없으면 undefined (기존 동작 무변경)
+  faceRect?: FaceRect;
+  imageSize?: { width: number; height: number };
+};
 
 // [얼굴 인식] 사진 1장을 회사(Group) 안에서 "누구인지" 확인한다. (출퇴근 본인확인용)
 // 성공 = 얼굴 정확히 1개 + FaceId가 "Unknown"이 아님. 본인 여부(FaceId == 직원 id) 판단은 호출한 쪽에서 한다.
@@ -195,7 +204,7 @@ export async function recognizeFace(imageBuffer: Buffer, group: string): Promise
     if (!face.FaceId || face.FaceId === "Unknown") {
       return { success: false, message: "등록된 얼굴과 일치하지 않습니다.", faceCount: 1 };
     }
-    return { success: true, faceId: String(face.FaceId), similarity: face.Similarity, faceCount: 1 };
+    return { success: true, faceId: String(face.FaceId), similarity: face.Similarity, faceCount: 1, ...parseRect(body) };
   } catch (e) {
     // 통신 실패/시간 초과 — 영어 원문 대신 한국어 안내로 (자세한 원인은 서버 로그로)
     console.error("[face] recognize 요청 실패:", e);
