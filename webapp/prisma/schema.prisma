@@ -81,6 +81,11 @@ model User {
   // 소속 부서(선택). null이면 부서 미배정. 부서가 삭제되면 소속 직원은 자동으로 null(미배정)이 된다.
   departmentId   String?
   department     Department? @relation(fields: [departmentId], references: [id])
+  // 인적정보(선택) — 초대 가입 때 직원이 입력하거나, 관리자가 직원 상세에서 입력·수정한다. 없어도 무방.
+  phone          String?   // 전화번호(연락처)
+  position       String?   // 직급/직책 (예: 사원·대리·과장·부장)
+  employeeNo     String?   // 사번(사원번호) — 회사 내부 고유번호. 현재 중복검사 없음(단순 저장).
+  hireDate       DateTime? // 입사일 (자동 기록되는 가입일 createdAt과는 별개)
   attendanceCorrections AttendanceCorrection[]
   // 공지(알림)를 마지막으로 확인한 시각. 이 시각 이후 올라온 공지는 "새 알림(NEW)"으로 본다.
   noticesSeenAt  DateTime?

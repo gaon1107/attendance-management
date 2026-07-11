@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN "employeeNo" TEXT;
+ALTER TABLE "User" ADD COLUMN "hireDate" DATETIME;
+ALTER TABLE "User" ADD COLUMN "phone" TEXT;
+ALTER TABLE "User" ADD COLUMN "position" TEXT;

@@ -35,6 +35,31 @@ export function InviteForm({ token }: { token: string }) {
         <input name="password" type="password" autoComplete="new-password" placeholder="비밀번호" style={inputStyle} />
       </div>
 
+      {/* 인적정보(선택) — 모르는 항목은 비워도 됩니다. 관리자가 나중에 채우거나 고칠 수 있습니다. */}
+      <div style={{ borderTop: "1px solid #EEF0F3", paddingTop: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-sub)" }}>
+          인적정보 <span style={{ fontWeight: 400 }}>(선택 — 비워도 됩니다)</span>
+        </div>
+        <div>
+          <label style={labelStyle}>전화번호</label>
+          <input name="phone" type="tel" autoComplete="tel" placeholder="010-1234-5678" style={inputStyle} />
+        </div>
+        <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>직급/직책</label>
+            <input name="position" type="text" placeholder="예: 대리" style={inputStyle} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>사번</label>
+            <input name="employeeNo" type="text" placeholder="예: 2024-017" style={inputStyle} />
+          </div>
+        </div>
+        <div>
+          <label style={labelStyle}>입사일</label>
+          <input name="hireDate" type="date" style={inputStyle} />
+        </div>
+      </div>
+
       {state?.error && <div style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700 }}>{state.error}</div>}
 
       <button

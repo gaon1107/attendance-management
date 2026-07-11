@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { getCurrentUser, createSession } from "@/lib/session";
+import { parseProfile } from "@/lib/employee-profile";
 import { randomBytes } from "crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -59,6 +60,11 @@ export async function acceptInvite(
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) return { error: "이미 가입된 이메일입니다. 다른 이메일을 쓰거나 로그인해주세요." };
 
+  // 인적정보(선택) — 직원이 채운 것만 저장(빈 항목은 null). 관리자가 나중에 상세에서 고칠 수 있다.
+  const parsed = parseProfile(formData);
+  if (!parsed.ok) return { error: parsed.error };
+  const profile = parsed.profile;
+
   const user = await prisma.user.create({
     data: {
       companyId: invite.companyId, // 초대한 회사 소속으로
@@ -66,6 +72,10 @@ export async function acceptInvite(
       name,
       passwordHash: hashPassword(password),
       role: "employee",
+      phone: profile.phone,
+      position: profile.position,
+      employeeNo: profile.employeeNo,
+      hireDate: profile.hireDate,
     },
   });
 

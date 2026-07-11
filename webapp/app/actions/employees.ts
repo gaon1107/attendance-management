@@ -5,6 +5,7 @@ import { hashPassword } from "@/lib/password";
 import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { parseDays, daysToCsv } from "@/lib/workdays";
+import { parseProfile } from "@/lib/employee-profile";
 
 export async function addEmployee(
   _prev: { error?: string; ok?: boolean },
@@ -63,6 +64,38 @@ export async function updateEmployeeName(
   if (!target) return { error: "직원을 찾을 수 없습니다." };
 
   await prisma.user.update({ where: { id: target.id }, data: { name } });
+
+  revalidatePath(`/employees/${id}`);
+  revalidatePath("/employees");
+  return { ok: true };
+}
+
+// 직원 인적정보(전화번호·직급·사번·입사일) 수정 — 관리자만. 내 회사 소속만(회사 격리).
+// 전부 선택 항목이라 빈 칸으로 두면 해당 값을 지운다(null 저장).
+export async function updateEmployeeProfile(
+  _prev: { error?: string; ok?: boolean },
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean }> {
+  const me = await getCurrentUser();
+  if (!me || me.role !== "admin") {
+    return { error: "권한이 없습니다." };
+  }
+
+  const id = String(formData.get("id") ?? "");
+  const target = await prisma.user.findFirst({ where: { id, companyId: me.companyId } });
+  if (!target) return { error: "직원을 찾을 수 없습니다." };
+
+  const parsed = parseProfile(formData);
+  if (!parsed.ok) return { error: parsed.error };
+  await prisma.user.update({
+    where: { id: target.id },
+    data: {
+      phone: parsed.profile.phone,
+      position: parsed.profile.position,
+      employeeNo: parsed.profile.employeeNo,
+      hireDate: parsed.profile.hireDate,
+    },
+  });
 
   revalidatePath(`/employees/${id}`);
   revalidatePath("/employees");
