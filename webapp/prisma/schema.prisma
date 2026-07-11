@@ -97,6 +97,34 @@ model Attendance {
   // 위치 확인 결과(사무실만 의미 있음): "verified"(확인됨) | "out_of_range"(벗어남) | "unavailable"(확인 불가) | null(재택/외근=해당없음)
   // ※ 프라이버시: GPS 원본 좌표는 저장하지 않고 결과만 남긴다.
   locationStatus String?
+  // 얼굴 출퇴근 시 촬영 사진·판독 기록(출근/퇴근 각 1건). GPS/일반 출퇴근은 없음.
+  clockPhotos ClockPhoto[]
+}
+
+// 출퇴근 촬영 사진 + 위조 판독(라이브니스) 기록 — 얼굴 출퇴근 1회당 1건.
+// 판독은 관리자 확인용일 뿐, 출퇴근 성공/실패에 관여하지 않는다(차단 없음).
+// ※ 생체정보 보호: 사진 파일은 AES-256 암호화해 웹 공개경로 밖에 저장, 관리자만 열람(열람 기록), 90일 후 자동 파기.
+//    동의 화면(consent)에 "출퇴근 사진 90일 보관" 항목 포함 — 확정 2026-07-11.
+model ClockPhoto {
+  id           String     @id @default(cuid())
+  attendanceId String
+  attendance   Attendance @relation(fields: [attendanceId], references: [id])
+  companyId    String // 회사 격리·조회용
+  userId       String // 조회 편의(본인 표시 없음 — 관리자 화면 전용)
+  kind         String // "in"(출근) | "out"(퇴근)
+  // 판독 상태: "ok"(기준값 이상) | "suspect"(기준값 미만 → "본인 확인 재검토 필요" 배지) | "error"(판독 실패, 사진만 보관)
+  livenessStatus String
+  livenessScore  Float? // 진짜 확률 0~1 (error면 null)
+  // 암호화된 사진 파일 이름(storage/clock-photos/ 안). 파기되면 파일만 지우고 이 행은 fileDeletedAt 표시.
+  fileName     String
+  fileDeletedAt DateTime? // 90일 자동 파기 시각(파기 후에도 점수·판독 기록은 남는다)
+  // 관리자 열람 기록(최근 1건): 누가 언제 열람했는지. 상세 감사가 필요해지면 별도 테이블로 확장.
+  lastViewedBy String?
+  lastViewedAt DateTime?
+  createdAt    DateTime   @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([attendanceId])
 }
 
 // 외출 기록 — 출근한 상태에서 외출할 때마다 한 줄. 복귀 전에는 endAt이 비어있음(null).
