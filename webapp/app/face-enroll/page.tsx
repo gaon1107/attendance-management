@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/session";
+import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { isFaceConfigured } from "@/lib/face";
 import { FaceCapture } from "./FaceCapture";
@@ -65,7 +66,12 @@ export default async function FaceEnrollPage() {
           </div>
 
           {/* 웹캠 촬영 + 등록 + 삭제 (클라이언트, 각도 다르게 최대 3회) */}
-          <FaceCapture initialCount={me.faceEnrollCount} />
+          <FaceCapture
+            initialCount={me.faceEnrollCount}
+            minPercent={
+              (await prisma.company.findUnique({ where: { id: me.companyId }, select: { faceMinPercent: true } }))?.faceMinPercent ?? 30
+            }
+          />
         </>
       )}
       </div>

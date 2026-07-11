@@ -9,11 +9,13 @@ import { useRouter } from "next/navigation";
 import { faceClockIn, faceClockOut } from "@/app/actions/face";
 import { clockOut } from "@/app/actions/attendance";
 import { ClockInPanel } from "./ClockInPanel";
+import { FaceGuide } from "@/app/components/FaceGuide";
 
 type Msg = { type: "ok" | "err" | "info"; text: string } | null;
 type WorkMode = "office" | "home" | "field";
 
-export function FaceClockPanel({ action }: { action: "in" | "out" }) {
+// minPercent: 회사 설정 "얼굴 인식 기준 크기(%)" — 가이드 타원 크기에 반영(서버 검사 기준과 동일 값)
+export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "out"; minPercent?: number }) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -224,8 +226,9 @@ export function FaceClockPanel({ action }: { action: "in" | "out" }) {
   if (phase === "camera") {
     return (
       <div>
-        <div style={{ width: "100%", aspectRatio: "4 / 3", background: "#111827", borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ position: "relative", width: "100%", aspectRatio: "4 / 3", background: "#111827", borderRadius: 12, overflow: "hidden" }}>
           <video ref={videoRef} playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }} />
+          <FaceGuide minPercent={minPercent} />
         </div>
         <canvas ref={canvasRef} style={{ display: "none" }} />
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>

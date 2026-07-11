@@ -135,6 +135,11 @@ export async function enrollFace(imageBuffer: Buffer, faceId: string, group: str
       token = await getApiToken();
       ({ res, body } = await doRequest(token));
     }
+    // 연속 요청 제한(429) — 등록 직전에 크기 확인(detect)을 먼저 부르므로 걸릴 수 있다. 잠시 쉬고 1회 재시도.
+    if (res.status === 429) {
+      await new Promise((r) => setTimeout(r, 1200));
+      ({ res, body } = await doRequest(token));
+    }
     // 성공 판정: HTTP 2xx + 에러 StatusCode(>=4000) 없음
     const sc = (body as { StatusCode?: number }).StatusCode;
     if (res.ok && !(typeof sc === "number" && sc >= 4000)) {
@@ -247,6 +252,65 @@ export async function unenrollFace(faceId: string, group: string): Promise<FaceR
     return { success: false, message: b.StatusMessage || b.Message || `얼굴 삭제 실패 (HTTP ${res.status})` };
   } catch (e) {
     return { success: false, message: e instanceof Error ? e.message : "얼굴 삭제 중 오류" };
+  }
+}
+
+type DetectResult = {
+  success: boolean;
+  message?: string;
+  faces: FaceRect[];
+  imageSize?: { width: number; height: number };
+};
+
+// [얼굴 검출] 사진에서 얼굴 위치(들)만 찾는다. 누구인지 식별하지 않는다.
+// 용도: 등록 전 "얼굴 크기(비율)" 확인 — 작은 얼굴(멀리 든 사진 등)로 등록되는 것 방지.
+export async function detectFaces(imageBuffer: Buffer): Promise<DetectResult> {
+  const doRequest = async (token: string) => {
+    const form = new FormData();
+    form.append("Image", new Blob([new Uint8Array(imageBuffer)], { type: "image/jpeg" }), "frame.jpg");
+    const res = await fetch(`${BASE_URL}/v1/face/detect/`, {
+      method: "POST",
+      headers: { ApiToken: token },
+      body: form,
+      signal: AbortSignal.timeout(10_000),
+    });
+    const body = await res.json().catch(() => ({}));
+    return { res, body };
+  };
+
+  try {
+    let token = await getApiToken();
+    let { res, body } = await doRequest(token);
+    if (isTokenExpired(res.status, body)) {
+      apiToken = null;
+      token = await getApiToken();
+      ({ res, body } = await doRequest(token));
+    }
+    if (res.status === 429) return { success: false, faces: [], message: "요청이 몰려 있습니다. 잠시 후 다시 시도해 주세요." };
+    const sc = (body as { StatusCode?: number }).StatusCode;
+    if (!res.ok || (typeof sc === "number" && sc >= 4000)) {
+      const b = body as { StatusMessage?: string; Message?: string };
+      return { success: false, faces: [], message: b.StatusMessage || b.Message || `얼굴 검출 실패 (HTTP ${res.status})` };
+    }
+    const b = body as {
+      ImageSize?: { Width?: number; Height?: number };
+      Faces?: Array<{ FaceRect?: { X?: number; Y?: number; Width?: number; Height?: number } }>;
+    };
+    const faces: FaceRect[] = [];
+    for (const f of b.Faces ?? []) {
+      const r = f.FaceRect;
+      if (r && [r.X, r.Y, r.Width, r.Height].every((v) => typeof v === "number")) {
+        faces.push({ x: r.X!, y: r.Y!, width: r.Width!, height: r.Height! });
+      }
+    }
+    const imageSize =
+      typeof b.ImageSize?.Width === "number" && typeof b.ImageSize?.Height === "number"
+        ? { width: b.ImageSize.Width, height: b.ImageSize.Height }
+        : undefined;
+    return { success: true, faces, imageSize };
+  } catch (e) {
+    console.error("[face] detect 요청 실패:", e);
+    return { success: false, faces: [], message: "얼굴서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요." };
   }
 }
 

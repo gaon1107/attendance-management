@@ -54,6 +54,10 @@ export default async function AttendancePage() {
   const onBreak = Boolean(openBreak);
   // 얼굴인증 직원(얼굴 선택 + 등록 완료) → 얼굴로 출퇴근. 그 외는 기존 방식 그대로.
   const faceUser = me.authMethod === "face" && Boolean(me.faceEnrolledAt);
+  // 얼굴 크기 가이드(타원) 크기 — 회사 설정 "얼굴 인식 기준 크기(%)"와 동일 값 사용
+  const faceMinPercent = faceUser
+    ? (await prisma.company.findUnique({ where: { id: me.companyId }, select: { faceMinPercent: true } }))?.faceMinPercent ?? 30
+    : 30;
 
   // 출근/퇴근 요약(가장 최근 기록 기준) — 실제 데이터만
   const latest = open ?? (todays.length > 0 ? todays[todays.length - 1] : null);
@@ -143,13 +147,13 @@ export default async function AttendancePage() {
           )}
         </div>
 
-        {!working && (faceUser ? <FaceClockPanel action="in" /> : <ClockInPanel />)}
+        {!working && (faceUser ? <FaceClockPanel action="in" minPercent={faceMinPercent} /> : <ClockInPanel />)}
 
         {working && !onBreak && (
           <>
             {faceUser ? (
               <div style={{ marginBottom: 10 }}>
-                <FaceClockPanel action="out" />
+                <FaceClockPanel action="out" minPercent={faceMinPercent} />
               </div>
             ) : (
               <form action={clockOut} style={{ marginBottom: 10 }}>

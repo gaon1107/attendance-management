@@ -36,6 +36,9 @@ model Company {
   standardWorkHours Float @default(8)
   // 회사 기본 근무요일(JS getDay 기준: 0=일 … 6=토) CSV. 기본 월~금. 이 요일에만 지각·결근 판정.
   workDays      String   @default("1,2,3,4,5")
+  // 얼굴 인식 기준 크기(%) — 얼굴 폭이 화면 폭의 이 비율 이상이어야 출퇴근 인식·등록 통과.
+  // 해상도가 아니라 "비율"이라 카메라마다 화질이 달라도 같은 의미. 멀리 든 사진(작은 얼굴) 부정 차단용.
+  faceMinPercent Int     @default(30)
 }
 
 // 사용자 — 관리자(admin) 또는 직원(employee). 반드시 한 회사에 속한다.

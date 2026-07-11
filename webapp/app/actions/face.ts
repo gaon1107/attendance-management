@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
-import { enrollFace, unenrollFace, recognizeFace, isFaceConfigured, type FaceRect } from "@/lib/face";
+import { enrollFace, unenrollFace, recognizeFace, detectFaces, isFaceConfigured, type FaceRect } from "@/lib/face";
 import { clockIn, clockOut } from "@/app/actions/attendance";
 import { analyzeFace } from "@/lib/liveness";
 import { saveClockPhoto, purgeExpiredPhotos } from "@/lib/clock-photo";
@@ -21,6 +21,32 @@ type ActionResult = {
 };
 
 const MAX_ENROLL = 3; // 각도를 다르게 최대 3회까지 등록(인식 정확도 향상)
+
+// [얼굴 크기 검사] 얼굴 폭이 화면 폭의 회사 기준(%) 미만이면 다시 찍게 한다.
+// 멀리 든 사진(작은 얼굴)의 부정 사용을 막고 판독(라이브니스) 신뢰도를 높인다. 픽셀이 아닌 "비율"이라 카메라 해상도와 무관.
+const FACE_TOO_SMALL_MSG = "얼굴이 작게 나왔습니다. 화면의 타원 안에 얼굴이 차도록 가까이 와서 다시 촬영해 주세요.";
+
+async function getFaceMinPercent(companyId: string): Promise<number> {
+  const company = await prisma.company.findUnique({ where: { id: companyId }, select: { faceMinPercent: true } });
+  const v = company?.faceMinPercent ?? 30;
+  return v >= 10 && v <= 50 ? v : 30; // 저장값이 손상돼도 안전한 범위로 (상한 50 — 가이드 타원과 모순되지 않는 범위)
+}
+
+function faceTooSmall(
+  rect: FaceRect | undefined,
+  imageSize: { width: number; height: number } | undefined,
+  minPercent: number
+): boolean {
+  // 위치·크기 정보가 없으면 크기 검사를 건너뛴다(검사 불가로 출퇴근을 막지 않음 — 가용성 우선)
+  if (!rect || !imageSize || !imageSize.width || !imageSize.height) {
+    console.log("[face] 크기 검사 건너뜀 — 응답에 얼굴 위치/이미지 크기 없음(얼굴서버 응답 형식 확인 필요)");
+    return false;
+  }
+  // 기준은 "사용자가 실제로 본 화면(4:3, 좌우 잘림)"의 폭 — 16:9 카메라(1280×720)는 전송 사진보다
+  // 화면에 보이는 폭이 좁으므로, 전송 사진 폭으로 재면 타원 안내와 어긋난다(검수 지적).
+  const visibleWidth = Math.min(imageSize.width, (imageSize.height * 4) / 3);
+  return (rect.width / visibleWidth) * 100 < minPercent;
+}
 
 // 내 얼굴 등록 — 웹캠으로 찍은 사진(FormData "image")을 얼굴서버에 등록한다.
 export async function enrollMyFace(formData: FormData): Promise<ActionResult> {
@@ -42,6 +68,18 @@ export async function enrollMyFace(formData: FormData): Promise<ActionResult> {
   if (file.size > 900 * 1024) return { ok: false, message: "사진 용량이 너무 큽니다. 다시 시도해 주세요." };
 
   const buffer = Buffer.from(await file.arrayBuffer());
+
+  // 등록 전에 얼굴 크기(비율) 확인 — 작은 얼굴로 등록되면 이후 인식이 계속 부정확해지므로 여기서 거른다.
+  // 검출 자체가 실패하면(서버 오류 등) 검사를 건너뛰고 기존 등록 흐름에 맡긴다(등록 판정은 얼굴서버가 함).
+  const det = await detectFaces(buffer);
+  if (det.success && det.faces.length > 1) {
+    // 어느 얼굴이 등록될지 알 수 없으므로(작은 얼굴이 등록되는 구멍 방지) 혼자 나오게 요청
+    return { ok: false, message: "얼굴이 여러 개 감지되었습니다. 혼자 화면에 나오도록 다시 시도해 주세요." };
+  }
+  if (det.success && det.faces.length === 1 && faceTooSmall(det.faces[0], det.imageSize, await getFaceMinPercent(me.companyId))) {
+    return { ok: false, message: FACE_TOO_SMALL_MSG };
+  }
+
   const result = await enrollFace(buffer, me.id, me.companyId);
   if (!result.success) {
     return { ok: false, message: result.message || "얼굴 등록에 실패했습니다. 밝은 곳에서 정면으로 다시 시도해 주세요." };
@@ -77,6 +115,12 @@ async function verifyMyFace(
   if (result.faceId !== me.id) {
     // 같은 회사의 다른 직원 얼굴로 인식된 경우
     return { ok: false, message: "본인 얼굴로 확인되지 않았습니다. 본인만 화면에 나오도록 다시 시도해 주세요." };
+  }
+  // 본인이 맞아도 얼굴이 기준(회사 설정 %)보다 작으면 다시 찍게 한다 — 멀리 든 사진 부정 차단 + 판독 신뢰도 확보
+  if (faceTooSmall(result.faceRect, result.imageSize, await getFaceMinPercent(me.companyId))) {
+    // 부정 시도 추적용 — 크기 미달 거절은 출퇴근·사진 기록이 안 남으므로 서버 로그에라도 남긴다(검수 지적)
+    console.log(`[face] 크기 미달 거절 — 직원 ${me.id}, 얼굴 폭 ${result.faceRect ? Math.round((result.faceRect.width / Math.min(result.imageSize!.width, (result.imageSize!.height * 4) / 3)) * 100) : "?"}%`);
+    return { ok: false, message: FACE_TOO_SMALL_MSG };
   }
   // 성공 시 사진·얼굴 위치를 함께 반환 — 출퇴근 후처리(판독·사진 이력)에서 재사용
   return { ok: true, message: "본인 확인 완료", buffer, faceRect: result.faceRect };

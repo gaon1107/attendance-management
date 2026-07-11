@@ -8,6 +8,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { WorkRulesForm } from "./WorkRulesForm";
 import { OfficeLocationForm } from "./OfficeLocationForm";
 import { OfficeNetworkForm } from "./OfficeNetworkForm";
+import { FaceRuleForm } from "./FaceRuleForm";
 
 export default async function SettingsPage() {
   const me = await getCurrentUser();
@@ -19,7 +20,7 @@ export default async function SettingsPage() {
     select: {
       officeLat: true, officeLng: true, officeRadiusM: true, officeIps: true,
       workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true,
-      standardWorkHours: true,
+      standardWorkHours: true, faceMinPercent: true,
     },
   });
 
@@ -39,6 +40,10 @@ export default async function SettingsPage() {
           }}
         />
         <OfficeNetworkForm initialIps={company?.officeIps ?? ""} currentIp={currentIp} />
+      </div>
+      <div className="split-2" style={{ marginBottom: 16 }}>
+        <FaceRuleForm initialPercent={company?.faceMinPercent ?? 30} />
+        <div />
       </div>
       <OfficeLocationForm
         initial={{

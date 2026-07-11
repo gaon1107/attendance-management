@@ -156,6 +156,13 @@ export function DemoClient() {
           <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>① 카메라</div>
           <div style={{ position: "relative", width: "100%", aspectRatio: "4 / 3", background: "#111827", borderRadius: 10, overflow: "hidden" }}>
             <video ref={videoRef} playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }} />
+            {/* 얼굴 크기 가이드 타원 — 근태 webapp과 동일(기준 30% × 1.5 = 폭 45%). 기준값 결정 테스트용 참고선 */}
+            <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+              <div style={{ position: "absolute", left: "50%", top: "48%", transform: "translate(-50%, -50%)", width: "45%", height: "78%", border: "3px dashed rgba(255,255,255,0.85)", borderRadius: "50%", boxShadow: "0 0 0 9999px rgba(0,0,0,0.18)" }} />
+              <div style={{ position: "absolute", left: 0, right: 0, bottom: 8, textAlign: "center", color: "#fff", fontSize: 13, fontWeight: 700, textShadow: "0 1px 4px rgba(0,0,0,0.7)" }}>
+                얼굴을 타원 안에 채워주세요
+              </div>
+            </div>
           </div>
           <canvas ref={canvasRef} style={{ display: "none" }} />
           {camError && <div style={{ marginTop: 10, fontSize: 13, color: "#B91C1C" }}>{camError}</div>}
@@ -205,7 +212,15 @@ export function DemoClient() {
                 <span style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>· 진짜 확률 {(last.res.realScore! * 100).toFixed(1)}%</span>
               </div>
               <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 10 }}>
-                얼굴 {last.res.faceCount}개 · 검출 {last.res.detectMs}ms · 판독 {last.res.livenessMs}ms
+                얼굴 {last.res.faceCount}개
+                {rect && imgSize && imgSize.width > 0 && imgSize.height > 0 && (
+                  <>
+                    {/* 근태 webapp과 동일 계산: 화면(4:3, 좌우 잘림)에서 실제 보이는 폭 기준 */}
+                    {" "}· <b style={{ color: "#111827" }}>얼굴 폭 = 화면의 {((rect.width / Math.min(imgSize.width, (imgSize.height * 4) / 3)) * 100).toFixed(0)}%</b>
+                    <span> (근태 기본 기준 30% — 데모 고정 표기, 실제 기준은 근태 [설정]에서)</span>
+                  </>
+                )}
+                {" "}· 검출 {last.res.detectMs}ms · 판독 {last.res.livenessMs}ms
               </div>
 
               {last.res.models!.map((m) => (

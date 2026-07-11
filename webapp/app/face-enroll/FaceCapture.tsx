@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { enrollMyFace, deleteMyFace } from "@/app/actions/face";
+import { FaceGuide } from "@/app/components/FaceGuide";
 
 type Msg = { type: "ok" | "err" | "info"; text: string } | null;
 // 영상 위 오버레이 상태: 스캔 중 → (성공: 검출 영역+완료 문구) or (실패: 안내)
@@ -30,7 +31,8 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-export function FaceCapture({ initialCount }: { initialCount: number }) {
+// minPercent: 회사 설정 "얼굴 인식 기준 크기(%)" — 가이드 타원 크기(서버의 등록 크기 검사와 동일 값)
+export function FaceCapture({ initialCount, minPercent = 30 }: { initialCount: number; minPercent?: number }) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -293,6 +295,9 @@ export function FaceCapture({ initialCount }: { initialCount: number }) {
               ref={videoRef} playsInline muted
               style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)", display: "block" }}
             />
+
+            {/* 얼굴 크기 가이드 — 분석/성공/실패 오버레이가 없을 때만 표시 */}
+            {!overlay && <FaceGuide minPercent={minPercent} />}
 
             {/* 스캔 효과 — 격자 + 모서리 브래킷 + 흐르는 스캔 라인 */}
             {scanning && (

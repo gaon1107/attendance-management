@@ -63,6 +63,33 @@ export async function saveOfficeNetwork(
   return { ok: true };
 }
 
+// 얼굴 인식 기준 크기 저장 — 관리자만. 얼굴 폭이 화면 폭의 몇 % 이상이어야 통과되는지.
+export async function saveFaceRule(
+  _prev: { error?: string; ok?: boolean },
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean }> {
+  const me = await getCurrentUser();
+  if (!me || me.role !== "admin") {
+    return { error: "권한이 없습니다." };
+  }
+
+  const percent = Number(formData.get("faceMinPercent"));
+  // 상한 50: 가이드 타원(최대 70%)과 모순되지 않는 범위 — 그 이상은 물리적으로 통과가 어려워짐
+  if (!Number.isFinite(percent) || percent < 10 || percent > 50) {
+    return { error: "기준 크기는 10~50% 사이로 입력해주세요." };
+  }
+
+  await prisma.company.update({
+    where: { id: me.companyId },
+    data: { faceMinPercent: Math.round(percent) },
+  });
+
+  revalidatePath("/settings");
+  revalidatePath("/attendance");
+  revalidatePath("/face-enroll");
+  return { ok: true };
+}
+
 // 근무제·기준시간 저장 — 관리자만. 지각/정상 판정의 기준(표준 출퇴근 시각 + 지각 유예).
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/; // "HH:MM" 24시간
 
