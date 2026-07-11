@@ -58,7 +58,8 @@ const HREF: Partial<Record<NavKey, string>> = {
   "leave-approvals": "/leave/approvals",
 };
 
-type NavGroup = { caption: string; items: Item[] };
+// tintBg/tintText: 그룹 제목 칩의 연한 포인트 색(관리=파랑, 개인=초록으로 서로 구분)
+type NavGroup = { caption: string; items: Item[]; tintBg?: string; tintText?: string };
 
 function toItems(keys: NavKey[]): Item[] {
   return keys.map((key) => ({ key, href: HREF[key] ?? `/${key}`, label: LABEL[key], icon: ICON[key] }));
@@ -69,8 +70,8 @@ function toItems(keys: NavKey[]): Item[] {
 function groupsFor(role: string): NavGroup[] {
   if (role === "admin") {
     return [
-      { caption: "회사관리", items: toItems(["dashboard", "employees", "records", "reports", "leave-approvals", "notice", "biometrics", "settings"]) },
-      { caption: "내근태", items: toItems(["attendance", "auth-method"]) },
+      { caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(["dashboard", "employees", "records", "reports", "leave-approvals", "notice", "biometrics", "settings"]) },
+      { caption: "내근태", tintBg: "#E3F5EA", tintText: "#15803D", items: toItems(["attendance", "auth-method"]) },
     ];
   }
   return [{ caption: "", items: toItems(["attendance", "my-records", "leave", "corrections", "notice", "auth-method"]) }];
@@ -131,13 +132,13 @@ export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
                 style={{
                   fontSize: 10,
                   fontWeight: 800,
-                  color: "#4B5563",
                   letterSpacing: 0.3,
                   marginTop: 2,
                   marginBottom: 4,
                   whiteSpace: "nowrap",
-                  // 그룹 제목 배경 칩 — 관리/개인 묶음을 또렷하지만 과하지 않게 구분
-                  background: "#E5E8EE",
+                  // 그룹 제목 배경 칩 — 관리(파랑)/개인(초록) 연한 포인트 색으로 또렷하게 구분(과하지 않게)
+                  background: g.tintBg ?? "#E5E8EE",
+                  color: g.tintText ?? "#4B5563",
                   padding: "3px 9px",
                   borderRadius: 7,
                 }}
