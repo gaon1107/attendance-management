@@ -1,39 +1,49 @@
-# Research: 라이브니스(사진 위조 판독) 적용 — 2026-07-10
+# Research: 라이브니스(사진판독) 근태 webapp 적용 (2026-07-11)
 
-## 근거 문서 (이미 완료된 조사·확정)
-- [liveness-오픈소스-비교.md](docs/07_ai/liveness-오픈소스-비교.md): 채택 1순위 **MiniFASNet V1SE+V2 앙상블**(Apache-2.0), ONNX·CPU 구동, 예비 mn3
-- PROGRESS 확정 결정(2026-07-10 사장님): **출퇴근=조용한 표시**("본인 확인 재검토 필요" 중립 문구 + 점수·시각·의심건 사진), **등록=부드러운 차단**, 의심 사진은 **암호화·관리자만·90일 파기**
+> 사장님 지시(2026-07-11): ① 출·퇴근 시에만 판독 적용 ② 판독 결과로 출퇴근을 막지 않음(관리자가 이력에서 확인만) ③ 출퇴근에 사용된 분석용 사진을 이력에 남김 ④ 기존 근태 기능을 망가뜨리지 않을 것.
+> 이전 버전(2026-07-10, 데모 앱 리서치)은 git 이력에 보존.
 
-## 아키텍처 선택 — B안(웹앱 내장)로 제안 (전문가 A안에서 조정)
-전문가 보고서는 A안(별도 Python 마이크로서비스)을 1순위로 했으나, 우리 운영 현실(비개발자 운영, 프로세스 1개가 단순)을 반영해 **B안: Next.js 서버에 onnxruntime-node로 직접 내장**을 제안한다.
-- **가능 근거 1 — 얼굴 위치(crop) 문제 해결**: MiniFASNet은 "얼굴 상자 기준 2.7배/4배 크롭"이 필요한데, 별도 얼굴검출기를 안 들여와도 **GaonFR 응답의 FaceRect를 그대로 쓰면 된다** (recognize·enrollment·detect 모두 FaceRect 반환 — 실측 확인 완료. sample02 모델 정의에도 명시)
-- **가능 근거 2**: 모델 2개 합계 ~4MB, CPU 수십 ms — Node 프로세스 안에서 부담 없음. onnxruntime-node·sharp(이미지 크롭)는 Windows 지원되는 표준 npm 패키지
-- 격리 원칙: 판독 코드는 `lib/liveness.ts` 한 모듈에만 두어, 추후 트래픽 증가 시 A안(별도 서비스)으로 떼어내기 쉽게 한다
-- 모델 가중치: yakhyo/face-anti-spoofing 릴리스의 ONNX 2종을 `webapp/models/`에 커밋(각 ~2MB, Apache-2.0 — 출처·라이선스 명기)
+## 관련 파일과 역할
 
-## 적용 지점별 흐름
-| 지점 | 흐름 | 차단? |
+### 가져올 것 (liveness-demo — 검증 완료본)
+| 파일 | 역할 | 비고 |
 |---|---|---|
-| **출퇴근** (faceClockIn/Out) | recognize 성공(본인 확인) → 응답 FaceRect로 크롭 → 판독 → 점수 기록. **의심이어도 출퇴근은 정상 처리**, Attendance에 의심 표시 + 그 사진 암호화 저장 | ❌ 조용한 표시 |
-| **등록** (enrollMyFace) | enrollment 응답 FaceRect로 크롭 → 판독 → 의심 시 **방금 등록분 즉시 unenroll(롤백)** + "밝은 곳에서 다시 촬영해 주세요" | ✅ 부드러운 차단 |
-| **관리자** | 근태현황·직원 근태상세에 "본인 확인 재검토 필요" 배지 → 클릭 시 점수·시각·사진 열람(열람 기록 남김) | — |
+| liveness-demo/lib/liveness.ts | MiniFASNet 2모델 판독 모듈 | 전처리 상수 변경 금지(현황판 명시). webapp 경로 후보가 이미 들어있어 그대로 복사 가능 |
+| liveness-demo/models/*.onnx (2개) | 모델 가중치 (~4MB) | webapp/models/로 복사 |
+| liveness-demo/app/DemoClient.tsx | 촬영 설정 | **1280×720, JPEG 0.9(초과 시 0.75→0.6 재압축)** — 사장님이 테스트한 점수가 이 조건에서 측정됨 |
+| liveness-demo/lib/gaonfr.ts detectFaces | 얼굴 위치 검출 | webapp에서는 **불필요** — recognize 응답에 FaceRect가 옴(2026-07-10 실측 확인, recognize·enrollment·detect 모두 반환) |
 
-※ 등록은 detect 선호출 방식 대신 "등록 후 의심 시 롤백"을 택함 — GaonFR 호출 1회로 끝나고, 실패해도 잔존물이 남지 않음(unenroll 확인 실패 시 재시도).
+### 수정 대상 (webapp)
+| 파일 | 현재 상태 | 필요한 변경 |
+|---|---|---|
+| app/actions/face.ts | faceClockIn/Out: verifyMyFace(recognize) 성공 → clockIn()/clockOut() | 출퇴근 처리 **후**에 판독+사진 저장을 덧붙임(후처리) |
+| lib/face.ts recognizeFace | Similarity·FaceId만 반환. FaceRect 파싱(parseRect)은 enroll에서만 사용 | FaceRect·ImageSize를 **반환값에 추가**(추가만, 기존 필드 무변경) |
+| prisma/schema.prisma | Attendance에 판독 관련 컬럼 없음 | 사진·점수 기록 모델 **추가만** |
+| app/attendance/FaceClockPanel.tsx | 촬영 480px·JPEG 0.85 | 데모와 동일한 1280·0.9로 상향(기준값 일치 조건) |
+| app/records/[userId]/page.tsx + DetailTable | 관리자 근태 상세 | 배지·점수·사진 열람 추가 |
+| lib/dayentries.ts AttRow | 판독 필드 없음 | 선택 필드 추가 |
 
-## DB·저장 변경
-- Attendance: `livenessStatus`(null/ok/suspect), `livenessScore`(Float?) — 출근·퇴근 각각? → 최소화: 출근/퇴근 중 **의심이 하나라도 있으면 표시**, 상세는 SuspectCapture로
-- 신규 모델 `SuspectCapture`: userId, companyId, attendanceId?, kind(clock_in/clock_out/enroll), score, filePath, createdAt (+열람 로그 `viewedAt/viewedBy`는 단순화: AdminViewLog 대신 필드로 시작)
-- 사진 파일: `webapp/private-data/suspect/`(웹 공개경로 밖) — **AES-256-GCM 암호화**(키=env `SUSPECT_PHOTO_KEY`), 90일 경과분은 저장/조회 시 자동 파기(lazy purge)
-- ⚠️ "얼굴원본 미저장" 원칙의 확정된 예외(의심 건 한정) — face-spec §3-2에 예외 명시 필요
+## 🔴 영향 범위 (수정 대상을 사용하는 모든 곳 — Grep 전수 확인)
 
-## 🔴 영향 범위
-- actions/face.ts(faceClockIn/Out·enrollMyFace): 판독 로직 **추가** — 기존 성공/실패 판정 로직 무변경. 판독 자체가 실패(모델 오류 등)하면 **판독 없이 통과**(가용성 우선, 로그만)
-- clockIn/clockOut·lib/face.ts 기존 함수: 무수정
-- 근태현황·상세 화면: 배지 컬럼 추가(표시만)
-- 스키마 추가만 → 마이그레이션 1회 + dev 서버 재시작 필요
+1. **lib/face.ts `recognizeFace`** — 사용처 1곳: app/actions/face.ts `verifyMyFace`뿐. 선택 필드(faceRect·imageSize)만 추가하면 기존 동작 무변경. ⚠️ 현황판 "lib/face.ts 기존 함수 수정 금지" → **추가 전용 변경**임을 명시하고 승인 후 진행(safe-coding 절차).
+2. **actions/attendance.ts `clockIn`/`clockOut`** — 사용처: ClockInPanel(일반 출근), FaceClockPanel(폴백 퇴근), actions/face.ts. 현황판 "수정 금지" → **수정하지 않는다.** 판독 결과는 호출 뒤 열린/방금 닫힌 Attendance 레코드를 찾아 별도 update로 연결.
+3. **lib/dayentries.ts / DetailTable** — 사용처 3곳: records/[userId](관리자), **my-records(직원 본인)**, MonthCalendar. ⚠️ 직원 본인 화면에 같은 컴포넌트가 쓰임 → "조용한 표시" 원칙상 직원에게 보이면 안 됨. 선택 prop(기본 꺼짐)으로 관리자 페이지에서만 켠다.
+4. **Attendance 모델** — 조회처 다수(dashboard, records, my-records, reports/export, corrections, worktime). 관계 모델 추가만 하므로 기존 조회(include 미지정) 무영향.
+5. **GPS/일반 출퇴근** — 사진 자체가 없어 판독 비대상. 코드 경로 분리(ClockInPanel→clockIn 직행), 영향 없음.
 
-## 위험 요소
-1. 오판(진짜 사람을 의심 표시) — 조용한 표시 방식이라 직원 피해 없음. 임계값은 보수적으로 시작(의심 판정 기준 낮게) 후 PoC로 조정
-2. 480px 압축 이미지는 판독 단서가 뭉개질 수 있음 → 얼굴 캡처를 **720p·저압축**으로 상향(서버액션 1MB 한도 내, ~150-300KB)
-3. onnxruntime-node·sharp 설치 실패 가능성(네이티브 모듈) — 1단계에서 즉시 확인, 실패 시 A안(Python)으로 전환 보고
-4. PoC(사진·화면·동영상 공격 테스트)는 사장님 웹캠 필요 — 구현 후 체크리스트로 함께 진행
+## 공통 모듈 여부 / 건드리면 안 되는 부분
+- 공통 모듈: recognizeFace(1곳), buildDayEntries/DetailTable(3곳) → 추가 전용 + 기본값 유지로 방어.
+- 변경 금지 확정: liveness.ts 전처리 상수(4.0/2.7·80×80·BGR·linear), clockIn/clockOut 본체, 기존 얼굴 성공/실패 판정 로직.
+
+## DB·API 변경 여부, 위험 요소
+- **DB**: 사진 기록 모델 신설 + Attendance 관계 추가(추가만, 기존 데이터 무영향, 마이그레이션 필요).
+- **저장 사진 = 생체정보 원본**: 기존 확정 설계(2026-07-10)는 "의심건만 저장"이었으나 이번 지시는 "사용된 사진을 이력에 남김"(전건) → **저장 범위 확대는 법적 결정 사항.** 암호화(AES-256)·웹 공개경로 밖 저장·관리자만 열람(열람 기록)·보관기한 자동 파기·동의서 문구 반영이 전제.
+- **기준값(threshold)**: 사장님 기준값 테스트 미완료. 차단이 없으므로 "재검토 필요" 배지 기준일 뿐 → 기본 50%, .env로 조정. 단 **촬영 조건(1280·0.9)을 데모와 동일하게** 맞춰야 데모에서 잰 점수와 비교 가능.
+- **가용성**: 판독은 출퇴근 처리 완료 뒤 후처리 → 실패/시간초과가 출퇴근을 절대 막지 않음(상태 "error"+로그만).
+- **얼굴인식 회귀**: 촬영 해상도 상향(480→1280)은 GaonFR 인식에도 같은 사진이 가므로 얼굴 출퇴근 회귀 테스트 필수. 서버액션 1MB 한도는 데모와 같은 재압축 로직으로 대응.
+
+## 결론 (계획 시 고려사항)
+1. 판독 = "출퇴근 처리 완료 후 덧붙는 후처리". 기존 함수 무수정, 실패해도 통과.
+2. 얼굴 위치는 recognize 응답 FaceRect 재사용(추가 API 호출 불필요). 구현 중 실측 재확인, 없으면 판독 생략("error") 폴백.
+3. 사진 전건 저장(확정 설계 대비 확대)과 보관기간은 사장님 확인 항목으로 계획서에 명시.
+4. 등록 시 차단(기존 계획의 "부드러운 차단")은 이번 지시 범위 밖 → 제외하고 계획.
