@@ -9,6 +9,7 @@ import { after } from "next/server";
 import { enrollFace, unenrollFace, recognizeFace, detectFaces, isFaceConfigured, type FaceRect } from "@/lib/face";
 import { clockIn, clockOut } from "@/app/actions/attendance";
 import { analyzeFace } from "@/lib/liveness";
+import { faceBrightness } from "@/lib/quality";
 import { saveClockPhoto, purgeExpiredPhotos, PHOTO_CONSENT_SINCE } from "@/lib/clock-photo";
 
 type ActionResult = {
@@ -97,18 +98,23 @@ export async function enrollMyFace(formData: FormData): Promise<ActionResult> {
 async function verifyMyFace(
   me: { id: string; companyId: string; authMethod: string | null; faceEnrolledAt: Date | null },
   formData: FormData
-): Promise<{ ok: boolean; message: string; buffer?: Buffer; faceRect?: FaceRect }> {
+): Promise<{ ok: boolean; message: string; buffers?: Buffer[]; faceRect?: FaceRect }> {
   if (!isFaceConfigured()) return { ok: false, message: "얼굴서버 설정이 없습니다. 관리자에게 문의하세요." };
   if (me.authMethod !== "face" || !me.faceEnrolledAt) {
     return { ok: false, message: "얼굴인증 선택과 얼굴 등록이 먼저 필요합니다." };
   }
 
-  const file = formData.get("image");
-  if (!(file instanceof File) || file.size === 0) return { ok: false, message: "얼굴 사진이 없습니다. 다시 촬영해 주세요." };
-  if (file.size > 900 * 1024) return { ok: false, message: "사진 용량이 너무 큽니다. 다시 시도해 주세요." };
+  // 연속 3장(위조 판독용). 1장만 와도 호환 동작. 본인확인(recognize)은 첫 장으로 1회만 수행 — 얼굴서버 429(연속 detect 폭주) 회피.
+  const received = formData.getAll("image").filter((f): f is File => f instanceof File && f.size > 0);
+  if (received.length === 0) return { ok: false, message: "얼굴 사진이 없습니다. 다시 촬영해 주세요." };
+  if (received.length > 3) return { ok: false, message: "사진은 최대 3장까지 처리합니다. 다시 시도해 주세요." };
+  // 용량 초과 프레임은 버리고 정상 장으로 진행한다(가용성 우선 — 한 장이 커도 얼굴 출퇴근이 막히지 않게).
+  // 전부 초과일 때만 안내. 판독은 남은 장으로 하고, 남은 장이 없으면 인증만 진행할 수 없다.
+  const files = received.filter((f) => f.size <= 900 * 1024);
+  if (files.length === 0) return { ok: false, message: "사진 용량이 너무 큽니다. 다시 시도해 주세요." };
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const result = await recognizeFace(buffer, me.companyId);
+  const buffers = await Promise.all(files.map(async (f) => Buffer.from(await f.arrayBuffer())));
+  const result = await recognizeFace(buffers[0], me.companyId);
   if (!result.success) {
     return { ok: false, message: result.message || "얼굴을 확인하지 못했습니다. 다시 시도해 주세요." };
   }
@@ -122,25 +128,36 @@ async function verifyMyFace(
     console.log(`[face] 크기 미달 거절 — 직원 ${me.id}, 얼굴 폭 ${result.faceRect ? Math.round((result.faceRect.width / Math.min(result.imageSize!.width, (result.imageSize!.height * 4) / 3)) * 100) : "?"}%`);
     return { ok: false, message: FACE_TOO_SMALL_MSG };
   }
-  // 성공 시 사진·얼굴 위치를 함께 반환 — 출퇴근 후처리(판독·사진 이력)에서 재사용
-  return { ok: true, message: "본인 확인 완료", buffer, faceRect: result.faceRect };
+  // 성공 시 사진(전 장)·얼굴 위치를 함께 반환 — 출퇴근 후처리(판독·사진 이력)에서 재사용
+  return { ok: true, message: "본인 확인 완료", buffers, faceRect: result.faceRect };
 }
 
-// 판독 기준값(0~1). 이 값 미만이면 관리자 화면에 "본인 확인 재검토 필요" 배지. 출퇴근 차단에는 쓰지 않는다.
-// 회사 설정 [설정 → 본인 확인 재검토 기준](%, 30~90)이 우선. 회사 칸은 NOT NULL(기본 50)이라
-// .env LIVENESS_THRESHOLD는 회사 행 자체가 없거나 조회가 실패했을 때만 쓰이는 예비값이다.
+// [위조 판독 — 모델별 차등 판정 기준] (D:\사진판독 실측·검증, 2026-07-11 이식)
+// 두 판독 AI에 서로 다른 합격선을 둔다: 모델 A(V1SE)는 저조도에 약해 낮게, 모델 B(V2)는 실질 판별자라 높게.
+//   진짜 얼굴: 모델 B ≥ 약 93% / 위조(오려낸 사진·화면): 모델 B ≤ 약 60% 로 크게 갈린다.
+// 연속 3장이 모두 (모델A ≥ MODEL_A_THRESHOLD) 그리고 (모델B ≥ 모델B기준) 통과해야 "진짜(ok)", 아니면 "재검토(suspect)".
+// ⚠️ 이 값들은 데모 카메라 실측값이다 — 근태 현장 카메라·조명에서 재확인 후 확정할 것(근태적용_가이드 8항).
+const MODEL_A_THRESHOLD = 0.6; // 모델 A(V1SE) 최소 진짜확률 — 저조도 오탐 방지 위해 낮게 고정(코드 상수)
+const MODEL_B_DEFAULT = 0.85; // 모델 B(V2) 기본 기준 — 설정값이 없거나 옛 저장값(70 미만)일 때의 안전 기본
+// [밝기 게이트] 얼굴이 이 값보다 어두우면 판독을 보류한다(재검토 배지 안 붙임 — 저조도 진짜 얼굴 오탐 방지).
+// 0 = 꺼짐. 가이드대로 현장 실측으로 최저선을 정한 뒤 켠다(예: 80). 지금은 기존 동작 유지 위해 꺼둔다.
+const MIN_BRIGHTNESS = 0;
+
+// 모델 B(V2) 판정 기준값(0~1). 회사 설정 [설정 → 본인 확인 재검토 기준]이 우선.
+// 설정 슬라이더는 이제 "모델 B 기준(%)"을 뜻한다. 옛 의미(평균 기준)로 저장된 낮은 값(예 50)을
+//   모델 B 기준으로 그대로 쓰면 위조를 놓치므로, 70 미만/무효 값은 안전 기본(0.85)으로 올려 폴백한다(마이그레이션 없이 안전).
 // ⚠️ 조회 실패가 예외로 번지면 판독이 끝난 사진·기록 저장까지 유실되므로(recordClockPhoto의 바깥 catch)
 //    여기서는 절대 던지지 않고 예비값으로 폴백한다(검수 반영).
-async function getLivenessThreshold(companyId: string): Promise<number> {
+async function getModelBThreshold(companyId: string): Promise<number> {
   try {
     const company = await prisma.company.findUnique({ where: { id: companyId }, select: { livenessPercent: true } });
     const p = company?.livenessPercent;
-    if (typeof p === "number" && Number.isFinite(p)) return Math.min(90, Math.max(30, p)) / 100;
+    if (typeof p === "number" && Number.isFinite(p) && p >= 70 && p <= 95) return p / 100;
   } catch (e) {
     console.error("[liveness] 판정 기준값 조회 실패 — 예비값으로 판정 계속:", e);
   }
   const v = Number(process.env.LIVENESS_THRESHOLD);
-  return Number.isFinite(v) && v > 0 && v < 1 ? v : 0.5;
+  return Number.isFinite(v) && v >= 0.7 && v < 1 ? v : MODEL_B_DEFAULT;
 }
 
 // ※ PHOTO_CONSENT_SINCE(사진 보관 동의 기준일)는 lib/clock-photo.ts로 이동 — 재동의 배너와 공유(2026-07-11).
@@ -154,7 +171,7 @@ const RECENT_CLOCK_MS = 2 * 60 * 1000;
 async function recordClockPhoto(
   me: { id: string; companyId: string; faceConsentAt: Date | null },
   kind: "in" | "out",
-  buffer: Buffer,
+  buffers: Buffer[],
   faceRect?: FaceRect
 ): Promise<void> {
   try {
@@ -178,20 +195,62 @@ async function recordClockPhoto(
       return;
     }
 
-    // 위조 판독 — 얼굴 위치가 없거나 판독 실패면 "error"(사진만 보관, 출퇴근 무관)
+    // 위조 판독(모델별 차등 · 연속 3장 전 장 통과) — 얼굴 위치가 없거나 판독 실패면 "error"(사진만 보관, 출퇴근 무관)
+    // 판정은 관리자 화면의 "재검토" 배지에만 쓰인다 — 출퇴근 자체는 이미 처리됨(절대 막지 않음).
     let status = "error";
     let score: number | null = null;
+    const first = buffers[0];
     if (faceRect) {
-      const lv = await analyzeFace(buffer, faceRect);
-      if (lv.ok && typeof lv.realScore === "number") {
-        score = lv.realScore;
-        status = lv.realScore >= (await getLivenessThreshold(me.companyId)) ? "ok" : "suspect";
+      // ① 동일 사진 반복 — 실제 웹캠은 장마다 미세하게 달라진다. 바이트 동일 반복은 정지영상 주입·가상카메라 신호 → 재검토.
+      let identical = false;
+      for (let i = 1; i < buffers.length && !identical; i++) {
+        for (let j = 0; j < i; j++) {
+          if (buffers[i].equals(buffers[j])) { identical = true; break; }
+        }
+      }
+
+      if (identical) {
+        status = "suspect";
+        console.log(`[liveness] 동일 사진 반복 감지 — 직원 ${me.id}(정지영상/가상카메라 의심), 재검토 표시`);
+        const lv0 = await analyzeFace(first, faceRect); // 표시용 점수만
+        if (lv0.ok && typeof lv0.realScore === "number") score = lv0.realScore;
+      } else {
+        // ② 밝기 게이트 — 너무 어두우면 판독 보류(저조도 진짜 얼굴 오탐 방지). MIN_BRIGHTNESS=0이면 건너뜀.
+        let tooDark = false;
+        if (MIN_BRIGHTNESS > 0) {
+          const b = await faceBrightness(first, faceRect);
+          if (b.ok && b.mean < MIN_BRIGHTNESS) tooDark = true;
+        }
+        if (tooDark) {
+          status = "error"; // 저조도 — 신뢰할 수 없어 재검토 배지 대신 판독 보류(사진만 보관)
+          console.log(`[liveness] 저조도 판독 보류 — 직원 ${me.id}(더 밝은 곳 권장)`);
+        } else {
+          // ③ 장별 판독 + 모델별 차등 판정 — 모든 장이 (모델A ≥ 상수) 그리고 (모델B ≥ 회사기준) 통과해야 진짜(ok)
+          const thB = await getModelBThreshold(me.companyId);
+          const scores: number[] = [];
+          let allPass = true;
+          let analyzeFailed = false;
+          for (const buf of buffers) {
+            const lv = await analyzeFace(buf, faceRect);
+            if (!lv.ok || !lv.models || typeof lv.realScore !== "number") { analyzeFailed = true; break; }
+            const v1se = lv.models.find((m) => m.name === "V1SE")?.realProb ?? 0;
+            const v2 = lv.models.find((m) => m.name === "V2")?.realProb ?? 0;
+            scores.push(lv.realScore);
+            if (!(v1se >= MODEL_A_THRESHOLD && v2 >= thB)) allPass = false;
+          }
+          if (analyzeFailed) {
+            status = "error";
+          } else {
+            score = Math.min(...scores); // 표시용 — 가장 약한 장의 진짜확률(판정 여유를 보여줌)
+            status = allPass ? "ok" : "suspect";
+          }
+        }
       }
     } else {
       console.error("[liveness] recognize 응답에 얼굴 위치(FaceRect)가 없어 판독을 건너뜀");
     }
 
-    const fileName = await saveClockPhoto(buffer);
+    const fileName = await saveClockPhoto(first);
     await prisma.clockPhoto.create({
       data: {
         attendanceId: attendance.id,
@@ -229,8 +288,8 @@ export async function faceClockIn(formData: FormData): Promise<ActionResult> {
 
   await clockIn(mode, hasCoords ? lat : undefined, hasCoords ? lng : undefined);
   // 후처리(조용한 표시): 사진 저장 + 위조 판독 — 응답을 보낸 뒤(after) 실행해 화면을 붙잡지 않는다.
-  const buffer = verified.buffer;
-  if (buffer) after(() => recordClockPhoto(me, "in", buffer, verified.faceRect));
+  const buffers = verified.buffers;
+  if (buffers?.length) after(() => recordClockPhoto(me, "in", buffers, verified.faceRect));
   return { ok: true, message: "얼굴 확인 완료! 출근 처리되었습니다." };
 }
 
@@ -244,8 +303,8 @@ export async function faceClockOut(formData: FormData): Promise<ActionResult> {
 
   await clockOut();
   // 후처리(조용한 표시): 사진 저장 + 위조 판독 — 응답을 보낸 뒤(after) 실행해 화면을 붙잡지 않는다.
-  const buffer = verified.buffer;
-  if (buffer) after(() => recordClockPhoto(me, "out", buffer, verified.faceRect));
+  const buffers = verified.buffers;
+  if (buffers?.length) after(() => recordClockPhoto(me, "out", buffers, verified.faceRect));
   return { ok: true, message: "얼굴 확인 완료! 퇴근 처리되었습니다." };
 }
 

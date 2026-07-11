@@ -15,6 +15,12 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // 얼굴 출퇴근이 연속 3장(장당 최대 850KB)을 서버 액션으로 보내므로 본문 한도를 올린다(기본 1MB → 4MB).
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "4mb",
+    },
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

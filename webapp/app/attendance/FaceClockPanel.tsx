@@ -108,28 +108,17 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
     return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
   }
 
-  // 촬영 → JPEG → 서버로 보내 본인 확인 + 출퇴근 처리
-  async function captureAndSubmit() {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas || submitting || submittingRef.current) return;
-    if (!video.videoWidth) {
-      setMsg({ type: "info", text: "카메라 영상을 준비하는 중입니다. 잠시 후 다시 눌러주세요." });
-      return;
-    }
-    submittingRef.current = true; // toBlob(비동기) 전에 동기로 잠가 빠른 두 번 클릭 차단
-    // 판독 정확도를 위해 최대 1280 그대로, 품질 0.9 — 라이브니스 기준값 측정 조건(liveness-demo)과 동일
+  // 현재 영상 프레임 1장을 JPEG Blob으로 만든다(서버 본문 한도 대비 재압축 포함).
+  // 판독 정확도를 위해 최대 1280·품질 0.9 — 라이브니스 기준값 측정 조건(liveness-demo)과 동일.
+  async function captureOneBlob(video: HTMLVideoElement, canvas: HTMLCanvasElement): Promise<Blob | null> {
     const maxW = 1280;
     const scale = video.videoWidth > maxW ? maxW / video.videoWidth : 1;
     canvas.width = Math.round(video.videoWidth * scale);
     canvas.height = Math.round(video.videoHeight * scale);
     const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      submittingRef.current = false;
-      return;
-    }
+    if (!ctx) return null;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    // 서버 액션 본문 한도(1MB) 대비: 크면 품질을 낮춰 재압축(저조도 노이즈·고해상도 카메라 대비)
+    // 서버 액션 본문 한도 대비: 크면 품질을 낮춰 재압축(저조도 노이즈·고해상도 카메라 대비)
     let blob = await toBlobAsync(canvas, 0.9);
     for (const q of [0.75, 0.6]) {
       if (blob && blob.size <= 850 * 1024) break;
@@ -146,16 +135,37 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
       small.getContext("2d")?.drawImage(canvas, 0, 0, w, h);
       blob = await toBlobAsync(small, 0.75);
     }
-    if (!blob) {
-      submittingRef.current = false;
-      setMsg({ type: "err", text: "촬영에 실패했습니다. 다시 시도해 주세요." });
+    return blob;
+  }
+
+  // 촬영 → 연속 3장(0.3초 간격) JPEG → 서버로 보내 본인 확인 + 위조 판독 + 출퇴근 처리
+  async function captureAndSubmit() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || submitting || submittingRef.current) return;
+    if (!video.videoWidth) {
+      setMsg({ type: "info", text: "카메라 영상을 준비하는 중입니다. 잠시 후 다시 눌러주세요." });
       return;
     }
-    setSubmitting(true);
-    setMsg({ type: "info", text: "얼굴을 확인하는 중입니다…" });
+    submittingRef.current = true; // toBlob(비동기) 전에 동기로 잠가 빠른 두 번 클릭 차단
     try {
+      // 연속 3장 촬영 — 오려낸 사진·정지영상 방어(위조 판독은 전 장이 통과해야 진짜). 0.3초 간격.
+      // ⚠️ 촬영 루프도 try 안에 둔다 — captureOneBlob 예외 시에도 finally로 잠금(submittingRef)이 반드시 풀리게.
+      const blobs: Blob[] = [];
+      for (let i = 0; i < 3; i++) {
+        if (i > 0) await new Promise((r) => setTimeout(r, 300));
+        const b = await captureOneBlob(video, canvas);
+        if (b) blobs.push(b);
+      }
+      if (blobs.length === 0) {
+        setMsg({ type: "err", text: "촬영에 실패했습니다. 다시 시도해 주세요." });
+        return;
+      }
+
+      setSubmitting(true);
+      setMsg({ type: "info", text: "얼굴을 확인하는 중입니다…" });
       const fd = new FormData();
-      fd.append("image", blob, "face.jpg");
+      blobs.forEach((b, i) => fd.append("image", b, `face${i + 1}.jpg`));
       let res: { ok: boolean; message: string };
       if (action === "in") {
         fd.append("mode", mode);

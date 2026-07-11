@@ -101,9 +101,10 @@ export async function saveLivenessRule(
   }
 
   const percent = Number(formData.get("livenessPercent"));
-  // 30 미만은 위조도 대부분 통과(무의미), 90 초과는 진짜 얼굴도 배지 남발 — 실측(진짜 92.6%/위조 2.3%) 기준 안전 범위
-  if (!Number.isFinite(percent) || percent < 30 || percent > 90) {
-    return { error: "재검토 기준은 30~90% 사이로 입력해주세요." };
+  // 이 값은 "모델 B(핵심 판별자) 기준(%)"이다. 진짜 얼굴 93%+/위조 60%- 사이 안전지대 안에서만 허용:
+  // 70 미만은 위조를 놓치고, 95 초과는 진짜 얼굴도 배지 남발. (모델 A 기준 60%는 코드 고정값)
+  if (!Number.isFinite(percent) || percent < 70 || percent > 95) {
+    return { error: "재검토 기준은 70~95% 사이로 입력해주세요." };
   }
 
   await prisma.company.update({
