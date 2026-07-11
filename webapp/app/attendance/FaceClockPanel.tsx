@@ -56,7 +56,8 @@ export function FaceClockPanel({ action }: { action: "in" | "out" }) {
       let stream = streamRef.current;
       if (!stream || stream.getTracks().every((t) => t.readyState === "ended")) {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+          // 1280×720 요청 — 라이브니스(사진판독) 기준값이 이 화질에서 측정됨(liveness-demo와 동일 조건)
+          video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false,
         });
         // 기다리는 사이 화면을 떠났으면 즉시 끈다(웹캠 불이 계속 켜져 있는 것 방지)
@@ -101,8 +102,12 @@ export function FaceClockPanel({ action }: { action: "in" | "out" }) {
     }
   }
 
-  // 촬영 → 축소 JPEG → 서버로 보내 본인 확인 + 출퇴근 처리
-  function captureAndSubmit() {
+  function toBlobAsync(canvas: HTMLCanvasElement, quality: number): Promise<Blob | null> {
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+  }
+
+  // 촬영 → JPEG → 서버로 보내 본인 확인 + 출퇴근 처리
+  async function captureAndSubmit() {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas || submitting || submittingRef.current) return;
@@ -111,7 +116,8 @@ export function FaceClockPanel({ action }: { action: "in" | "out" }) {
       return;
     }
     submittingRef.current = true; // toBlob(비동기) 전에 동기로 잠가 빠른 두 번 클릭 차단
-    const maxW = 480;
+    // 판독 정확도를 위해 최대 1280 그대로, 품질 0.9 — 라이브니스 기준값 측정 조건(liveness-demo)과 동일
+    const maxW = 1280;
     const scale = video.videoWidth > maxW ? maxW / video.videoWidth : 1;
     canvas.width = Math.round(video.videoWidth * scale);
     canvas.height = Math.round(video.videoHeight * scale);
@@ -121,47 +127,47 @@ export function FaceClockPanel({ action }: { action: "in" | "out" }) {
       return;
     }
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob(
-      async (blob) => {
-        if (!blob) {
-          submittingRef.current = false;
-          setMsg({ type: "err", text: "촬영에 실패했습니다. 다시 시도해 주세요." });
-          return;
+    // 서버 액션 본문 한도(1MB) 대비: 크면 품질을 낮춰 재압축(저조도 노이즈·고해상도 카메라 대비)
+    let blob = await toBlobAsync(canvas, 0.9);
+    for (const q of [0.75, 0.6]) {
+      if (blob && blob.size <= 850 * 1024) break;
+      blob = await toBlobAsync(canvas, q);
+    }
+    if (!blob) {
+      submittingRef.current = false;
+      setMsg({ type: "err", text: "촬영에 실패했습니다. 다시 시도해 주세요." });
+      return;
+    }
+    setSubmitting(true);
+    setMsg({ type: "info", text: "얼굴을 확인하는 중입니다…" });
+    try {
+      const fd = new FormData();
+      fd.append("image", blob, "face.jpg");
+      let res: { ok: boolean; message: string };
+      if (action === "in") {
+        fd.append("mode", mode);
+        if (coordsRef.current) {
+          fd.append("lat", String(coordsRef.current.lat));
+          fd.append("lng", String(coordsRef.current.lng));
         }
-        setSubmitting(true);
-        setMsg({ type: "info", text: "얼굴을 확인하는 중입니다…" });
-        try {
-          const fd = new FormData();
-          fd.append("image", blob, "face.jpg");
-          let res: { ok: boolean; message: string };
-          if (action === "in") {
-            fd.append("mode", mode);
-            if (coordsRef.current) {
-              fd.append("lat", String(coordsRef.current.lat));
-              fd.append("lng", String(coordsRef.current.lng));
-            }
-            res = await faceClockIn(fd);
-          } else {
-            res = await faceClockOut(fd);
-          }
-          if (res.ok) {
-            stopCamera();
-            setPhase("idle");
-            setMsg({ type: "ok", text: res.message });
-            router.refresh();
-          } else {
-            setMsg({ type: "err", text: `${res.message} (다시 촬영하거나 아래 일반 방식을 이용하세요)` });
-          }
-        } catch {
-          setMsg({ type: "err", text: "확인 중 오류가 발생했습니다. 다시 시도해 주세요." });
-        } finally {
-          submittingRef.current = false;
-          setSubmitting(false);
-        }
-      },
-      "image/jpeg",
-      0.85
-    );
+        res = await faceClockIn(fd);
+      } else {
+        res = await faceClockOut(fd);
+      }
+      if (res.ok) {
+        stopCamera();
+        setPhase("idle");
+        setMsg({ type: "ok", text: res.message });
+        router.refresh();
+      } else {
+        setMsg({ type: "err", text: `${res.message} (다시 촬영하거나 아래 일반 방식을 이용하세요)` });
+      }
+    } catch {
+      setMsg({ type: "err", text: "확인 중 오류가 발생했습니다. 다시 시도해 주세요." });
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
   }
 
   function cancelCamera() {

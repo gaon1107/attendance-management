@@ -39,7 +39,14 @@ export default async function RecordDetailPage({
 
   const rows = await prisma.attendance.findMany({
     where: { userId: target.id, companyId: me.companyId, clockIn: { gte: start, lt: end } },
-    include: { breaks: true },
+    include: {
+      breaks: true,
+      // 출퇴근 촬영 사진·판독 기록(관리자 전용 "본인 확인" 열) — 파일 이름 등 내부 정보는 내리지 않는다
+      clockPhotos: {
+        select: { id: true, kind: true, livenessStatus: true, livenessScore: true, fileDeletedAt: true },
+        orderBy: { createdAt: "asc" },
+      },
+    },
     orderBy: { clockIn: "desc" },
   });
 
@@ -61,7 +68,8 @@ export default async function RecordDetailPage({
   return (
     <AppShell user={me} active="records" title={`${target.name} 님 근태 상세`} subtitle={me.company.name} right={backBtn}>
       <PeriodNav basePath={`/records/${target.id}`} unit={unit} anchor={anchor} label={label} />
-      <DetailTable detail={detail} />
+      {/* 관리자 화면에만 "본인 확인"(판독·사진) 열을 켠다 — 직원 본인 화면(my-records)은 기존 그대로 */}
+      <DetailTable detail={detail} showLiveness />
     </AppShell>
   );
 }

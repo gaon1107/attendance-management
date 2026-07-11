@@ -4,6 +4,14 @@ import { toISODate } from "@/lib/period";
 import { effectiveWorkDays, isWorkDay } from "@/lib/workdays";
 
 type BreakLike = { startAt: Date; endAt: Date | null };
+// 출퇴근 촬영 사진·판독 기록(관리자 근태 상세 전용). 조회하지 않은 화면(내근태 등)에서는 undefined — 기존 동작 무변경.
+export type ClockPhotoLite = {
+  id: string;
+  kind: string; // "in" | "out"
+  livenessStatus: string; // "ok" | "suspect" | "error"
+  livenessScore: number | null;
+  fileDeletedAt: Date | null;
+};
 export type AttRow = {
   id: string;
   clockIn: Date;
@@ -11,6 +19,7 @@ export type AttRow = {
   workMode: string;
   locationStatus: string | null;
   breaks: BreakLike[];
+  clockPhotos?: ClockPhotoLite[];
 };
 type Company = { workStartTime: string | null; lateGraceMin: number; workDays: string } | null;
 
