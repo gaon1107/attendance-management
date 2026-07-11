@@ -58,16 +58,26 @@ const HREF: Partial<Record<NavKey, string>> = {
   "leave-approvals": "/leave/approvals",
 };
 
-function itemsFor(role: string): Item[] {
-  const keys: NavKey[] =
-    role === "admin"
-      ? ["dashboard", "employees", "records", "reports", "leave-approvals", "notice", "biometrics", "attendance", "auth-method", "settings"]
-      : ["attendance", "my-records", "leave", "corrections", "notice", "auth-method"];
+type NavGroup = { caption: string; items: Item[] };
+
+function toItems(keys: NavKey[]): Item[] {
   return keys.map((key) => ({ key, href: HREF[key] ?? `/${key}`, label: LABEL[key], icon: ICON[key] }));
 }
 
+// 관리자 메뉴는 "회사관리"(직원들 것)와 "내근태"(관리자 본인 출퇴근) 두 묶음으로 나눠 섞임을 없앤다.
+// 직원 메뉴는 전부 본인 것이라 한 묶음(제목 없음).
+function groupsFor(role: string): NavGroup[] {
+  if (role === "admin") {
+    return [
+      { caption: "회사관리", items: toItems(["dashboard", "employees", "records", "reports", "leave-approvals", "notice", "biometrics", "settings"]) },
+      { caption: "내근태", items: toItems(["attendance", "auth-method"]) },
+    ];
+  }
+  return [{ caption: "", items: toItems(["attendance", "my-records", "leave", "corrections", "notice", "auth-method"]) }];
+}
+
 export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
-  const items = itemsFor(user.role);
+  const groups = groupsFor(user.role);
   const initial = user.name.slice(0, 1);
 
   return (
@@ -77,7 +87,12 @@ export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
         flexShrink: 0,
         background: "#fff",
         borderRight: "1px solid var(--border)",
-        minHeight: "100vh",
+        // 화면 높이에 고정하고 자기 자리를 지킨다(길이가 긴 본문에서도 사이드바는 항상 보임).
+        // 메뉴가 화면보다 길면 nav만 내부 스크롤 → 맨 아래 프로필과 겹치지 않는다.
+        height: "100vh",
+        position: "sticky",
+        top: 0,
+        overflow: "hidden",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -100,38 +115,56 @@ export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
         <span style={{ color: "#fff", fontSize: 17, fontWeight: 700 }}>근</span>
       </div>
 
-      {/* 메뉴 */}
-      <nav style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", alignItems: "center" }}>
-        {items.map((it) => {
-          const on = it.key === active;
-          return (
-            <Link
-              key={it.key}
-              href={it.href}
-              style={{
-                width: 56,
-                height: 50,
-                borderRadius: 11,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 3,
-                textDecoration: "none",
-                background: on ? "#EFF6FF" : "transparent",
-                color: on ? "var(--primary)" : "#9CA3AF",
-              }}
-            >
+      {/* 메뉴 — 관리자는 "회사관리 / 내근태" 두 묶음으로 나눠 표시(구분선+작은 제목) */}
+      {/* flex:1 + minHeight:0 + overflowY:auto → 화면이 낮아 메뉴가 넘칠 때만 내부 스크롤(맨 아래 프로필과 겹침 방지) */}
+      <nav style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", alignItems: "center", flex: 1, minHeight: 0, overflowY: "auto" }}>
+        {groups.map((g, gi) => (
+          <div
+            key={g.caption || gi}
+            style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", alignItems: "center" }}
+          >
+            {/* 두 번째 그룹부터는 앞에 구분선을 둔다 */}
+            {gi > 0 && <div style={{ width: 44, height: 1, background: "var(--border)", margin: "10px 0 4px" }} />}
+            {/* 그룹 제목(관리자만 있음) */}
+            {g.caption && (
               <span
-                style={{ width: 19, height: 19, display: "flex" }}
-                dangerouslySetInnerHTML={{
-                  __html: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${it.icon}</svg>`,
-                }}
-              />
-              <span style={{ fontSize: 11, fontWeight: 700 }}>{it.label}</span>
-            </Link>
-          );
-        })}
+                style={{ fontSize: 9, fontWeight: 700, color: "#B0B7C3", letterSpacing: 0.2, marginBottom: 2, whiteSpace: "nowrap" }}
+              >
+                {g.caption}
+              </span>
+            )}
+            {g.items.map((it) => {
+              const on = it.key === active;
+              return (
+                <Link
+                  key={it.key}
+                  href={it.href}
+                  style={{
+                    width: 56,
+                    height: 50,
+                    borderRadius: 11,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 3,
+                    textDecoration: "none",
+                    background: on ? "#EFF6FF" : "transparent",
+                    color: on ? "var(--primary)" : "#9CA3AF",
+                  }}
+                >
+                  <span
+                    style={{ width: 19, height: 19, display: "flex" }}
+                    dangerouslySetInnerHTML={{
+                      __html: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${it.icon}</svg>`,
+                    }}
+                  />
+                  <span style={{ fontSize: 11, fontWeight: 700 }}>{it.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       {/* 아래: 프로필(클릭 시 계정 설정) — 로그아웃은 상단바 우측 공통 버튼으로 이동 */}
