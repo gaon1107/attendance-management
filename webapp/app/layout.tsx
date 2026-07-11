@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { InputAutoFormat } from "./components/InputAutoFormat";
 
 export const metadata: Metadata = {
   title: "근태관리",
@@ -19,7 +20,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
-      <body>{children}</body>
+      <body>
+        {/* 전역 입력 자동 서식(전화 하이픈·천단위 콤마) — 모든 페이지·신규 페이지에 자동 적용 */}
+        <InputAutoFormat />
+        {children}
+      </body>
     </html>
   );
 }

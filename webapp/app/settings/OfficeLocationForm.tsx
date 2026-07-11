@@ -4,6 +4,7 @@
 import { useActionState, useState } from "react";
 import dynamic from "next/dynamic";
 import { saveOfficeLocation } from "@/app/actions/settings";
+import { formatThousands, stripCommas } from "@/lib/format";
 
 // 지도는 브라우저에서만 로드(서버 렌더 시 오류 방지)
 const OfficeMap = dynamic(() => import("./OfficeMap").then((m) => m.OfficeMap), {
@@ -35,12 +36,13 @@ export function OfficeLocationForm({
   const [state, formAction, pending] = useActionState(saveOfficeLocation, {});
   const [lat, setLat] = useState(initial.lat != null ? String(initial.lat) : "");
   const [lng, setLng] = useState(initial.lng != null ? String(initial.lng) : "");
-  const [radius, setRadius] = useState(String(initial.radius));
+  const [radius, setRadius] = useState(formatThousands(String(initial.radius)));
   const [geoMsg, setGeoMsg] = useState("");
 
   const latNum = lat.trim() === "" || Number.isNaN(Number(lat)) ? null : Number(lat);
   const lngNum = lng.trim() === "" || Number.isNaN(Number(lng)) ? null : Number(lng);
-  const radiusNum = Number.isNaN(Number(radius)) ? 200 : Number(radius);
+  const radiusParsed = Number(stripCommas(radius));
+  const radiusNum = Number.isFinite(radiusParsed) && radiusParsed > 0 ? radiusParsed : 200;
 
   function fillCurrentLocation() {
     setGeoMsg("현재 위치 확인 중...");
@@ -94,7 +96,7 @@ export function OfficeLocationForm({
           </div>
           <div style={{ width: 140 }}>
             <label style={labelStyle}>허용 반경(m)</label>
-            <input name="radius" type="number" value={radius} onChange={(e) => setRadius(e.target.value)} style={inputStyle} />
+            <input name="radius" type="text" inputMode="numeric" data-format="number" value={radius} onChange={(e) => setRadius(formatThousands(e.target.value))} style={inputStyle} />
           </div>
         </div>
 

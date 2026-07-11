@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { parseDays, daysToCsv } from "@/lib/workdays";
+import { stripCommas } from "@/lib/format";
 
 export async function saveOfficeLocation(
   _prev: { error?: string; ok?: boolean },
@@ -16,7 +17,8 @@ export async function saveOfficeLocation(
 
   const lat = Number(formData.get("lat"));
   const lng = Number(formData.get("lng"));
-  const radius = Number(formData.get("radius"));
+  // 반경칸은 천단위 콤마(글자칸)로 입력받으므로 콤마를 떼고 숫자로 파싱한다.
+  const radius = Number(stripCommas(String(formData.get("radius") ?? "")));
 
   if (Number.isNaN(lat) || Number.isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     return { error: "위도·경도를 올바르게 입력해주세요." };

@@ -127,6 +127,23 @@ const td = { padding:"12px 20px", fontSize:15, verticalAlign:"middle" };
 
 ---
 
+## 5.5 입력 서식 — 전화번호·큰 숫자 (전역 자동 적용, 2026-07-12 확정)
+
+전역 서식기 `app/components/InputAutoFormat.tsx`가 `app/layout.tsx`에 심겨 있어 **모든 화면·새 화면의 입력을 자동 감시**한다. 개별 입력에 서식 코드를 붙일 필요 없이 **아래 표시만** 하면 타이핑 즉시 서식된다.
+
+| 원하는 서식 | 입력칸에 붙일 것 | 결과 |
+|---|---|---|
+| 전화번호 `010-6215-3980` | `type="tel"` | 타이핑하면 자동 하이픈 |
+| 큰 숫자/금액 `1,000,000` | `type="text" inputMode="numeric" data-format="number"` | 1,000 이상 자동 콤마 |
+
+- ⚠️ **금액·큰 숫자에 `type="number"`를 쓰지 말 것.** 브라우저가 콤마를 막는다. 반드시 위처럼 `type="text" + data-format="number"`.
+- **서버(액션)에서 파싱할 때는 콤마를 먼저 제거**한다: `import { stripCommas } from "@/lib/format"` → `Number(stripCommas(String(formData.get("금액") ?? "")))`.
+- 제어(controlled) 입력이면 초기값도 서식해서 보여준다: `useState(formatThousands(String(초기값)))`. 그 값을 숫자로 쓰는 곳(지도 등)은 `Number(stripCommas(값))`.
+- 작은 의미값(%, 분, 시간, 일수처럼 1,000 미만이 확실한 값)은 그냥 `type="number"`로 둔다(콤마 불필요).
+- 서식 규칙 자체는 `lib/format.ts` 한 곳에만 둔다(전화/천단위/콤마제거 함수). 규칙을 바꾸려면 여기만 고친다.
+
+---
+
 ## 6. 확인(검증) 절차
 
 새 화면/수정 후 반드시 브라우저로 확인한다:
@@ -156,5 +173,6 @@ const td = { padding:"12px 20px", fontSize:15, verticalAlign:"middle" };
 - [ ] 카드 격자에 `.kpi-grid`/`.kpi-grid-3`, 2단에 `.dash-split`/`.split-2`를 썼는가? (인라인 grid 금지)
 - [ ] 표를 `overflowX:auto`로 감싸고 `minWidth`를 줬는가?
 - [ ] 색을 CSS 변수(`var(--...)`)로 썼는가? (하드코딩 금지)
+- [ ] 전화번호칸은 `type="tel"`, 금액·큰 숫자칸은 `type="text" + data-format="number"`로 했는가? (§5.5 — 서버는 `stripCommas`로 파싱)
 - [ ] **DB에 없는 가짜 데이터를 넣지 않았는가?**
 - [ ] 데스크톱 + 모바일(375) 둘 다 브라우저로 확인했는가?
