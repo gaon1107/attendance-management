@@ -42,16 +42,16 @@
 - ※ 참고: 동의 문구가 바뀌므로 **이미 동의한 사용자는 원칙상 재동의 대상** — 현재는 테스트 계정뿐이라 실영향 없음. 실운영 전 전문가 검토 목록(동의 문안)에 이미 등록돼 있음.
 
 ## 5. 작업분해 TODO
-- [ ] 1) 모듈 이식: models 2개 + lib/liveness.ts 복사, onnxruntime-node·sharp 설치, webapp에서 로드 확인 — 파일: webapp/models, webapp/lib/liveness.ts
-- [ ] 2) DB: ClockPhoto 모델 추가 + 마이그레이션 (기존 데이터 무영향 확인) — 파일: prisma/schema.prisma
-- [ ] 3) 사진 저장소: 암호화 저장/복호/자동 파기 모듈 + 저장 폴더 git 제외 — 파일: webapp/lib/clock-photo.ts
-- [ ] 4) recognizeFace에 faceRect 선택 필드 추가 + 실측 확인(FaceRect 안 오면 판독 생략 폴백) — 파일: webapp/lib/face.ts
-- [ ] 5) 출퇴근 후처리 연결: faceClockIn/Out에서 판독+사진 저장 (실패=통과) — 파일: webapp/app/actions/face.ts
-- [ ] 6) 촬영 상향: 1280·0.9 + 재압축 (데모와 동일) — 파일: FaceClockPanel.tsx
-- [ ] 7) 관리자 화면: 근태 상세에 점수·배지·사진 보기 + 열람 API(회사 격리·열람 기록) — 파일: DetailTable, records/[userId], api/clock-photo
-- [ ] 8) 동의 화면에 "출퇴근 사진 90일 보관 후 자동 삭제" 항목 추가 + face-spec 반영 — 파일: webapp/app/consent/page.tsx(BOXES 문구), docs/07_ai/face-spec.md
-- [ ] 9) 회귀 테스트 5종(§3) 실행 + 증거 확보
-- [ ] 10) code-reviewer 검수 + project-status.md 갱신 + 커밋
+- [x] 1) 모듈 이식: models 2개 + lib/liveness.ts 복사, onnxruntime-node·sharp 설치(데모 동일 버전), 로드 검증 통과 ✅
+- [x] 2) DB: ClockPhoto 모델 추가 + 마이그레이션(추가 전용, 기존 데이터 무영향) ✅
+- [x] 3) 사진 저장소: AES-256-GCM 저장/복호/90일 파기 + 철회 즉시 파기(purgeUserPhotos) + storage git 제외 ✅ (암호화 왕복·파기 실행 검증)
+- [x] 4) recognizeFace에 faceRect 선택 필드 추가 — 실측: detect/recognize 모두 FaceRect·ImageSize 반환 확인 ✅
+- [x] 5) 출퇴근 후처리 연결 — 응답 후(after) 실행, 2분 시간창 가드(엉뚱한 기록 방지), 동의 개정일(7/11) 가드, 실패=통과 ✅
+- [x] 6) 촬영 상향: 1280·0.9 + 재압축(0.75→0.6→960축소) — 데모 측정 조건 일치 ✅
+- [x] 7) 관리자 화면: "본인 확인" 열(배지·점수·사진) + 열람 API(관리자만·회사 격리·열람 기록·no-store) ✅ (브라우저 검증)
+- [x] 8) 동의 화면 "출퇴근 촬영 사진은요" 항목 + face-spec §3-2 예외 명시 ✅ (브라우저 검증)
+- [x] 9) 회귀 테스트: 판독 파이프라인(진짜 92.6%/위조 2.3%)·일반 출퇴근·내근태(판독 열 없음)·근태현황 — 통과. ⚠️ 실제 웹캠 얼굴 출퇴근은 사장님 확인 필요(등록 얼굴 없음)
+- [x] 10) code-reviewer 검수(치명2·중간5 발견→전부 수정→재검토) + 문서 갱신 + 커밋
 
 ## 6. 구현하지 않을 것 (범위 제외 + 이유)
 - **등록 시 판독 차단**(기존 계획의 "부드러운 차단") — 이번 지시가 "출퇴근 시에만"이므로 제외. 필요 시 별도 건.

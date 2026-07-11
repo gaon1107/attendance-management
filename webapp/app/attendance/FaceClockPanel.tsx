@@ -133,6 +133,17 @@ export function FaceClockPanel({ action }: { action: "in" | "out" }) {
       if (blob && blob.size <= 850 * 1024) break;
       blob = await toBlobAsync(canvas, q);
     }
+    // 그래도 한도를 넘으면(초고밀도 노이즈 등 극단 케이스) 해상도를 960으로 한 단계 줄여 재시도
+    if (blob && blob.size > 850 * 1024 && canvas.width > 960) {
+      const s = 960 / canvas.width;
+      const w = Math.round(canvas.width * s);
+      const h = Math.round(canvas.height * s);
+      const small = document.createElement("canvas");
+      small.width = w;
+      small.height = h;
+      small.getContext("2d")?.drawImage(canvas, 0, 0, w, h);
+      blob = await toBlobAsync(small, 0.75);
+    }
     if (!blob) {
       submittingRef.current = false;
       setMsg({ type: "err", text: "촬영에 실패했습니다. 다시 시도해 주세요." });

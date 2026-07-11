@@ -21,8 +21,11 @@ function encryptionKey(): Buffer {
   return Buffer.from(hex, "hex");
 }
 
-// 저장 폴더 — dev 서버를 상위 폴더에서 띄워도(cwd가 달라져도) webapp/storage를 찾도록 후보 확인
+// 저장 폴더 — 운영에서는 .env CLOCK_PHOTO_DIR(절대경로)로 고정 권장(배포 방식이 바뀌어도 사진 유실 방지).
+// 미설정 시 dev 편의: cwd가 상위 폴더여도 webapp/storage를 찾는다.
 function storageDir(): string {
+  const fixed = process.env.CLOCK_PHOTO_DIR;
+  if (fixed && fixed.trim()) return fixed.trim();
   const base = path.basename(process.cwd()) === "webapp"
     ? process.cwd()
     : path.join(process.cwd(), "webapp");
@@ -58,6 +61,22 @@ export async function readClockPhoto(fileName: string): Promise<Buffer> {
   const decipher = crypto.createDecipheriv(ALGO, key, iv);
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(enc), decipher.final()]);
+}
+
+// [동의 철회 파기] 해당 직원의 보관 중인 사진 파일을 전부 즉시 삭제한다(기록 행은 보존, fileDeletedAt 표시).
+// 동의 화면의 "언제든 철회·삭제 요청 가능" 약속 이행 — 철회(withdrawBiometric 등) 시 호출.
+export async function purgeUserPhotos(userId: string): Promise<number> {
+  const photos = await prisma.clockPhoto.findMany({
+    where: { userId, fileDeletedAt: null },
+    select: { id: true, fileName: true },
+  });
+  const dir = storageDir();
+  for (const p of photos) {
+    await fs.unlink(path.join(dir, p.fileName)).catch(() => null); // 파일이 이미 없어도 기록은 파기 완료로
+    await prisma.clockPhoto.update({ where: { id: p.id }, data: { fileDeletedAt: new Date() } });
+  }
+  if (photos.length > 0) console.log(`[clock-photo] 동의 철회 파기 — 직원 ${userId} 사진 ${photos.length}건 삭제`);
+  return photos.length;
 }
 
 // [90일 자동 파기] 보관기간 지난 사진 파일을 지우고 fileDeletedAt을 찍는다(기록 행은 보존).

@@ -4,6 +4,17 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { purgeUserPhotos } from "@/lib/clock-photo";
+
+// 동의 해제 시 보관 중인 출퇴근 사진도 즉시 파기(동의 화면의 "철회 시 삭제" 약속 이행).
+// 파기 실패가 철회 자체를 막으면 안 됨 — 로그만 남긴다(남은 파일은 90일 자동 파기가 처리).
+async function purgePhotosSafely(userId: string): Promise<void> {
+  try {
+    await purgeUserPhotos(userId);
+  } catch (e) {
+    console.error("[authmethod] 동의 철회 사진 파기 실패(철회는 정상 처리됨):", e);
+  }
+}
 
 // GPS(위치)만 사용 선택 — 얼굴 동의는 필요 없음.
 export async function chooseGps(): Promise<void> {
@@ -13,6 +24,7 @@ export async function chooseGps(): Promise<void> {
     where: { id: me.id },
     data: { authMethod: "gps", faceConsentAt: null }, // 얼굴에서 GPS로 바꾸면 동의도 해제
   });
+  await purgePhotosSafely(me.id);
   revalidatePath("/auth-method");
   redirect("/attendance");
 }
@@ -38,6 +50,7 @@ export async function withdrawBiometric(): Promise<void> {
     where: { id: me.id },
     data: { authMethod: "gps", faceConsentAt: null },
   });
+  await purgePhotosSafely(me.id);
   revalidatePath("/auth-method");
   redirect("/auth-method");
 }
@@ -54,5 +67,6 @@ export async function adminRevokeBiometric(formData: FormData): Promise<void> {
     where: { id: target.id },
     data: { authMethod: "gps", faceConsentAt: null },
   });
+  await purgePhotosSafely(target.id);
   revalidatePath("/biometrics");
 }

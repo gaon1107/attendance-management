@@ -5,6 +5,7 @@
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { enrollFace, unenrollFace, recognizeFace, isFaceConfigured, type FaceRect } from "@/lib/face";
 import { clockIn, clockOut } from "@/app/actions/attendance";
 import { analyzeFace } from "@/lib/liveness";
@@ -87,22 +88,42 @@ function livenessThreshold(): number {
   return Number.isFinite(v) && v > 0 && v < 1 ? v : 0.5;
 }
 
+// 사진 보관 동의 문구가 동의 화면에 들어간 날(2026-07-11). 이 시각 "이후" 동의한 직원의 사진만 저장한다.
+// (그 전에 동의한 직원은 "사진 90일 보관"에 동의한 적이 없으므로 재동의 전까지 사진을 남기지 않는다 — 법적 안전장치)
+const PHOTO_CONSENT_SINCE = new Date("2026-07-11T00:00:00+09:00");
+// "방금 처리된 출퇴근"으로 인정하는 시간창. 이보다 오래된 기록에는 사진을 붙이지 않는다
+// (예: 어제 퇴근을 안 찍은 열린 기록, 출근 없이 누른 퇴근 → 엉뚱한 날짜에 증거가 붙는 것 방지).
+const RECENT_CLOCK_MS = 2 * 60 * 1000;
+
 // [출퇴근 후처리 — 조용한 표시] 촬영 사진 저장 + 위조 판독 기록. (확정 2026-07-11: 전건 저장·90일 파기)
-// ⚠️ 출퇴근 처리(clockIn/clockOut)가 이미 끝난 뒤에 호출된다. 여기서 무슨 일이 나도
+// ⚠️ 출퇴근 처리(clockIn/clockOut)가 이미 끝난 뒤, 응답 전송 후(after)에 호출된다. 여기서 무슨 일이 나도
 //    출퇴근 결과를 바꾸지 않는다 — 실패는 서버 로그만 남기고 삼킨다(가용성 우선).
 async function recordClockPhoto(
-  me: { id: string; companyId: string },
+  me: { id: string; companyId: string; faceConsentAt: Date | null },
   kind: "in" | "out",
   buffer: Buffer,
   faceRect?: FaceRect
 ): Promise<void> {
   try {
+    // 사진 보관이 포함된 동의(개정판)를 한 직원만 저장
+    if (!me.faceConsentAt || me.faceConsentAt < PHOTO_CONSENT_SINCE) {
+      console.log(`[liveness] 사진 미저장 — 직원 ${me.id}의 동의가 사진 보관 문구 반영(2026-07-11) 이전`);
+      return;
+    }
+
     // 방금 처리된 출퇴근 기록 찾기 — 출근=열려있는 기록, 퇴근=가장 최근 닫힌 기록
     const attendance =
       kind === "in"
         ? await prisma.attendance.findFirst({ where: { userId: me.id, clockOut: null }, orderBy: { clockIn: "desc" } })
         : await prisma.attendance.findFirst({ where: { userId: me.id, clockOut: { not: null } }, orderBy: { clockOut: "desc" } });
     if (!attendance) return; // 기록이 없으면(중복 클릭 등) 남길 곳이 없음
+    // 방금(2분 이내) 생긴 기록이 아니면 저장하지 않는다 — clockIn/clockOut이 중복 클릭 등으로
+    // 아무것도 안 했을 때, 사진이 과거 기록에 잘못 붙는 것 방지(증거 무결성 우선)
+    const stampedAt = kind === "in" ? attendance.clockIn : attendance.clockOut;
+    if (!stampedAt || Date.now() - stampedAt.getTime() > RECENT_CLOCK_MS) {
+      console.log(`[liveness] 사진 미저장 — 방금 처리된 ${kind === "in" ? "출근" : "퇴근"} 기록을 찾지 못함(직원 ${me.id})`);
+      return;
+    }
 
     // 위조 판독 — 얼굴 위치가 없거나 판독 실패면 "error"(사진만 보관, 출퇴근 무관)
     let status = "error";
@@ -154,8 +175,9 @@ export async function faceClockIn(formData: FormData): Promise<ActionResult> {
   const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
 
   await clockIn(mode, hasCoords ? lat : undefined, hasCoords ? lng : undefined);
-  // 후처리(조용한 표시): 사진 저장 + 위조 판독. 실패해도 출근 결과에 영향 없음.
-  if (verified.buffer) await recordClockPhoto(me, "in", verified.buffer, verified.faceRect);
+  // 후처리(조용한 표시): 사진 저장 + 위조 판독 — 응답을 보낸 뒤(after) 실행해 화면을 붙잡지 않는다.
+  const buffer = verified.buffer;
+  if (buffer) after(() => recordClockPhoto(me, "in", buffer, verified.faceRect));
   return { ok: true, message: "얼굴 확인 완료! 출근 처리되었습니다." };
 }
 
@@ -168,8 +190,9 @@ export async function faceClockOut(formData: FormData): Promise<ActionResult> {
   if (!verified.ok) return { ok: false, message: verified.message };
 
   await clockOut();
-  // 후처리(조용한 표시): 사진 저장 + 위조 판독. 실패해도 퇴근 결과에 영향 없음.
-  if (verified.buffer) await recordClockPhoto(me, "out", verified.buffer, verified.faceRect);
+  // 후처리(조용한 표시): 사진 저장 + 위조 판독 — 응답을 보낸 뒤(after) 실행해 화면을 붙잡지 않는다.
+  const buffer = verified.buffer;
+  if (buffer) after(() => recordClockPhoto(me, "out", buffer, verified.faceRect));
   return { ok: true, message: "얼굴 확인 완료! 퇴근 처리되었습니다." };
 }
 

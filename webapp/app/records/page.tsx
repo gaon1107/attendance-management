@@ -10,6 +10,8 @@ import { workedMinutes, formatMinutes, isLate } from "@/lib/worktime";
 import { normalizeUnit, parseAnchor, rangeFor, toISODate } from "@/lib/period";
 import { workModeLabel, locationLabel, hhmm, monthDayDow } from "@/lib/labels";
 import { effectiveWorkDays, isWorkDay } from "@/lib/workdays";
+import { after } from "next/server";
+import { purgeExpiredPhotos } from "@/lib/clock-photo";
 
 export default async function RecordsPage({
   searchParams,
@@ -19,6 +21,10 @@ export default async function RecordsPage({
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   if (me.role !== "admin") redirect("/attendance");
+
+  // 출퇴근 사진 90일 자동 파기의 정기 트리거 — 관리자가 근태 현황을 열 때(하루 1회만 실제 동작),
+  // 화면 응답을 보낸 뒤(after) 실행되어 조회 속도에 영향 없음.
+  after(() => purgeExpiredPhotos());
 
   const sp = await searchParams;
   const unit = normalizeUnit(sp.unit);
