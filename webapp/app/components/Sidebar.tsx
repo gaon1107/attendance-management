@@ -129,16 +129,17 @@ export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
             {g.caption && (
               <span
                 style={{
-                  fontSize: 9,
-                  fontWeight: 700,
-                  color: "#7C8698",
-                  letterSpacing: 0.2,
-                  marginBottom: 3,
+                  fontSize: 10,
+                  fontWeight: 800,
+                  color: "#4B5563",
+                  letterSpacing: 0.3,
+                  marginTop: 2,
+                  marginBottom: 4,
                   whiteSpace: "nowrap",
-                  // 그룹 제목에 은은한 배경 칩 — 관리/개인 묶음을 부드럽게 구분
-                  background: "#F1F3F6",
-                  padding: "2px 8px",
-                  borderRadius: 6,
+                  // 그룹 제목 배경 칩 — 관리/개인 묶음을 또렷하지만 과하지 않게 구분
+                  background: "#E5E8EE",
+                  padding: "3px 9px",
+                  borderRadius: 7,
                 }}
               >
                 {g.caption}
