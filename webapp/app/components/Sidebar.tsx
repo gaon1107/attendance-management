@@ -128,7 +128,18 @@ export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
             {/* 그룹 제목(관리자만 있음) */}
             {g.caption && (
               <span
-                style={{ fontSize: 9, fontWeight: 700, color: "#B0B7C3", letterSpacing: 0.2, marginBottom: 2, whiteSpace: "nowrap" }}
+                style={{
+                  fontSize: 9,
+                  fontWeight: 700,
+                  color: "#7C8698",
+                  letterSpacing: 0.2,
+                  marginBottom: 3,
+                  whiteSpace: "nowrap",
+                  // 그룹 제목에 은은한 배경 칩 — 관리/개인 묶음을 부드럽게 구분
+                  background: "#F1F3F6",
+                  padding: "2px 8px",
+                  borderRadius: 6,
+                }}
               >
                 {g.caption}
               </span>
