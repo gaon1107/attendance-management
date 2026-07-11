@@ -24,6 +24,9 @@ export function DemoClient() {
   const [camError, setCamError] = useState("");
   const [busy, setBusy] = useState(false);
   const [threshold, setThreshold] = useState(0.5);
+  // 판정 방식 — "avg"=두 모델 평균으로 판정(현 근태 방식) / "and"=두 모델 모두 기준 이상이어야 진짜.
+  // AND는 "둘 중 낮은 점수 ≥ 기준"과 같으므로, 유효점수를 min으로 바꾸면 판정·이력 재계산이 그대로 된다.
+  const [mode, setMode] = useState<"avg" | "and">("avg");
   // 얼굴 크기 기준(%) — 이 값 미만이면 판독을 진행하지 않음. 가이드 타원 크기도 이 값에 연동.
   const [minPercent, setMinPercent] = useState(30);
   const [last, setLast] = useState<{ res: AnalyzeResult; snapshot: string } | null>(null);
@@ -152,6 +155,16 @@ export function DemoClient() {
 
   const judge = (score: number) => (score >= threshold ? "진짜" : "위조 의심");
   const judgeColor = (score: number) => (score >= threshold ? "#16A34A" : "#DC2626");
+  // 판정 방식에 따른 유효점수 — 평균 모드는 서버가 계산한 평균 원본, AND 모드는 두 모델 중 낮은 값.
+  const effHist = (h: HistoryItem) => (mode === "and" ? Math.min(h.v1se, h.v2) : h.avg);
+  const effLabel = mode === "and" ? "낮은쪽(진짜확률)" : "평균(진짜확률)";
+  // 최근 판독 결과의 유효점수 (판독 성공일 때만)
+  const lastEff =
+    last?.res.ok && last.res.models && typeof last.res.realScore === "number"
+      ? mode === "and"
+        ? Math.min(...last.res.models.map((m) => m.realProb))
+        : last.res.realScore
+      : null;
 
   const card: React.CSSProperties = { background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 16 };
   const rect = last?.res.rect;
@@ -260,7 +273,7 @@ export function DemoClient() {
                       top: `${(rect.y / imgSize.height) * 100}%`,
                       width: `${(rect.width / imgSize.width) * 100}%`,
                       height: `${(rect.height / imgSize.height) * 100}%`,
-                      border: `3px solid ${judgeColor(last.res.realScore!)}`,
+                      border: `3px solid ${judgeColor(lastEff ?? last.res.realScore!)}`,
                       borderRadius: 6,
                       boxShadow: "0 0 0 1px rgba(0,0,0,0.25)",
                     }}
@@ -268,9 +281,12 @@ export function DemoClient() {
                 )}
               </div>
 
-              <div style={{ fontSize: 26, fontWeight: 800, color: judgeColor(last.res.realScore!), marginBottom: 4 }}>
-                {judge(last.res.realScore!)}{" "}
-                <span style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>· 진짜 확률 {(last.res.realScore! * 100).toFixed(1)}%</span>
+              <div style={{ fontSize: 26, fontWeight: 800, color: judgeColor(lastEff ?? last.res.realScore!), marginBottom: 4 }}>
+                {judge(lastEff ?? last.res.realScore!)}{" "}
+                <span style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>
+                  · 진짜 확률 {((lastEff ?? last.res.realScore!) * 100).toFixed(1)}%
+                  <span style={{ fontSize: 13, fontWeight: 400, color: "#6B7280" }}> ({mode === "and" ? "둘 중 낮은 값" : "두 모델 평균"})</span>
+                </span>
               </div>
               <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 10 }}>
                 얼굴 {last.res.faceCount}개
@@ -298,6 +314,37 @@ export function DemoClient() {
             </>
           )}
 
+          {/* 판정 방식 토글 — 평균(현 근태 방식) vs 둘 다 통과(AND). 이력·최근 결과가 즉시 재계산된다 */}
+          <div style={{ marginTop: 16, borderTop: "1px solid #E5E7EB", paddingTop: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>판정 방식</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {(
+                [
+                  { key: "avg", label: "평균 (현재 근태 방식)" },
+                  { key: "and", label: "둘 다 통과 (AND)" },
+                ] as const
+              ).map((m) => (
+                <button
+                  key={m.key}
+                  type="button"
+                  onClick={() => setMode(m.key)}
+                  style={{
+                    flex: 1, height: 40, borderRadius: 8, fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer",
+                    border: `1px solid ${mode === m.key ? "#2563EB" : "#E5E7EB"}`,
+                    background: mode === m.key ? "#EFF6FF" : "#fff",
+                    color: mode === m.key ? "#1D4ED8" : "#374151",
+                  }}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: "#6B7280", marginTop: 6, lineHeight: 1.5 }}>
+              평균 = 두 모델 점수의 평균으로 판정. 둘 다 통과 = <b>두 모델 모두</b> 기준 이상이어야 진짜(둘 중 낮은 점수로 판정).
+              위조는 더 잘 잡지만 어두운 조명에서 진짜 얼굴을 잘못 의심할 수 있어요 — 밝게/어둡게/역광에서 비교해 보세요.
+            </div>
+          </div>
+
           {/* 기준값 슬라이더 */}
           <div style={{ marginTop: 16, borderTop: "1px solid #E5E7EB", paddingTop: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
@@ -313,7 +360,7 @@ export function DemoClient() {
               style={{ width: "100%" }}
             />
             <div style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>
-              슬라이더를 움직이면 아래 이력의 판정도 즉시 다시 계산됩니다.
+              슬라이더나 판정 방식을 바꾸면 아래 이력의 판정도 즉시 다시 계산됩니다.
             </div>
           </div>
         </div>
@@ -340,7 +387,7 @@ export function DemoClient() {
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640, fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "#F9FAFB", borderBottom: "1px solid #E5E7EB" }}>
-                  {["사진", "시각", "모델A", "모델B", "평균(진짜확률)", "판정", "속도"].map((h) => (
+                  {["사진", "시각", "모델A", "모델B", effLabel, "판정", "속도"].map((h) => (
                     <th key={h} style={{ textAlign: "left", padding: "9px 12px", fontWeight: 700, color: "#6B7280", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -355,8 +402,8 @@ export function DemoClient() {
                     <td style={{ padding: "8px 12px", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{h.at}</td>
                     <td style={{ padding: "8px 12px", fontVariantNumeric: "tabular-nums" }}>{(h.v1se * 100).toFixed(1)}%</td>
                     <td style={{ padding: "8px 12px", fontVariantNumeric: "tabular-nums" }}>{(h.v2 * 100).toFixed(1)}%</td>
-                    <td style={{ padding: "8px 12px", fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{(h.avg * 100).toFixed(1)}%</td>
-                    <td style={{ padding: "8px 12px", fontWeight: 700, color: judgeColor(h.avg), whiteSpace: "nowrap" }}>{judge(h.avg)}</td>
+                    <td style={{ padding: "8px 12px", fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{(effHist(h) * 100).toFixed(1)}%</td>
+                    <td style={{ padding: "8px 12px", fontWeight: 700, color: judgeColor(effHist(h)), whiteSpace: "nowrap" }}>{judge(effHist(h))}</td>
                     <td style={{ padding: "8px 12px", fontVariantNumeric: "tabular-nums", color: "#6B7280", whiteSpace: "nowrap" }}>
                       {h.detectMs != null && h.livenessMs != null ? `${h.detectMs}+${h.livenessMs}ms` : "—"}
                     </td>
