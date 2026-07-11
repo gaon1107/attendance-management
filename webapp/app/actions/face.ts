@@ -127,11 +127,18 @@ async function verifyMyFace(
 }
 
 // 판독 기준값(0~1). 이 값 미만이면 관리자 화면에 "본인 확인 재검토 필요" 배지. 출퇴근 차단에는 쓰지 않는다.
-// 회사 설정 [설정 → 본인 확인 재검토 기준](%, 30~90)이 우선. 없으면 .env LIVENESS_THRESHOLD → 0.5 순서.
+// 회사 설정 [설정 → 본인 확인 재검토 기준](%, 30~90)이 우선. 회사 칸은 NOT NULL(기본 50)이라
+// .env LIVENESS_THRESHOLD는 회사 행 자체가 없거나 조회가 실패했을 때만 쓰이는 예비값이다.
+// ⚠️ 조회 실패가 예외로 번지면 판독이 끝난 사진·기록 저장까지 유실되므로(recordClockPhoto의 바깥 catch)
+//    여기서는 절대 던지지 않고 예비값으로 폴백한다(검수 반영).
 async function getLivenessThreshold(companyId: string): Promise<number> {
-  const company = await prisma.company.findUnique({ where: { id: companyId }, select: { livenessPercent: true } });
-  const p = company?.livenessPercent;
-  if (typeof p === "number" && Number.isFinite(p)) return Math.min(90, Math.max(30, p)) / 100;
+  try {
+    const company = await prisma.company.findUnique({ where: { id: companyId }, select: { livenessPercent: true } });
+    const p = company?.livenessPercent;
+    if (typeof p === "number" && Number.isFinite(p)) return Math.min(90, Math.max(30, p)) / 100;
+  } catch (e) {
+    console.error("[liveness] 판정 기준값 조회 실패 — 예비값으로 판정 계속:", e);
+  }
   const v = Number(process.env.LIVENESS_THRESHOLD);
   return Number.isFinite(v) && v > 0 && v < 1 ? v : 0.5;
 }

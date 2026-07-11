@@ -15,7 +15,8 @@ export function LivenessRuleForm({ initialPercent }: { initialPercent: number })
         출퇴근 때 촬영한 사진을 위조 여부로 판독한 <b>&quot;진짜 확률&quot;이 이 값보다 낮으면</b> 관리자 근태 상세에
         &quot;본인 확인 재검토 필요&quot; 표시가 붙습니다. <b>출퇴근 자체를 막지는 않습니다.</b>
         <br />
-        숫자가 <b>클수록 더 엄격</b>해져 표시가 늘어납니다. (기본 50%)
+        숫자가 <b>클수록 더 엄격</b>해져 표시가 늘어납니다. (기본 50%) 바꾼 값은 <b>이후 촬영분부터</b> 적용되고,
+        이미 기록된 과거 표시는 바뀌지 않습니다.
       </p>
 
       <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
