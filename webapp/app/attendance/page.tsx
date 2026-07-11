@@ -6,6 +6,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { clockOut, startBreak, endBreak } from "@/app/actions/attendance";
 import { workedMinutes, formatMinutes } from "@/lib/worktime";
 import { workModeLabel, locationStatusLabel } from "@/lib/location";
+import { PHOTO_CONSENT_SINCE } from "@/lib/clock-photo";
 import { ClockInPanel } from "./ClockInPanel";
 import { FaceClockPanel } from "./FaceClockPanel";
 import { OnboardingTour } from "./OnboardingTour";
@@ -54,6 +55,8 @@ export default async function AttendancePage() {
   const onBreak = Boolean(openBreak);
   // 얼굴인증 직원(얼굴 선택 + 등록 완료) → 얼굴로 출퇴근. 그 외는 기존 방식 그대로.
   const faceUser = me.authMethod === "face" && Boolean(me.faceEnrolledAt);
+  // 사진 보관 문구(2026-07-11)보다 먼저 동의한 얼굴인증 직원 — 재동의 전까지 사진이 저장되지 않으므로 안내 배너
+  const needReconsent = me.authMethod === "face" && !!me.faceConsentAt && me.faceConsentAt < PHOTO_CONSENT_SINCE;
   // 얼굴 크기 가이드(타원) 크기 — 회사 설정 "얼굴 인식 기준 크기(%)"와 동일 값 사용
   const faceMinPercent = faceUser
     ? (await prisma.company.findUnique({ where: { id: me.companyId }, select: { faceMinPercent: true } }))?.faceMinPercent ?? 30
@@ -95,6 +98,15 @@ export default async function AttendancePage() {
           style={{ display: "block", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 14, color: "#1D4ED8", fontWeight: 700, textDecoration: "none" }}
         >
           얼굴 등록을 마치면 얼굴로 출퇴근할 수 있어요. 등록하러 가기 →
+        </a>
+      )}
+
+      {needReconsent && (
+        <a
+          href="/consent"
+          style={{ display: "block", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 14, color: "#92400E", fontWeight: 700, textDecoration: "none" }}
+        >
+          생체정보 동의 내용이 갱신되었습니다(출퇴근 촬영 사진 보관 항목 추가). 다시 동의해 주세요 →
         </a>
       )}
 

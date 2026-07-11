@@ -9,7 +9,7 @@ import { after } from "next/server";
 import { enrollFace, unenrollFace, recognizeFace, detectFaces, isFaceConfigured, type FaceRect } from "@/lib/face";
 import { clockIn, clockOut } from "@/app/actions/attendance";
 import { analyzeFace } from "@/lib/liveness";
-import { saveClockPhoto, purgeExpiredPhotos } from "@/lib/clock-photo";
+import { saveClockPhoto, purgeExpiredPhotos, PHOTO_CONSENT_SINCE } from "@/lib/clock-photo";
 
 type ActionResult = {
   ok: boolean;
@@ -136,9 +136,7 @@ async function getLivenessThreshold(companyId: string): Promise<number> {
   return Number.isFinite(v) && v > 0 && v < 1 ? v : 0.5;
 }
 
-// 사진 보관 동의 문구가 동의 화면에 들어간 날(2026-07-11). 이 시각 "이후" 동의한 직원의 사진만 저장한다.
-// (그 전에 동의한 직원은 "사진 90일 보관"에 동의한 적이 없으므로 재동의 전까지 사진을 남기지 않는다 — 법적 안전장치)
-const PHOTO_CONSENT_SINCE = new Date("2026-07-11T00:00:00+09:00");
+// ※ PHOTO_CONSENT_SINCE(사진 보관 동의 기준일)는 lib/clock-photo.ts로 이동 — 재동의 배너와 공유(2026-07-11).
 // "방금 처리된 출퇴근"으로 인정하는 시간창. 이보다 오래된 기록에는 사진을 붙이지 않는다
 // (예: 어제 퇴근을 안 찍은 열린 기록, 출근 없이 누른 퇴근 → 엉뚱한 날짜에 증거가 붙는 것 방지).
 const RECENT_CLOCK_MS = 2 * 60 * 1000;

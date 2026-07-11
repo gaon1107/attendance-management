@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { AppShell } from "@/app/components/AppShell";
 import { chooseGps, withdrawBiometric } from "@/app/actions/authmethod";
+import { PHOTO_CONSENT_SINCE } from "@/lib/clock-photo";
 
 export default async function AuthMethodPage({
   searchParams,
@@ -16,6 +17,8 @@ export default async function AuthMethodPage({
 
   const method = me.authMethod; // "face" | "gps" | null
   const consentDate = me.faceConsentAt ? new Date(me.faceConsentAt).toLocaleDateString("ko-KR") : null;
+  // 사진 보관 문구(2026-07-11)보다 먼저 동의한 사람 — 재동의 전까지 사진이 저장되지 않으므로 안내 배너
+  const needReconsent = method === "face" && !!me.faceConsentAt && me.faceConsentAt < PHOTO_CONSENT_SINCE;
 
   return (
     <AppShell user={me} active="auth-method" title="출퇴근 인증방식" subtitle={`${me.name} 님`}>
@@ -29,6 +32,18 @@ export default async function AuthMethodPage({
             ? <>생체정보 이용에 다시 동의하셨습니다. 이미 등록된 얼굴로 계속 사용합니다. (변경은 아래 <b>[얼굴 관리]</b>)</>
             : <>생체정보 이용에 동의하셨습니다. 이제 아래 <b>얼굴인증 카드의 [얼굴 등록하기]</b>로 본인 얼굴을 등록해 주세요.</>}
         </div>
+      )}
+
+      {needReconsent && sp.consented !== "1" && (
+        <Link
+          href="/consent"
+          style={{ display: "block", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: "14px 16px", marginBottom: 16, fontSize: 14, color: "#92400E", fontWeight: 700, textDecoration: "none" }}
+        >
+          생체정보 동의 내용이 갱신되었습니다(출퇴근 촬영 사진 보관 항목 추가). 다시 동의해 주세요 →
+          <div style={{ fontSize: 12, fontWeight: 400, marginTop: 4, color: "#A16207" }}>
+            다시 동의해도 등록된 얼굴은 그대로 유지됩니다. 재동의 전까지는 출퇴근 촬영 사진이 저장되지 않습니다.
+          </div>
+        </Link>
       )}
 
       {/* 현재 상태 */}

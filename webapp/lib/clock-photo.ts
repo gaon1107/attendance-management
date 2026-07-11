@@ -9,6 +9,11 @@ import crypto from "crypto";
 import { prisma } from "@/lib/db";
 
 const RETENTION_DAYS = 90; // 보관기간(일) — 사장님 확정 2026-07-11. 변경 시 동의 문구(consent)도 함께 갱신할 것.
+
+// 사진 보관 문구가 동의 화면에 들어간 날(2026-07-11). 이 시각 "이후" 동의한 직원의 사진만 저장한다.
+// (그 전에 동의한 직원은 "사진 90일 보관"에 동의한 적이 없으므로 재동의 전까지 사진을 남기지 않는다 — 법적 안전장치)
+// 사용처: 사진 저장 가드(actions/face.ts) + 재동의 안내 배너(출퇴근·인증방식 화면) — 반드시 같은 값이어야 함.
+export const PHOTO_CONSENT_SINCE = new Date("2026-07-11T00:00:00+09:00");
 const ALGO = "aes-256-gcm";
 const IV_LEN = 12; // GCM 권장 IV 길이
 const TAG_LEN = 16;
