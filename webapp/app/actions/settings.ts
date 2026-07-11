@@ -90,6 +90,31 @@ export async function saveFaceRule(
   return { ok: true };
 }
 
+// 본인 확인 재검토 기준(판독 기준값) 저장 — 관리자만. 판독 "진짜 확률"이 이 값 미만이면 재검토 배지.
+export async function saveLivenessRule(
+  _prev: { error?: string; ok?: boolean },
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean }> {
+  const me = await getCurrentUser();
+  if (!me || me.role !== "admin") {
+    return { error: "권한이 없습니다." };
+  }
+
+  const percent = Number(formData.get("livenessPercent"));
+  // 30 미만은 위조도 대부분 통과(무의미), 90 초과는 진짜 얼굴도 배지 남발 — 실측(진짜 92.6%/위조 2.3%) 기준 안전 범위
+  if (!Number.isFinite(percent) || percent < 30 || percent > 90) {
+    return { error: "재검토 기준은 30~90% 사이로 입력해주세요." };
+  }
+
+  await prisma.company.update({
+    where: { id: me.companyId },
+    data: { livenessPercent: Math.round(percent) },
+  });
+
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
 // 근무제·기준시간 저장 — 관리자만. 지각/정상 판정의 기준(표준 출퇴근 시각 + 지각 유예).
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/; // "HH:MM" 24시간
 

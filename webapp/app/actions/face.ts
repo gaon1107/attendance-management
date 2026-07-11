@@ -127,7 +127,11 @@ async function verifyMyFace(
 }
 
 // 판독 기준값(0~1). 이 값 미만이면 관리자 화면에 "본인 확인 재검토 필요" 배지. 출퇴근 차단에는 쓰지 않는다.
-function livenessThreshold(): number {
+// 회사 설정 [설정 → 본인 확인 재검토 기준](%, 30~90)이 우선. 없으면 .env LIVENESS_THRESHOLD → 0.5 순서.
+async function getLivenessThreshold(companyId: string): Promise<number> {
+  const company = await prisma.company.findUnique({ where: { id: companyId }, select: { livenessPercent: true } });
+  const p = company?.livenessPercent;
+  if (typeof p === "number" && Number.isFinite(p)) return Math.min(90, Math.max(30, p)) / 100;
   const v = Number(process.env.LIVENESS_THRESHOLD);
   return Number.isFinite(v) && v > 0 && v < 1 ? v : 0.5;
 }
@@ -176,7 +180,7 @@ async function recordClockPhoto(
       const lv = await analyzeFace(buffer, faceRect);
       if (lv.ok && typeof lv.realScore === "number") {
         score = lv.realScore;
-        status = lv.realScore >= livenessThreshold() ? "ok" : "suspect";
+        status = lv.realScore >= (await getLivenessThreshold(me.companyId)) ? "ok" : "suspect";
       }
     } else {
       console.error("[liveness] recognize 응답에 얼굴 위치(FaceRect)가 없어 판독을 건너뜀");
