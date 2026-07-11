@@ -12,6 +12,18 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["liveness-demo/node_modules/next/dist/bin/next", "dev", "liveness-demo", "--port", "3100"],
       "port": 3100
+    },
+    {
+      "name": "webapp-check",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["webapp/node_modules/next/dist/bin/next", "dev", "webapp", "--port", "3001"],
+      "port": 3001
+    },
+    {
+      "name": "liveness-demo-check",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["liveness-demo/node_modules/next/dist/bin/next", "dev", "liveness-demo", "--port", "3101"],
+      "port": 3101
     }
   ]
 }
