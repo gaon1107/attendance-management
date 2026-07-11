@@ -24,6 +24,8 @@ export function DemoClient() {
   const [camError, setCamError] = useState("");
   const [busy, setBusy] = useState(false);
   const [threshold, setThreshold] = useState(0.5);
+  // 얼굴 크기 기준(%) — 이 값 미만이면 판독을 진행하지 않음. 가이드 타원 크기도 이 값에 연동.
+  const [minPercent, setMinPercent] = useState(30);
   const [last, setLast] = useState<{ res: AnalyzeResult; snapshot: string } | null>(null);
   const [lastError, setLastError] = useState("");
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -103,7 +105,14 @@ export function DemoClient() {
         try {
           const fd = new FormData();
           fd.append("image", blob, "frame.jpg");
+          fd.append("minPercent", String(minPercent)); // 얼굴 크기 기준 — 미만이면 서버가 판독 없이 거절
           const res = await analyzeLiveness(fd);
+          if (res.tooSmall) {
+            // 얼굴이 기준보다 작음 — 판독 미진행. 사진+박스로 어느 크기였는지 보여준다.
+            setLast({ res, snapshot });
+            setLastError(res.message || "얼굴이 작습니다. 타원 안에 채워 다시 촬영해 주세요.");
+            return;
+          }
           if (res.ok && res.models && typeof res.realScore === "number") {
             setLast({ res, snapshot });
             const v1se = res.models.find((m) => m.name === "V1SE")?.realProb ?? 0;
@@ -156,9 +165,16 @@ export function DemoClient() {
           <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>① 카메라</div>
           <div style={{ position: "relative", width: "100%", aspectRatio: "4 / 3", background: "#111827", borderRadius: 10, overflow: "hidden" }}>
             <video ref={videoRef} playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }} />
-            {/* 얼굴 크기 가이드 타원 — 근태 webapp과 동일(기준 30% × 1.5 = 폭 45%). 기준값 결정 테스트용 참고선 */}
+            {/* 얼굴 크기 가이드 타원 — 아래 "얼굴 크기 기준" 슬라이더와 연동(근태 webapp과 동일 규칙: 폭 = 기준 × 1.5) */}
             <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-              <div style={{ position: "absolute", left: "50%", top: "48%", transform: "translate(-50%, -50%)", width: "45%", height: "78%", border: "3px dashed rgba(255,255,255,0.85)", borderRadius: "50%", boxShadow: "0 0 0 9999px rgba(0,0,0,0.18)" }} />
+              <div
+                style={{
+                  position: "absolute", left: "50%", top: "48%", transform: "translate(-50%, -50%)",
+                  width: `${Math.min(70, Math.round(minPercent * 1.5))}%`,
+                  height: `${Math.min(88, Math.round(Math.min(70, Math.round(minPercent * 1.5)) * 1.73))}%`,
+                  border: "3px dashed rgba(255,255,255,0.85)", borderRadius: "50%", boxShadow: "0 0 0 9999px rgba(0,0,0,0.18)",
+                }}
+              />
               <div style={{ position: "absolute", left: 0, right: 0, bottom: 8, textAlign: "center", color: "#fff", fontSize: 13, fontWeight: 700, textShadow: "0 1px 4px rgba(0,0,0,0.7)" }}>
                 얼굴을 타원 안에 채워주세요
               </div>
@@ -174,6 +190,26 @@ export function DemoClient() {
           >
             {busy ? "판독 중…" : "📷 촬영해서 판독하기"}
           </button>
+          {/* 얼굴 크기 기준 — 이 값 미만이면 판독을 진행하지 않음(근태 출퇴근과 동일). 타원 크기 연동 */}
+          <div style={{ marginTop: 14, padding: "12px 14px", background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700, marginBottom: 8 }}>
+              <span>얼굴 크기 기준 (미만이면 판독 안 함)</span>
+              <span style={{ color: "#2563EB", fontVariantNumeric: "tabular-nums" }}>{minPercent}%</span>
+            </div>
+            <input
+              type="range"
+              min={10}
+              max={50}
+              step={5}
+              value={minPercent}
+              onChange={(e) => setMinPercent(Number(e.target.value))}
+              style={{ width: "100%" }}
+            />
+            <div style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>
+              슬라이더를 움직이면 타원 크기도 함께 바뀝니다. 적당한 값을 찾으면 근태 [설정 → 얼굴 인식 기준 크기]에 같은 값을 넣으세요.
+            </div>
+          </div>
+
           <div style={{ marginTop: 12, fontSize: 13, color: "#6B7280", lineHeight: 1.6 }}>
             시험 방법: ① 본인 얼굴 → ② 휴대폰에 얼굴 사진 띄워 카메라에 비추기 → ③ A4 인쇄 사진 → ④ 모니터 화면 → ⑤ 동영상 재생. 각각 여러 번 반복해 점수를 비교하세요.
           </div>
@@ -185,6 +221,31 @@ export function DemoClient() {
           {!last && !lastError && <div style={{ fontSize: 14, color: "#6B7280" }}>아직 판독한 사진이 없습니다. 왼쪽에서 촬영해 보세요.</div>}
           {lastError && (
             <div style={{ background: "#FEE2E2", borderRadius: 8, padding: "12px 14px", fontSize: 14, color: "#991B1B", marginBottom: 12 }}>{lastError}</div>
+          )}
+          {/* 얼굴이 기준보다 작아 판독 미진행 — 어느 크기로 찍혔는지 사진+주황 박스로 표시 */}
+          {last && last.res.tooSmall && (
+            <div style={{ position: "relative", width: "100%", borderRadius: 10, overflow: "hidden", marginBottom: 12 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={last.snapshot} alt="크기 미달 사진" style={{ width: "100%", display: "block" }} />
+              {last.res.rect && last.res.imageSize && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: `${(last.res.rect.x / last.res.imageSize.width) * 100}%`,
+                    top: `${(last.res.rect.y / last.res.imageSize.height) * 100}%`,
+                    width: `${(last.res.rect.width / last.res.imageSize.width) * 100}%`,
+                    height: `${(last.res.rect.height / last.res.imageSize.height) * 100}%`,
+                    border: "3px solid #F59E0B",
+                    borderRadius: 6,
+                    boxShadow: "0 0 0 1px rgba(0,0,0,0.25)",
+                  }}
+                />
+              )}
+              <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, background: "rgba(180, 83, 9, 0.9)", color: "#fff", fontSize: 13, fontWeight: 700, padding: "8px 12px", textAlign: "center" }}>
+                {/* 기준은 "촬영 당시 적용된 값"(서버 반환)을 표시 — 슬라이더를 나중에 움직여도 과거 결과가 안 바뀜 */}
+                판독 안 함 — 얼굴 폭 {last.res.facePercent?.toFixed(0)}% &lt; 기준 {last.res.minPercent ?? minPercent}%
+              </div>
+            </div>
           )}
           {last && last.res.ok && (
             <>
@@ -213,11 +274,11 @@ export function DemoClient() {
               </div>
               <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 10 }}>
                 얼굴 {last.res.faceCount}개
-                {rect && imgSize && imgSize.width > 0 && imgSize.height > 0 && (
+                {typeof last.res.facePercent === "number" && (
                   <>
-                    {/* 근태 webapp과 동일 계산: 화면(4:3, 좌우 잘림)에서 실제 보이는 폭 기준 */}
-                    {" "}· <b style={{ color: "#111827" }}>얼굴 폭 = 화면의 {((rect.width / Math.min(imgSize.width, (imgSize.height * 4) / 3)) * 100).toFixed(0)}%</b>
-                    <span> (근태 기본 기준 30% — 데모 고정 표기, 실제 기준은 근태 [설정]에서)</span>
+                    {/* 근태 webapp과 동일 계산: 화면(4:3, 좌우 잘림)에서 실제 보이는 폭 기준. 기준은 촬영 당시 적용값 */}
+                    {" "}· <b style={{ color: "#111827" }}>얼굴 폭 = 화면의 {last.res.facePercent.toFixed(0)}%</b>
+                    <span> (기준 {last.res.minPercent ?? minPercent}% 이상만 판독)</span>
                   </>
                 )}
                 {" "}· 검출 {last.res.detectMs}ms · 판독 {last.res.livenessMs}ms
