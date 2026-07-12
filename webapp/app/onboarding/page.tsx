@@ -14,7 +14,7 @@ export default async function OnboardingPage() {
 
   const company = await prisma.company.findUnique({
     where: { id: me.companyId },
-    select: { officeLat: true, officeLng: true, officeRadiusM: true, workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true, standardWorkHours: true },
+    select: { officeLat: true, officeLng: true, officeRadiusM: true, officeAddress: true, officeAddressDetail: true, workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true, standardWorkHours: true },
   });
 
   return (
@@ -53,6 +53,8 @@ export default async function OnboardingPage() {
               lat: company?.officeLat ?? null,
               lng: company?.officeLng ?? null,
               radius: company?.officeRadiusM ?? 200,
+              address: company?.officeAddress ?? null,
+              addressDetail: company?.officeAddressDetail ?? null,
             }}
           />
         </div>

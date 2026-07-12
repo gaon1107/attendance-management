@@ -26,6 +26,9 @@ model Company {
   officeLat     Float?
   officeLng     Float?
   officeRadiusM Int      @default(200) // 허용 반경(m)
+  // 사업장 주소(위치 설정 화면 전용 — [회사정보]의 회사 주소와는 별개로 관리).
+  officeAddress       String? // 도로명/지번 주소(주소 검색으로 채우거나 직접 입력)
+  officeAddressDetail String? // 상세주소(동·층·호수 등)
   // 사내 네트워크 허용 IP(들). 쉼표로 구분. 앞부분 일치도 허용(예: "203.0.113." → 203.0.113.* 전체).
   officeIps     String?
   // 근무제·기준시간(지각/정상 판정 기준). 안 정하면 지각 판정은 건너뜀.

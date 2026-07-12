@@ -19,6 +19,11 @@ export async function saveOfficeLocation(
   const lng = Number(formData.get("lng"));
   // 반경칸은 천단위 콤마(글자칸)로 입력받으므로 콤마를 떼고 숫자로 파싱한다.
   const radius = Number(stripCommas(String(formData.get("radius") ?? "")));
+  // 사업장 주소(선택) — 빈 값이면 null. 길이 상한 적용.
+  const addrRaw = String(formData.get("officeAddress") ?? "").trim();
+  const addrDetailRaw = String(formData.get("officeAddressDetail") ?? "").trim();
+  const officeAddress = addrRaw ? addrRaw.slice(0, 300) : null;
+  const officeAddressDetail = addrDetailRaw ? addrDetailRaw.slice(0, 300) : null;
 
   if (Number.isNaN(lat) || Number.isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     return { error: "위도·경도를 올바르게 입력해주세요." };
@@ -29,7 +34,7 @@ export async function saveOfficeLocation(
 
   await prisma.company.update({
     where: { id: me.companyId },
-    data: { officeLat: lat, officeLng: lng, officeRadiusM: Math.round(radius) },
+    data: { officeLat: lat, officeLng: lng, officeRadiusM: Math.round(radius), officeAddress, officeAddressDetail },
   });
 
   revalidatePath("/settings");

@@ -33,12 +33,14 @@ const labelStyle: React.CSSProperties = { display: "block", fontSize: 13, fontWe
 export function OfficeLocationForm({
   initial,
 }: {
-  initial: { lat: number | null; lng: number | null; radius: number };
+  initial: { lat: number | null; lng: number | null; radius: number; address: string | null; addressDetail: string | null };
 }) {
   const [state, formAction, pending] = useActionState(saveOfficeLocation, {});
   const [lat, setLat] = useState(initial.lat != null ? String(initial.lat) : "");
   const [lng, setLng] = useState(initial.lng != null ? String(initial.lng) : "");
   const [radius, setRadius] = useState(formatThousands(String(initial.radius)));
+  const [address, setAddress] = useState(initial.address ?? "");
+  const [addressDetail, setAddressDetail] = useState(initial.addressDetail ?? "");
   const [geoMsg, setGeoMsg] = useState("");
   const [addrMsg, setAddrMsg] = useState("");
 
@@ -51,11 +53,12 @@ export function OfficeLocationForm({
   async function onAddressPicked(_zip: string, address: string) {
     if (!address) return;
     setAddrMsg(`'${address}' 위치를 찾는 중...`);
+    setAddress(address); // 주소 칸도 함께 채운다(상세주소는 사용자가 입력)
     const r = await geocodeForOffice(address);
     if (r) {
       setLat(r.lat.toFixed(6));
       setLng(r.lng.toFixed(6));
-      setAddrMsg(`'${address}' 위치를 지도에 표시했습니다. 저장을 눌러주세요.`);
+      setAddrMsg(`'${address}' 위치를 지도에 표시했습니다. 상세주소를 넣고 저장을 눌러주세요.`);
     } else {
       setAddrMsg("주소로 좌표를 찾지 못했습니다. 지도를 눌러 직접 지정해주세요.");
     }
@@ -107,6 +110,14 @@ export function OfficeLocationForm({
       </div>
 
       <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div>
+          <label style={labelStyle}>주소</label>
+          <input name="officeAddress" type="text" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="주소로 위치 찾기로 채우거나 직접 입력" style={inputStyle} />
+        </div>
+        <div>
+          <label style={labelStyle}>상세주소</label>
+          <input name="officeAddressDetail" type="text" value={addressDetail} onChange={(e) => setAddressDetail(e.target.value)} placeholder="동·층·호수 등" style={inputStyle} />
+        </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 140 }}>
             <label style={labelStyle}>위도(latitude)</label>

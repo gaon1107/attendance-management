@@ -20,6 +20,7 @@ export default async function SettingsPage() {
     where: { id: me.companyId },
     select: {
       officeLat: true, officeLng: true, officeRadiusM: true, officeIps: true,
+      officeAddress: true, officeAddressDetail: true,
       workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true,
       standardWorkHours: true, faceMinPercent: true, livenessPercent: true,
     },
@@ -51,6 +52,8 @@ export default async function SettingsPage() {
           lat: company?.officeLat ?? null,
           lng: company?.officeLng ?? null,
           radius: company?.officeRadiusM ?? 200,
+          address: company?.officeAddress ?? null,
+          addressDetail: company?.officeAddressDetail ?? null,
         }}
       />
     </AppShell>
