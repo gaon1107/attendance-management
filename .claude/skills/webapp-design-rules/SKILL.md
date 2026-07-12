@@ -157,6 +157,11 @@ import { RangeCalendar } from "@/app/components/RangeCalendar";
 <RangeCalendar from={fromISO} to={toISO} todayISO={todayISO}
   onApply={(f, t) => router.push(`/records?from=${f}&to=${t}`)} />
 ```
+- **서버 컴포넌트에서 바로 쓸 땐 래퍼 `app/components/RangeCalendarNav.tsx`** 를 쓴다(함수는 서버→클라이언트로 못 넘기므로 basePath 문자열만 전달):
+  ```tsx
+  import { RangeCalendarNav } from "@/app/components/RangeCalendarNav";
+  <RangeCalendarNav from={fromISO} to={toISO} todayISO={todayISO} basePath="/leave/approvals" extraQuery={{ view: "table" }} />
+  ```
 - 서버는 넘어온 from/to를 반드시 `^\d{4}-\d{2}-\d{2}$` 형식 검증(이상값 → 오늘)한 뒤 컴포넌트에 넘긴다(잘못된 URL로 인한 화면 크래시 방지).
 
 **② 시간 선택 — `app/components/TimePicker.tsx`**
@@ -204,7 +209,8 @@ const shown = useMemo(() => {
 - `webapp/app/components/AppShell.tsx` — 공통 뼈대(사이드바+상단바+콘텐츠)
 - `webapp/app/components/Sidebar.tsx` — 왼쪽 아이콘 네비게이션(역할별)
 - `webapp/app/globals.css` — 디자인 토큰 + 레이아웃/반응형 클래스 (`.page`, `.split-2`, `.kpi-grid`, `.dash-split` 등)
-- `webapp/app/components/RangeCalendar.tsx` — 공통 기간 선택 달력(§5.6①)
+- `webapp/app/components/RangeCalendar.tsx` — 공통 기간 선택 달력(§5.6①). 서버 페이지용 래퍼는 `RangeCalendarNav.tsx`
+- 적용 예: 근태현황·내 근태·휴가승인·정정승인(기간 달력) / 직원관리·생체정보·공지·근태현황(통합검색)
 - `webapp/app/components/TimePicker.tsx` — 공통 시간 선택 `[시][분]`(§5.6②)
 - `webapp/app/components/SearchBox.tsx` + `webapp/lib/search.ts` — 공통 통합검색 입력+OR 필터(§5.6③)
 - 화면 예시(이 규칙을 이미 따름): `app/dashboard`(dash-split), `app/settings`·`app/leave`·`app/attendance`(split-2 2단), `app/records`(표 전체 폭)

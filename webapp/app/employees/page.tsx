@@ -1,6 +1,5 @@
-// 직원 관리 (관리자 전용) — 직원 목록 + 직원 추가. (리뉴얼 디자인)
+// 직원 관리 (관리자 전용) — 직원 목록(+통합검색) + 직원 추가. (리뉴얼 디자인)
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
@@ -8,6 +7,7 @@ import { AddEmployeeForm } from "./AddEmployeeForm";
 import { InviteLink } from "./InviteLink";
 import { PendingResetRequests } from "./PendingResetRequests";
 import { DepartmentManager } from "./DepartmentManager";
+import { EmployeeList, type EmpRow, type RetiredRow } from "./EmployeeList";
 import { createInvite, cancelInvite } from "@/app/actions/invites";
 
 function ymd(d: Date): string {
@@ -70,8 +70,21 @@ export default async function EmployeesPage() {
     { label: "인증 미설정", value: `${unsetCount}`, unit: "명", color: unsetCount > 0 ? "var(--warning)" : "var(--text)" },
   ];
 
-  const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 20px" };
-  const td: React.CSSProperties = { padding: "12px 20px", fontSize: 15, verticalAlign: "middle" };
+  // 목록(재직/퇴사)을 검색 가능한 직렬화 행으로 변환
+  const activeRows: EmpRow[] = employees.map((emp) => {
+    const authLabel = emp.authMethod === "face" ? "얼굴인증" : emp.authMethod === "gps" ? "GPS" : "미설정";
+    const dept = emp.department?.name ?? "미배정";
+    return {
+      id: emp.id, name: emp.name, initial: emp.name.slice(0, 1), dept, deptSet: !!emp.department,
+      email: emp.email, authLabel, hasAuth: !!emp.authMethod, consented: !!emp.faceConsentAt,
+      joinLabel: ymd(emp.createdAt), search: [emp.name, emp.email, dept, authLabel].join(" ").toLowerCase(),
+    };
+  });
+  const retiredRows: RetiredRow[] = retired.map((emp) => ({
+    id: emp.id, name: emp.name, initial: emp.name.slice(0, 1), email: emp.email,
+    retireLabel: emp.deactivatedAt ? ymd(emp.deactivatedAt) : "—",
+    search: [emp.name, emp.email].join(" ").toLowerCase(),
+  }));
 
   return (
     <AppShell user={me} active="employees" title="직원 관리" subtitle={`${me.company.name} · 재직 ${employees.length}명`}>
@@ -134,105 +147,8 @@ export default async function EmployeesPage() {
       {/* 직원 직접 등록 (관리자가 계정을 바로 만들 때) */}
       <AddEmployeeForm />
 
-      {/* 직원 목록 표 */}
-      <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 800 }}>
-            <thead>
-              <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
-                <th style={th}>이름</th>
-                <th style={th}>부서</th>
-                <th style={th}>이메일</th>
-                <th style={th}>인증방식</th>
-                <th style={th}>생체동의</th>
-                <th style={th}>가입일</th>
-                <th style={th}>상태</th>
-              </tr>
-            </thead>
-            <tbody>
-              {employees.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
-                    아직 등록된 직원이 없습니다. 위에서 첫 직원을 추가해보세요.
-                  </td>
-                </tr>
-              ) : (
-                employees.map((emp) => {
-                  const auth = emp.authMethod === "face" ? "얼굴인증" : emp.authMethod === "gps" ? "GPS" : "미설정";
-                  const authColor = emp.authMethod ? "var(--text)" : "#9CA3AF";
-                  const consented = !!emp.faceConsentAt;
-                  return (
-                    <tr key={emp.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                      <td style={td}>
-                        <Link href={`/employees/${emp.id}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "var(--text)" }}>
-                          <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#EEF2F7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>
-                            {emp.name.slice(0, 1)}
-                          </div>
-                          <span style={{ fontWeight: 700 }}>{emp.name}</span>
-                        </Link>
-                      </td>
-                      <td style={{ ...td, color: emp.department ? "var(--text)" : "#9CA3AF" }}>{emp.department?.name ?? "미배정"}</td>
-                      <td style={{ ...td, color: "var(--text-sub)" }}>{emp.email}</td>
-                      <td style={{ ...td, color: authColor }}>{auth}</td>
-                      <td style={{ ...td, color: consented ? "#15803D" : "#9CA3AF" }}>{consented ? "동의함" : "—"}</td>
-                      <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{ymd(emp.createdAt)}</td>
-                      <td style={td}>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px", borderRadius: 6, background: "#F3F4F6" }}>
-                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--success)" }} />
-                          <span style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>재직중</span>
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {/* 퇴사한 직원 (비활성화) — 과거 근태 기록은 리포트에 그대로 남는다. 복직은 이름 클릭 후 상세에서. */}
-      {retired.length > 0 && (
-        <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", marginTop: 20 }}>
-          <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", fontSize: 15, fontWeight: 700, color: "var(--text-sub)" }}>
-            퇴사한 직원 {retired.length}명 <span style={{ fontWeight: 400 }}>(과거 근태 기록은 리포트에 보존됩니다)</span>
-          </div>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
-              <thead>
-                <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
-                  <th style={th}>이름</th>
-                  <th style={th}>이메일</th>
-                  <th style={th}>퇴사일</th>
-                  <th style={th}>상태</th>
-                </tr>
-              </thead>
-              <tbody>
-                {retired.map((emp) => (
-                  <tr key={emp.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                    <td style={td}>
-                      <Link href={`/employees/${emp.id}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "var(--text-sub)" }}>
-                        <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#F3F4F6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#9CA3AF", flexShrink: 0 }}>
-                          {emp.name.slice(0, 1)}
-                        </div>
-                        <span style={{ fontWeight: 700 }}>{emp.name}</span>
-                      </Link>
-                    </td>
-                    <td style={{ ...td, color: "var(--text-sub)" }}>{emp.email}</td>
-                    <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{emp.deactivatedAt ? ymd(emp.deactivatedAt) : "—"}</td>
-                    <td style={td}>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px", borderRadius: 6, background: "#F3F4F6" }}>
-                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#9CA3AF" }} />
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "#6B7280" }}>퇴사</span>
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+      {/* 직원 목록(재직/퇴사) + 통합검색 */}
+      <EmployeeList active={activeRows} retired={retiredRows} />
     </AppShell>
   );
 }

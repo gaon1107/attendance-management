@@ -1,12 +1,13 @@
-// 근태 정정 승인(관리자 전용) — 대기 목록 승인/반려 + 처리 내역.
+// 근태 정정 승인(관리자 전용) — 대기 승인/반려 + 처리 내역. 기간 달력 + 통합검색(클라이언트).
 // 사이드바 아이콘은 없고, 대시보드 '오늘 알림'과 근태현황 화면에서 들어온다. (active는 근태현황으로 표시)
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
-import { approveCorrection, rejectCorrection } from "@/app/actions/corrections";
+import { CorrectionApprovalsClient, type CorrectionRow } from "./CorrectionApprovalsClient";
 import { correctionStatusLabel } from "@/lib/corrections";
+import { parseAnchor, toISODate } from "@/lib/period";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" });
@@ -18,37 +19,71 @@ function timeReq(inHm: string | null, outHm: string | null): string {
   return parts.join(" · ") || "—";
 }
 
-const STATUS_STYLE: Record<string, { bg: string; dot: string; color: string }> = {
-  approved: { bg: "#DCFCE7", dot: "#15803D", color: "#15803D" },
-  rejected: { bg: "#FEE2E2", dot: "#B91C1C", color: "#B91C1C" },
-};
-
-export default async function CorrectionApprovalsPage() {
+export default async function CorrectionApprovalsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string }>;
+}) {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   if (me.role !== "admin") redirect("/attendance");
 
-  const requests = await prisma.attendanceCorrection.findMany({
-    where: { companyId: me.companyId },
+  const sp = await searchParams;
+  const todayISO = toISODate(new Date());
+  const now = new Date();
+  const defFrom = toISODate(new Date(now.getFullYear(), now.getMonth(), 1));
+  const defTo = toISODate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  const normISO = (s: string | undefined, fb: string): string => {
+    if (s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s + "T00:00:00").getTime())) return s;
+    return fb;
+  };
+  const fromISO = normISO(sp.from, defFrom);
+  let toISO = normISO(sp.to, defTo);
+  if (toISO < fromISO) toISO = fromISO;
+  const start = parseAnchor(fromISO);
+  start.setHours(0, 0, 0, 0);
+  const endDay = parseAnchor(toISO);
+  endDay.setHours(0, 0, 0, 0);
+  let end = new Date(endDay);
+  end.setDate(end.getDate() + 1);
+  // 과도한 전량 로드 방지: 최대 92일(초과 시 잘라 표시 종료일도 맞춤)
+  const maxEnd = new Date(start);
+  maxEnd.setDate(maxEnd.getDate() + 92);
+  if (end > maxEnd) {
+    end = maxEnd;
+    const capEnd = new Date(maxEnd);
+    capEnd.setDate(capEnd.getDate() - 1);
+    toISO = toISODate(capEnd);
+  }
+
+  // 대기: 항상 전체. 처리 내역: "처리한 시점(decidedAt)"이 선택 기간에 드는 것만(방금 처리분이 이번 달에 보이게).
+  const pendingReqs = await prisma.attendanceCorrection.findMany({
+    where: { companyId: me.companyId, status: "pending" },
     include: { user: true },
     orderBy: { createdAt: "desc" },
   });
-  const pending = requests.filter((r) => r.status === "pending");
-  const decided = requests.filter((r) => r.status !== "pending");
+  const decidedReqs = await prisma.attendanceCorrection.findMany({
+    where: { companyId: me.companyId, status: { not: "pending" }, decidedAt: { gte: start, lt: end } },
+    include: { user: true },
+    orderBy: { decidedAt: "desc" },
+  });
 
-  const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 20px", whiteSpace: "nowrap" };
-  const td: React.CSSProperties = { padding: "13px 20px", fontSize: 15, verticalAlign: "middle" };
-
-  function nameCell(name: string) {
-    return (
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#EEF2F7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>
-          {name.slice(0, 1)}
-        </div>
-        <span style={{ fontWeight: 700 }}>{name}</span>
-      </div>
-    );
-  }
+  const toRow = (r: (typeof pendingReqs)[number]): CorrectionRow => {
+    const dateText = ymd(r.targetDate);
+    const timeText = timeReq(r.requestedIn, r.requestedOut);
+    const statusLabel = correctionStatusLabel(r.status);
+    return {
+      id: r.id,
+      name: r.user.name,
+      initial: r.user.name.slice(0, 1),
+      dateText,
+      timeText,
+      reason: r.reason,
+      status: r.status,
+      statusLabel,
+      search: [r.user.name, dateText, timeText, r.reason, statusLabel].join(" ").toLowerCase(),
+    };
+  };
 
   const backBtn = (
     <Link href="/records" style={{ height: 38, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 8, border: "1px solid var(--border)", background: "#fff", color: "var(--text-sub)", fontSize: 14, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}>
@@ -58,102 +93,7 @@ export default async function CorrectionApprovalsPage() {
 
   return (
     <AppShell user={me} active="records" title="근태 정정 승인" subtitle={me.company.name} right={backBtn}>
-      {/* 승인 대기 */}
-      <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", fontSize: 16, fontWeight: 700 }}>
-          승인 대기 {pending.length > 0 && <span style={{ color: "var(--warning)" }}>{pending.length}건</span>}
-        </div>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
-            <thead>
-              <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
-                <th style={th}>신청자</th>
-                <th style={th}>대상 날짜</th>
-                <th style={th}>요청 시각</th>
-                <th style={th}>사유</th>
-                <th style={{ ...th, textAlign: "right" }}>처리</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pending.length === 0 ? (
-                <tr>
-                  <td colSpan={5} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
-                    승인 대기 중인 정정 요청이 없습니다.
-                  </td>
-                </tr>
-              ) : (
-                pending.map((r) => (
-                  <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                    <td style={td}>{nameCell(r.user.name)}</td>
-                    <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{ymd(r.targetDate)}</td>
-                    <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{timeReq(r.requestedIn, r.requestedOut)}</td>
-                    <td style={{ ...td, color: "var(--text-sub)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.reason}</td>
-                    <td style={{ ...td, textAlign: "right" }}>
-                      <div style={{ display: "inline-flex", gap: 8 }}>
-                        <form action={approveCorrection}>
-                          <input type="hidden" name="id" value={r.id} />
-                          <button type="submit" style={{ height: 34, padding: "0 14px", border: "none", borderRadius: 8, background: "var(--primary)", color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                            승인
-                          </button>
-                        </form>
-                        <form action={rejectCorrection}>
-                          <input type="hidden" name="id" value={r.id} />
-                          <button type="submit" style={{ height: 34, padding: "0 14px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--danger)", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                            반려
-                          </button>
-                        </form>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {/* 처리 내역 */}
-      <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", fontSize: 16, fontWeight: 700, color: "var(--text-sub)" }}>처리 내역</div>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
-            <thead>
-              <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
-                <th style={th}>신청자</th>
-                <th style={th}>대상 날짜</th>
-                <th style={th}>요청 시각</th>
-                <th style={th}>상태</th>
-              </tr>
-            </thead>
-            <tbody>
-              {decided.length === 0 ? (
-                <tr>
-                  <td colSpan={4} style={{ padding: "24px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
-                    처리한 정정 요청이 없습니다.
-                  </td>
-                </tr>
-              ) : (
-                decided.map((r) => {
-                  const s = STATUS_STYLE[r.status] ?? STATUS_STYLE.approved;
-                  return (
-                    <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                      <td style={td}>{nameCell(r.user.name)}</td>
-                      <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{ymd(r.targetDate)}</td>
-                      <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{timeReq(r.requestedIn, r.requestedOut)}</td>
-                      <td style={td}>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px", borderRadius: 6, background: s.bg }}>
-                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.dot }} />
-                          <span style={{ fontSize: 13, fontWeight: 700, color: s.color }}>{correctionStatusLabel(r.status)}</span>
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <CorrectionApprovalsClient pending={pendingReqs.map(toRow)} decided={decidedReqs.map(toRow)} from={fromISO} to={toISO} todayISO={todayISO} />
     </AppShell>
   );
 }
