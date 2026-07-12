@@ -42,6 +42,46 @@ model Company {
   // 본인 확인 재검토 기준(%) — 판독 "진짜 확률"이 이 값 미만이면 관리자 화면에 재검토 배지.
   // 출퇴근을 막는 값이 아님(조용한 표시). 운영하며 조정할 수 있게 관리자 [설정] 항목으로 둠.
   livenessPercent Int    @default(50)
+  // ── 회사 상세정보(관리자 [회사정보] 화면에서 입력·수정). 전부 선택(없어도 무방). ──
+  // 기본정보
+  bizRegNo      String?  // 사업자등록번호 (예: 123-12-12345)
+  corpRegNo     String?  // 법인등록번호
+  ceoName       String?  // 대표자 이름
+  bizType       String?  // 업태
+  bizItem       String?  // 종목
+  // 주소·연락처
+  zipCode       String?  // 우편번호
+  address       String?  // 주소(도로명/지번)
+  addressDetail String?  // 상세주소
+  companyPhone  String?  // 대표전화
+  companyFax    String?  // 팩스
+  companyEmail  String?  // 대표 이메일
+  website       String?  // 홈페이지
+  // 담당자(근태 담당)
+  managerName   String?  // 주 담당자 이름
+  managerTitle  String?  // 직책
+  managerPhone  String?  // 담당 연락처
+  managerEmail  String?  // 담당 이메일
+  // 기타
+  companyNote   String?  // 비고
+  documents     CompanyDocument[]
+}
+
+// 회사 첨부문서 — 사업자등록증·통장사본 등. 종류(kind)별 최신 1건만 유지(재업로드 시 이전 파일 교체·삭제).
+// ※ 보호: 실제 파일은 웹 공개경로 밖(storage/company-docs/)에 저장하고, 관리자만 인증 라우트로 다운로드한다.
+model CompanyDocument {
+  id           String   @id @default(cuid())
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id])
+  kind         String   // "bizReg"(사업자등록증) | "seal"(인감스캔본) | "bankbook"(통장사본) | "factory"(공장등록증) | "etc"(기타)
+  originalName String   // 사용자가 올린 원래 파일명(표시용)
+  storedName   String   // storage/company-docs/{companyId}/ 안의 실제 저장 파일명
+  mimeType     String   // application/pdf | image/jpeg | image/png
+  size         Int      // 바이트
+  uploadedBy   String   // 업로드한 관리자 이름(스냅샷)
+  uploadedAt   DateTime @default(now())
+
+  @@index([companyId, kind])
 }
 
 // 사용자 — 관리자(admin) 또는 직원(employee). 반드시 한 회사에 속한다.
