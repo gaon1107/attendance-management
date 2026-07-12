@@ -103,7 +103,7 @@ export function DetailTable({ detail, showLiveness = false }: { detail: DayDetai
                 <th style={th}>출근</th>
                 <th style={th}>퇴근</th>
                 <th style={th}>지각</th>
-                <th style={{ ...th, textAlign: "right" }}>외출</th>
+                <th style={th}>외출</th>
                 <th style={{ ...th, textAlign: "right" }}>실근무</th>
                 {showLiveness && <th style={th}>본인 확인</th>}
               </tr>
@@ -123,7 +123,7 @@ export function DetailTable({ detail, showLiveness = false }: { detail: DayDetai
                         <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{monthDayDow(e.date)}</td>
                         <td style={{ ...td, color: "#9CA3AF" }} colSpan={4}>—</td>
                         <td style={td}><span style={{ fontSize: 13, fontWeight: 700, color: "var(--danger)" }}>결근</span></td>
-                        <td style={{ ...td, textAlign: "right", color: "#9CA3AF" }}>—</td>
+                        <td style={{ ...td, color: "#9CA3AF" }}>—</td>
                         <td style={{ ...td, textAlign: "right", color: "#9CA3AF" }}>—</td>
                         {showLiveness && <td style={{ ...td, color: "#9CA3AF" }}>—</td>}
                       </tr>
@@ -135,7 +135,7 @@ export function DetailTable({ detail, showLiveness = false }: { detail: DayDetai
                         <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{monthDayDow(e.date)}</td>
                         <td style={{ ...td, color: "#9CA3AF" }} colSpan={4}>—</td>
                         <td style={td}><span style={{ fontSize: 13, fontWeight: 700, color: "var(--primary)" }}>휴가 · {e.label}</span></td>
-                        <td style={{ ...td, textAlign: "right", color: "#9CA3AF" }}>—</td>
+                        <td style={{ ...td, color: "#9CA3AF" }}>—</td>
                         <td style={{ ...td, textAlign: "right", color: "#9CA3AF" }}>—</td>
                         {showLiveness && <td style={{ ...td, color: "#9CA3AF" }}>—</td>}
                       </tr>
@@ -162,7 +162,23 @@ export function DetailTable({ detail, showLiveness = false }: { detail: DayDetai
                           <span style={{ fontSize: 13, fontWeight: 700, color: "#15803D" }}>정상</span>
                         )}
                       </td>
-                      <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: "var(--text-sub)" }}>{r.breaks.length}회</td>
+                      <td style={{ ...td, color: "var(--text-sub)" }}>
+                        {r.breaks.length === 0 ? (
+                          <span style={{ color: "#9CA3AF" }}>0회</span>
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                            {[...r.breaks].sort((a, b) => a.startAt.getTime() - b.startAt.getTime()).map((b, i) => (
+                              <span key={i} style={{ fontSize: 13, whiteSpace: "nowrap" }}>
+                                <span style={{ color: "var(--text-sub)", marginRight: 5 }}>{b.reason}</span>
+                                <span style={{ color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>
+                                  {hhmm(b.startAt)}~{b.endAt ? hhmm(b.endAt) : ""}
+                                </span>
+                                {!b.endAt && <span style={{ color: "var(--warning)", fontWeight: 700, marginLeft: 5 }}>외출 중</span>}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
                       <td style={{ ...td, textAlign: "right", fontWeight: 700, color: "var(--primary)", fontVariantNumeric: "tabular-nums" }}>{formatMinutes(e.minutes)}</td>
                       {showLiveness && <td style={td}><LivenessCell photos={r.clockPhotos} /></td>}
                     </tr>
