@@ -210,7 +210,25 @@ async function recordClockPhoto(
     let status = "error";
     let score: number | null = null;
     const first = buffers[0];
-    if (faceRect) {
+    // 위조 판독은 얼굴 영역을 잘라내 봐야 하므로 얼굴 위치가 필수다.
+    // 본인 확인(recognize) 응답에 얼굴 위치가 없으면(형식 차이 등) detect API로 위치를 따로 확보해 판독을 진행한다.
+    // ⚠️ 이게 없으면 위조 사진이 "판독 실패(error)"로 빠져 위조 표시가 안 뜬다(원인 수정 2026-07-12).
+    let rect = faceRect;
+    if (!rect) {
+      console.log(`[liveness] recognize 응답에 얼굴 위치(FaceRect) 없음 — detect로 보완 시도(직원 ${me.id})`);
+      try {
+        const det = await detectFaces(first);
+        if (det.success && det.faces.length === 1) {
+          rect = det.faces[0];
+          console.log(`[liveness] detect로 얼굴 위치 확보 — 판독 진행(직원 ${me.id})`);
+        } else {
+          console.log(`[liveness] detect 얼굴 ${det.success ? det.faces.length + "개" : "실패"} — 판독 보류(직원 ${me.id})`);
+        }
+      } catch (e) {
+        console.error("[liveness] detect 보완 실패:", e);
+      }
+    }
+    if (rect) {
       // ① 동일 사진 반복 — 실제 웹캠은 장마다 미세하게 달라진다. 바이트 동일 반복은 정지영상 주입·가상카메라 신호 → 재검토.
       let identical = false;
       for (let i = 1; i < buffers.length && !identical; i++) {
@@ -222,14 +240,14 @@ async function recordClockPhoto(
       if (identical) {
         status = "suspect";
         console.log(`[liveness] 동일 사진 반복 감지 — 직원 ${me.id}(정지영상/가상카메라 의심), 재검토 표시`);
-        const lv0 = await analyzeFace(first, faceRect); // 표시용 점수만
+        const lv0 = await analyzeFace(first, rect); // 표시용 점수만
         if (lv0.ok && typeof lv0.realScore === "number") score = lv0.realScore;
       } else {
         // ② 밝기 게이트 — 너무 어두우면 판독 보류(저조도 진짜 얼굴 오탐 방지). 회사 설정값이 0이면 건너뜀.
         const minBright = await getMinBrightness(me.companyId);
         let tooDark = false;
         if (minBright > 0) {
-          const b = await faceBrightness(first, faceRect);
+          const b = await faceBrightness(first, rect);
           if (b.ok && b.mean < minBright) tooDark = true;
         }
         if (tooDark) {
@@ -242,7 +260,7 @@ async function recordClockPhoto(
           let allPass = true;
           let analyzeFailed = false;
           for (const buf of buffers) {
-            const lv = await analyzeFace(buf, faceRect);
+            const lv = await analyzeFace(buf, rect);
             if (!lv.ok || !lv.models || typeof lv.realScore !== "number") { analyzeFailed = true; break; }
             const v1se = lv.models.find((m) => m.name === "V1SE")?.realProb ?? 0;
             const v2 = lv.models.find((m) => m.name === "V2")?.realProb ?? 0;
@@ -258,7 +276,8 @@ async function recordClockPhoto(
         }
       }
     } else {
-      console.error("[liveness] recognize 응답에 얼굴 위치(FaceRect)가 없어 판독을 건너뜀");
+      // recognize·detect 모두 얼굴 위치를 얻지 못함 — 판독 보류(사진만 보관, error)
+      console.error(`[liveness] 얼굴 위치를 얻지 못해 판독을 건너뜀(직원 ${me.id}) — 사진만 보관`);
     }
 
     const fileName = await saveClockPhoto(first);

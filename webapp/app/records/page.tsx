@@ -43,9 +43,11 @@ export default async function RecordsPage({
     orderBy: { clockIn: "desc" },
   });
 
-  // 위조 의심(suspect) 사진이 하나라도 붙은 출퇴근 건 판별 — 목록에서 빨간 표시로 부각한다.
+  // 관리자 확인이 필요한 건: 위조 의심(suspect=빨강) / 판독 실패(error=주황, 얼굴 검출 안 됨 → 사진 육안 확인 권장).
   const isSuspect = (r: (typeof rows)[number]) => r.clockPhotos.some((p) => p.livenessStatus === "suspect");
+  const needsReview = (r: (typeof rows)[number]) => !isSuspect(r) && r.clockPhotos.some((p) => p.livenessStatus === "error");
   const suspectCount = rows.filter(isSuspect).length;
+  const reviewCount = rows.filter(needsReview).length;
 
   // 대기 중인 근태 정정 요청 수(상단 버튼 배지용)
   const pendingCorrectionCount = await prisma.attendanceCorrection.count({
@@ -98,9 +100,9 @@ export default async function RecordsPage({
         ))}
       </div>
 
-      {suspectCount > 0 && (
-        <div style={{ background: "#FEE2E2", border: "1px solid #FCA5A5", borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 14, fontWeight: 700, color: "#B91C1C" }}>
-          ⚠ 이 기간에 위조 의심 {suspectCount}건이 있습니다. 아래 빨간 <b>“위조 의심”</b> 표시를 눌러 사진을 확인하세요.
+      {(suspectCount > 0 || reviewCount > 0) && (
+        <div style={{ background: suspectCount > 0 ? "#FEE2E2" : "#FEF3C7", border: `1px solid ${suspectCount > 0 ? "#FCA5A5" : "#FCD34D"}`, borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 14, fontWeight: 700, color: suspectCount > 0 ? "#B91C1C" : "#B45309" }}>
+          ⚠ 이 기간에{suspectCount > 0 ? ` 위조 의심 ${suspectCount}건` : ""}{suspectCount > 0 && reviewCount > 0 ? "," : ""}{reviewCount > 0 ? ` 확인 필요(판독 실패) ${reviewCount}건` : ""}이 있습니다. 이름 옆 표시를 눌러 사진을 확인하세요.
         </div>
       )}
 
@@ -140,11 +142,15 @@ export default async function RecordsPage({
                             {r.user.name.slice(0, 1)}
                           </div>
                           <span style={{ fontWeight: 700 }}>{r.user.name}</span>
-                          {isSuspect(r) && (
+                          {isSuspect(r) ? (
                             <span style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "#B91C1C", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" }}>
                               ⚠ 위조 의심
                             </span>
-                          )}
+                          ) : needsReview(r) ? (
+                            <span style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "#D97706", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" }}>
+                              ❓ 확인 필요
+                            </span>
+                          ) : null}
                         </Link>
                       </td>
                       <td style={{ ...td, color: "var(--text-sub)" }}>{workModeLabel(r.workMode)}</td>
