@@ -1,9 +1,10 @@
 "use server";
 // 회사 상세정보 관리 — 관리자만. [회사정보] 화면에서 회사명·사업자정보·주소·연락처·담당자·비고를 저장한다.
-// 첨부문서(업로드/삭제)는 5단계에서 이 파일에 추가된다.
+// 첨부문서: 업로드는 라우트(/api/company-doc/upload, 대용량), 삭제는 아래 서버 액션.
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
+import { deleteCompanyDocFile } from "@/lib/company-doc";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -66,6 +67,31 @@ export async function saveCompanyInfo(
       companyNote: clean(formData.get("companyNote"), 1000),
     },
   });
+
+  revalidatePath("/company");
+  return { ok: true };
+}
+
+// 첨부문서 삭제 — 관리자만, 내 회사 문서만(회사 격리). DB 기록과 실제 파일을 함께 지운다.
+export async function deleteCompanyDoc(
+  _prev: { error?: string; ok?: boolean },
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean }> {
+  const me = await getCurrentUser();
+  if (!me || me.role !== "admin") {
+    return { error: "권한이 없습니다." };
+  }
+
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "문서를 찾을 수 없습니다." };
+
+  const doc = await prisma.companyDocument.findFirst({
+    where: { id, companyId: me.companyId }, // 회사 격리
+  });
+  if (!doc) return { error: "문서를 찾을 수 없습니다." };
+
+  await prisma.companyDocument.delete({ where: { id: doc.id } });
+  await deleteCompanyDocFile(me.companyId, doc.storedName);
 
   revalidatePath("/company");
   return { ok: true };
