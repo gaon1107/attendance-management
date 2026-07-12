@@ -107,8 +107,10 @@ export async function deleteCompanyLogo(
   }
 
   const c = await prisma.company.findUnique({ where: { id: me.companyId }, select: { logoName: true } });
-  if (c?.logoName) await deleteCompanyDocFile(me.companyId, c.logoName);
+  // DB를 먼저 비운 뒤 파일을 지운다. (반대로 하면 파일만 없고 logoName이 남아,
+  //  사이드바가 폴백('근') 대신 깨진 이미지를 전 화면에 띄우는 사고가 난다.)
   await prisma.company.update({ where: { id: me.companyId }, data: { logoName: null } });
+  if (c?.logoName) await deleteCompanyDocFile(me.companyId, c.logoName);
 
   revalidatePath("/company");
   return { ok: true };
