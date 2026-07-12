@@ -58,6 +58,7 @@ export default async function AuthMethodPage({
       {/* 선택 카드 2개 — 같은 크기·비중. 얼굴 카드는 상태(미선택→동의→등록)에 따라 버튼이 바뀐다 */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div style={cardStyle(method === "face")}>
+          {method === "face" && <div><CurrentBadge /></div>}
           <div style={{ fontSize: 30, marginBottom: 8 }}>🙂</div>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>얼굴인증 사용하기</div>
           <div style={{ fontSize: 13, color: "var(--text-sub)", lineHeight: 1.5, marginBottom: 14 }}>
@@ -97,9 +98,17 @@ export default async function AuthMethodPage({
           <div style={{ fontSize: 13, color: "var(--text-sub)", lineHeight: 1.5, marginBottom: 14 }}>
             위치로 출퇴근 확인. 생체정보를 수집하지 않습니다.
           </div>
-          <form action={chooseGps}>
-            <button type="submit" style={btnStyle("#fff", "var(--text)", true)}>선택</button>
-          </form>
+          {method === "gps" ? (
+            // 이미 GPS 사용 중 — 버튼 대신 비활성 표시(다시 누를 필요 없음)
+            <div style={{ height: 44, lineHeight: "44px", borderRadius: 8, background: "#fff", border: "1px solid var(--border)", color: "var(--text-sub)", fontSize: 14, fontWeight: 700 }}>
+              현재 사용 중
+            </div>
+          ) : (
+            // 아직 GPS가 아님 — 이 방식으로 전환하는 파란 버튼
+            <form action={chooseGps}>
+              <button type="submit" style={btnStyle("var(--primary)", "#fff")}>이 방식으로 선택</button>
+            </form>
+          )}
         </div>
       </div>
 
@@ -120,12 +129,23 @@ export default async function AuthMethodPage({
 
 function cardStyle(active: boolean): React.CSSProperties {
   return {
-    background: "var(--card)",
-    border: `1px solid ${active ? "var(--primary)" : "var(--border)"}`,
+    // 현재 사용 중인 카드는 연한 파란 배경 + 굵은 파란 테두리로 "선택됨"을 또렷이 보여준다.
+    background: active ? "#EFF6FF" : "var(--card)",
+    border: `${active ? 2 : 1}px solid ${active ? "var(--primary)" : "var(--border)"}`,
     borderRadius: 12,
     padding: 20,
     textAlign: "center",
+    position: "relative",
   };
+}
+
+// "현재 사용 중" 배지 — 선택된 카드 상단에 표시.
+function CurrentBadge() {
+  return (
+    <div style={{ display: "inline-block", background: "var(--primary)", color: "#fff", fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 999, marginBottom: 10 }}>
+      ✅ 현재 사용 중
+    </div>
+  );
 }
 function btnStyle(bg: string, color: string, bordered = false): React.CSSProperties {
   return {
