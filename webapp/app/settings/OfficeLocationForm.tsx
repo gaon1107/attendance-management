@@ -4,6 +4,8 @@
 import { useActionState, useState } from "react";
 import dynamic from "next/dynamic";
 import { saveOfficeLocation } from "@/app/actions/settings";
+import { geocodeForOffice } from "@/app/actions/geo";
+import { PostcodeButton } from "@/app/components/PostcodeButton";
 import { formatThousands, stripCommas } from "@/lib/format";
 
 // 지도는 브라우저에서만 로드(서버 렌더 시 오류 방지)
@@ -38,11 +40,26 @@ export function OfficeLocationForm({
   const [lng, setLng] = useState(initial.lng != null ? String(initial.lng) : "");
   const [radius, setRadius] = useState(formatThousands(String(initial.radius)));
   const [geoMsg, setGeoMsg] = useState("");
+  const [addrMsg, setAddrMsg] = useState("");
 
   const latNum = lat.trim() === "" || Number.isNaN(Number(lat)) ? null : Number(lat);
   const lngNum = lng.trim() === "" || Number.isNaN(Number(lng)) ? null : Number(lng);
   const radiusParsed = Number(stripCommas(radius));
   const radiusNum = Number.isFinite(radiusParsed) && radiusParsed > 0 ? radiusParsed : 200;
+
+  // 우편번호 팝업에서 주소를 고르면 → 카카오 지오코딩으로 좌표를 찾아 지도에 표시.
+  async function onAddressPicked(_zip: string, address: string) {
+    if (!address) return;
+    setAddrMsg(`'${address}' 위치를 찾는 중...`);
+    const r = await geocodeForOffice(address);
+    if (r) {
+      setLat(r.lat.toFixed(6));
+      setLng(r.lng.toFixed(6));
+      setAddrMsg(`'${address}' 위치를 지도에 표시했습니다. 저장을 눌러주세요.`);
+    } else {
+      setAddrMsg("주소로 좌표를 찾지 못했습니다. 지도를 눌러 직접 지정해주세요.");
+    }
+  }
 
   function fillCurrentLocation() {
     setGeoMsg("현재 위치 확인 중...");
@@ -70,13 +87,18 @@ export function OfficeLocationForm({
         <b>지도를 클릭</b>하거나 <b>깃발을 끌어</b> 위치를 정하고, 아래 저장을 누르세요.
       </p>
 
-      <button
-        type="button"
-        onClick={fillCurrentLocation}
-        style={{ height: 40, padding: "0 16px", border: "1px solid var(--primary)", borderRadius: 8, background: "#fff", color: "var(--primary)", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 12 }}
-      >
-        📍 현재 내 위치로 채우기
-      </button>
+      {/* 주소로 위치 찾기(권장) — 도로명/지번 주소를 검색하면 자동으로 지도에 표시된다. PC에서 특히 편리. */}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+        <PostcodeButton onComplete={onAddressPicked} label="주소로 위치 찾기" />
+        <button
+          type="button"
+          onClick={fillCurrentLocation}
+          style={{ height: 44, padding: "0 16px", border: "1px solid var(--primary)", borderRadius: 8, background: "#fff", color: "var(--primary)", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
+        >
+          📍 현재 내 위치로 채우기
+        </button>
+      </div>
+      {addrMsg && <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 8 }}>{addrMsg}</div>}
       {geoMsg && <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 12 }}>{geoMsg}</div>}
 
       {/* 지도 */}
