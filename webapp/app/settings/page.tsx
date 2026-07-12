@@ -22,7 +22,7 @@ export default async function SettingsPage() {
       officeLat: true, officeLng: true, officeRadiusM: true, officeIps: true,
       officeAddress: true, officeAddressDetail: true,
       workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true,
-      standardWorkHours: true, faceMinPercent: true, livenessPercent: true,
+      standardWorkHours: true, faceMinPercent: true, faceMinBrightness: true, livenessPercent: true,
     },
   });
 
@@ -44,7 +44,7 @@ export default async function SettingsPage() {
         <OfficeNetworkForm initialIps={company?.officeIps ?? ""} currentIp={currentIp} />
       </div>
       <div className="split-2" style={{ marginBottom: 16 }}>
-        <FaceRuleForm initialPercent={company?.faceMinPercent ?? 30} />
+        <FaceRuleForm initialPercent={company?.faceMinPercent ?? 30} initialBrightness={company?.faceMinBrightness ?? 0} />
         <LivenessRuleForm initialPercent={company?.livenessPercent ?? 50} />
       </div>
       <OfficeLocationForm

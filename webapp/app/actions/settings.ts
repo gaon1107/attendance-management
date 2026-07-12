@@ -86,9 +86,15 @@ export async function saveFaceRule(
     return { error: "기준 크기는 10~50% 사이로 입력해주세요." };
   }
 
+  // 밝기 게이트(얼굴 영역 평균 밝기 0~255, 0=꺼짐). 이보다 어두우면 위조 판독을 보류한다.
+  const brightness = Number(formData.get("faceMinBrightness"));
+  if (!Number.isFinite(brightness) || brightness < 0 || brightness > 255) {
+    return { error: "밝기 기준은 0~255 사이로 입력해주세요. (0=꺼짐)" };
+  }
+
   await prisma.company.update({
     where: { id: me.companyId },
-    data: { faceMinPercent: Math.round(percent) },
+    data: { faceMinPercent: Math.round(percent), faceMinBrightness: Math.round(brightness) },
   });
 
   revalidatePath("/settings");

@@ -139,9 +139,6 @@ async function verifyMyFace(
 // ⚠️ 이 값들은 데모 카메라 실측값이다 — 근태 현장 카메라·조명에서 재확인 후 확정할 것(근태적용_가이드 8항).
 const MODEL_A_THRESHOLD = 0.6; // 모델 A(V1SE) 최소 진짜확률 — 저조도 오탐 방지 위해 낮게 고정(코드 상수)
 const MODEL_B_DEFAULT = 0.85; // 모델 B(V2) 기본 기준 — 설정값이 없거나 옛 저장값(70 미만)일 때의 안전 기본
-// [밝기 게이트] 얼굴이 이 값보다 어두우면 판독을 보류한다(재검토 배지 안 붙임 — 저조도 진짜 얼굴 오탐 방지).
-// 0 = 꺼짐. 가이드대로 현장 실측으로 최저선을 정한 뒤 켠다(예: 80). 지금은 기존 동작 유지 위해 꺼둔다.
-const MIN_BRIGHTNESS = 0;
 
 // 모델 B(V2) 판정 기준값(0~1). 회사 설정 [설정 → 본인 확인 재검토 기준]이 우선.
 // 설정 슬라이더는 이제 "모델 B 기준(%)"을 뜻한다. 옛 의미(평균 기준)로 저장된 낮은 값(예 50)을
@@ -158,6 +155,19 @@ async function getModelBThreshold(companyId: string): Promise<number> {
   }
   const v = Number(process.env.LIVENESS_THRESHOLD);
   return Number.isFinite(v) && v >= 0.7 && v < 1 ? v : MODEL_B_DEFAULT;
+}
+
+// 밝기 게이트 기준(얼굴 영역 평균 밝기 0~255). 회사 설정 [설정 → 얼굴 인식 기준 크기] 카드의 "밝기 기준"에서 정한다.
+// 0 = 꺼짐. 조회 실패가 판독·사진 저장을 막지 않도록 여기서는 절대 던지지 않고 0(꺼짐)으로 폴백한다.
+async function getMinBrightness(companyId: string): Promise<number> {
+  try {
+    const company = await prisma.company.findUnique({ where: { id: companyId }, select: { faceMinBrightness: true } });
+    const b = company?.faceMinBrightness;
+    if (typeof b === "number" && Number.isFinite(b) && b >= 0 && b <= 255) return b;
+  } catch (e) {
+    console.error("[liveness] 밝기 기준 조회 실패 — 꺼짐으로 판정 계속:", e);
+  }
+  return 0;
 }
 
 // ※ PHOTO_CONSENT_SINCE(사진 보관 동의 기준일)는 lib/clock-photo.ts로 이동 — 재동의 배너와 공유(2026-07-11).
@@ -215,11 +225,12 @@ async function recordClockPhoto(
         const lv0 = await analyzeFace(first, faceRect); // 표시용 점수만
         if (lv0.ok && typeof lv0.realScore === "number") score = lv0.realScore;
       } else {
-        // ② 밝기 게이트 — 너무 어두우면 판독 보류(저조도 진짜 얼굴 오탐 방지). MIN_BRIGHTNESS=0이면 건너뜀.
+        // ② 밝기 게이트 — 너무 어두우면 판독 보류(저조도 진짜 얼굴 오탐 방지). 회사 설정값이 0이면 건너뜀.
+        const minBright = await getMinBrightness(me.companyId);
         let tooDark = false;
-        if (MIN_BRIGHTNESS > 0) {
+        if (minBright > 0) {
           const b = await faceBrightness(first, faceRect);
-          if (b.ok && b.mean < MIN_BRIGHTNESS) tooDark = true;
+          if (b.ok && b.mean < minBright) tooDark = true;
         }
         if (tooDark) {
           status = "error"; // 저조도 — 신뢰할 수 없어 재검토 배지 대신 판독 보류(사진만 보관)
