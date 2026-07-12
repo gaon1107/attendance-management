@@ -1,13 +1,13 @@
-// 근태 현황 조회(전체) — 관리자 전용. 기간 내 모든 출퇴근 기록을 한 줄씩 보여주고,
+// 근태 현황 조회(전체) — 관리자 전용. 시작~종료 날짜(달력)로 기간을 정하고, 통합 검색어로 목록을 거른다.
 // 이름을 누르면 그 직원의 상세(/records/[userId])로 이동한다. (리뉴얼 디자인)
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
-import { PeriodNav } from "@/app/components/PeriodNav";
+import { RecordsSearchBar } from "@/app/components/RecordsSearchBar";
 import { workedMinutes, formatMinutes, isLate } from "@/lib/worktime";
-import { normalizeUnit, parseAnchor, rangeFor, toISODate } from "@/lib/period";
+import { parseAnchor, toISODate } from "@/lib/period";
 import { workModeLabel, locationLabel, hhmm, monthDayDow } from "@/lib/labels";
 import { effectiveWorkDays, isWorkDay } from "@/lib/workdays";
 import { after } from "next/server";
@@ -16,7 +16,7 @@ import { purgeExpiredPhotos } from "@/lib/clock-photo";
 export default async function RecordsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ unit?: string; date?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; q?: string }>;
 }) {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
@@ -27,10 +27,26 @@ export default async function RecordsPage({
   after(() => purgeExpiredPhotos());
 
   const sp = await searchParams;
-  const unit = normalizeUnit(sp.unit);
-  const anchor = parseAnchor(sp.date);
-  const { start, end, label } = rangeFor(unit, anchor);
-  const anchorISO = toISODate(anchor);
+  // 기본 기간: 오늘 하루. from/to는 "YYYY-MM-DD"(달력 값).
+  const todayISO = toISODate(new Date());
+  const fromISO = sp.from || todayISO;
+  const toISO = sp.to || todayISO;
+  const q = (sp.q ?? "").trim();
+
+  // 조회 기간(시작 이상 ~ 종료 다음날 미만 = 종료일 포함). from>to면 종료를 시작으로 맞춘다.
+  const start = parseAnchor(fromISO);
+  start.setHours(0, 0, 0, 0);
+  let endDay = parseAnchor(toISO);
+  endDay.setHours(0, 0, 0, 0);
+  if (endDay < start) endDay = new Date(start);
+  let end = new Date(endDay);
+  end.setDate(end.getDate() + 1);
+  // 과도한 전량 로드 방지: 조회 폭을 최대 92일로 제한(초과 시 잘라내고 화면에 안내)
+  const MAX_DAYS = 92;
+  const maxEnd = new Date(start);
+  maxEnd.setDate(maxEnd.getDate() + MAX_DAYS);
+  const rangeCapped = end > maxEnd;
+  if (rangeCapped) end = maxEnd;
 
   const company = await prisma.company.findUnique({
     where: { id: me.companyId },
@@ -40,14 +56,34 @@ export default async function RecordsPage({
   const rows = await prisma.attendance.findMany({
     where: { companyId: me.companyId, clockIn: { gte: start, lt: end } },
     include: { user: true, breaks: true, clockPhotos: { select: { livenessStatus: true } } },
-    orderBy: { clockIn: "desc" },
+    orderBy: { clockIn: "asc" }, // 오래된 것이 위로(시간 흐름 순)
   });
 
-  // 관리자 확인이 필요한 건: 위조 의심(suspect=빨강) / 판독 실패(error=주황, 얼굴 검출 안 됨 → 사진 육안 확인 권장).
-  const isSuspect = (r: (typeof rows)[number]) => r.clockPhotos.some((p) => p.livenessStatus === "suspect");
-  const needsReview = (r: (typeof rows)[number]) => !isSuspect(r) && r.clockPhotos.some((p) => p.livenessStatus === "error");
-  const suspectCount = rows.filter(isSuspect).length;
-  const reviewCount = rows.filter(needsReview).length;
+  // 각 기록을 화면 표시값으로 미리 계산 → 통합 검색은 "화면에 보이는 모든 컬럼"의 글자로 판단한다.
+  const view = rows.map((r) => {
+    const onWorkDay = isWorkDay(r.clockIn, effectiveWorkDays(r.user.workDays, company?.workDays));
+    const holiday = !onWorkDay;
+    const late = onWorkDay ? isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0) : null;
+    const suspect = r.clockPhotos.some((p) => p.livenessStatus === "suspect");
+    const review = !suspect && r.clockPhotos.some((p) => p.livenessStatus === "error");
+    const outStr = r.clockOut ? hhmm(r.clockOut) : "근무 중";
+    const lateText = holiday ? "휴일근무" : late === null ? "" : late ? "지각" : "정상";
+    const worked = formatMinutes(workedMinutes(r));
+    const badge = suspect ? "위조 의심" : review ? "확인 필요" : "";
+    // 날짜·이름·근무형태·위치·출근·퇴근·지각·실근무·위조표시 모두 합쳐 소문자로 — 어느 컬럼이든 검색되게
+    const searchText = [
+      monthDayDow(r.clockIn), r.user.name, workModeLabel(r.workMode), locationLabel(r.locationStatus),
+      hhmm(r.clockIn), outStr, lateText, worked, badge,
+    ].join(" ").toLowerCase();
+    return { r, onWorkDay, holiday, late, suspect, review, outStr, lateText, worked, badge, searchText };
+  });
+
+  const needle = q.toLowerCase();
+  const filtered = needle ? view.filter((v) => v.searchText.includes(needle)) : view;
+
+  // 관리자 확인이 필요한 건: 위조 의심(suspect=빨강) / 판독 실패(review=주황). KPI·배너는 걸러진 목록 기준.
+  const suspectCount = filtered.filter((v) => v.suspect).length;
+  const reviewCount = filtered.filter((v) => v.review).length;
 
   // 대기 중인 근태 정정 요청 수(상단 버튼 배지용)
   const pendingCorrectionCount = await prisma.attendanceCorrection.count({
@@ -63,16 +99,11 @@ export default async function RecordsPage({
     </Link>
   );
 
-  // 각 기록의 근무일 여부(직원 예외 우선)
-  const onWorkDayOf = (r: (typeof rows)[number]) => isWorkDay(r.clockIn, effectiveWorkDays(r.user.workDays, company?.workDays));
-
-  // 실제 데이터로만 집계 — 지각은 근무일 + 기준시각 이후일 때만
-  const total = rows.length;
-  const working = rows.filter((r) => !r.clockOut).length;
-  let lateCount = 0;
-  for (const r of rows) {
-    if (onWorkDayOf(r) && isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0)) lateCount++;
-  }
+  // 실제 데이터로만 집계(걸러진 목록 기준) — 지각은 근무일 + 기준시각 이후일 때만
+  const total = filtered.length;
+  // "근무 중"은 지금 이 순간 기준 — 오늘 출근했고 아직 퇴근 안 한 사람만(과거 미퇴근 기록이 부풀리지 않게)
+  const working = filtered.filter((v) => !v.r.clockOut && toISODate(v.r.clockIn) === todayISO).length;
+  const lateCount = filtered.filter((v) => v.late === true).length;
   const hasRule = !!company?.workStartTime;
 
   const kpis = [
@@ -86,7 +117,13 @@ export default async function RecordsPage({
 
   return (
     <AppShell user={me} active="records" title="근태 현황" subtitle={me.company.name} right={correctionBtn}>
-      <PeriodNav basePath="/records" unit={unit} anchor={anchor} label={label} />
+      <RecordsSearchBar from={fromISO} to={toISO} q={q} />
+
+      {rangeCapped && (
+        <div style={{ background: "#FEF3C7", border: "1px solid #FCD34D", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, fontWeight: 700, color: "#B45309" }}>
+          검색 기간이 너무 길어 시작일부터 최대 {MAX_DAYS}일까지만 표시합니다.
+        </div>
+      )}
 
       <div className="kpi-grid-3" style={{ marginBottom: 16 }}>
         {kpis.map((k) => (
@@ -102,7 +139,7 @@ export default async function RecordsPage({
 
       {(suspectCount > 0 || reviewCount > 0) && (
         <div style={{ background: suspectCount > 0 ? "#FEE2E2" : "#FEF3C7", border: `1px solid ${suspectCount > 0 ? "#FCA5A5" : "#FCD34D"}`, borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 14, fontWeight: 700, color: suspectCount > 0 ? "#B91C1C" : "#B45309" }}>
-          ⚠ 이 기간에{suspectCount > 0 ? ` 위조 의심 ${suspectCount}건` : ""}{suspectCount > 0 && reviewCount > 0 ? "," : ""}{reviewCount > 0 ? ` 확인 필요(판독 실패) ${reviewCount}건` : ""}이 있습니다. 이름 옆 표시를 눌러 사진을 확인하세요.
+          ⚠ {q ? "검색된 목록 중" : "이 기간에"}{suspectCount > 0 ? ` 위조 의심 ${suspectCount}건` : ""}{suspectCount > 0 && reviewCount > 0 ? "," : ""}{reviewCount > 0 ? ` 확인 필요(판독 실패) ${reviewCount}건` : ""}이 있습니다. 이름 옆 표시를 눌러 사진을 확인하세요.
         </div>
       )}
 
@@ -122,31 +159,29 @@ export default async function RecordsPage({
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 ? (
+              {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={8} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
-                    이 기간에 출퇴근 기록이 없습니다.
+                    {q ? "검색 결과가 없습니다." : "이 기간에 출퇴근 기록이 없습니다."}
                   </td>
                 </tr>
               ) : (
-                rows.map((r) => {
-                  const onWorkDay = onWorkDayOf(r);
-                  const holiday = !onWorkDay;
-                  const late = onWorkDay ? isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0) : null;
+                filtered.map((v) => {
+                  const r = v.r;
                   return (
                     <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                       <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{monthDayDow(r.clockIn)}</td>
                       <td style={td}>
-                        <Link href={`/records/${r.userId}?unit=${unit}&date=${anchorISO}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "var(--text)" }}>
+                        <Link href={`/records/${r.userId}?date=${fromISO}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "var(--text)" }}>
                           <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#EEF2F7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>
                             {r.user.name.slice(0, 1)}
                           </div>
                           <span style={{ fontWeight: 700 }}>{r.user.name}</span>
-                          {isSuspect(r) ? (
+                          {v.suspect ? (
                             <span style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "#B91C1C", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" }}>
                               ⚠ 위조 의심
                             </span>
-                          ) : needsReview(r) ? (
+                          ) : v.review ? (
                             <span style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "#D97706", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" }}>
                               ❓ 확인 필요
                             </span>
@@ -157,14 +192,14 @@ export default async function RecordsPage({
                       <td style={{ ...td, color: "var(--text-sub)" }}>{locationLabel(r.locationStatus)}</td>
                       <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{hhmm(r.clockIn)}</td>
                       <td style={{ ...td, fontVariantNumeric: "tabular-nums", color: r.clockOut ? "var(--text)" : "var(--text-sub)" }}>
-                        {r.clockOut ? hhmm(r.clockOut) : "근무 중"}
+                        {v.outStr}
                       </td>
                       <td style={td}>
-                        {holiday ? (
+                        {v.holiday ? (
                           <span style={{ fontSize: 13, fontWeight: 700, color: "#6D28D9" }}>휴일근무</span>
-                        ) : late === null ? (
+                        ) : v.late === null ? (
                           <span style={{ color: "#9CA3AF" }}>—</span>
-                        ) : late ? (
+                        ) : v.late ? (
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px", borderRadius: 6, background: "#FEF3C7" }}>
                             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--warning)" }} />
                             <span style={{ fontSize: 13, fontWeight: 700, color: "#B45309" }}>지각</span>
@@ -174,7 +209,7 @@ export default async function RecordsPage({
                         )}
                       </td>
                       <td style={{ ...td, textAlign: "right", fontWeight: 700, color: "var(--primary)", fontVariantNumeric: "tabular-nums" }}>
-                        {formatMinutes(workedMinutes(r))}
+                        {v.worked}
                       </td>
                     </tr>
                   );
