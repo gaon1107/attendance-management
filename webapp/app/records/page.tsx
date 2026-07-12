@@ -39,9 +39,13 @@ export default async function RecordsPage({
 
   const rows = await prisma.attendance.findMany({
     where: { companyId: me.companyId, clockIn: { gte: start, lt: end } },
-    include: { user: true, breaks: true },
+    include: { user: true, breaks: true, clockPhotos: { select: { livenessStatus: true } } },
     orderBy: { clockIn: "desc" },
   });
+
+  // 위조 의심(suspect) 사진이 하나라도 붙은 출퇴근 건 판별 — 목록에서 빨간 표시로 부각한다.
+  const isSuspect = (r: (typeof rows)[number]) => r.clockPhotos.some((p) => p.livenessStatus === "suspect");
+  const suspectCount = rows.filter(isSuspect).length;
 
   // 대기 중인 근태 정정 요청 수(상단 버튼 배지용)
   const pendingCorrectionCount = await prisma.attendanceCorrection.count({
@@ -94,6 +98,12 @@ export default async function RecordsPage({
         ))}
       </div>
 
+      {suspectCount > 0 && (
+        <div style={{ background: "#FEE2E2", border: "1px solid #FCA5A5", borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 14, fontWeight: 700, color: "#B91C1C" }}>
+          ⚠ 이 기간에 위조 의심 {suspectCount}건이 있습니다. 아래 빨간 <b>“위조 의심”</b> 표시를 눌러 사진을 확인하세요.
+        </div>
+      )}
+
       <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
@@ -130,6 +140,11 @@ export default async function RecordsPage({
                             {r.user.name.slice(0, 1)}
                           </div>
                           <span style={{ fontWeight: 700 }}>{r.user.name}</span>
+                          {isSuspect(r) && (
+                            <span style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "#B91C1C", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" }}>
+                              ⚠ 위조 의심
+                            </span>
+                          )}
                         </Link>
                       </td>
                       <td style={{ ...td, color: "var(--text-sub)" }}>{workModeLabel(r.workMode)}</td>

@@ -8,44 +8,56 @@ import type { DayDetail, ClockPhotoLite } from "@/lib/dayentries";
 const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 20px", whiteSpace: "nowrap" };
 const td: React.CSSProperties = { padding: "12px 20px", fontSize: 15, verticalAlign: "middle", whiteSpace: "nowrap" };
 
-// 출근/퇴근 사진 1건의 판독 표시 — 의심(suspect)이면 주황 강조, 사진이 있으면 새 창으로 열람(관리자 전용 API)
+// 출근/퇴근 사진 1건의 판독 표시 — 상태를 색 배지로 직관화(위조=빨강 / 정상=초록 / 판독실패=회색) + 사진 보기 버튼
 function PhotoBadge({ p, label }: { p: ClockPhotoLite; label: string }) {
+  // 상태별 색·문구
+  let bg: string, color: string, text: string;
+  if (p.livenessStatus === "suspect") { bg = "#FEE2E2"; color = "#B91C1C"; text = "⚠ 위조 의심"; }
+  else if (p.livenessStatus === "ok") { bg = "#DCFCE7"; color = "#15803D"; text = "✓ 정상"; }
+  else { bg = "#F3F4F6"; color = "#6B7280"; text = "판독 실패"; }
+  const scoreText = p.livenessScore === null ? "" : ` ${Math.round(p.livenessScore * 100)}%`;
   const suspect = p.livenessStatus === "suspect";
-  const scoreText =
-    p.livenessScore === null ? "판독 실패" : `${Math.round(p.livenessScore * 100)}%`;
-  const color = suspect ? "#B45309" : p.livenessStatus === "ok" ? "#15803D" : "#9CA3AF";
+
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-      <span style={{ fontSize: 12, fontWeight: 700, color }}>
-        {label} {scoreText}{suspect ? " ⚠" : ""}
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 700 }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color, background: bg, borderRadius: 6, padding: "2px 8px" }}>
+        {text}{scoreText}
       </span>
       {p.fileDeletedAt ? (
         <span style={{ fontSize: 11, color: "#9CA3AF" }}>(사진 파기됨)</span>
       ) : (
+        // 위조 의심이면 사진 보기를 버튼처럼 강조(관리자가 바로 눌러 확인)
         <a
           href={`/api/clock-photo/${p.id}`}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ fontSize: 11, color: "var(--primary)", textDecoration: "underline" }}
+          style={{
+            fontSize: 11, fontWeight: 700, textDecoration: "none",
+            borderRadius: 6, padding: "2px 8px",
+            ...(suspect
+              ? { background: "#B91C1C", color: "#fff" }
+              : { border: "1px solid var(--border)", color: "var(--primary)" }),
+          }}
         >
-          사진
+          📷 사진 보기
         </a>
       )}
     </span>
   );
 }
 
-// "본인 확인" 셀 — 그 날 출퇴근의 판독 결과 요약. 의심 건이 하나라도 있으면 "재검토 필요" 배지.
+// "본인 확인" 셀 — 그 날 출퇴근의 판독 결과 요약. 위조 의심이 하나라도 있으면 상단에 빨간 배지로 강하게 알린다.
 function LivenessCell({ photos }: { photos?: ClockPhotoLite[] }) {
   if (!photos || photos.length === 0) return <span style={{ color: "#9CA3AF" }}>—</span>;
   const hasSuspect = photos.some((p) => p.livenessStatus === "suspect");
   const ins = photos.filter((p) => p.kind === "in");
   const outs = photos.filter((p) => p.kind === "out");
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       {hasSuspect && (
-        <span style={{ fontSize: 12, fontWeight: 700, color: "#B45309", background: "#FEF3C7", borderRadius: 6, padding: "2px 8px", alignSelf: "flex-start" }}>
-          본인 확인 재검토 필요
+        <span style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "#B91C1C", borderRadius: 6, padding: "3px 9px", alignSelf: "flex-start" }}>
+          ⚠ 위조 의심 — 사진 확인 필요
         </span>
       )}
       <span style={{ display: "inline-flex", gap: 10, flexWrap: "wrap" }}>
