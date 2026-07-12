@@ -67,6 +67,8 @@ model Company {
   managerEmail  String?  // 담당 이메일
   // 기타
   companyNote   String?  // 비고
+  // 회사 로고 — 사이드바 상단에 표시(없으면 "근" 글자). 실제 이미지는 storage/company-docs/{id}/ 에 저장, 파일명만 보관.
+  logoName      String?
   documents     CompanyDocument[]
 }
 

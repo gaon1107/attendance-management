@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { Sidebar, type NavKey } from "@/app/components/Sidebar";
 import { LogoutButton } from "@/app/components/LogoutButton";
 
-type ShellUser = { name: string; role: string; company: { name: string } };
+type ShellUser = { name: string; role: string; company: { name: string; logoName?: string | null } };
 
 export function AppShell({
   user,

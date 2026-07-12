@@ -86,20 +86,26 @@ export function CompanyDocsForm({ initialDocs }: { initialDocs: DocView[] }) {
               )}
 
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: "auto" }}>
-                <input
-                  ref={(el) => { inputs.current[key] = el; }}
-                  type="file"
-                  accept="application/pdf,image/jpeg,image/png"
-                  disabled={busy}
-                  onChange={(e) => onPick(key, e.target.files?.[0])}
-                  style={{ fontSize: 12, flex: 1, minWidth: 0 }}
-                />
+                {/* 클릭하면 파일 선택창(윈도우 탐색기)이 열리는 버튼. 실제 input은 숨김. */}
+                <label
+                  style={{ flex: 1, height: 38, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--primary)", borderRadius: 8, background: doc ? "#fff" : "#EFF6FF", color: "var(--primary)", fontSize: 13, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1, whiteSpace: "nowrap" }}
+                >
+                  📎 {doc ? "파일 변경" : "파일 선택"}
+                  <input
+                    ref={(el) => { inputs.current[key] = el; }}
+                    type="file"
+                    accept="application/pdf,image/jpeg,image/png"
+                    disabled={busy}
+                    onChange={(e) => onPick(key, e.target.files?.[0])}
+                    style={{ display: "none" }}
+                  />
+                </label>
                 {doc && (
                   <button
                     type="button"
                     onClick={() => onDelete(doc.id)}
                     disabled={busy}
-                    style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)", background: "none", border: "1px solid var(--border)", borderRadius: 6, padding: "5px 10px", cursor: "pointer", whiteSpace: "nowrap" }}
+                    style={{ fontSize: 13, fontWeight: 700, color: "var(--danger)", background: "#fff", border: "1px solid var(--border)", borderRadius: 8, padding: "0 12px", height: 38, cursor: "pointer", whiteSpace: "nowrap" }}
                   >
                     삭제
                   </button>

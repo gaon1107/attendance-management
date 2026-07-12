@@ -5,7 +5,7 @@ import Link from "next/link";
 type NavUser = {
   name: string;
   role: string;
-  company: { name: string };
+  company: { name: string; logoName?: string | null };
 };
 
 // 사이드바에서 현재 화면을 표시하기 위한 키.
@@ -102,20 +102,31 @@ export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
         padding: "16px 0",
       }}
     >
-      {/* 로고 */}
+      {/* 로고 — 회사 로고가 있으면 이미지, 없으면 "근" 글자([회사정보]에서 업로드) */}
       <div
         style={{
           width: 36,
           height: 36,
           borderRadius: 9,
-          background: "var(--primary)",
+          background: user.company.logoName ? "#fff" : "var(--primary)",
+          border: user.company.logoName ? "1px solid var(--border)" : "none",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           marginBottom: 22,
+          overflow: "hidden",
         }}
       >
-        <span style={{ color: "#fff", fontSize: 17, fontWeight: 700 }}>근</span>
+        {user.company.logoName ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`/api/company-logo?v=${encodeURIComponent(user.company.logoName)}`}
+            alt={user.company.name}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : (
+          <span style={{ color: "#fff", fontSize: 17, fontWeight: 700 }}>근</span>
+        )}
       </div>
 
       {/* 메뉴 — 관리자는 "회사관리 / 내근태" 두 묶음으로 나눠 표시(구분선+작은 제목) */}

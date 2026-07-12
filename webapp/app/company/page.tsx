@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { CompanyInfoForm } from "./CompanyInfoForm";
 import { CompanyDocsForm, type DocView } from "./CompanyDocsForm";
+import { CompanyLogoForm } from "./CompanyLogoForm";
 
 // 바이트 → 사람이 읽는 크기
 function sizeText(bytes: number): string {
@@ -34,6 +35,7 @@ export default async function CompanyPage() {
 
   return (
     <AppShell user={me} active="company" title="회사정보" subtitle={`${c.name} · 관리자 ${me.name}`}>
+      <CompanyLogoForm hasLogo={!!c.logoName} version={c.logoName ?? ""} />
       <CompanyInfoForm
         initial={{
           name: c.name,

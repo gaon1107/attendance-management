@@ -96,3 +96,20 @@ export async function deleteCompanyDoc(
   revalidatePath("/company");
   return { ok: true };
 }
+
+// 회사 로고 삭제 — 관리자만. Company.logoName을 비우고 파일도 지운다. 사이드바는 "근" 글자로 되돌아간다.
+export async function deleteCompanyLogo(
+  _prev: { error?: string; ok?: boolean }
+): Promise<{ error?: string; ok?: boolean }> {
+  const me = await getCurrentUser();
+  if (!me || me.role !== "admin") {
+    return { error: "권한이 없습니다." };
+  }
+
+  const c = await prisma.company.findUnique({ where: { id: me.companyId }, select: { logoName: true } });
+  if (c?.logoName) await deleteCompanyDocFile(me.companyId, c.logoName);
+  await prisma.company.update({ where: { id: me.companyId }, data: { logoName: null } });
+
+  revalidatePath("/company");
+  return { ok: true };
+}
