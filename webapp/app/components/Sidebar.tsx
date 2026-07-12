@@ -11,7 +11,7 @@ type NavUser = {
 // 사이드바에서 현재 화면을 표시하기 위한 키.
 export type NavKey =
   | "dashboard" | "employees" | "records" | "reports" | "biometrics"
-  | "attendance" | "my-records" | "auth-method" | "settings"
+  | "attendance" | "my-records" | "auth-method" | "settings" | "company"
   | "leave" | "leave-approvals" | "notice" | "corrections"
   | "account"; // 계정 설정 — 사이드바 메뉴엔 없고(프로필 아바타로 진입) 하이라이트용 키
 
@@ -28,6 +28,7 @@ const ICON: Record<NavKey, string> = {
   "my-records": '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>',
   "auth-method": '<path d="M12 11a3 3 0 0 0-3 3v3"/><path d="M6 8a8 8 0 0 1 12 0"/><path d="M4 12a10 10 0 0 1 16 0"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M20 12a8 8 0 1 0-8 8"/><path d="M12 8v4l3 2"/>',
+  company: '<path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01M13 9h.01M13 13h.01M13 17h.01"/>',
   account: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
   leave: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M9 14l2 2 4-4"/>',
   "leave-approvals": '<path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/>',
@@ -45,6 +46,7 @@ const LABEL: Record<NavKey, string> = {
   "my-records": "내근태",
   "auth-method": "인증방식",
   settings: "설정",
+  company: "회사정보",
   account: "계정",
   leave: "휴가",
   "leave-approvals": "휴가승인",
@@ -70,7 +72,7 @@ function toItems(keys: NavKey[]): Item[] {
 function groupsFor(role: string): NavGroup[] {
   if (role === "admin") {
     return [
-      { caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(["dashboard", "employees", "records", "reports", "leave-approvals", "notice", "biometrics", "settings"]) },
+      { caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(["dashboard", "employees", "records", "reports", "leave-approvals", "notice", "biometrics", "company", "settings"]) },
       { caption: "내근태", tintBg: "#E3F5EA", tintText: "#15803D", items: toItems(["attendance", "auth-method"]) },
     ];
   }
