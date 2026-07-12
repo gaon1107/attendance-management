@@ -144,6 +144,49 @@ const td = { padding:"12px 20px", fontSize:15, verticalAlign:"middle" };
 
 ---
 
+## 5.6 공통 입력 컴포넌트 3종 (표준 — 2026-07-13 확정)
+
+아래 3가지 UI가 필요하면 **직접 만들지 말고 반드시 이 공통 컴포넌트를 쓴다.** (근태현황·설정에서 개발 후 표준으로 승격 — 모든 화면이 같은 모양·동작)
+
+**① 기간 선택 달력 — `app/components/RangeCalendar.tsx`**
+브라우저 기본 달력 대신 커스텀 팝업(월 이동 · 빠른선택 오늘/최근7일/최근30일 · 범위 하이라이트). 값은 `"YYYY-MM-DD"`.
+```tsx
+"use client"; // 부모가 클라이언트 컴포넌트여야 함(useRouter/useState 사용)
+import { RangeCalendar } from "@/app/components/RangeCalendar";
+// [적용] 누르면 onApply(from, to) 호출 — 이동/조회/상태갱신은 이 화면이 결정한다
+<RangeCalendar from={fromISO} to={toISO} todayISO={todayISO}
+  onApply={(f, t) => router.push(`/records?from=${f}&to=${t}`)} />
+```
+- 서버는 넘어온 from/to를 반드시 `^\d{4}-\d{2}-\d{2}$` 형식 검증(이상값 → 오늘)한 뒤 컴포넌트에 넘긴다(잘못된 URL로 인한 화면 크래시 방지).
+
+**② 시간 선택 — `app/components/TimePicker.tsx`**
+`[시][분]` 드롭다운. "없음" 허용(`allowEmpty`, 기본 true). `splitTime`/`joinTime`으로 `"HH:MM" ↔ {h,m}` 변환.
+```tsx
+"use client";
+import { TimePicker, splitTime, joinTime } from "@/app/components/TimePicker";
+const s = splitTime(initial);                              // "09:00" → {h:"09", m:"00"}
+const [h, setH] = useState(s.h); const [m, setM] = useState(s.m);
+<TimePicker h={h} m={m} onH={setH} onM={setM} />           // allowEmpty={false}면 "없음" 숨김
+<input type="hidden" name="time" value={joinTime(h, m)} /> // 서버로는 "HH:MM"(없으면 "")
+```
+
+**③ 통합 검색 — `app/components/SearchBox.tsx` + `lib/search.ts`**
+타이핑 즉시 필터. 여러 단어를 공백/쉼표로 넣으면 OR(하나라도 포함). 검색 상태(q)는 부모가 소유.
+```tsx
+"use client";
+import { SearchBox } from "@/app/components/SearchBox";
+import { queryTerms, matchesTerms } from "@/lib/search";   // 또는 filterByQuery(items, q, getText)
+const [q, setQ] = useState("");
+const shown = useMemo(() => {
+  const terms = queryTerms(q);
+  return rows.filter((r) => matchesTerms(r.searchText, terms)); // searchText = 검색할 컬럼들을 합친 문자열
+}, [q, rows]);
+<SearchBox value={q} onChange={setQ} />
+```
+- "모든 컬럼 검색"은 그 행의 **화면 표시값을 전부 합친 소문자 문자열**(searchText)을 만들어 대상으로 준다.
+
+---
+
 ## 6. 확인(검증) 절차
 
 새 화면/수정 후 반드시 브라우저로 확인한다:
@@ -161,6 +204,9 @@ const td = { padding:"12px 20px", fontSize:15, verticalAlign:"middle" };
 - `webapp/app/components/AppShell.tsx` — 공통 뼈대(사이드바+상단바+콘텐츠)
 - `webapp/app/components/Sidebar.tsx` — 왼쪽 아이콘 네비게이션(역할별)
 - `webapp/app/globals.css` — 디자인 토큰 + 레이아웃/반응형 클래스 (`.page`, `.split-2`, `.kpi-grid`, `.dash-split` 등)
+- `webapp/app/components/RangeCalendar.tsx` — 공통 기간 선택 달력(§5.6①)
+- `webapp/app/components/TimePicker.tsx` — 공통 시간 선택 `[시][분]`(§5.6②)
+- `webapp/app/components/SearchBox.tsx` + `webapp/lib/search.ts` — 공통 통합검색 입력+OR 필터(§5.6③)
 - 화면 예시(이 규칙을 이미 따름): `app/dashboard`(dash-split), `app/settings`·`app/leave`·`app/attendance`(split-2 2단), `app/records`(표 전체 폭)
 - 원본 디자인 목업: `근태 관리 디자인 스타일/리뉴얼_화면/*.dc.html`
 
@@ -174,5 +220,6 @@ const td = { padding:"12px 20px", fontSize:15, verticalAlign:"middle" };
 - [ ] 표를 `overflowX:auto`로 감싸고 `minWidth`를 줬는가?
 - [ ] 색을 CSS 변수(`var(--...)`)로 썼는가? (하드코딩 금지)
 - [ ] 전화번호칸은 `type="tel"`, 금액·큰 숫자칸은 `type="text" + data-format="number"`로 했는가? (§5.5 — 서버는 `stripCommas`로 파싱)
+- [ ] 기간 선택·시간 선택·통합 검색이 필요하면 공통 컴포넌트(§5.6 `RangeCalendar`/`TimePicker`/`SearchBox`)를 썼는가? (직접 만들지 않음)
 - [ ] **DB에 없는 가짜 데이터를 넣지 않았는가?**
 - [ ] 데스크톱 + 모바일(375) 둘 다 브라우저로 확인했는가?

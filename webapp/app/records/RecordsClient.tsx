@@ -1,11 +1,14 @@
 "use client";
-// 근태현황 표 + 검색 (클라이언트) — 커스텀 달력 팝업으로 기간을 고르고, 검색어는 타이핑 즉시 필터한다.
-//  · 기간(from~to)은 URL로 서버 조회 → 날짜를 바꾸면 router.push 로 서버가 그 기간 데이터를 다시 불러온다.
-//  · 통합검색은 브라우저에서 즉시 필터(서버 왕복 없음). 여러 단어는 공백/쉼표로 구분해 OR(하나라도 포함) 검색.
+// 근태현황 표 + 검색 (클라이언트) — 공통 컴포넌트 조합: 기간 달력(RangeCalendar) + 통합검색(SearchBox/lib.search).
+//  · 기간(from~to)은 URL로 서버 조회 → 달력 [적용] 시 router.push 로 서버가 그 기간 데이터를 다시 불러온다.
+//  · 통합검색은 브라우저에서 즉시 필터(서버 왕복 없음). 여러 단어는 공백/쉼표로 구분해 OR 검색.
 //  · KPI·위조배너 숫자도 걸러진 목록 기준으로 함께 갱신된다.
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { RangeCalendar } from "@/app/components/RangeCalendar";
+import { SearchBox } from "@/app/components/SearchBox";
+import { queryTerms, matchesTerms } from "@/lib/search";
 
 // 서버(page.tsx)에서 미리 계산해 넘겨주는 한 줄의 표시값(직렬화 가능한 순수 객체)
 export type RecordRow = {
@@ -32,10 +35,6 @@ export type RecordRow = {
 const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 20px", whiteSpace: "nowrap" };
 const td: React.CSSProperties = { padding: "12px 20px", fontSize: 15, verticalAlign: "middle", whiteSpace: "nowrap" };
 
-const pad = (n: number) => String(n).padStart(2, "0");
-const isoOf = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`;
-const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
-
 export function RecordsClient({
   rows,
   from,
@@ -49,13 +48,13 @@ export function RecordsClient({
   hasRule: boolean;
   todayISO: string;
 }) {
+  const router = useRouter();
   const [q, setQ] = useState("");
 
-  // ── 통합검색(OR) ─────────────────────────────
+  // ── 통합검색(OR) — 공통 로직(lib/search) ─────────────────────────────
   const filtered = useMemo(() => {
-    const terms = q.trim().toLowerCase().split(/[\s,]+/).filter(Boolean);
-    if (terms.length === 0) return rows;
-    return rows.filter((r) => terms.some((t) => r.search.includes(t)));
+    const terms = queryTerms(q);
+    return rows.filter((r) => matchesTerms(r.search, terms));
   }, [q, rows]);
 
   const total = filtered.length;
@@ -72,26 +71,10 @@ export function RecordsClient({
 
   return (
     <>
-      {/* 검색바: 커스텀 달력 + 통합검색(절반 폭·실시간) */}
+      {/* 검색바: 공통 기간달력 + 공통 통합검색(절반 폭·실시간) */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        <RangeCalendar from={from} to={to} todayISO={todayISO} />
-        <input
-          type="text"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="검색어(여러 개는 띄어쓰기 = OR)"
-          aria-label="통합 검색"
-          style={{ width: 240, maxWidth: "100%", height: 38, padding: "0 12px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--text)", fontSize: 14, fontFamily: "inherit" }}
-        />
-        {q.trim() && (
-          <button
-            type="button"
-            onClick={() => setQ("")}
-            style={{ height: 38, padding: "0 12px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--text-sub)", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
-          >
-            지우기
-          </button>
-        )}
+        <RangeCalendar from={from} to={to} todayISO={todayISO} onApply={(f, t) => router.push(`/records?from=${f}&to=${t}`)} />
+        <SearchBox value={q} onChange={setQ} />
       </div>
 
       <div className="kpi-grid-3" style={{ marginBottom: 16 }}>
@@ -184,157 +167,3 @@ export function RecordsClient({
     </>
   );
 }
-
-// ── 커스텀 달력 팝업(기간 선택) ─────────────────────────────
-function RangeCalendar({ from, to, todayISO }: { from: string; to: string; todayISO: string }) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  // 화면에 보여줄 달(첫날), 선택 중인 시작/종료
-  const [view, setView] = useState<{ y: number; m: number }>(() => {
-    const [y, m] = from.split("-").map(Number);
-    return { y, m: (m || 1) - 1 };
-  });
-  const [selStart, setSelStart] = useState<string | null>(from);
-  const [selEnd, setSelEnd] = useState<string | null>(to);
-
-  function openCal() {
-    // 열 때 현재 기간으로 초기화
-    const [y, m] = from.split("-").map(Number);
-    setView({ y, m: (m || 1) - 1 });
-    setSelStart(from);
-    setSelEnd(to);
-    setOpen(true);
-  }
-
-  function pick(iso: string) {
-    if (!selStart || (selStart && selEnd)) {
-      setSelStart(iso);
-      setSelEnd(null);
-    } else {
-      // 시작만 정해진 상태 → 종료 확정(거꾸로 고르면 자동으로 뒤바꿈)
-      if (iso < selStart) {
-        setSelEnd(selStart);
-        setSelStart(iso);
-      } else {
-        setSelEnd(iso);
-      }
-    }
-  }
-
-  function apply() {
-    const f = selStart ?? from;
-    const t = selEnd ?? selStart ?? to;
-    setOpen(false);
-    router.push(`/records?from=${f}&to=${t}`);
-  }
-
-  function setPreset(days: number) {
-    // 오늘 기준 최근 N일(0이면 오늘 하루)
-    const [ty, tm, tdd] = todayISO.split("-").map(Number);
-    const end = new Date(ty, tm - 1, tdd);
-    const startD = new Date(ty, tm - 1, tdd - days);
-    const s = isoOf(startD.getFullYear(), startD.getMonth(), startD.getDate());
-    setSelStart(s);
-    setSelEnd(todayISO);
-    setView({ y: startD.getFullYear(), m: startD.getMonth() });
-  }
-
-  // 달력 그리드
-  const firstDow = new Date(view.y, view.m, 1).getDay();
-  const daysInMonth = new Date(view.y, view.m + 1, 0).getDate();
-  const cells: (number | null)[] = [...Array(firstDow).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
-  const lo = selStart && selEnd ? (selStart < selEnd ? selStart : selEnd) : selStart;
-  const hi = selStart && selEnd ? (selStart < selEnd ? selEnd : selStart) : selStart;
-
-  const shiftMonth = (dir: number) => {
-    const d = new Date(view.y, view.m + dir, 1);
-    setView({ y: d.getFullYear(), m: d.getMonth() });
-  };
-
-  return (
-    <div style={{ position: "relative" }}>
-      <button
-        type="button"
-        onClick={openCal}
-        style={{ height: 38, padding: "0 14px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--text)", fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}
-      >
-        📅 <span style={{ fontVariantNumeric: "tabular-nums" }}>{from} ~ {to}</span>
-      </button>
-
-      {open && (
-        <>
-          {/* 바깥 클릭 시 닫힘 */}
-          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-          <div style={{ position: "absolute", top: 44, left: 0, zIndex: 41, width: 300, background: "#fff", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "0 8px 28px rgba(0,0,0,0.16)", padding: 14 }}>
-            {/* 빠른 선택 */}
-            <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
-              {[{ l: "오늘", d: 0 }, { l: "최근 7일", d: 6 }, { l: "최근 30일", d: 29 }].map((p) => (
-                <button key={p.l} type="button" onClick={() => setPreset(p.d)} style={{ height: 28, padding: "0 10px", border: "1px solid var(--border)", borderRadius: 999, background: "#F9FAFB", color: "var(--text-sub)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                  {p.l}
-                </button>
-              ))}
-            </div>
-
-            {/* 월 이동 */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-              <button type="button" onClick={() => shiftMonth(-1)} style={navBtn}>◀</button>
-              <div style={{ fontSize: 15, fontWeight: 700 }}>{view.y}년 {view.m + 1}월</div>
-              <button type="button" onClick={() => shiftMonth(1)} style={navBtn}>▶</button>
-            </div>
-
-            {/* 요일 */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", marginBottom: 4 }}>
-              {WEEK.map((w, i) => (
-                <div key={w} style={{ textAlign: "center", fontSize: 12, fontWeight: 700, color: i === 0 ? "#DC2626" : i === 6 ? "#2563EB" : "var(--text-sub)", padding: "4px 0" }}>{w}</div>
-              ))}
-            </div>
-
-            {/* 날짜 */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2 }}>
-              {cells.map((d, i) => {
-                if (d === null) return <div key={`e${i}`} />;
-                const iso = isoOf(view.y, view.m, d);
-                const isEndpoint = iso === selStart || iso === selEnd;
-                const inRange = !!lo && !!hi && iso >= lo && iso <= hi;
-                const isToday = iso === todayISO;
-                return (
-                  <button
-                    key={iso}
-                    type="button"
-                    onClick={() => pick(iso)}
-                    style={{
-                      height: 34, border: "none", borderRadius: 8, cursor: "pointer",
-                      fontSize: 13, fontWeight: isEndpoint ? 800 : 600, fontFamily: "inherit",
-                      background: isEndpoint ? "var(--primary)" : inRange ? "#DBEAFE" : "transparent",
-                      color: isEndpoint ? "#fff" : inRange ? "#1D4ED8" : "var(--text)",
-                      outline: isToday && !isEndpoint ? "1px solid var(--primary)" : "none",
-                      outlineOffset: -1,
-                    }}
-                  >
-                    {d}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* 선택 요약 + 적용 */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, gap: 8 }}>
-              <div style={{ fontSize: 12, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>
-                {selStart ?? "—"} ~ {selEnd ?? selStart ?? "—"}
-              </div>
-              <button type="button" onClick={apply} style={{ height: 34, padding: "0 18px", border: "none", borderRadius: 8, background: "var(--primary)", color: "#fff", fontSize: 13, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>
-                적용
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-const navBtn: React.CSSProperties = {
-  width: 30, height: 30, display: "inline-flex", alignItems: "center", justifyContent: "center",
-  border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--text-sub)",
-  fontWeight: 700, cursor: "pointer",
-};

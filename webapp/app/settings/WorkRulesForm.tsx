@@ -4,51 +4,9 @@
 import { useActionState, useState } from "react";
 import { saveWorkRules } from "@/app/actions/settings";
 import { WEEK_ORDER, DAY_LABELS, parseDays, daysToCsv } from "@/lib/workdays";
+import { TimePicker, splitTime, joinTime } from "@/app/components/TimePicker";
 
-const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
-const MINUTES = ["00", "10", "20", "30", "40", "50"];
-
-// "HH:MM" → {h, m}. 값이 없거나 형식이 안 맞으면 "없음"(h="").
-function splitTime(t: string): { h: string; m: string } {
-  if (t && /^([01]\d|2[0-3]):[0-5]\d$/.test(t)) {
-    const [h, m] = t.split(":");
-    return { h, m: MINUTES.includes(m) ? m : "00" };
-  }
-  return { h: "", m: "00" };
-}
-
-const selectStyle: React.CSSProperties = {
-  height: 44,
-  padding: "0 10px",
-  border: "1px solid #D1D5DB",
-  borderRadius: 8,
-  fontFamily: "inherit",
-  fontSize: 15,
-  background: "#fff",
-  color: "var(--text)",
-  cursor: "pointer",
-  flex: 1,
-  minWidth: 0,
-};
 const labelStyle: React.CSSProperties = { display: "block", fontSize: 13, fontWeight: 700, marginBottom: 8 };
-
-function TimePicker({ h, m, onH, onM }: { h: string; m: string; onH: (v: string) => void; onM: (v: string) => void }) {
-  return (
-    <div style={{ display: "flex", gap: 8 }}>
-      <select value={h} onChange={(e) => onH(e.target.value)} style={selectStyle}>
-        <option value="">없음</option>
-        {HOURS.map((hh) => (
-          <option key={hh} value={hh}>{hh}시</option>
-        ))}
-      </select>
-      <select value={m} onChange={(e) => onM(e.target.value)} style={{ ...selectStyle, opacity: h === "" ? 0.5 : 1 }} disabled={h === ""}>
-        {MINUTES.map((mm) => (
-          <option key={mm} value={mm}>{mm}분</option>
-        ))}
-      </select>
-    </div>
-  );
-}
 
 export function WorkRulesForm({
   initial,
@@ -67,8 +25,8 @@ export function WorkRulesForm({
   const [days, setDays] = useState<Set<number>>(() => parseDays(initial.workDays));
 
   // 서버로는 기존과 똑같이 "HH:MM"(없으면 빈 값)으로 보낸다.
-  const startVal = startH === "" ? "" : `${startH}:${startM}`;
-  const endVal = endH === "" ? "" : `${endH}:${endM}`;
+  const startVal = joinTime(startH, startM);
+  const endVal = joinTime(endH, endM);
 
   function toggleDay(d: number) {
     setDays((prev) => {
