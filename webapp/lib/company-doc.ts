@@ -25,6 +25,19 @@ export const DOC_KINDS: { key: string; label: string }[] = [
 ];
 export const DOC_KIND_KEYS = DOC_KINDS.map((d) => d.key);
 
+// 파일의 실제 내용(매직바이트)으로 형식을 판별한다. 클라이언트가 신고한 MIME(file.type)은 조작 가능하므로 신뢰하지 않는다.
+// 허용: PDF(%PDF) · PNG(\x89PNG\r\n\x1a\n) · JPEG(\xFF\xD8\xFF). 그 외는 null.
+export function detectMime(buf: Buffer): AllowedMime | null {
+  if (buf.length >= 4 && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46) return "application/pdf";
+  if (
+    buf.length >= 8 &&
+    buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+    buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a
+  ) return "image/png";
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+  return null;
+}
+
 // cuid 형식(영숫자)만 허용 — 경로 조작 방지.
 function safeId(id: string): string {
   if (!/^[a-z0-9]+$/i.test(id)) throw new Error("잘못된 식별자입니다.");

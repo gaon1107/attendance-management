@@ -24,23 +24,31 @@ export function PostcodeButton({
   const [loading, setLoading] = useState(false);
   const loadingRef = useRef(false);
 
-  // 스크립트를 한 번만 로드하고 준비되면 resolve.
+  // 스크립트를 한 번만 로드하고, window.daum이 준비될 때까지 폴링해서 resolve.
+  // (load 이벤트가 이미 지난 뒤에 다시 붙는 경우에도 고착되지 않도록 폴링 방식 사용)
   const ensureScript = useCallback(
     () =>
       new Promise<void>((resolve, reject) => {
         if (window.daum?.Postcode) return resolve();
-        const existing = document.querySelector<HTMLScriptElement>(`script[src="${SCRIPT_SRC}"]`);
-        if (existing) {
-          existing.addEventListener("load", () => resolve());
-          existing.addEventListener("error", () => reject(new Error("load failed")));
-          return;
+        // 스크립트가 아직 없으면 추가(있으면 재사용)
+        if (!document.querySelector<HTMLScriptElement>(`script[src="${SCRIPT_SRC}"]`)) {
+          const s = document.createElement("script");
+          s.src = SCRIPT_SRC;
+          s.async = true;
+          s.onerror = () => reject(new Error("load failed"));
+          document.head.appendChild(s);
         }
-        const s = document.createElement("script");
-        s.src = SCRIPT_SRC;
-        s.async = true;
-        s.onload = () => resolve();
-        s.onerror = () => reject(new Error("load failed"));
-        document.head.appendChild(s);
+        // 준비될 때까지 최대 8초 폴링
+        let waited = 0;
+        const iv = setInterval(() => {
+          if (window.daum?.Postcode) {
+            clearInterval(iv);
+            resolve();
+          } else if ((waited += 100) >= 8000) {
+            clearInterval(iv);
+            reject(new Error("timeout"));
+          }
+        }, 100);
       }),
     []
   );

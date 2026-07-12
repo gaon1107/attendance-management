@@ -6,10 +6,9 @@ import { getCurrentUser } from "@/lib/session";
 import {
   saveCompanyDoc,
   deleteCompanyDocFile,
-  ALLOWED,
+  detectMime,
   MAX_SIZE,
   DOC_KIND_KEYS,
-  type AllowedMime,
 } from "@/lib/company-doc";
 
 export async function POST(req: Request) {
@@ -33,50 +32,59 @@ export async function POST(req: Request) {
   if (!(file instanceof File) || file.size === 0) {
     return NextResponse.json({ message: "파일을 선택해주세요." }, { status: 400 });
   }
-  if (!(file.type in ALLOWED)) {
-    return NextResponse.json({ message: "PDF·JPG·PNG 파일만 올릴 수 있습니다." }, { status: 400 });
-  }
   if (file.size > MAX_SIZE) {
     return NextResponse.json({ message: "파일 크기는 10MB 이하만 가능합니다." }, { status: 400 });
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  // 방어: 선언된 MIME과 파일 크기 재확인(멀티파트 파싱 후 실제 크기 기준)
-  if (buffer.length > MAX_SIZE) {
+  // 멀티파트 파싱 후 실제 크기 기준으로 재확인
+  if (buffer.length === 0 || buffer.length > MAX_SIZE) {
     return NextResponse.json({ message: "파일 크기는 10MB 이하만 가능합니다." }, { status: 400 });
+  }
+  // 신고된 MIME(file.type)은 조작 가능 → 실제 파일 내용(매직바이트)으로 판별한다.
+  const mime = detectMime(buffer);
+  if (!mime) {
+    return NextResponse.json({ message: "PDF·JPG·PNG 파일만 올릴 수 있습니다." }, { status: 400 });
   }
 
   let storedName: string;
   try {
-    storedName = await saveCompanyDoc(me.companyId, buffer, file.type as AllowedMime);
+    storedName = await saveCompanyDoc(me.companyId, buffer, mime);
   } catch (e) {
     console.error("[company-doc] 저장 실패:", e);
     return NextResponse.json({ message: "파일 저장 중 오류가 발생했습니다." }, { status: 500 });
   }
 
   try {
-    // 같은 종류의 기존 문서(파일)를 찾아 교체한다.
-    const prev = await prisma.companyDocument.findFirst({
-      where: { companyId: me.companyId, kind },
+    // 같은 종류의 기존 문서를 찾아(교체 시 이전 파일 삭제용) 저장한다.
+    // (companyId, kind) 유니크 제약 + upsert로 동시 업로드 시에도 중복 레코드가 생기지 않는다.
+    const prev = await prisma.companyDocument.findUnique({
+      where: { companyId_kind: { companyId: me.companyId, kind } },
     });
 
-    await prisma.$transaction(async (tx) => {
-      if (prev) await tx.companyDocument.delete({ where: { id: prev.id } });
-      await tx.companyDocument.create({
-        data: {
-          companyId: me.companyId,
-          kind,
-          originalName: file.name.slice(0, 255),
-          storedName,
-          mimeType: file.type,
-          size: buffer.length,
-          uploadedBy: me.name,
-        },
-      });
+    await prisma.companyDocument.upsert({
+      where: { companyId_kind: { companyId: me.companyId, kind } },
+      update: {
+        originalName: file.name.slice(0, 255),
+        storedName,
+        mimeType: mime,
+        size: buffer.length,
+        uploadedBy: me.name,
+        uploadedAt: new Date(),
+      },
+      create: {
+        companyId: me.companyId,
+        kind,
+        originalName: file.name.slice(0, 255),
+        storedName,
+        mimeType: mime,
+        size: buffer.length,
+        uploadedBy: me.name,
+      },
     });
 
-    // DB 교체가 끝난 뒤 이전 파일 삭제(순서: 기록이 먼저 정리돼야 고아 파일이 안 남음)
-    if (prev) await deleteCompanyDocFile(me.companyId, prev.storedName);
+    // 레코드가 새 파일로 갱신된 뒤 이전 파일 삭제(고아 파일 방지). 파일명이 다를 때만.
+    if (prev && prev.storedName !== storedName) await deleteCompanyDocFile(me.companyId, prev.storedName);
 
     return NextResponse.json({ ok: true });
   } catch (e) {

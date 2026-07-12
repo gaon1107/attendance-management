@@ -81,7 +81,8 @@ model CompanyDocument {
   uploadedBy   String   // 업로드한 관리자 이름(스냅샷)
   uploadedAt   DateTime @default(now())
 
-  @@index([companyId, kind])
+  // 회사·종류당 1건만 — 동시 업로드 시 중복 레코드 방지(upsert의 기준 키).
+  @@unique([companyId, kind])
 }
 
 // 사용자 — 관리자(admin) 또는 직원(employee). 반드시 한 회사에 속한다.

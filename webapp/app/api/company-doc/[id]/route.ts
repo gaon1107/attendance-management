@@ -24,6 +24,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         "Content-Type": doc.mimeType,
         "Content-Disposition": `inline; filename*=UTF-8''${encoded}`,
         "Cache-Control": "no-store, private",
+        // 브라우저가 내용을 보고 타입을 멋대로 추측(MIME 스니핑)하지 못하게 막는다(저장형 XSS 방어).
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (e) {
