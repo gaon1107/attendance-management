@@ -1,40 +1,66 @@
-// 근태 리포트 (관리자 전용) — 일/주/월 실근무 집계 + 법정기록 CSV 내보내기. (리뉴얼 디자인)
-import Link from "next/link";
+// 근태 리포트 (관리자 전용) — 시작~종료 날짜(커스텀 달력)로 기간을 정하고, 직원별 실근무·초과근무·결근·외출을 집계.
+// 법정기록 CSV 내보내기 포함. 서버는 기간 집계만 계산해 넘기고, 표·검색·달력은 ReportsClient(클라이언트)가 담당한다.
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
-import { workedMinutes, formatMinutes } from "@/lib/worktime";
-import { normalizeUnit, parseAnchor, rangeFor, shiftAnchor, toISODate, type Unit } from "@/lib/period";
+import { ReportsClient, type ReportRow } from "./ReportsClient";
+import { workedMinutes } from "@/lib/worktime";
+import { parseAnchor, toISODate } from "@/lib/period";
 import { effectiveWorkDays, isWorkDay } from "@/lib/workdays";
 import { leaveDateSet } from "@/lib/leave";
-
-const UNITS: { key: Unit; label: string }[] = [
-  { key: "day", label: "일" },
-  { key: "week", label: "주" },
-  { key: "month", label: "월" },
-];
 
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ unit?: string; date?: string }>;
+  searchParams: Promise<{ from?: string; to?: string }>;
 }) {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   if (me.role !== "admin") redirect("/attendance");
 
   const sp = await searchParams;
-  const unit = normalizeUnit(sp.unit);
-  const anchor = parseAnchor(sp.date);
-  const { start, end, label } = rangeFor(unit, anchor);
+  // 기본 기간: 이번 달 1일 ~ 오늘. from/to는 "YYYY-MM-DD"(달력 값)만 허용 — 이상값은 기본값으로 대체(URL 조작·오타 방어).
+  const now = new Date();
+  const todayISO = toISODate(now);
+  const monthStartISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const normISO = (s: string | undefined, fallback: string): string => {
+    if (s && /^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      const d = new Date(s + "T00:00:00");
+      if (!Number.isNaN(d.getTime())) return s;
+    }
+    return fallback;
+  };
+  const fromISO = normISO(sp.from, monthStartISO);
+  let toISO = normISO(sp.to, todayISO);
+  if (toISO < fromISO) toISO = fromISO; // 거꾸로 들어오면 표시·조회를 시작일에 맞춤
+
+  // 조회 기간(시작 이상 ~ 종료 다음날 미만 = 종료일 포함).
+  const start = parseAnchor(fromISO);
+  start.setHours(0, 0, 0, 0);
+  const endDay = parseAnchor(toISO);
+  endDay.setHours(0, 0, 0, 0);
+  let end = new Date(endDay);
+  end.setDate(end.getDate() + 1);
+  // 과도한 전량 로드 방지: 조회 폭을 최대 92일로 제한(초과 시 잘라내고, 종료 표시도 실제 조회 끝으로 맞춤)
+  const MAX_DAYS = 92;
+  const maxEnd = new Date(start);
+  maxEnd.setDate(maxEnd.getDate() + MAX_DAYS);
+  const rangeCapped = end > maxEnd;
+  if (rangeCapped) {
+    end = maxEnd;
+    const capEnd = new Date(maxEnd);
+    capEnd.setDate(capEnd.getDate() - 1);
+    toISO = toISODate(capEnd);
+  }
 
   const company = await prisma.company.findUnique({ where: { id: me.companyId }, select: { workDays: true, standardWorkHours: true } });
   // 초과근무 판정 기준 = 기준 일 근무시간(분). 하루 실근무가 이보다 많으면 초과분을 연장으로 집계.
-  const standardMin = Math.round((company?.standardWorkHours ?? 8) * 60);
+  const standardWorkHours = company?.standardWorkHours ?? 8;
+  const standardMin = Math.round(standardWorkHours * 60);
 
   // 기간 내 우리 회사 출퇴근 기록
-  const rows = await prisma.attendance.findMany({
+  const records = await prisma.attendance.findMany({
     where: { companyId: me.companyId, clockIn: { gte: start, lt: end } },
     include: { user: true, breaks: true },
     orderBy: { clockIn: "asc" },
@@ -42,7 +68,7 @@ export default async function ReportsPage({
 
   // 직원별 집계 (+ 초과근무를 위해 날짜별 실근무 분도 모은다)
   const byUser = new Map<string, { id: string; name: string; role: string; minutes: number; breaks: number; days: Set<string>; workDays: string | null; dayMinutes: Map<string, number> }>();
-  for (const r of rows) {
+  for (const r of records) {
     const cur = byUser.get(r.userId) ?? { id: r.userId, name: r.user.name, role: r.user.role, minutes: 0, breaks: 0, days: new Set<string>(), workDays: r.user.workDays, dayMinutes: new Map<string, number>() };
     const wm = workedMinutes(r);
     const iso = toISODate(r.clockIn);
@@ -89,133 +115,39 @@ export default async function ReportsPage({
     return n;
   }
 
-  const summary = [...byUser.values()]
-    .map((u) => ({ ...u, absent: absentCountFor(u.workDays, u.days, leaveByUser.get(u.id) ?? new Set()), overtime: overtimeMinutesOf(u.dayMinutes) }))
+  // 클라이언트로 넘길 직원별 요약(직렬화 가능한 순수 객체). 검색은 이름 기준.
+  const rows: ReportRow[] = [...byUser.values()]
+    .map((u) => ({
+      id: u.id,
+      name: u.name,
+      initial: u.name.slice(0, 1),
+      isAdmin: u.role === "admin",
+      days: u.days.size,
+      minutes: u.minutes,
+      overtime: overtimeMinutesOf(u.dayMinutes),
+      absent: absentCountFor(u.workDays, u.days, leaveByUser.get(u.id) ?? new Set()),
+      breaks: u.breaks,
+      search: [u.name, u.role === "admin" ? "관리자" : "직원"].join(" ").toLowerCase(),
+    }))
     .sort((a, b) => b.minutes - a.minutes);
 
-  // 요약 지표 (실제 집계값만)
-  const totalMinutes = summary.reduce((s, u) => s + u.minutes, 0);
-  const avgMinutes = summary.length > 0 ? Math.round(totalMinutes / summary.length) : 0;
-  const totalOvertime = summary.reduce((s, u) => s + u.overtime, 0);
-
-  const prev = toISODate(shiftAnchor(unit, anchor, -1));
-  const next = toISODate(shiftAnchor(unit, anchor, 1));
-  const exportHref = `/reports/export?unit=${unit}&date=${toISODate(anchor)}`;
-
-  const kpis = [
-    { label: "집계 인원", value: `${summary.length}`, unit: "명" },
-    { label: "총 실근무", value: formatMinutes(totalMinutes), unit: "" },
-    { label: "1인 평균 실근무", value: formatMinutes(avgMinutes), unit: "" },
-    { label: `총 초과근무 (기준 ${company?.standardWorkHours ?? 8}h)`, value: totalOvertime > 0 ? formatMinutes(totalOvertime) : "0분", unit: "" },
-  ];
-
-  const navBtn: React.CSSProperties = {
-    width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
-    border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--text-sub)",
-    textDecoration: "none", fontWeight: 700,
-  };
-  const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 20px" };
-  const td: React.CSSProperties = { padding: "13px 20px", fontSize: 15, verticalAlign: "middle" };
-
-  const csvBtn = (
-    <Link
-      href={exportHref}
-      style={{ height: 38, padding: "0 16px", display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 8, background: "var(--primary)", color: "#fff", fontSize: 15, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}
-    >
-      ⬇ 법정기록 CSV 내보내기
-    </Link>
-  );
+  // 엑셀 내보내기 링크의 기본 주소(from/to). 검색어(q)는 클라이언트가 실시간으로 덧붙인다.
+  const exportBase = `/reports/export?from=${fromISO}&to=${toISO}`;
 
   return (
-    <AppShell user={me} active="reports" title="근태 리포트" subtitle={me.company.name} right={csvBtn}>
-      {/* 기간 이동 + 단위 탭 */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Link href={`/reports?unit=${unit}&date=${prev}`} style={navBtn}>◀</Link>
-          <div style={{ fontSize: 18, fontWeight: 700, minWidth: 170, textAlign: "center" }}>{label}</div>
-          <Link href={`/reports?unit=${unit}&date=${next}`} style={navBtn}>▶</Link>
+    <AppShell user={me} active="reports" title="근태 리포트" subtitle={me.company.name}>
+      {rangeCapped && (
+        <div style={{ background: "#FEF3C7", border: "1px solid #FCD34D", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, fontWeight: 700, color: "#B45309" }}>
+          검색 기간이 너무 길어 시작일부터 최대 {MAX_DAYS}일까지만 집계합니다.
         </div>
-        <div style={{ display: "inline-flex", background: "#EEF2F7", borderRadius: 8, padding: 3 }}>
-          {UNITS.map((u) => {
-            const on = u.key === unit;
-            return (
-              <Link
-                key={u.key}
-                href={`/reports?unit=${u.key}&date=${toISODate(anchor)}`}
-                style={{ height: 34, padding: "0 18px", display: "inline-flex", alignItems: "center", borderRadius: 6, fontSize: 15, fontWeight: 700, textDecoration: "none", background: on ? "#fff" : "transparent", color: on ? "var(--primary)" : "var(--text-sub)", boxShadow: on ? "0 1px 2px rgba(0,0,0,0.08)" : "none" }}
-              >
-                {u.label}
-              </Link>
-            );
-          })}
-        </div>
-      </div>
+      )}
 
-      {/* KPI */}
-      <div className="kpi-grid" style={{ marginBottom: 16 }}>
-        {kpis.map((k) => (
-          <div key={k.label} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 20px" }}>
-            <div style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700, marginBottom: 10, whiteSpace: "nowrap" }}>{k.label}</div>
-            <div style={{ fontSize: 26, fontWeight: 700, fontVariantNumeric: "tabular-nums", lineHeight: 1, whiteSpace: "nowrap" }}>
-              {k.value}
-              {k.unit && <span style={{ fontSize: 14, fontWeight: 400, color: "var(--text-sub)", marginLeft: 2 }}>{k.unit}</span>}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* 집계 표 */}
-      <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 660 }}>
-            <thead>
-              <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
-                <th style={th}>이름</th>
-                <th style={{ ...th, textAlign: "right" }}>근무일수</th>
-                <th style={{ ...th, textAlign: "right" }}>실근무 합계</th>
-                <th style={{ ...th, textAlign: "right" }}>초과근무</th>
-                <th style={{ ...th, textAlign: "right" }}>결근</th>
-                <th style={{ ...th, textAlign: "right" }}>외출</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summary.length === 0 ? (
-                <tr>
-                  <td colSpan={6} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
-                    이 기간에 출퇴근 기록이 없습니다.
-                  </td>
-                </tr>
-              ) : (
-                summary.map((s, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                    <td style={td}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#EEF2F7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>
-                          {s.name.slice(0, 1)}
-                        </div>
-                        <span style={{ fontWeight: 700 }}>
-                          {s.name}
-                          {s.role === "admin" && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}> (관리자)</span>}
-                        </span>
-                      </div>
-                    </td>
-                    <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{s.days.size}일</td>
-                    <td style={{ ...td, textAlign: "right", fontWeight: 700, color: "var(--primary)", fontVariantNumeric: "tabular-nums" }}>{formatMinutes(s.minutes)}</td>
-                    <td style={{ ...td, textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: s.overtime > 0 ? "var(--warning)" : "var(--text-sub)" }}>{s.overtime > 0 ? formatMinutes(s.overtime) : "—"}</td>
-                    <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: s.absent > 0 ? "var(--danger)" : "var(--text-sub)" }}>{s.absent}일</td>
-                    <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{s.breaks}회</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <ReportsClient rows={rows} from={fromISO} to={toISO} todayISO={todayISO} standardWorkHours={standardWorkHours} exportBase={exportBase} />
 
       <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 12, lineHeight: 1.6 }}>
         실근무 = (퇴근−출근) − 외출. 근무 중인 기록은 현재 시각까지로 계산됩니다.
-        초과근무 = 하루 실근무가 [설정 → 기준 일 근무시간]({company?.standardWorkHours ?? 8}시간)을 넘은 날의 초과분 합계입니다.
-        CSV 내보내기는 날짜별 상세(출근·퇴근·근무형태)를 담아 법정 근로기록 증빙에 쓸 수 있습니다.
+        초과근무 = 하루 실근무가 [설정 → 기준 일 근무시간]({standardWorkHours}시간)을 넘은 날의 초과분 합계입니다.
+        엑셀 내보내기는 날짜별 상세(출근·퇴근·근무형태)를 담아 법정 근로기록 증빙에 쓸 수 있습니다.
       </div>
     </AppShell>
   );

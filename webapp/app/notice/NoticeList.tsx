@@ -13,7 +13,7 @@ export function NoticeList({ notices, isAdmin }: { notices: NoticeRow[]; isAdmin
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 12 }}>
         <SearchBox value={q} onChange={setQ} placeholder="제목·내용·작성자 검색" />
       </div>
 

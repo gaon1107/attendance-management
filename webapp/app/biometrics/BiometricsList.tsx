@@ -16,7 +16,7 @@ export function BiometricsList({ users }: { users: BioRow[] }) {
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 12 }}>
         <SearchBox value={q} onChange={setQ} placeholder="이름·인증방식·동의 검색" />
       </div>
       <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>

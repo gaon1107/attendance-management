@@ -18,7 +18,7 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 12 }}>
         <SearchBox value={q} onChange={setQ} placeholder="이름·이메일·부서 검색" />
       </div>
 
