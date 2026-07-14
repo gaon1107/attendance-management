@@ -57,6 +57,15 @@ export function usedLeaveDays(requests: LeaveUse[]): number {
     .reduce((s, r) => s + r.days, 0);
 }
 
+// 특정 연도에 "시작하는" 승인된 연차·반차 사용일수 합. (연차 정산 화면 — 연도별 사용량)
+// 기간이 연말을 넘는 휴가는 시작일 연도로 귀속한다(간소형 기준).
+type LeaveUseDated = { type: string; days: number; status: string; startDate: Date };
+export function usedLeaveDaysInYear(requests: LeaveUseDated[], year: number): number {
+  return requests
+    .filter((r) => r.status === "approved" && leaveTypeDeducts(r.type) && r.startDate.getFullYear() === year)
+    .reduce((s, r) => s + r.days, 0);
+}
+
 // 승인된 휴가들을 "덮인 날짜(ISO)" 집합으로 펼친다. 결근/미출근 판정에서 이 날짜를 제외한다.
 type LeaveRange = { startDate: Date; endDate: Date };
 export function leaveDateSet(approved: LeaveRange[]): Set<string> {
