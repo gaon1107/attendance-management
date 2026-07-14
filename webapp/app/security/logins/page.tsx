@@ -1,0 +1,94 @@
+// 로그인 이력(관리자 전용) — 로그인·로그인실패·로그아웃 접속 기록을 기간·검색으로 조회.
+//  · 데이터: AccessEvent(kind = login/login_fail/logout). 회사 격리(companyId = 내 회사).
+//  · 기간: createdAt 기준(기본 이번 달). 성능 위해 최대 92일로 제한.
+//  · 존재하지 않는 이메일의 로그인 실패는 companyId가 없어 여기 안 보인다(테넌트 안전).
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/session";
+import { prisma } from "@/lib/db";
+import { AppShell } from "@/app/components/AppShell";
+import { toISODate } from "@/lib/period";
+import { accessKindLabel, accessResultLabel, accessMetaLabel } from "@/lib/access-labels";
+import { LoginHistoryClient, type LoginRow } from "./LoginHistoryClient";
+
+const AUTH_KINDS = ["login", "login_fail", "logout"];
+
+// Date → "MM-DD HH:MM"
+function fmtDateTime(d: Date): string {
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${mm}-${dd} ${hh}:${mi}`;
+}
+
+export default async function LoginHistoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string }>;
+}) {
+  const me = await getCurrentUser();
+  if (!me) redirect("/login");
+  if (me.role !== "admin") redirect("/attendance");
+
+  const sp = await searchParams;
+  const todayISO = toISODate(new Date());
+  const now = new Date();
+  const defFrom = toISODate(new Date(now.getFullYear(), now.getMonth(), 1));
+  const defTo = toISODate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  const normISO = (s: string | undefined, fb: string): string => {
+    if (s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s + "T00:00:00").getTime())) return s;
+    return fb;
+  };
+  const fromISO = normISO(sp.from, defFrom);
+  let toISO = normISO(sp.to, defTo);
+  if (toISO < fromISO) toISO = fromISO;
+  const start = new Date(fromISO + "T00:00:00");
+  const endDay = new Date(toISO + "T00:00:00");
+  let end = new Date(endDay);
+  end.setDate(end.getDate() + 1);
+  // 과도한 전량 로드 방지: 최대 92일(초과 시 잘라 표시 종료일도 맞춤)
+  const maxEnd = new Date(start);
+  maxEnd.setDate(maxEnd.getDate() + 92);
+  if (end > maxEnd) {
+    end = maxEnd;
+    const capEnd = new Date(maxEnd);
+    capEnd.setDate(capEnd.getDate() - 1);
+    toISO = toISODate(capEnd);
+  }
+
+  const events = await prisma.accessEvent.findMany({
+    where: { companyId: me.companyId, kind: { in: AUTH_KINDS }, createdAt: { gte: start, lt: end } },
+    orderBy: { createdAt: "desc" },
+    take: 2000, // 안전 상한(초과분은 기간을 좁혀 보게 안내)
+  });
+
+  const rows: LoginRow[] = events.map((e) => {
+    const name = e.actorName ?? e.emailTried ?? "알 수 없음";
+    const kindLabel = accessKindLabel(e.kind);
+    const resultLabel = accessResultLabel(e.result);
+    const metaLabel = accessMetaLabel(e.meta);
+    const timeText = fmtDateTime(e.createdAt);
+    return {
+      id: e.id,
+      timeText,
+      name,
+      email: e.emailTried ?? "",
+      kind: e.kind,
+      kindLabel,
+      device: e.device ?? "—",
+      ip: e.ip ?? "—",
+      result: e.result,
+      resultLabel,
+      metaLabel,
+      search: [name, e.emailTried ?? "", kindLabel, e.device ?? "", e.ip ?? "", resultLabel, metaLabel].join(" ").toLowerCase(),
+    };
+  });
+
+  const exportBase = `/security/logins/export?from=${fromISO}&to=${toISO}`;
+
+  return (
+    <AppShell user={me} active="security" title="로그인 이력" subtitle={me.company.name}>
+      <LoginHistoryClient rows={rows} from={fromISO} to={toISO} todayISO={todayISO} exportBase={exportBase} capped={events.length >= 2000} />
+    </AppShell>
+  );
+}

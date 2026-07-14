@@ -13,6 +13,7 @@ export type NavKey =
   | "dashboard" | "employees" | "records" | "reports" | "biometrics"
   | "attendance" | "my-records" | "auth-method" | "settings" | "company"
   | "leave" | "leave-approvals" | "leave-summary" | "notice" | "corrections"
+  | "security" // 보안로그(로그인 이력·접속 로그) — 관리자
   | "account"; // 계정 설정 — 사이드바 메뉴엔 없고(프로필 아바타로 진입) 하이라이트용 키
 
 type Item = { key: NavKey; href: string; label: string; icon: string };
@@ -35,6 +36,7 @@ const ICON: Record<NavKey, string> = {
   notice: '<path d="M3 11v2a1 1 0 0 0 1 1h3l4 4V6L7 10H4a1 1 0 0 0-1 1z"/><path d="M16 8a4 4 0 0 1 0 8"/>',
   corrections: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
   "leave-summary": '<rect x="8" y="3" width="8" height="4" rx="1"/><path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><path d="M9 12h6M9 16h6"/>',
+  security: '<rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/><path d="M12 15v2"/>',
 };
 
 const LABEL: Record<NavKey, string> = {
@@ -54,12 +56,14 @@ const LABEL: Record<NavKey, string> = {
   notice: "공지",
   corrections: "정정",
   "leave-summary": "연차정산",
+  security: "보안로그",
 };
 
 // 화면 키 → 실제 경로(키와 경로가 다른 항목만 지정, 없으면 "/키")
 const HREF: Partial<Record<NavKey, string>> = {
   "my-records": "/my-records",
   "leave-approvals": "/leave/approvals",
+  security: "/security/logins", // 보안로그 진입점 = 로그인 이력 화면
 };
 
 // tintBg/tintText: 그룹 제목 칩의 연한 포인트 색(관리=파랑, 개인=초록으로 서로 구분)
@@ -74,7 +78,7 @@ function toItems(keys: NavKey[]): Item[] {
 function groupsFor(role: string): NavGroup[] {
   if (role === "admin") {
     return [
-      { caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(["dashboard", "employees", "records", "reports", "leave-approvals", "leave-summary", "notice", "biometrics", "company", "settings"]) },
+      { caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(["dashboard", "employees", "records", "reports", "leave-approvals", "leave-summary", "notice", "biometrics", "security", "company", "settings"]) },
       { caption: "내근태", tintBg: "#E3F5EA", tintText: "#15803D", items: toItems(["attendance", "auth-method"]) },
     ];
   }
