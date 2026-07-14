@@ -11,24 +11,27 @@ export type LeaveSummaryRow = {
   name: string;
   dept: string;
   hireDate: string;
-  granted: number;
+  granted: number | null; // 과거 연도는 발생 이력이 없어 null("—")
   used: number;
-  remain: number;
+  remain: number | null; // granted가 null이면 함께 null
 };
 
 const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 16px", whiteSpace: "nowrap" };
 const td: React.CSSProperties = { padding: "12px 16px", fontSize: 14, verticalAlign: "middle", whiteSpace: "nowrap" };
 const num1 = (n: number) => (Math.round(n * 10) / 10).toString();
+const cell = (n: number | null) => (n === null ? "—" : num1(n)); // 발생·잔여: 과거 연도는 "—"
 
 export function LeaveSummaryClient({
   rows,
   year,
   years,
+  isCurrentYear,
   exportBase,
 }: {
   rows: LeaveSummaryRow[];
   year: number;
   years: number[];
+  isCurrentYear: boolean;
   exportBase: string;
 }) {
   const router = useRouter();
@@ -41,10 +44,13 @@ export function LeaveSummaryClient({
     return rows.filter((r) => matchesTerms(`${r.name} ${r.dept}`.toLowerCase(), terms));
   }, [rows, q]);
 
-  // KPI는 "화면에 보이는 직원" 기준(검색 반영).
-  const totalGranted = num1(shown.reduce((s, r) => s + r.granted, 0));
-  const totalUsed = num1(shown.reduce((s, r) => s + r.used, 0));
-  const totalRemain = num1(shown.reduce((s, r) => s + r.remain, 0));
+  // KPI는 "화면에 보이는 직원" 기준(검색 반영). 과거 연도는 발생·잔여가 "—"(사용만 의미).
+  const grantedSum = shown.reduce((s, r) => s + (r.granted ?? 0), 0);
+  const usedSum = shown.reduce((s, r) => s + r.used, 0);
+  const totalGranted = isCurrentYear ? num1(grantedSum) : "—";
+  const totalUsed = num1(usedSum);
+  // 총 잔여 = 총 발생 − 총 사용(각각 독립 반올림 시 0.1 어긋나는 것 방지)
+  const totalRemain = isCurrentYear ? num1(grantedSum - usedSum) : "—";
 
   // 엑셀: 현재 검색어를 서버에 전달해 "보이는 직원만" 내보낸다.
   const exportHref = q.trim() ? `${exportBase}&q=${encodeURIComponent(q)}` : exportBase;
@@ -87,15 +93,20 @@ export function LeaveSummaryClient({
           <div key={k.label} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px" }}>
             <div style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700, marginBottom: 8 }}>{k.label}</div>
             <div style={{ fontSize: 26, fontWeight: 700, fontVariantNumeric: "tabular-nums", lineHeight: 1, color: k.color }}>
-              {k.value}<span style={{ fontSize: 14, fontWeight: 400, color: "var(--text-sub)", marginLeft: 2 }}>일</span>
+              {k.value}{k.value !== "—" && <span style={{ fontSize: 14, fontWeight: 400, color: "var(--text-sub)", marginLeft: 2 }}>일</span>}
             </div>
           </div>
         ))}
       </div>
 
-      {/* 안내: 발생일수의 의미(오해 방지) */}
+      {/* 안내: 발생일수의 의미(오해 방지) + 재직자 집계 고지 */}
       <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
-        ‘발생’은 각 직원의 <b>현재 설정된 연차 총 일수</b>(직원 상세에서 관리자가 지정)이며, ‘사용’은 <b>{year}년에 시작한</b> 승인된 연차·반차 합계입니다. 연도별 발생 이력·소멸(촉진)은 아직 관리하지 않습니다.
+        {isCurrentYear ? (
+          <>‘발생’은 각 직원의 <b>현재 설정된 연차 총 일수</b>(직원 상세에서 관리자가 지정)이며, ‘사용’은 <b>{year}년에 시작한</b> 승인된 연차·반차 합계입니다.</>
+        ) : (
+          <><b>{year}년</b> 이력 조회 — ‘사용’은 그 해에 시작한 승인 연차·반차 합계입니다. 연도별 <b>발생 이력이 없어 발생·잔여는 표시하지 않습니다</b>(현재 설정값과 달라 오해를 부를 수 있어 생략).</>
+        )}{" "}
+        재직 중인 직원만 집계됩니다(연중 퇴사자의 사용분은 제외될 수 있습니다).
       </div>
 
       {/* 표 */}
@@ -125,9 +136,9 @@ export function LeaveSummaryClient({
                     <td style={{ ...td, fontWeight: 700 }}>{r.name}</td>
                     <td style={{ ...td, color: "var(--text-sub)" }}>{r.dept}</td>
                     <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.hireDate || "—"}</td>
-                    <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{num1(r.granted)}</td>
+                    <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{cell(r.granted)}</td>
                     <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: "var(--text-sub)" }}>{num1(r.used)}</td>
-                    <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: r.remain < 0 ? "var(--danger)" : "var(--text)" }}>{num1(r.remain)}</td>
+                    <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: r.remain !== null && r.remain < 0 ? "var(--danger)" : "var(--text)" }}>{cell(r.remain)}</td>
                   </tr>
                 ))
               )}

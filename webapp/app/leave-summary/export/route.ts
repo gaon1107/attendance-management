@@ -17,8 +17,12 @@ export async function GET(request: Request): Promise<Response> {
 
   const url = new URL(request.url);
   const thisYear = new Date().getFullYear();
+  // 화면과 동일: 회사 도입연도~올해만 허용. 올해만 발생·잔여가 의미 있음(과거는 사용만).
+  const company = await prisma.company.findUnique({ where: { id: me.companyId }, select: { createdAt: true } });
+  const startYear = company ? company.createdAt.getFullYear() : thisYear;
   const yParam = Number(url.searchParams.get("year"));
-  const year = Number.isInteger(yParam) && yParam <= thisYear && yParam >= thisYear - 4 ? yParam : thisYear;
+  const year = Number.isInteger(yParam) && yParam <= thisYear && yParam >= startYear ? yParam : thisYear;
+  const isCurrentYear = year === thisYear;
 
   // 화면(page.tsx)과 동일한 집계 — 회사 격리 + 재직 직원만.
   const employees = await prisma.user.findMany({
@@ -40,14 +44,16 @@ export async function GET(request: Request): Promise<Response> {
   }
   const rows = employees.map((e) => {
     const used = usedLeaveDaysInYear(byUser.get(e.id) ?? [], year);
-    const granted = e.annualLeaveDays;
+    // 화면과 동일: 과거 연도는 발생·잔여를 비운다(빈 셀). 발생은 소수 1자리로(화면=엑셀 일치).
+    const granted = isCurrentYear ? Math.round(e.annualLeaveDays * 10) / 10 : null;
+    const remain = granted === null ? null : Math.round((granted - used) * 10) / 10;
     return {
       name: e.name,
       dept: e.department?.name ?? "미배정",
       hireDate: e.hireDate ? toISODate(e.hireDate) : "",
       granted,
       used,
-      remain: Math.round((granted - used) * 10) / 10,
+      remain,
     };
   });
 

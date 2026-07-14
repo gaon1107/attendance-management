@@ -22,10 +22,16 @@ export default async function LeaveSummaryPage({
 
   const sp = await searchParams;
   const thisYear = new Date().getFullYear();
-  // 연도 파라미터 검증(올해~올해-4만 허용). 벗어나면 올해.
+  // 선택 가능한 연도 = 회사 도입연도 ~ 올해(도입 전엔 데이터가 없다). 사용자가 원하는 과거 연도를 자유롭게 본다.
+  const company = await prisma.company.findUnique({ where: { id: me.companyId }, select: { createdAt: true } });
+  const startYear = company ? company.createdAt.getFullYear() : thisYear;
+  // 연도 파라미터 검증(도입연도~올해만 허용). 벗어나면 올해.
   const yParam = Number(sp.year);
-  const year = Number.isInteger(yParam) && yParam <= thisYear && yParam >= thisYear - 4 ? yParam : thisYear;
-  const years = [thisYear, thisYear - 1, thisYear - 2];
+  const year = Number.isInteger(yParam) && yParam <= thisYear && yParam >= startYear ? yParam : thisYear;
+  const years: number[] = [];
+  for (let y = thisYear; y >= startYear; y--) years.push(y); // 내림차순(최신이 위)
+  // 올해만 '발생/잔여'가 의미 있다(연도별 발생 이력이 없으므로). 과거 연도는 '사용'만 보여준다.
+  const isCurrentYear = year === thisYear;
 
   const employees = await prisma.user.findMany({
     where: { companyId: me.companyId, role: "employee", deactivatedAt: null },
@@ -49,7 +55,9 @@ export default async function LeaveSummaryPage({
 
   const rows: LeaveSummaryRow[] = employees.map((e) => {
     const used = usedLeaveDaysInYear(byUser.get(e.id) ?? [], year);
-    const granted = e.annualLeaveDays;
+    // 과거 연도는 그 해 부여량(발생) 이력이 없다 → 발생·잔여를 null(화면 "—")로 두고 '사용'만 정확히 보여준다.
+    const granted = isCurrentYear ? e.annualLeaveDays : null;
+    const remain = granted === null ? null : Math.round((granted - used) * 10) / 10; // 부동소수 오차 방지
     return {
       id: e.id,
       name: e.name,
@@ -57,14 +65,13 @@ export default async function LeaveSummaryPage({
       hireDate: e.hireDate ? toISODate(e.hireDate) : "",
       granted,
       used,
-      // 부동소수 합산 오차 방지: 소수 1자리로 반올림(반차 0.5 단위)
-      remain: Math.round((granted - used) * 10) / 10,
+      remain,
     };
   });
 
   return (
     <AppShell user={me} active="leave-summary" title="연차정산" subtitle={me.company.name}>
-      <LeaveSummaryClient rows={rows} year={year} years={years} exportBase={`/leave-summary/export?year=${year}`} />
+      <LeaveSummaryClient rows={rows} year={year} years={years} isCurrentYear={isCurrentYear} exportBase={`/leave-summary/export?year=${year}`} />
     </AppShell>
   );
 }
