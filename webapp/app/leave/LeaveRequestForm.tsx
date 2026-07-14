@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { requestLeave } from "@/app/actions/leave";
 import { LEAVE_TYPES } from "@/lib/leave";
+import { DatePicker } from "@/app/components/DatePicker";
 
 const inputStyle: React.CSSProperties = {
   width: "100%", height: 44, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 8,
@@ -29,12 +30,12 @@ export function LeaveRequestForm() {
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 140 }}>
           <label style={labelStyle}>{singleDay ? "날짜" : "시작일"}</label>
-          <input name="startDate" type="date" required style={inputStyle} />
+          <DatePicker name="startDate" allowClear={false} />
         </div>
         {!singleDay && (
           <div style={{ flex: 1, minWidth: 140 }}>
             <label style={labelStyle}>종료일</label>
-            <input name="endDate" type="date" required style={inputStyle} />
+            <DatePicker name="endDate" allowClear={false} />
           </div>
         )}
       </div>

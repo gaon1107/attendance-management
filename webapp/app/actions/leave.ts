@@ -20,6 +20,9 @@ export async function requestLeave(
   const start = parseYmd(String(formData.get("startDate") ?? ""));
   // 반차는 하루만. 종료일 없으면 시작일과 같게.
   const endRaw = String(formData.get("endDate") ?? "");
+  // 여러 날짜 종류(연차 등)는 종료일 필수 — 빈 값이 조용히 "당일"로 처리되지 않게 명시적으로 막는다.
+  // (폼의 '하루짜리' 기준 = 반차·병가와 동일하게 둔다. 그 외는 종료일을 반드시 골라야 함.)
+  if (type !== "half" && type !== "sick" && !parseYmd(endRaw)) return { error: "종료일을 선택해주세요." };
   const end = type === "half" ? start : parseYmd(endRaw) ?? start;
   if (!start || !end) return { error: "날짜를 올바르게 선택해주세요." };
   if (end < start) return { error: "종료일이 시작일보다 빠릅니다." };

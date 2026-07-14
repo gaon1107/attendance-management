@@ -2,6 +2,7 @@
 // 초대 수락 폼 — 직원이 이름·이메일·비밀번호를 직접 정해 가입한다.
 import { useActionState } from "react";
 import { acceptInvite } from "@/app/actions/invites";
+import { DatePicker } from "@/app/components/DatePicker";
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -56,7 +57,7 @@ export function InviteForm({ token }: { token: string }) {
         </div>
         <div>
           <label style={labelStyle}>입사일</label>
-          <input name="hireDate" type="date" style={inputStyle} />
+          <DatePicker name="hireDate" placeholder="입사일 선택 (선택)" />
         </div>
       </div>
 

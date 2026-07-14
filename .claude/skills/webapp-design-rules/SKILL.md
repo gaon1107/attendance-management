@@ -144,9 +144,9 @@ const td = { padding:"12px 20px", fontSize:15, verticalAlign:"middle" };
 
 ---
 
-## 5.6 공통 입력 컴포넌트 3종 (표준 — 2026-07-13 확정)
+## 5.6 공통 입력 컴포넌트 4종 (표준 — 2026-07-14 갱신)
 
-아래 3가지 UI가 필요하면 **직접 만들지 말고 반드시 이 공통 컴포넌트를 쓴다.** (근태현황·설정에서 개발 후 표준으로 승격 — 모든 화면이 같은 모양·동작)
+아래 4가지 UI가 필요하면 **직접 만들지 말고 반드시 이 공통 컴포넌트를 쓴다.** (근태현황·설정에서 개발 후 표준으로 승격 — 모든 화면이 같은 모양·동작). **브라우저 기본 `<input type="date">`·`type="time">`은 쓰지 않는다**(못생긴 기본 달력·화면마다 다른 모양).
 
 **① 기간 선택 달력 — `app/components/RangeCalendar.tsx`**
 브라우저 기본 달력 대신 커스텀 팝업(월 이동 · 빠른선택 오늘/최근7일/최근30일 · 범위 하이라이트). 값은 `"YYYY-MM-DD"`.
@@ -189,6 +189,21 @@ const shown = useMemo(() => {
 <SearchBox value={q} onChange={setQ} />
 ```
 - "모든 컬럼 검색"은 그 행의 **화면 표시값을 전부 합친 소문자 문자열**(searchText)을 만들어 대상으로 준다.
+- **검색창은 왼쪽 정렬**한다. 달력과 함께면 같은 줄 왼쪽(`flex gap:8`), 검색만 있으면 `justifyContent:"flex-start"`. (오른쪽 `flex-end` 금지 — 2026-07-14 확정)
+
+**④ 단일 날짜 선택 — `app/components/DatePicker.tsx`** (2026-07-14 추가)
+폼에서 **하루** 날짜를 고를 때. RangeCalendar와 같은 커스텀 달력 팝업. 값은 `"YYYY-MM-DD"`. 내부 hidden input(name)으로 제출되므로 기존 폼(FormData)이 그대로 동작한다.
+```tsx
+"use client";
+import { DatePicker } from "@/app/components/DatePicker";
+// 필수 날짜: allowClear={false} / 선택 날짜: 기본(allowClear=true) + placeholder
+<DatePicker name="startDate" allowClear={false} />
+<DatePicker name="hireDate" defaultValue={initialHireDate} placeholder="입사일 선택 (선택)" />
+```
+- **기간(시작~종료 조회 필터)은 RangeCalendar**, **폼에서 날짜 하나는 DatePicker**로 역할을 나눈다.
+- 성공 후 폼을 비우는 컨트롤드 폼은 DatePicker에 `key`를 바꿔 remount로 초기화한다(예: 정정신청).
+- 서버 액션은 넘어온 값을 `^\d{4}-\d{2}-\d{2}$`로 검증(빈 값 거부는 서버가 책임 — DatePicker는 HTML required를 쓰지 않음).
+- 시각 정정처럼 **1분 단위**가 필요하면 TimePicker에 `minutes={Array.from({length:60},(_,i)=>String(i).padStart(2,"0"))}`를 넘긴다(기본은 10분 단위).
 
 ---
 
@@ -210,9 +225,10 @@ const shown = useMemo(() => {
 - `webapp/app/components/Sidebar.tsx` — 왼쪽 아이콘 네비게이션(역할별)
 - `webapp/app/globals.css` — 디자인 토큰 + 레이아웃/반응형 클래스 (`.page`, `.split-2`, `.kpi-grid`, `.dash-split` 등)
 - `webapp/app/components/RangeCalendar.tsx` — 공통 기간 선택 달력(§5.6①). 서버 페이지용 래퍼는 `RangeCalendarNav.tsx`
-- 적용 예: 근태현황·내 근태·휴가승인·정정승인(기간 달력) / 직원관리·생체정보·공지·근태현황(통합검색)
-- `webapp/app/components/TimePicker.tsx` — 공통 시간 선택 `[시][분]`(§5.6②)
+- 적용 예: 근태현황·내 근태·휴가승인·정정승인·리포트(기간 달력) / 직원관리·생체정보·공지·근태현황·리포트(통합검색)
+- `webapp/app/components/TimePicker.tsx` — 공통 시간 선택 `[시][분]`(§5.6②). 적용: 설정·정정신청(1분 단위)
 - `webapp/app/components/SearchBox.tsx` + `webapp/lib/search.ts` — 공통 통합검색 입력+OR 필터(§5.6③)
+- `webapp/app/components/DatePicker.tsx` — 공통 단일 날짜 선택(§5.6④). 적용: 휴가신청·정정신청·직원상세·초대가입
 - 화면 예시(이 규칙을 이미 따름): `app/dashboard`(dash-split), `app/settings`·`app/leave`·`app/attendance`(split-2 2단), `app/records`(표 전체 폭)
 - 원본 디자인 목업: `근태 관리 디자인 스타일/리뉴얼_화면/*.dc.html`
 
@@ -226,6 +242,6 @@ const shown = useMemo(() => {
 - [ ] 표를 `overflowX:auto`로 감싸고 `minWidth`를 줬는가?
 - [ ] 색을 CSS 변수(`var(--...)`)로 썼는가? (하드코딩 금지)
 - [ ] 전화번호칸은 `type="tel"`, 금액·큰 숫자칸은 `type="text" + data-format="number"`로 했는가? (§5.5 — 서버는 `stripCommas`로 파싱)
-- [ ] 기간 선택·시간 선택·통합 검색이 필요하면 공통 컴포넌트(§5.6 `RangeCalendar`/`TimePicker`/`SearchBox`)를 썼는가? (직접 만들지 않음)
+- [ ] 날짜·시간·검색이 필요하면 공통 컴포넌트(§5.6: 기간=`RangeCalendar` / 단일날짜=`DatePicker` / 시각=`TimePicker` / 검색=`SearchBox`)를 썼는가? **브라우저 기본 `type="date"`·`type="time"` 금지.** 검색창은 왼쪽 정렬.
 - [ ] **DB에 없는 가짜 데이터를 넣지 않았는가?**
 - [ ] 데스크톱 + 모바일(375) 둘 다 브라우저로 확인했는가?

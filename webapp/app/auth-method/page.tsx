@@ -55,8 +55,8 @@ export default async function AuthMethodPage({
         {method === "face" && consentDate && <span style={{ color: "var(--text-sub)" }}> · 생체정보 동의일 {consentDate}</span>}
       </div>
 
-      {/* 선택 카드 2개 — 같은 크기·비중. 얼굴 카드는 상태(미선택→동의→등록)에 따라 버튼이 바뀐다 */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      {/* 선택 카드 2개 — 같은 크기·비중(공통 .split-2: 모바일에서 자동 세로). 얼굴 카드는 상태(미선택→동의→등록)에 따라 버튼이 바뀐다 */}
+      <div className="split-2">
         <div style={cardStyle(method === "face")}>
           {method === "face" && <div><CurrentBadge /></div>}
           <div style={{ fontSize: 30, marginBottom: 8 }}>🙂</div>

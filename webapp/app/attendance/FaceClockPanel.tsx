@@ -235,7 +235,8 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
 
   if (phase === "camera") {
     return (
-      <div>
+      // 화면 표시 크기만 제한(가운데 정렬) — 촬영은 카메라 원본 해상도로 하므로 화질·판독 기준엔 영향 없음.
+      <div style={{ maxWidth: 420, margin: "0 auto" }}>
         <div style={{ position: "relative", width: "100%", aspectRatio: "4 / 3", background: "#111827", borderRadius: 12, overflow: "hidden" }}>
           <video ref={videoRef} playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }} />
           <FaceGuide minPercent={minPercent} />

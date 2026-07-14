@@ -3,6 +3,7 @@
 // 전부 선택 항목이라 빈 칸으로 저장하면 해당 값을 지운다. 입사일은 "YYYY-MM-DD" 문자열로 주고받는다.
 import { useActionState } from "react";
 import { updateEmployeeProfile } from "@/app/actions/employees";
+import { DatePicker } from "@/app/components/DatePicker";
 
 const inputStyle: React.CSSProperties = {
   height: 44,
@@ -50,7 +51,7 @@ export function ProfileForm({
       </div>
       <div>
         <label style={labelStyle}>입사일</label>
-        <input name="hireDate" type="date" defaultValue={initialHireDate} style={inputStyle} />
+        <DatePicker name="hireDate" defaultValue={initialHireDate} placeholder="입사일 선택 (선택)" />
       </div>
 
       {state?.error && <div style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700 }}>{state.error}</div>}

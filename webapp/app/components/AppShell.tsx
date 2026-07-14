@@ -1,5 +1,6 @@
-// 공통 화면 뼈대 — 사이드바 + 상단바 + 화면 폭을 꽉 채우는 콘텐츠(폼 화면만 narrow로 좁게).
+// 공통 화면 뼈대 — 사이드바 + 상단바 + 화면 폭을 꽉 채우는 콘텐츠.
 // 모든 로그인 화면이 이걸 통해 같은 레이아웃 기준(폭·여백·반응형)을 쓴다.
+// (구 narrow 옵션=640px 중앙정렬은 2026-07-09 전 화면 전체 폭 규칙으로 폐지됨.)
 import type { ReactNode } from "react";
 import { Sidebar, type NavKey } from "@/app/components/Sidebar";
 import { LogoutButton } from "@/app/components/LogoutButton";
@@ -12,7 +13,6 @@ export function AppShell({
   title,
   subtitle,
   right,
-  narrow = false,
   children,
 }: {
   user: ShellUser;
@@ -20,7 +20,6 @@ export function AppShell({
   title: string;
   subtitle?: string;
   right?: ReactNode; // 상단바 오른쪽(버튼·날짜 등)
-  narrow?: boolean; // true면 콘텐츠를 좁은 폭(640px)으로 중앙 정렬 (폼·출퇴근 화면용)
   children: ReactNode;
 }) {
   return (
@@ -41,7 +40,7 @@ export function AppShell({
             <LogoutButton />
           </div>
         </header>
-        <div className="page">{narrow ? <div className="narrow">{children}</div> : children}</div>
+        <div className="page">{children}</div>
       </main>
     </div>
   );
