@@ -293,3 +293,30 @@ model Session {
   expiresAt DateTime
   createdAt DateTime @default(now())
 }
+
+// 접속·보안 이벤트 로그 — 로그인/로그아웃/출퇴근/관리자 동작의 "누가·언제·어디서(IP·기기)·결과" 기록.
+// ※ 감사 로그 원칙: 직원이 삭제·비활성화돼도 기록은 남아야 하므로 User와 외래키로 묶지 않고
+//    userId·actorName(이름 스냅샷)을 값으로만 저장한다(CompanyDocument.uploadedBy와 동일 방식).
+// ※ 개인정보(IP·기기)라 보관기간을 정해 오래된 것은 자동 파기한다(정책은 조회/파기 로직에서 관리).
+model AccessEvent {
+  id         String   @id @default(cuid())
+  // 회사 격리용. 로그인 실패 중 "존재하지 않는 이메일"은 소속 회사를 알 수 없어 null이 될 수 있다(회사별 화면엔 안 보임).
+  companyId  String?
+  userId     String?  // 행위자 계정 id(있으면). 비로그인 시도·미상 계정은 null.
+  actorName  String?  // 행위자 이름 스냅샷(삭제돼도 표시). 미상이면 null.
+  emailTried String?  // 로그인 시도에 쓰인 이메일(실패 분석용).
+  // 동작 종류: "login"(로그인 성공) | "login_fail"(로그인 실패) | "logout"(로그아웃)
+  //          | "clock_in"/"clock_out"(출퇴근) | "config"(설정 변경) | "purge"(생체정보 파기)
+  //          | "data_view"(민감 데이터 조회) | "blocked"(차단 IP에 의해 거부) 등. 화면에서 이 값으로 필터.
+  kind       String
+  // 결과: "success" | "fail" | "blocked"
+  result     String
+  ip         String?  // 접속 IP(개발 PC는 127.0.0.1). 프록시 뒤 운영에서만 진짜 외부 IP.
+  userAgent  String?  // 원본 User-Agent(감사·추후 분석용).
+  device     String?  // 표시용 기기 라벨(예: "iPhone" · "Windows PC"). userAgent에서 파생.
+  meta       String?  // 부가정보(JSON 문자열). 필요 시만.
+  createdAt  DateTime @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([kind])
+}

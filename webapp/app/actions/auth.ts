@@ -3,7 +3,9 @@
 // 주의: 이 함수들은 화면 없이 직접 호출될 수도 있으므로, 입력값 검증을 항상 여기서 한다.
 import { prisma } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
-import { createSession, destroySession } from "@/lib/session";
+import { createSession, destroySession, getCurrentUser } from "@/lib/session";
+import { recordAccess, readClientMeta } from "@/lib/access-log";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 // 회사 회원가입 — 회사 + 관리자 계정을 함께 만든다.
@@ -40,6 +42,11 @@ export async function signup(
   });
 
   await createSession(user.id);
+  // 접속기록: 가입 직후 자동 로그인 1건(성공).
+  {
+    const { ip, userAgent } = readClientMeta(await headers());
+    await recordAccess({ companyId: company.id, userId: user.id, actorName: user.name, emailTried: email, kind: "login", result: "success", ip, userAgent });
+  }
   // 가입 직후에는 회사 기본 설정(근무기준·위치)을 잡도록 온보딩으로 안내(건너뛰기 가능).
   redirect("/onboarding");
 }
@@ -60,16 +67,21 @@ export async function login(
     return { error: "이메일과 비밀번호를 입력해주세요." };
   }
 
+  // 접속기록용 IP·기기(이메일이 입력된 이후부터 남긴다).
+  const { ip, userAgent } = readClientMeta(await headers());
+
   const user = await prisma.user.findUnique({ where: { email } });
 
   // 퇴사(비활성화)된 계정은 로그인 불가.
   if (user?.deactivatedAt) {
+    await recordAccess({ companyId: user.companyId, userId: user.id, actorName: user.name, emailTried: email, kind: "login_fail", result: "fail", ip, userAgent, meta: "deactivated" });
     return { error: "이 계정은 비활성화되었습니다. 관리자에게 문의하세요." };
   }
 
   // 계정이 잠겨 있으면(연속 실패로 잠금) 비번이 맞아도 잠금 해제 시각까지 거부.
   if (user?.lockedUntil && user.lockedUntil > new Date()) {
     const mins = Math.max(1, Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000));
+    await recordAccess({ companyId: user.companyId, userId: user.id, actorName: user.name, emailTried: email, kind: "login_fail", result: "fail", ip, userAgent, meta: "locked" });
     return { error: `비밀번호를 여러 번 잘못 입력했습니다. 약 ${mins}분 뒤에 다시 시도해주세요.` };
   }
 
@@ -85,6 +97,8 @@ export async function login(
             : { failedLoginCount: failed },
       });
     }
+    // 접속기록: 실패 1건. 존재하지 않는 이메일이면 소속 회사를 알 수 없어 companyId=null(회사별 화면엔 안 보임).
+    await recordAccess({ companyId: user?.companyId ?? null, userId: user?.id ?? null, actorName: user?.name ?? null, emailTried: email, kind: "login_fail", result: "fail", ip, userAgent, meta: "bad_credentials" });
     // 보안: 이메일/비번 중 무엇이 틀렸는지 구분해 알려주지 않는다.
     return { error: "이메일 또는 비밀번호가 올바르지 않습니다." };
   }
@@ -98,6 +112,8 @@ export async function login(
   }
 
   await createSession(user.id);
+  // 접속기록: 로그인 성공 1건.
+  await recordAccess({ companyId: user.companyId, userId: user.id, actorName: user.name, emailTried: email, kind: "login", result: "success", ip, userAgent });
   // 임시 비밀번호로 로그인했으면 먼저 새 비밀번호를 정하도록 강제한다.
   if (user.mustChangePassword) redirect("/change-password");
   // 관리자는 대시보드로, 직원은 본인 출퇴근 화면으로
@@ -106,6 +122,12 @@ export async function login(
 
 // 로그아웃
 export async function logout(): Promise<void> {
+  // 접속기록: 누가 로그아웃했는지 남기려면 세션 파기 전에 조회한다.
+  const me = await getCurrentUser();
+  if (me) {
+    const { ip, userAgent } = readClientMeta(await headers());
+    await recordAccess({ companyId: me.companyId, userId: me.id, actorName: me.name, emailTried: me.email, kind: "logout", result: "success", ip, userAgent });
+  }
   await destroySession();
   redirect("/");
 }

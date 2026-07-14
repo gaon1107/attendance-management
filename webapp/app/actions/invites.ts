@@ -3,8 +3,10 @@
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { getCurrentUser, createSession } from "@/lib/session";
+import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { parseProfile } from "@/lib/employee-profile";
 import { randomBytes } from "crypto";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
@@ -83,5 +85,10 @@ export async function acceptInvite(
   await prisma.invite.update({ where: { id: invite.id }, data: { usedAt: new Date() } });
 
   await createSession(user.id);
+  // 접속기록: 초대 가입 직후 자동 로그인 1건(성공).
+  {
+    const { ip, userAgent } = readClientMeta(await headers());
+    await recordAccess({ companyId: user.companyId, userId: user.id, actorName: user.name, emailTried: email, kind: "login", result: "success", ip, userAgent });
+  }
   redirect("/auth-method"); // 가입 직후 출퇴근 인증방식 선택 화면으로
 }
