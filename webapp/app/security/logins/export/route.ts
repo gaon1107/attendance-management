@@ -1,4 +1,5 @@
-// 로그인 이력 엑셀(.xlsx) 내보내기 — 관리자만. 화면(logins/page.tsx)과 동일 집계·필터.
+// 로그인 이력 엑셀(.xlsx) 내보내기 — 관리자만. 화면(logins/page.tsx)과 동일한 회사격리·기간·검색 필터.
+//  · 조회 상한은 화면(2000)보다 크다(감사 목적). 상한 초과 시 "침묵 누락"을 막기 위해 경고 행을 남긴다.
 import ExcelJS from "exceljs";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
@@ -42,13 +43,20 @@ export async function GET(request: Request): Promise<Response> {
   end.setDate(end.getDate() + 1);
   const maxEnd = new Date(start);
   maxEnd.setDate(maxEnd.getDate() + 92);
-  if (end > maxEnd) end = maxEnd;
+  if (end > maxEnd) {
+    end = maxEnd;
+    const capEnd = new Date(maxEnd);
+    capEnd.setDate(capEnd.getDate() - 1);
+    toISO = toISODate(capEnd); // 파일명·조회창을 화면과 동일하게 캡 반영
+  }
 
+  const EXPORT_CAP = 10000;
   const events = await prisma.accessEvent.findMany({
     where: { companyId: me.companyId, kind: { in: AUTH_KINDS }, createdAt: { gte: start, lt: end } },
     orderBy: { createdAt: "desc" },
-    take: 10000,
+    take: EXPORT_CAP,
   });
+  const capped = events.length >= EXPORT_CAP; // 상한에 걸렸으면 침묵 누락 방지 경고를 남긴다.
 
   const rows = events.map((e) => {
     const name = e.actorName ?? e.emailTried ?? "알 수 없음";
@@ -99,6 +107,13 @@ export async function GET(request: Request): Promise<Response> {
 
   for (const r of filtered) {
     ws.addRow({ time: r.time, name: r.name, email: r.email, action: r.action, device: r.device, ip: r.ip, result: r.result, note: r.note });
+  }
+
+  // 상한 초과 시: 침묵 누락 방지 — 마지막에 경고 행을 남긴다(감사 자료가 잘렸음을 명시).
+  if (capped) {
+    const warn = ws.addRow({ time: `※ 결과가 상한(${EXPORT_CAP.toLocaleString()}건)을 초과해 최신 ${EXPORT_CAP.toLocaleString()}건만 포함됩니다. 기간을 좁혀 다시 내보내세요.` });
+    warn.font = { bold: true, color: { argb: "FFB91C1C" } };
+    ws.mergeCells(`A${warn.number}:H${warn.number}`);
   }
 
   const buf = await wb.xlsx.writeBuffer();
