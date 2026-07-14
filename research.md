@@ -1,34 +1,47 @@
-# Research: 라이브니스 후속 3건 (2026-07-11)
-> ①판정 기준값 관리자 설정화 ②데모 AND 판정 비교 스위치 ③재동의 안내 배너
-> 이전 버전(라이브니스 이식 리서치 — 완료된 작업)은 git 이력에 보존.
+# Research: 접속/보안 모니터링 (2번 화면군) — 2026-07-14
 
-## 관련 파일과 역할
-- `webapp/app/actions/face.ts` — 얼굴 출퇴근 검증 + 출퇴근 후처리(recordClockPhoto: 사진 저장·판독·suspect 판정)
-- `webapp/app/actions/settings.ts` — 회사 설정 저장 액션들(saveFaceRule이 복제 원형)
-- `webapp/app/settings/page.tsx` + `FaceRuleForm.tsx` — 설정 화면(폼 복제 원형)
-- `webapp/prisma/schema.prisma` — Company 테이블(faceMinPercent 패턴 참고)
-- `webapp/app/attendance/page.tsx`, `webapp/app/auth-method/page.tsx` — ③배너 표시 위치
-- `webapp/app/consent/page.tsx` + `app/actions/authmethod.ts` — 재동의 흐름
-- `liveness-demo/app/DemoClient.tsx` — ②판정 방식 토글 위치(이력에 모델A/B 점수 원본 보유)
+## 목표
+목업 4종을 실제 기능으로. ①관리자 로그인 이력(감사로그) ②IP·기기 접속 로그 ③이상 접속 알림 설정 ④차단 IP 관리.
+사장님 결정(2026-07-14): **③ 풀세트**(차단IP·자동차단·알림까지) — 단, 아래 제약을 정직히 반영해 단계로 진행.
 
-## 🔴 영향 범위 (수정 대상을 사용하는 모든 곳 — Grep 전수 확인)
-- **livenessThreshold()**: 정의 face.ts:130, 사용 face.ts:179 **단 1곳**(recordClockPhoto의 suspect 판정). 다른 파일 사용 없음 → 회사 설정 조회로 바꿔도 파급 없음.
-- **LIVENESS_THRESHOLD(.env)**: face.ts:131 1곳만 읽음.
-- **PHOTO_CONSENT_SINCE**: face.ts:137 정의, face.ts:153 1곳 사용. ③배너가 같은 날짜를 써야 하므로 공유 위치(lib/clock-photo.ts)로 이동 필요. ※ face.ts는 "use server" 파일이라 상수 export 불가 → 이동이 유일한 방법.
-- **faceConsentAt**: 읽는 곳 8개 화면/액션 — ③은 "읽기 추가"만 하므로 기존 로직 무영향. 재동의(agreeBiometric)는 faceConsentAt=now 갱신 + authMethod="face" 유지 → **얼굴 등록(faceEnrolledAt) 안 건드림, 철회 없이 재동의 가능** (배너 링크 = /consent).
-- **DemoClient.tsx**: 데모 전용(근태와 완전 분리). 이력(HistoryItem)에 v1se·v2 원본 저장돼 있어 판정 방식 토글 시 재계산 가능.
+## 관련 파일과 역할 (현재 코드)
+- `webapp/prisma/schema.prisma` — `Session`(token·userId·expiresAt·createdAt **뿐**, IP/기기/이력 없음). `Company.officeIps`(사내 허용 IP CSV, **허용목록**이지 차단목록 아님). `User.failedLoginCount`/`lockedUntil`(로그인 실패 카운터·잠금 — 이력은 없음).
+- `webapp/lib/ip.ts` — `getClientIp(headers)`(XFF/x-real-ip에서 IP 추출), `ipMatches(ip, csv)`(대역 경계 안전 매칭). **이미 존재·검증됨.**
+- `webapp/lib/session.ts` — `createSession(userId)`(토큰 발급+쿠키, **IP·헤더 접근 없음**), `getCurrentUser()`, `destroySession()`. **공통 모듈**(auth·invites가 사용).
+- `webapp/app/actions/auth.ts` — 로그인(42)·로그인후처리(100)에서 `createSession`. 여기서 headers() 접근 가능.
+- `webapp/app/actions/invites.ts` — 초대가입 후 자동로그인(85)에서 `createSession`.
+- `webapp/app/actions/attendance.ts` — 출퇴근 시 `getClientIp`+`ipMatches`로 사내망 확인(결과만 `Attendance.locationStatus`에 저장, **IP 원문·기기 미저장**).
+- `webapp/app/settings/page.tsx` — 관리자에게 "현재 내 IP" 표시(허용목록 설정 도우미).
+- 공통 UI: `RangeCalendar`/`RangeCalendarNav`(기간 달력), `SearchBox`+`lib/search`(OR 검색), 엑셀 내보내기 패턴(`app/reports/export/route.ts`, `app/leave-summary/export/route.ts`). **재사용 대상.**
+- 사이드바 `webapp/app/components/Sidebar.tsx` — 목업의 "보안로그" 메뉴 신설 필요(NavKey 추가).
+
+## 🔴 영향 범위 (수정 대상을 쓰는 모든 곳)
+- **`createSession`(공통)**: auth.ts(로그인 2곳)·invites.ts(가입후 로그인) 3곳에서 호출. → 시그니처를 바꾸면 3곳 영향. **대응: 시그니처 불변. IP·기기 기록은 호출부(action)에서 별도로 남긴다(add-only).**
+- **`getClientIp`/`ipMatches`(공통)**: attendance.ts·settings/page.tsx 사용 중. → **읽기만 재사용, 수정 안 함.**
+- **자동차단 관문**: "모든 요청을 가로채는" 지점이 필요(미들웨어 또는 요청 진입점). 이건 로그인·출퇴근·조회 **전 기능에 영향** → 최우선 위험. 잘못하면 관리자 본인이 잠김.
+- **감사로그(설정변경·파기)**: settings 저장, 생체정보 파기 등 여러 action에 "기록 한 줄" 추가 필요 → 각 파일 add-only.
+- **Prisma 스키마 변경**: 새 테이블 추가는 `prisma migrate`(개발 SQLite) 필요. 기존 테이블 컬럼은 건드리지 않음(추가만).
 
 ## 공통 모듈 여부 / 건드리면 안 되는 부분
-- 공통 모듈 수정 없음(사용처 1곳짜리 함수 교체 + 상수 이동 + 화면 배너 추가 + 데모 파일).
-- 🚧 수정 금지 유지: lib/liveness.ts 전처리 상수 / clockIn·clockOut 본체 / 촬영 화질(1280·0.9) / FaceClockPanel 캡처 로직.
+- `createSession`·`getClientIp`·`ipMatches`·`getCurrentUser` = **공통. 시그니처 유지, 추가만.** (safe-coding-skill 준수)
+- `attendance.ts` clockIn/clockOut 본체 = 라이브니스 이식 후 **무수정 유지 대상**(project-status 🚧). 접속로그 기록은 별도 지점에서.
 
 ## DB·API 변경 여부, 위험 요소
-- DB: Company에 `livenessPercent Int @default(50)` 추가(마이그레이션 1개). 기존 행은 기본값 50 = 현 .env 0.5와 동일 → **동작 변화 없음**.
-- ⚠️ 알려진 함정: Prisma 스키마 변경 후 **dev 서버 재시작 필수**(옛 클라이언트가 새 칸을 빈칸으로 봄 — PROGRESS.md에 2회 기록된 이슈).
-- 데모 수정 시 **D:\사진판독 동기화 필수**(7/11부터 규칙).
-- suspect 판정은 배지용(출퇴근 차단 아님) → 값이 틀려도 출퇴근 기능 자체는 무영향(위험 낮음).
+- **DB 신규 테이블 필요**:
+  - `AccessEvent`(접속/로그인 이력·감사 통합) — companyId·userId?·actorName?·emailTried?·kind·result·ip·userAgent·meta?·createdAt (+인덱스 companyId,createdAt). 화면별로 kind 필터.
+  - `BlockedIp`(차단 목록) — companyId·pattern·reason·status(block/watch)·hits·createdBy·createdAt.
+  - 알림설정 — Company 컬럼 확장(규칙 on/off·수준·채널) 또는 신규 테이블.
+  - (선택) `SecurityAlert`(발생한 이상접속) — 대시보드 알림용.
+- **위험 요소**:
+  1. **자기잠금**: 자동차단이 관리자/사내망 IP를 막으면 서비스 마비. → 화이트리스트(officeIps·현재 접속 IP) 예외 + 해제경로 항상 열림 **필수 설계**.
+  2. **localhost 한계**: 개발 PC에선 IP가 `127.0.0.1`/null. 진짜 외부 IP·해외판정은 **운영(프록시 뒤) 배포 후에만** 유효. 지금은 "구조·형태 확인" 단계.
+  3. **인프라 부재**: 이메일/SMS 실발송 수단 없음, GeoIP(해외·국가 판정) DB/API 없음. → 이번엔 "설정·형태·대시보드 알림"까지, **실발송·해외판정은 보류(자리만 마련)**.
+  4. **개인정보**: 접속기록(IP·기기)은 개인정보. 보관기간·목적 정의 필요(정보통신망법상 접속기록 보관은 오히려 의무에 가까움). 보관기간·자동파기 계획 포함.
+  5. **커스텀 Next**: `webapp/AGENTS.md` 경고 — 미들웨어/요청 훅 구현 전 `node_modules/next/dist/docs/` 확인 필수(자동차단 단계 첫 TODO).
+  6. **성능**: 접속 이벤트는 다량 누적 → 인덱스·기간필터·자동파기 필요. 로그 기록이 로그인/요청을 느리게 하면 안 됨(비동기/after 고려).
 
 ## 결론 (계획 시 고려사항)
-1. ①은 faceMinPercent와 100% 동일 패턴(스키마+폼+액션+조회함수) 복제로 안전하게 가능. 단위는 %(30~90, 기본 50).
-2. ②는 DemoClient.tsx 한 파일: 토글 state + 유효점수 계산(평균 or 두 모델 최소값) → 판정·색·이력 즉시 재계산. 서버 코드 무수정.
-3. ③은 PHOTO_CONSENT_SINCE를 lib로 옮긴 뒤 두 화면에 배너 추가. 링크는 /consent(철회 불필요).
+- 풀세트는 **6단계로 분해**해 각 단계를 독립 커밋·검증한다(plan.md).
+- **데이터 수집(테이블+기록)부터** 깐 뒤 화면을 얹는다. 화면만 먼저 만들면 빈 표가 된다.
+- **자동차단·알림 실발송은 가장 마지막**, 자기잠금 방어 설계를 먼저 확정하고 착수.
+- 이메일/SMS 실발송·GeoIP 해외판정은 **인프라 결정 전까지 "형태·설정까지"만**(사장님 plan 검토 시 최종 확인).

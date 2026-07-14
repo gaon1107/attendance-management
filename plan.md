@@ -1,61 +1,95 @@
-# Plan: 라이브니스 후속 3건 (2026-07-11) — 상태: ✅ 완료(구현·검증·검수 반영, 커밋 4d28307~203708f)
-> 근거·영향 범위는 research.md. 이전 계획(데모 검증 결과의 근태 적용 — 이 계획의 원형)은 git 이력에 보존.
+# Plan: 접속/보안 모니터링 (2번 화면군, 풀세트) — 2026-07-14 — 상태: 검토 대기
 
-## 0. 데모 테스트에서 확인된 사실 (계획의 근거)
-- 폰 화면 공격: 진짜 확률 0% → 잘 잡힘 / **오려서 구부린 인쇄 사진: 78~85%로 "진짜" 오판**(모델B는 60~77%로 의심)
-- 사장님 결정: 차단 기준은 운영하며 조정 / 최종 안전망 = 관리자 사진 열람
+> 근거·영향분석: research.md. 사장님 결정(7/14): **③ 풀세트**(로그인 이력 + IP·기기 접속로그 + 이상알림 + 차단IP·자동차단).
+> 큰 작업이라 **6단계로 분해**한다. 각 단계 = 독립적으로 완성·커밋·검증 가능. **한 단계 끝날 때마다 보고 후 다음 단계로.**
+
+---
+
+## ⚠️ 먼저 짚는 현실 (사장님 확인 필요 — 아래 "메모 공간"에 O/X)
+1. **개발 PC(localhost)에서는 IP가 `127.0.0.1`로만 잡힙니다.** 진짜 외부 IP·해외 판정은 **운영 서버 배포 후**에야 보입니다. 이번엔 "구조·화면·형태"를 완성하고, 실제 값 검증은 배포 후가 됩니다. → 진행해도 될까요?
+2. **이메일/SMS 실발송 수단이 아직 없습니다.** 이상 접속 알림은 이번에 **"앱 안 대시보드 알림 + 설정 화면"까지** 만들고, **이메일/SMS는 켜고 끄는 자리만 두되 실제 발송은 다음(인프라 붙일 때)**으로 둡니다. → 이 방식 OK?
+3. **해외/국가 판정(GeoIP)** 은 외부 데이터가 필요합니다. 이번엔 회사 허용IP 기준 **"사내망 / 외부"까지만** 판정하고, 해외·국가 표기는 **자리만** 둡니다(나중에 GeoIP 붙이면 채워짐). → OK?
+4. **자동차단**은 잘못 만들면 관리자 본인이 잠깁니다. 그래서 **"현재 접속 IP·회사 허용IP는 절대 차단 못 하게" 안전장치**를 먼저 넣고, 차단은 **로그인·출퇴근 진입점에서만** 적용(전체 미들웨어는 커스텀 Next 문서 확인 후 결정)합니다. → OK?
+
+---
 
 ## 1. 접근 방식 (+이유)
-- **① 판정 기준값 설정화**: 이미 검증된 faceMinPercent 패턴을 그대로 복제(스키마 칸 추가 + 설정 폼 + 저장 액션 + 회사별 조회). 새 구조를 만들지 않아 위험 최소.
-  - 단위: 관리자 화면은 %(정수 30~90, 기본 50). 내부 판정은 ÷100 해서 0~1로 비교(기존과 동일).
-  - .env LIVENESS_THRESHOLD는 회사 값이 없을 때의 예비값으로만 유지(하위 호환).
-- **② 데모 AND 스위치**: DemoClient.tsx에 "평균 / 둘 다(AND)" 토글 추가. 유효점수 = 평균 모드는 (A+B)/2, AND 모드는 min(A,B) — "둘 다 기준 이상"과 min≥기준은 수학적으로 동일해서 이력 재계산이 한 줄로 됨. 서버·모델 코드 무수정.
-- **③ 재동의 배너**: PHOTO_CONSENT_SINCE(2026-07-11)를 lib/clock-photo.ts로 옮겨 공유 → 얼굴인증 사용자 중 동의일이 그 이전인 사람에게 [내 출퇴근]·[인증방식] 화면에 배너 → /consent로 유도(재동의 시 동의시각만 갱신, 얼굴 등록 유지 — 철회 불필요).
+- **데이터 수집(테이블+기록) → 화면 → 차단/알림** 순서. 화면만 먼저 만들면 빈 표가 되므로 수집을 1단계로.
+- 공통 모듈(`createSession`·`getClientIp`·`ipMatches`)은 **시그니처 유지, 기록은 호출부에서 add-only**(safe-coding-skill).
+- 화면은 전부 기존 공통부품 재사용: 기간 달력(`RangeCalendarNav`)·통합검색(`SearchBox`)·엑셀 내보내기 패턴·관리자 격리 패턴(`records` 표준).
+- 접속기록은 **개인정보** → 보관기간(예: 1년) + 자동파기(오래된 것 정리)를 처음부터 설계.
 
-## 2. 수정/생성 파일 목록
-| 작업 | 파일 | 변경 |
-|---|---|---|
-| ① | webapp/prisma/schema.prisma | Company.livenessPercent Int @default(50) 추가 + 마이그레이션 |
-| ① | webapp/app/actions/settings.ts | saveLivenessRule 액션 추가 |
-| ① | webapp/app/settings/LivenessRuleForm.tsx | 신규(FaceRuleForm 복제) |
-| ① | webapp/app/settings/page.tsx | 폼 배치 + select 필드 추가 |
-| ① | webapp/app/actions/face.ts | livenessThreshold() → 회사 설정 조회로 교체(사용처 1곳) |
-| ② | liveness-demo/app/DemoClient.tsx | 판정 방식 토글 + 유효점수 계산 |
-| ② | D:\사진판독\... | 동일 파일 동기화 |
-| ③ | webapp/lib/clock-photo.ts | PHOTO_CONSENT_SINCE 상수 이동(export) |
-| ③ | webapp/app/actions/face.ts | 상수를 import로 교체 |
-| ③ | webapp/app/attendance/page.tsx, app/auth-method/page.tsx | 재동의 배너 추가 |
+## 2. 수정/생성 파일 목록 (단계별)
+### 1단계 — 접속 데이터 수집 기반
+- 생성: `webapp/prisma/schema.prisma`에 `AccessEvent` 모델 추가 + migrate.
+- 생성: `webapp/lib/access-log.ts` — `recordAccess({companyId,userId?,actorName?,emailTried?,kind,result,ip,userAgent,meta?})` 한 줄 기록 헬퍼(실패해도 로그인/요청을 막지 않게 try/catch·비동기).
+- 생성: `webapp/lib/device.ts` — userAgent → "iPhone / Android / PC(브라우저)" 간단 판별.
+- 수정(add-only): `auth.ts`(로그인 성공/실패 기록)·`invites.ts`(가입후 로그인 기록). **`session.ts`/`createSession` 본체는 무수정.**
+
+### 2단계 — 로그인 이력 화면(관리자 감사)
+- 생성: `webapp/app/security/logins/page.tsx` + 클라이언트(목록 필터) + `export/route.ts`(엑셀).
+- 수정: `Sidebar.tsx` — NavKey `security`("보안로그") 그룹 신설(add-only).
+
+### 3단계 — IP·기기 접속 로그 화면
+- 생성: `webapp/app/security/access/page.tsx`(로그인+출퇴근 접속 통합, `ipMatches`로 사내망/외부 판정) + 엑셀.
+- 수정(add-only): 출퇴근 시 접속 IP·기기도 `AccessEvent`에 남기도록 `attendance.ts` **후처리 지점**(clockIn/clockOut 본체 밖)에서 기록.
+
+### 4단계 — 관리자 감사로그 확장(설정변경·조회·파기)
+- 수정(add-only): 설정 저장·생체정보 파기 등 관리자 주요 action에 `recordAccess(kind:'config'|'purge'...)` 한 줄. (건별 영향 최소)
+- 2단계 화면에 "동작 유형" 필터 추가.
+
+### 5단계 — 차단 IP 관리 + 자동차단(안전장치 포함)
+- 리서치 TODO: `node_modules/next/dist/docs/`에서 미들웨어/요청 훅 방식 확인(구현 전 필수).
+- 생성: `BlockedIp` 모델 + migrate. `webapp/lib/ip-block.ts` — `isBlocked(ip, company)`(+ **화이트리스트: officeIps·요청자 현재 IP는 절대 차단 안 함**).
+- 생성: `webapp/app/security/blocked/page.tsx`(목록·추가·해제) + 서버액션.
+- 적용: 로그인/출퇴근 진입점에서 `isBlocked` 검사(차단 시 거부+기록). 전체 미들웨어 적용은 문서 확인 후 별도 판단.
+
+### 6단계 — 이상 접속 알림(감지 규칙 + 대시보드 알림)
+- 생성: 알림설정(Company 컬럼 or `AlertRule`) + `webapp/app/security/alerts/page.tsx`(규칙 on/off·수준·채널).
+- 생성: `SecurityAlert` 모델 + 감지(심야/새기기/연속실패 — 사내 데이터만으로 가능한 것부터. 해외=GeoIP 보류).
+- 대시보드/알림센터에 이상접속 배지. **이메일/SMS는 채널 토글만(실발송 비활성·"준비중" 표기).**
 
 ## 3. 🛡️ 사이드 이펙트 방어
-- 수정 금지 유지: lib/liveness.ts 전처리 상수 / clockIn·clockOut 본체 / 촬영 화질(1280·0.9) / FaceClockPanel 캡처.
-- ①은 배지 계산만 변경(기본값 50 = 기존 0.5와 동일 → 마이그레이션 직후 동작 불변). ③은 화면 배너만(동의 로직 무수정). ②는 데모 전용.
-- ⚠️ 스키마 변경 후 dev 서버 재시작 필수(옛 Prisma 클라이언트 이슈).
-- 구현 후 회귀 테스트: 일반(GPS) 출퇴근 / 설정 화면 기존 폼 저장 / 관리자 근태상세 배지 / 내근태(직원에 판독 미노출) / tsc.
+- **로그인 흐름**: 기록 실패가 로그인을 막으면 안 됨 → `recordAccess`는 try/catch, 실패는 콘솔 경고만. 로그인 성공/실패 판정 로직은 무수정.
+- **출퇴근**: `attendance.ts` clockIn/clockOut **본체 무수정**(project-status 🚧 준수), 기록은 후처리에서만.
+- **공통 모듈**: `createSession`·`getClientIp`·`ipMatches` 시그니처 불변(3+2곳 호출부 안전).
+- **자동차단 자기잠금**: 화이트리스트(officeIps+현재 접속 IP) 예외 + 관리자 해제경로는 차단 대상에서 제외.
+- **DB 마이그레이션**: 신규 테이블만 추가(기존 컬럼 무변경) → 기존 데이터 무영향.
+- **구현 후 반드시 테스트할 기존 기능**: 로그인/로그아웃·초대가입·출퇴근(사내망 판정 포함)·설정 저장·기존 화면 회귀.
 
 ## 4. 작업분해 TODO
-- [x] 1단계(①): 스키마+마이그레이션 → 조회·저장 액션 → 설정 폼 → face.ts 판정 교체 → 검증(80 저장 왕복 DB 확인·95 차단·50 복원) → 커밋 4d28307
-- [x] 2단계(③): 상수 이동 → 배너 2곳 → 검증(홍길동 7/9 동의 계정에 배너 표시 → 재동의 E2E → 동의일 7/11 갱신·얼굴 유지·배너 소멸 확인 → 동의시각 7/9로 복원해 사장님 체험 보존) → 커밋 5940315
-- [x] 3단계(②): 데모 토글 → 검증(3100 렌더·토글 상태 전환) → D:\사진판독 동기화 → 커밋 5e12111 ※동기화 직후 다른 세션이 D:에 "연속 촬영" 기능 추가(AND 토글은 유지됨) — 역동기화는 그 세션 몫으로 보류
-- [x] 4단계: 회귀(관리자 근태상세 재검토 배지·출퇴근 화면·설정 기존 폼) + tsc 0 + 콘솔·서버 에러 0
-- [x] 5단계: code-reviewer 검수(치명0·중간3·경미5) → 중간1(조회 실패 폴백)+경미5(적용 시점 안내) 수정 커밋 203708f → 상태 문서 갱신
+- [ ] 1-a: `AccessEvent` 모델 + migrate + `lib/access-log.ts`·`lib/device.ts` — 커밋
+- [ ] 1-b: auth·invites 로그인 성공/실패 기록(add-only) — 커밋 → **보고·중간확인**
+- [ ] 2: 로그인 이력 화면 + 엑셀 + 사이드바 "보안로그" — 커밋 → **보고**
+- [ ] 3: IP·기기 접속 로그 화면 + 출퇴근 접속 기록 — 커밋 → **보고**
+- [ ] 4: 관리자 감사로그 확장(설정변경·파기 등) — 커밋 → **보고**
+- [ ] 5: (문서확인 후) 차단 IP 관리 + 자동차단(안전장치) — 커밋 → **보고**
+- [ ] 6: 이상 접속 알림 설정·감지·대시보드 알림 — 커밋 → **보고**
+- [ ] 각 단계: 영향받은 기존 기능 회귀 테스트
+- [ ] 마지막: code-reviewer 검수 + project-status.md·PROGRESS.md 갱신
 
-## 5. 핵심 로직 샘플 (계획용)
+## 5. 핵심 로직 샘플 (계획용, 실제 구현 아님)
 ```ts
-// face.ts — 회사별 판정 기준(0~1). 회사 값 없으면 .env → 50% 순서로 예비.
-async function getLivenessThreshold(companyId: string): Promise<number> {
-  const c = await prisma.company.findUnique({ where: { id: companyId }, select: { livenessPercent: true } });
-  if (c && Number.isFinite(c.livenessPercent)) return Math.min(90, Math.max(30, c.livenessPercent)) / 100;
-  const v = Number(process.env.LIVENESS_THRESHOLD);
-  return Number.isFinite(v) && v > 0 && v < 1 ? v : 0.5;
+// lib/access-log.ts — 기록은 절대 본기능을 막지 않는다
+export async function recordAccess(e: AccessInput): Promise<void> {
+  try { await prisma.accessEvent.create({ data: { ...e, createdAt: new Date() } }); }
+  catch (err) { console.warn("[access-log] 기록 실패(무시):", err); }
 }
-// DemoClient — 유효점수: AND 모드 = 두 모델 최소값(둘 다 기준 이상 ⟺ min ≥ 기준)
-const effective = (a: number, b: number) => (mode === "and" ? Math.min(a, b) : (a + b) / 2);
+// 자동차단 화이트리스트 — 자기잠금 방지
+function isBlocked(ip: string|null, company: Company, blocks: BlockedIp[]): boolean {
+  if (!ip) return false;
+  if (ipMatches(ip, company.officeIps)) return false;   // 사내망은 절대 차단 안 함
+  return blocks.some(b => b.status === "block" && ipMatches(ip, b.pattern));
+}
 ```
 
-## 6. 구현하지 않을 것
-- AND 방식의 근태 반영 — 데모에서 사장님 비교 검증 후 별도 결정(오탐 증가 위험).
-- 상용 라이브니스·모델 파인튜닝 / 감시성 기능(rPPG) / 3조각(실근무 확인) — 기존 보류 유지.
-- 재동의 강제(차단) — 배너 안내만. 법적 가드(사진 미저장)는 이미 올바르게 동작 중.
+## 6. 구현하지 않을 것 (이번 범위 제외 + 이유)
+- **이메일/SMS 실발송** — 발송 인프라 미결(자리·설정만). 
+- **해외·국가(GeoIP) 판정** — 외부 데이터 미결(사내망/외부까지만).
+- **전역 미들웨어 자동차단** — 커스텀 Next 확인 전엔 진입점(로그인·출퇴근) 한정.
+- **입사일 기반 연차 자동산정** 등 2번과 무관 항목.
 
-## 📌 사용자 메모 공간
+## 📌 사용자 메모 공간 (검토 후 여기에 적어주세요)
+- 위 "먼저 짚는 현실" 1~4번에 O/X 부탁드립니다.
+- 단계를 더 줄이거나(예: 1~3단계만 먼저) 순서를 바꾸고 싶으시면 여기에.
 -
