@@ -21,7 +21,9 @@ type RVFCVideo = HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => voi
 //  · 예열 전/느린 카메라는 같은 프레임을 반복해 내보내 3장이 바이트까지 똑같아진다 → 서버가 "정지영상"으로 오탐.
 //  · rVFC는 실제로 새 프레임이 표시될 때만 콜백하므로, 이 뒤에 찍으면 서로 다른 프레임이 된다(진짜 카메라는 센서 노이즈로도 바이트가 달라짐).
 //  · rVFC 미지원(Firefox·구형)은 기존과 동일하게 타임아웃만 기다린다(회귀 없음).
-function waitForFreshFrame(video: HTMLVideoElement, timeoutMs = 600): Promise<void> {
+// timeoutMs: rVFC 콜백이 안 오면 이만큼만 기다리고 진행(폴백). 미지원 브라우저에선 이게 실제 대기시간이라
+// 너무 길면 촬영이 느려진다 — 예열엔 충분하되(수백 ms) 최악 누적(최대 7회)이 과하지 않게 400ms로 둔다.
+function waitForFreshFrame(video: HTMLVideoElement, timeoutMs = 400): Promise<void> {
   return new Promise((resolve) => {
     const rvfc = (video as RVFCVideo).requestVideoFrameCallback;
     if (typeof rvfc !== "function") {
@@ -190,6 +192,10 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
       return;
     }
     submittingRef.current = true; // toBlob(비동기) 전에 동기로 잠가 빠른 두 번 클릭 차단
+    // 촬영 시작 = 즉시 잠금. 촬영 구간(예열~3장~안전망) 동안 [취소]·[일반 방식]을 비활성화해
+    // "취소했는데 뒤늦게 출/퇴근되는" 레이스를 막고, 진행 중임을 알린다(느린 카메라에서 무피드백 방지).
+    setSubmitting(true);
+    setMsg({ type: "info", text: "촬영 중입니다. 잠시만 기다려 주세요…" });
     try {
       // 연속 3장 촬영 — 오려낸 사진·정지영상 방어(위조 판독은 전 장이 통과해야 진짜).
       // ⚠️ 촬영 루프도 try 안에 둔다 — captureOneBlob 예외 시에도 finally로 잠금(submittingRef)이 반드시 풀리게.
@@ -215,7 +221,6 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
         return;
       }
 
-      setSubmitting(true);
       setMsg({ type: "info", text: "얼굴을 확인하는 중입니다…" });
       const fd = new FormData();
       blobs.forEach((b, i) => fd.append("image", b, `face${i + 1}.jpg`));
@@ -303,7 +308,8 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
         </div>
         {msg && <MsgBox msg={msg} />}
         <div style={{ textAlign: "center", marginTop: 12 }}>
-          <button type="button" style={linkBtn} onClick={() => { stopCamera(); setPhase("fallback"); setMsg(null); }}>
+          {/* 촬영/제출 중에는 비활성 — 진행 중 전환으로 "취소했는데 뒤늦게 처리"되는 레이스 방지 */}
+          <button type="button" style={{ ...linkBtn, opacity: submitting ? 0.5 : 1, cursor: submitting ? "default" : "pointer" }} disabled={submitting} onClick={() => { stopCamera(); setPhase("fallback"); setMsg(null); }}>
             얼굴 인증이 안 되나요? 일반 방식으로 {action === "in" ? "출근" : "퇴근"}하기
           </button>
         </div>
