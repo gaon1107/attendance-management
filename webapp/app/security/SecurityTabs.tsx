@@ -3,12 +3,13 @@
 //  · 서버 컴포넌트에서 그대로 쓸 수 있게 링크(<a>)만 사용한다.
 
 const TABS = [
+  { href: "/security/alerts", label: "이상 접속" },
   { href: "/security/logins", label: "로그인 이력" },
   { href: "/security/access", label: "접속 로그" },
   { href: "/security/blocked", label: "차단 IP" },
 ];
 
-export function SecurityTabs({ active }: { active: "logins" | "access" | "blocked" }) {
+export function SecurityTabs({ active }: { active: "logins" | "access" | "blocked" | "alerts" }) {
   return (
     <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid var(--border)" }}>
       {TABS.map((t) => {

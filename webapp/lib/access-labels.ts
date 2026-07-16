@@ -67,6 +67,9 @@ function baseMetaLabel(meta: string): string {
     // 차단 IP 관리(actions/ip-block.ts) — "이름:대상" 형식으로 어떤 IP인지 함께 남긴다
     ip_block_add: "차단 IP 추가",
     ip_block_remove: "차단 IP 해제",
+    // 이상접속 알림(6단계) — 감지 기준 변경 + "확인함" 처리
+    alert_rules: "이상접속 감지 기준",
+    security_checked: "이상접속 확인",
     // 생체정보 파기 경로(actions/authmethod.ts)
     admin_revoke: "관리자 파기",
     self_withdraw: "본인 철회",
