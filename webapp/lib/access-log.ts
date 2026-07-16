@@ -55,21 +55,22 @@ export function readClientMeta(h: HeaderLike): { ip: string | null; userAgent: s
   return { ip: getClientIp(h), userAgent: h.get("user-agent") };
 }
 
-// [접속기록 자동 파기] 접속기록은 IP·기기·이메일이 담긴 개인정보 → 보관기간이 지나면 지운다.
-// 사진 90일 파기(clock-photo.ts)와 같은 방식: 별도 스케줄러 없이 보안 화면을 열 때 하루 1회만 돈다.
+// [접속기록 자동 파기 — 2년] 접속기록은 "빨리 지워야 할 개인정보"가 아니라 **보관 의무**가 있는 자료다.
 //
-// 🚨 현재 비활성(PURGE_ENABLED=false) — 삭제는 되돌릴 수 없어 법적 확인 전까지 멈춘다(사장님 결정 2026-07-16).
-//    쟁점: 접속기록은 "개인정보라 빨리 지워야 하는 것"이 아니라 「개인정보의 안전성 확보조치 기준」상
-//    최소 1년(민감정보 처리 시스템은 2년) **보관 의무**가 있는 자료다. 이 제품은 얼굴=생체정보(민감정보)를
-//    처리하므로 2년이 맞을 가능성이 있다. security-architect·법무 확인 후 아래 두 상수를 확정할 것.
-//    ※ 사진(생체정보 원본)은 빨리 지울수록 좋고, 접속기록(감사 로그)은 오래 남겨야 한다 — 성격이 정반대다.
-export const ACCESS_RETENTION_DAYS = 365;
-const PURGE_ENABLED = false;
+// 📌 법적 근거(2026-07-16 확정): 「개인정보의 안전성 확보조치 기준」 제8조
+//    · 원칙: 접속기록 1년 이상 보관·관리
+//    · 예외: **고유식별정보 또는 민감정보를 처리하는 개인정보처리시스템은 2년 이상**
+//    이 제품은 얼굴(생체인식정보) = 민감정보를 처리한다(개인정보 보호법 §23, 시행령 §18)
+//    → CLAUDE.md 법적 가드레일의 "얼굴 = 생체정보 = 민감정보"와 일치 → **2년(730일) 적용**.
+//    보유기간이 지나면 파기해야 하므로(개인정보 보호법 §21) 730일 경과분만 삭제한다.
+//
+// 방식: 사진 90일 파기(clock-photo.ts)와 동일 — 별도 스케줄러 없이 보안 화면을 열 때 하루 1회만 돈다.
+// ⚠️ 사진(생체정보 원본)은 빨리 지울수록 좋고, 접속기록(감사 로그)은 오래 남겨야 한다 — 성격이 정반대다.
+//    이 숫자를 줄이는 것은 법 위반이 될 수 있다. 변경 전 반드시 법무 확인.
+export const ACCESS_RETENTION_DAYS = 730; // 2년 — 법정 하한(민감정보 처리 시스템)
 
 let lastAccessPurgeAt = 0;
 export async function purgeExpiredAccessEvents(): Promise<void> {
-  if (!PURGE_ENABLED) return; // 법적 보관기간 확정 전까지 삭제하지 않는다(복구 불가)
-
   const now = Date.now();
   if (now - lastAccessPurgeAt < 24 * 60 * 60 * 1000) return; // 하루 1회
   lastAccessPurgeAt = now;
