@@ -6,6 +6,33 @@ import { evaluateOfficeLocation } from "@/lib/location";
 import { getClientIp, ipMatches } from "@/lib/ip";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { recordAccess, readClientMeta } from "@/lib/access-log";
+
+// [접속기록 — add-only] 출퇴근이 "실제로 처리된 뒤"에만 접속 IP·기기를 남긴다(보안 화면 3단계).
+//  · 출퇴근 판정·중복방지 로직은 일절 건드리지 않는다. 이 함수는 맨 끝에서만 호출된다.
+//  · after()로 응답을 보낸 뒤 실행 + recordAccess 자체가 try/catch → 기록이 실패해도 출퇴근은 정상.
+//  · clockIn/clockOut 안에 두는 이유: 일반 버튼·얼굴 출퇴근 등 호출처 4곳을 자동으로 커버하고 중복도 없다.
+async function logClockAccess(
+  me: { id: string; companyId: string; name: string },
+  kind: "clock_in" | "clock_out",
+  meta?: string | null
+): Promise<void> {
+  // 헤더는 after 밖에서 미리 읽는다(Next 16: 서버액션은 안에서도 되지만, 페이지와 규칙을 통일).
+  const { ip, userAgent } = readClientMeta(await headers());
+  after(() =>
+    recordAccess({
+      companyId: me.companyId,
+      userId: me.id,
+      actorName: me.name,
+      kind,
+      result: "success",
+      ip,
+      userAgent,
+      meta: meta ?? null,
+    })
+  );
+}
 
 // 출근 — 근무형태(사무실/재택/외근)와, 사무실이면 현재 좌표를 받는다.
 // 사무실만 위치 확인. 재택·외근은 위치 확인 없음. 위치가 벗어나도 출근은 막지 않는다(부드럽게).
@@ -57,6 +84,9 @@ export async function clockIn(
 
   revalidatePath("/attendance");
   revalidatePath("/dashboard");
+
+  // [접속기록] 출근이 실제로 생성된 경우에만(위 중복 클릭은 이미 return됨). meta=근무형태.
+  await logClockAccess(me, "clock_in", mode);
 }
 
 // 퇴근 — 열려있는(퇴근 안 한) 가장 최근 출근 기록에 퇴근 시각을 채운다.
@@ -84,6 +114,9 @@ export async function clockOut(): Promise<void> {
 
   revalidatePath("/attendance");
   revalidatePath("/dashboard");
+
+  // [접속기록] 실제로 퇴근 처리된 경우에만(열린 출근 기록이 있었을 때).
+  if (open) await logClockAccess(me, "clock_out", open.workMode);
 }
 
 // 외출 시작 — 근무 중(출근했고 외출 안 한 상태)일 때만. 사유는 드롭다운에서 받는다.
