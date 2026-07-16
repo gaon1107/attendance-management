@@ -14,6 +14,48 @@ import { FaceGuide } from "@/app/components/FaceGuide";
 type Msg = { type: "ok" | "err" | "info"; text: string } | null;
 type WorkMode = "office" | "home" | "field";
 
+// requestVideoFrameCallback(rVFC)은 최신 브라우저 기능 — 타입에 없을 수 있어 any 없이 확장으로 다룬다.
+type RVFCVideo = HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number };
+
+// [촬영 오탐 방지] 카메라가 "새로 그린 프레임" 1장을 내놓을 때까지 기다린다.
+//  · 예열 전/느린 카메라는 같은 프레임을 반복해 내보내 3장이 바이트까지 똑같아진다 → 서버가 "정지영상"으로 오탐.
+//  · rVFC는 실제로 새 프레임이 표시될 때만 콜백하므로, 이 뒤에 찍으면 서로 다른 프레임이 된다(진짜 카메라는 센서 노이즈로도 바이트가 달라짐).
+//  · rVFC 미지원(Firefox·구형)은 기존과 동일하게 타임아웃만 기다린다(회귀 없음).
+function waitForFreshFrame(video: HTMLVideoElement, timeoutMs = 600): Promise<void> {
+  return new Promise((resolve) => {
+    const rvfc = (video as RVFCVideo).requestVideoFrameCallback;
+    if (typeof rvfc !== "function") {
+      setTimeout(resolve, timeoutMs);
+      return;
+    }
+    let done = false;
+    const t = setTimeout(() => {
+      if (!done) { done = true; resolve(); }
+    }, timeoutMs);
+    rvfc.call(video, () => {
+      if (!done) { done = true; clearTimeout(t); resolve(); }
+    });
+  });
+}
+
+// 바이트가 완전히 같은 사진 쌍이 있으면 그 중 한 장의 인덱스를 돌려준다(없으면 -1).
+// 서버 동일감지와 같은 기준(바이트 일치). 비용 절약 위해 크기가 같을 때만 바이트를 비교한다.
+async function findDuplicateIndex(blobs: Blob[]): Promise<number> {
+  for (let i = 1; i < blobs.length; i++) {
+    for (let j = 0; j < i; j++) {
+      if (blobs[i].size !== blobs[j].size) continue; // 크기 다르면 바이트도 다름 — 비교 생략
+      const [a, b] = await Promise.all([blobs[i].arrayBuffer(), blobs[j].arrayBuffer()]);
+      const ua = new Uint8Array(a), ub = new Uint8Array(b);
+      let same = true;
+      for (let k = 0; k < ua.length; k++) {
+        if (ua[k] !== ub[k]) { same = false; break; }
+      }
+      if (same) return i; // 중복 쌍의 한 장을 교체 대상으로
+    }
+  }
+  return -1;
+}
+
 // minPercent: 회사 설정 "얼굴 인식 기준 크기(%)" — 가이드 타원 크기에 반영(서버 검사 기준과 동일 값)
 export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "out"; minPercent?: number }) {
   const router = useRouter();
@@ -149,13 +191,24 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
     }
     submittingRef.current = true; // toBlob(비동기) 전에 동기로 잠가 빠른 두 번 클릭 차단
     try {
-      // 연속 3장 촬영 — 오려낸 사진·정지영상 방어(위조 판독은 전 장이 통과해야 진짜). 0.3초 간격.
+      // 연속 3장 촬영 — 오려낸 사진·정지영상 방어(위조 판독은 전 장이 통과해야 진짜).
       // ⚠️ 촬영 루프도 try 안에 둔다 — captureOneBlob 예외 시에도 finally로 잠금(submittingRef)이 반드시 풀리게.
+      // [오탐 방지] 카메라 예열 후 "새 프레임마다" 1장씩 → 같은 프레임 재촬영(바이트 동일) 원천 차단.
       const blobs: Blob[] = [];
+      await waitForFreshFrame(video); // ① 예열 — 실제 프레임이 흐르기 시작할 때까지
       for (let i = 0; i < 3; i++) {
-        if (i > 0) await new Promise((r) => setTimeout(r, 300));
+        await waitForFreshFrame(video); // ② 새로 그려진 프레임에 맞춰 촬영
         const b = await captureOneBlob(video, canvas);
         if (b) blobs.push(b);
+      }
+      // ③ 동일 안전망 — 그래도 바이트가 겹치면(느린 카메라) 유한 횟수 재촬영으로 교체.
+      //    끝까지 동일하면(정말 멈춘 카메라/가상카메라) 그대로 전송 → 서버가 정상적으로 걸러낸다(안전장치 유지).
+      for (let extra = 0; extra < 3; extra++) {
+        const dup = await findDuplicateIndex(blobs);
+        if (dup < 0) break;
+        await waitForFreshFrame(video);
+        const b = await captureOneBlob(video, canvas);
+        if (b) blobs[dup] = b;
       }
       if (blobs.length === 0) {
         setMsg({ type: "err", text: "촬영에 실패했습니다. 다시 시도해 주세요." });

@@ -1,50 +1,59 @@
-# Plan: 정상 출퇴근 사진 열람 제한(관리자 감시 우려 축소) — 2026-07-16 — 상태: **구현 중(승인됨)**
+# Plan: 얼굴 출퇴근 "3장 동일" 오탐 수정(A안) — 2026-07-17 — 상태: **구현 중(승인됨)**
 
-> 사장님 승인(7/16): 개인정보 ② 위험(관리자가 정상 직원 사진까지 열람 = 근로자 감시 우려) 축소.
-> **정상(ok) 사진은 관리자도 못 보게 하고, 위조 의심·판독 실패 건만 열람 가능.**
-> ※ 별도 대기 작업: 얼굴 촬영 "3장 동일" 오탐 수정(A안) — 아직 미구현, 이 작업 뒤 재개.
+> 사장님 승인: A안 = 근본 원인(촬영 방식) 개선. 서버 부정방지 장치는 그대로, 촬영이 **진짜로 다른 3장**을 보내게만.
+> 원인(확정): 카메라 예열 전 같은 프레임이 3번 찍혀 서버 "동일 3장 = 정지영상/가상카메라 의심"에 걸림(진짜 사람 오탐).
 
-## 1. 무엇을·왜
-관리자가 **멀쩡한(정상 확인된) 직원 얼굴 사진까지 자유롭게 열람**할 수 있는 것이 감시 우려의 핵심.
-→ 열람 목적(부정 방지 재검토)에 맞게 **정상 사진은 열람 차단**, 재검토가 필요한 건만 남긴다.
-판정 결과 배지("✓ 정상 98%")는 남긴다 — 그건 얼굴 이미지가 아니라 수치 결과다.
+## 1. 무엇을 (쉬운 말)
+카메라가 켜지자마자 같은 화면 3장을 찍던 걸, **①깨어난 뒤 ②실제로 화면이 바뀔 때마다** 3장 찍게 바꾼다.
+그래도 3장이 같으면(정말 멈춘 카메라) **몇 번 다시** 찍어 서로 다른 장 확보. 끝까지 같으면 그대로 보냄(서버가 판단).
 
-## 2. 핵심 원칙 — 화면만 숨기면 안 된다
-링크만 지우면 URL을 직접 치면 여전히 보인다(눈속임). **서버가 정상 사진을 아예 안 내줘야** 진짜 통제다.
-→ 화면(링크 숨김) + 서버(거부) **둘 다** 고친다.
-
-## 3. 열람 가능 기준 (확정)
-| 판정 | 의미 | 열람 |
-|---|---|---|
-| `ok` 정상 | 진짜로 확인됨 | ❌ **차단**(감시 우려 축소) |
-| `suspect` 위조 의심 | 재검토 필요 | ✅ 열람 |
-| `error` 판독 실패 | 판정 못 함(저조도 등) — 위조 숨어 있을 수 있음 | ✅ 열람 |
-- "정상만 숨김"에 정확히 부합. error는 정상이 아니므로 부정 방지 목적상 열람 유지.
-
-## 4. 수정 파일 (2곳)
-- **`webapp/app/api/clock-photo/[id]/route.ts`** — 회사격리 통과 뒤, `livenessStatus === "ok"`면 **403 반환**(파일 복호·전송 안 함). 서버측 실통제.
-- **`webapp/app/components/DetailTable.tsx`** `PhotoBadge` — `ok`면 [📷 사진 보기] 링크 대신 "(정상 · 열람 제한)" 회색 안내. suspect·error는 그대로 링크.
+## 2. 수정 파일 — `webapp/app/attendance/FaceClockPanel.tsx` 촬영부만
+- 모듈 헬퍼 추가: `waitForFreshFrame(video)` — `requestVideoFrameCallback`(rVFC)로 "새 프레임 도착" 1회 대기(폴백=타임아웃).
+  `findDuplicateIndex(blobs)` — 바이트 동일 쌍 탐지(크기 같을 때만 바이트 비교로 비용 절약).
+- `captureAndSubmit`의 3장 루프(현재 0.3초 고정)를 **예열 → 프레임 동기 3장 → 동일 안전망**으로 교체.
+- `captureOneBlob`·submit·FormData·fallback·카메라 정리 = **무변경**(재사용).
 
 ### 변경 없음 (🚧)
-- `my-records`(직원 본인 화면 — `showLiveness` 없어 원래 사진 안 보임) · 스키마 · `lib/clock-photo.ts`(암호화·파기) · 서버 판정 로직 · 촬영부.
+- 서버 `actions/face.ts`·`lib/liveness.ts`(동일감지·모델 판정·밝기) · 얼굴 등록(FaceCapture=1장) · 스키마 · 1280×720·품질0.9·재압축.
 
-## 5. 🛡️ 사이드 이펙트 방어
+## 3. 🛡️ 사이드 이펙트 방어
 | 위험 | 대응 |
 |---|---|
-| 화면만 숨기고 API는 뚫림(눈속임) | **API에서 ok 403** — URL 직접 접근도 차단 |
-| 위조/판독실패 열람이 막힘(부정 방지 약화) | ok만 차단, suspect·error는 유지 |
-| 직원 화면 영향 | my-records는 `showLiveness` 없음 — 영향 0 |
-| 열람기록·파기·캐시금지 | suspect·error 열람 시 기존대로 동작 |
+| **rVFC 미지원**(Firefox·구형) | `typeof video.requestVideoFrameCallback === "function"` 분기, 없으면 **기존 setTimeout(0.3초) 폴백** = 회귀 0 |
+| **예열·재캡처 무한 대기** | 전부 타임아웃·유한 횟수(추가 최대 3회). 최악이어도 3장 떠서 전송(출퇴근 안 막음) |
+| **바이트 비교 비용** | 크기 다르면 비교 스킵(대부분). 같을 때만 바이트 비교 |
+| **정말 멈춘 카메라(주입 공격)** | 재캡처해도 계속 동일 → **그대로 서버가 걸러야 정상**(안전장치 유지). 클라 재시도는 유한 |
+| **submit 이중잠금·fallback·카메라 정리** | 촬영 루프 내부만 교체, 나머지 유지 |
+| **no any / lint** | rVFC는 타입 확장으로 처리(any 금지) |
 
 ### 구현 후 테스트
-- [ ] suspect 사진 → 화면 링크 있음 + API 200(열람됨)
-- [ ] ok 사진 → 화면 링크 없음("열람 제한") + **API 직접 호출 시 403**
-- [ ] error 사진 → 링크 있음 + API 200
-- [ ] 파기된 사진(fileDeletedAt) → 기존대로 "(사진 파기됨)"
-- [ ] 직원(my-records) → 여전히 사진 열 안 보임
-- [ ] 회사 격리 유지(남의 회사 사진 404)
+- [ ] 코드: tsc·eslint 통과, 폴백 경로(rVFC 없을 때) 논리 확인
+- [ ] 정상 얼굴 출퇴근 여전히 동작(서버 무수정이라 회귀 없음)
+- [ ] **[사장님 웹캠]** 진짜 얼굴 출근이 이제 "정상"으로(오탐 사라짐) + 폰/정지영상은 여전히 "위조 의심"
 
-## 6. 작업분해
-- [ ] 1: API route — ok 403 — 커밋
-- [ ] 2: DetailTable — ok 링크 숨김 — 커밋
-- [ ] 3: 검증(실행 증거) + code-reviewer + 문서 갱신
+## 4. 핵심 로직 (계획 스니펫)
+```js
+function waitForFreshFrame(video, timeoutMs = 600) {
+  return new Promise((resolve) => {
+    const rvfc = video.requestVideoFrameCallback;
+    if (typeof rvfc !== "function") return void setTimeout(resolve, timeoutMs);
+    let done = false;
+    const t = setTimeout(() => { if (!done) { done = true; resolve(); } }, timeoutMs);
+    rvfc.call(video, () => { if (!done) { done = true; clearTimeout(t); resolve(); } });
+  });
+}
+// 예열 + 프레임 동기 3장
+await waitForFreshFrame(video);                 // 예열
+for (let i = 0; i < 3; i++) { await waitForFreshFrame(video); push(captureOneBlob()); }
+// 동일 안전망(유한 재캡처)
+for (let e = 0, d; e < 3 && (d = await findDuplicateIndex(blobs)) >= 0; e++) {
+  await waitForFreshFrame(video); blobs[d] = captureOneBlob();  // 중복 한 장 교체
+}
+```
+
+## 5. 작업분해
+- [ ] 1: `FaceClockPanel.tsx` 촬영부 교체(헬퍼+루프) — 커밋
+- [ ] 2: tsc·eslint·회귀 확인 → code-reviewer → 문서 갱신 (진짜 오탐 해소는 사장님 웹캠 최종확인)
+
+## 6. 구현 안 함
+- 서버 동일감지 완화(안전장치 유지) · 얼굴 등록 촬영 변경(1장이라 무관) · B/C안(미채택).
