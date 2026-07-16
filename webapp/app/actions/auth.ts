@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { createSession, destroySession, getCurrentUser } from "@/lib/session";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
+import { isBlockedForCompany } from "@/lib/ip-block";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -71,6 +72,16 @@ export async function login(
   const { ip, userAgent } = readClientMeta(await headers());
 
   const user = await prisma.user.findUnique({ where: { email } });
+
+  // [차단 IP] 관리자가 명단에 올린 IP는 로그인을 거부한다(접속/보안 5단계).
+  //  · 회사별 정책이라 **사용자를 찾은 뒤**(=회사를 안 뒤)에야 검사할 수 있다.
+  //    → 존재하지 않는 이메일로 두드리는 공격은 회사를 특정할 수 없어 대상이 아니다(기존 5회 실패 잠금이 담당).
+  //  · 🛡️ 사내망(officeIps)은 무엇을 넣든 통과 = 관리자 자기잠금 방지(lib/ip-block.ts).
+  //  · 무엇이 막혔는지 알려주지 않는다 — 공격자에게 "이 IP는 차단됨" 정보를 주지 않기 위해 기존과 같은 모호한 문구.
+  if (user && (await isBlockedForCompany(user.companyId, ip))) {
+    await recordAccess({ companyId: user.companyId, userId: user.id, actorName: user.name, emailTried: email, kind: "blocked", result: "blocked", ip, userAgent });
+    return { error: "이메일 또는 비밀번호가 올바르지 않습니다." };
+  }
 
   // 퇴사(비활성화)된 계정은 로그인 불가.
   if (user?.deactivatedAt) {

@@ -327,3 +327,21 @@ model AccessEvent {
   // 대량 삭제가 길게 잠기는 것을 막기 위해 createdAt 단독 색인을 둔다.
   @@index([createdAt])
 }
+
+// 차단 IP — 관리자가 명단에 올린 IP는 로그인을 거부한다(접속/보안 5단계).
+// ※ 유효기간 없음 = 관리자가 [해제]할 때까지 유지(사장님 결정 2026-07-16).
+//    자동 해제를 두면 "풀린 줄 모르는" 상태가 생겨 더 위험하다. 해제는 목록에서 버튼 한 번.
+// ※ 자기잠금 방어는 lib/ip-block.ts(사내망 우선 통과) + 추가 시 현재 IP 검사(actions/ip-block.ts)가 담당.
+//    회사 허용 IP(Company.officeIps)는 여기 뭘 넣든 **항상 이긴다**.
+// ※ 감사 로그 원칙: 만든 관리자가 삭제돼도 남도록 User와 외래키로 묶지 않고 이름 스냅샷만 저장.
+model BlockedIp {
+  id        String   @id @default(cuid())
+  companyId String // 회사 격리 — 차단은 회사별 정책이다
+  // 차단 대상: 정확한 IP("1.2.3.4") 또는 대역("1.2.3" = 1.2.3.* 전체). 판정은 lib/ip.ts의 ipMatches 재사용.
+  pattern   String
+  reason    String? // 왜 막았는지(관리자 메모)
+  createdBy String? // 막은 관리자 이름 스냅샷(계정이 지워져도 감사 추적 가능)
+  createdAt DateTime @default(now())
+
+  @@index([companyId])
+}

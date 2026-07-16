@@ -47,10 +47,15 @@ export async function chooseGps(): Promise<void> {
 export async function agreeBiometric(): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
+  const 재동의 = me.faceConsentAt !== null; // 처음 동의인지 재동의인지 — 감사에서 구분되어야 함
   await prisma.user.update({
     where: { id: me.id },
     data: { authMethod: "face", faceConsentAt: new Date() },
   });
+  // 감사로그 — 민감정보 "수집 개시" 시점을 남긴다. User.faceConsentAt은 현재 상태값이라
+  // 재동의하면 덮여서 과거 이력이 사라지므로, 이력은 접속기록(2년 보관)에만 남는다.
+  // ⚠️ 반드시 redirect 앞에. redirect()는 예외를 던져 뒤 코드를 실행하지 않는다.
+  await logAdminAction(me, "config", 재동의 ? "biometric_reconsent" : "biometric_consent");
   revalidatePath("/auth-method");
   redirect("/auth-method?consented=1");
 }

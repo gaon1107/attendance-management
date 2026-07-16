@@ -61,6 +61,12 @@ function baseMetaLabel(meta: string): string {
     face_rule: "얼굴 인식 기준",
     liveness_rule: "본인 확인 재검토 기준",
     work_rules: "근무제·기준시간",
+    // 생체정보 동의 개시(actions/authmethod.ts) — 수집 시작 시점. 파기와 짝을 이루는 감사 기록.
+    biometric_consent: "생체정보 동의",
+    biometric_reconsent: "생체정보 재동의",
+    // 차단 IP 관리(actions/ip-block.ts) — "이름:대상" 형식으로 어떤 IP인지 함께 남긴다
+    ip_block_add: "차단 IP 추가",
+    ip_block_remove: "차단 IP 해제",
     // 생체정보 파기 경로(actions/authmethod.ts)
     admin_revoke: "관리자 파기",
     self_withdraw: "본인 철회",

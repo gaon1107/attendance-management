@@ -5,9 +5,10 @@
 const TABS = [
   { href: "/security/logins", label: "로그인 이력" },
   { href: "/security/access", label: "접속 로그" },
+  { href: "/security/blocked", label: "차단 IP" },
 ];
 
-export function SecurityTabs({ active }: { active: "logins" | "access" }) {
+export function SecurityTabs({ active }: { active: "logins" | "access" | "blocked" }) {
   return (
     <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid var(--border)" }}>
       {TABS.map((t) => {
