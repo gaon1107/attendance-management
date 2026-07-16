@@ -14,8 +14,8 @@ import { purgeExpiredAccessEvents } from "@/lib/access-log";
 import { SecurityTabs } from "@/app/security/SecurityTabs";
 import { AccessLogClient, type AccessRow } from "./AccessLogClient";
 
-// 이 화면에서 다루는 접속 종류 — 로그인 계열 + 출퇴근(3단계에서 추가).
-const ACCESS_KINDS = ["login", "login_fail", "logout", "clock_in", "clock_out"];
+// 이 화면에서 다루는 종류 — 로그인 계열 + 출퇴근(3단계) + 관리자 동작(4단계: 설정변경·생체정보 파기).
+const ACCESS_KINDS = ["login", "login_fail", "logout", "clock_in", "clock_out", "config", "purge"];
 
 // Date → "MM-DD HH:MM"
 function fmtDateTime(d: Date): string {

@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { parseDays, daysToCsv } from "@/lib/workdays";
 import { stripCommas } from "@/lib/format";
+import { logAdminAction } from "@/lib/audit";
 
 export async function saveOfficeLocation(
   _prev: { error?: string; ok?: boolean },
@@ -37,6 +38,7 @@ export async function saveOfficeLocation(
     data: { officeLat: lat, officeLng: lng, officeRadiusM: Math.round(radius), officeAddress, officeAddressDetail },
   });
 
+  await logAdminAction(me, "config", "office_location"); // 감사로그(성공 시에만)
   revalidatePath("/settings");
   return { ok: true };
 }
@@ -66,6 +68,7 @@ export async function saveOfficeNetwork(
     data: { officeIps: raw || null },
   });
 
+  await logAdminAction(me, "config", "office_network"); // 감사로그 — 보안 핵심(허용 IP를 몰래 넓히는 것 추적)
   revalidatePath("/settings");
   return { ok: true };
 }
@@ -97,6 +100,7 @@ export async function saveFaceRule(
     data: { faceMinPercent: Math.round(percent), faceMinBrightness: Math.round(brightness) },
   });
 
+  await logAdminAction(me, "config", "face_rule"); // 감사로그(성공 시에만)
   revalidatePath("/settings");
   revalidatePath("/attendance");
   revalidatePath("/face-enroll");
@@ -125,6 +129,7 @@ export async function saveLivenessRule(
     data: { livenessPercent: Math.round(percent) },
   });
 
+  await logAdminAction(me, "config", "liveness_rule"); // 감사로그(성공 시에만)
   revalidatePath("/settings");
   return { ok: true };
 }
@@ -175,6 +180,7 @@ export async function saveWorkRules(
     },
   });
 
+  await logAdminAction(me, "config", "work_rules"); // 감사로그(성공 시에만)
   revalidatePath("/settings");
   return { ok: true };
 }

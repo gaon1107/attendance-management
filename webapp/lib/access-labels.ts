@@ -26,9 +26,26 @@ export function accessResultLabel(result: string): string {
 }
 
 // 부가정보(meta) → 사람이 읽을 설명. 알 수 없으면 빈 문자열.
-//  · 로그인 실패 사유(실패 분석용) + 출퇴근 근무형태(접속 로그 "비고"용)를 함께 다룬다.
+//  · 로그인 실패 사유 + 출퇴근 근무형태 + 관리자 동작 대상을 함께 다룬다.
+//  · "이름:대상" 형식도 지원한다(예: "admin_revoke:박성헌" → "관리자 파기 · 대상: 박성헌").
+//    관리자 파기는 "누구의" 생체정보를 지웠는지가 감사의 핵심이라 대상을 함께 남긴다.
 export function accessMetaLabel(meta: string | null | undefined): string {
   if (!meta) return "";
+
+  // "이름:대상" 분리 — 첫 콜론만 기준(대상 이름에 콜론이 있어도 안전).
+  const sep = meta.indexOf(":");
+  if (sep > 0) {
+    const base = baseMetaLabel(meta.slice(0, sep));
+    const extra = meta.slice(sep + 1).trim();
+    if (base && extra) return `${base} · 대상: ${extra}`;
+    if (base) return base;
+    return "";
+  }
+  return baseMetaLabel(meta);
+}
+
+// meta의 "이름" 부분 → 한글 라벨
+function baseMetaLabel(meta: string): string {
   const map: Record<string, string> = {
     // 로그인 실패 사유
     deactivated: "비활성(퇴사) 계정",
@@ -38,6 +55,16 @@ export function accessMetaLabel(meta: string | null | undefined): string {
     office: "사무실",
     home: "재택",
     field: "외근",
+    // 관리자 설정 변경 대상(actions/settings.ts가 meta에 넣는 값 — 값이 아니라 "어느 설정"인지만)
+    office_location: "사업장 위치",
+    office_network: "사내 네트워크 허용 IP",
+    face_rule: "얼굴 인식 기준",
+    liveness_rule: "본인 확인 재검토 기준",
+    work_rules: "근무제·기준시간",
+    // 생체정보 파기 경로(actions/authmethod.ts)
+    admin_revoke: "관리자 파기",
+    self_withdraw: "본인 철회",
+    switch_to_gps: "본인 GPS 전환",
   };
   return Object.hasOwn(map, meta) ? map[meta] : "";
 }

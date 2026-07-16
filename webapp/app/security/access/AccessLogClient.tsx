@@ -40,11 +40,13 @@ const RESULT_STYLE: Record<string, { bg: string; dot: string; color: string }> =
   blocked: { bg: "#FEE2E2", dot: "#B91C1C", color: "#B91C1C" },
 };
 
-// 동작 필터 — 로그인 계열/출퇴근 계열을 나눠 본다.
+// 동작 필터 — 로그인/출퇴근/관리자 동작을 나눠 본다.
+// ⚠️ export/route.ts의 KIND_GROUPS와 같은 규칙을 유지할 것(화면과 엑셀이 어긋나면 안 됨).
 const KIND_FILTERS = [
   { key: "all", label: "전체", kinds: [] as string[] },
   { key: "auth", label: "로그인", kinds: ["login", "login_fail", "logout"] },
   { key: "clock", label: "출퇴근", kinds: ["clock_in", "clock_out"] },
+  { key: "admin", label: "관리자 동작", kinds: ["config", "purge"] },
 ];
 
 export function AccessLogClient({
@@ -152,7 +154,7 @@ export function AccessLogClient({
 
       {/* 안내 */}
       <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
-        로그인·출퇴근 등 모든 접속을 IP·기기 기준으로 봅니다. <b>IP는 실제 운영 서버(외부 접속)에서만 정확</b>하며, 개발 환경에서는 내부 주소로 보일 수 있습니다.
+        로그인·출퇴근과 <b>관리자 동작(설정 변경·생체정보 파기)</b>을 IP·기기 기준으로 봅니다. <b>IP는 실제 운영 서버(외부 접속)에서만 정확</b>하며, 개발 환경에서는 내부 주소로 보일 수 있습니다.
         {!hasIpRule && (
           <> · <b style={{ color: "var(--warning)" }}>회사 허용 IP가 등록되지 않아 사내망/외부를 판정할 수 없습니다</b> — [설정 → 사내 네트워크]에서 등록하세요.</>
         )}
@@ -197,9 +199,10 @@ export function AccessLogClient({
                         <div style={{ fontWeight: 700 }}>{r.name}</div>
                         {r.email && <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{r.email}</div>}
                       </td>
+                      {/* 동작 + 상세(비고)를 아랫줄에. 라벨 자체에 괄호가 들어갈 수 있어 괄호로 감싸지 않는다. */}
                       <td style={td}>
-                        {r.kindLabel}
-                        {r.metaLabel && <span style={{ fontSize: 12, color: "var(--text-sub)", marginLeft: 6 }}>({r.metaLabel})</span>}
+                        <div>{r.kindLabel}</div>
+                        {r.metaLabel && <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{r.metaLabel}</div>}
                       </td>
                       <td style={{ ...td, color: "var(--text-sub)" }}>{r.device}</td>
                       <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.ip}</td>

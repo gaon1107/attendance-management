@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/session";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { purgeUserPhotos } from "@/lib/clock-photo";
+import { logAdminAction } from "@/lib/audit";
 
 // 동의 해제 시 보관 중인 출퇴근 사진도 즉시 파기(동의 화면의 "철회 시 삭제" 약속 이행).
 // 파기 실패가 철회 자체를 막으면 안 됨 — 로그만 남긴다(남은 파일은 90일 자동 파기가 처리).
@@ -25,6 +26,8 @@ export async function chooseGps(): Promise<void> {
     data: { authMethod: "gps", faceConsentAt: null }, // 얼굴에서 GPS로 바꾸면 동의도 해제
   });
   await purgePhotosSafely(me.id);
+  // 감사로그 — ⚠️ 반드시 redirect 앞에. redirect()는 예외를 던져 뒤 코드를 실행하지 않는다.
+  await logAdminAction(me, "purge", "switch_to_gps");
   revalidatePath("/auth-method");
   redirect("/attendance");
 }
@@ -51,6 +54,8 @@ export async function withdrawBiometric(): Promise<void> {
     data: { authMethod: "gps", faceConsentAt: null },
   });
   await purgePhotosSafely(me.id);
+  // 감사로그 — ⚠️ 반드시 redirect 앞에. redirect()는 예외를 던져 뒤 코드를 실행하지 않는다.
+  await logAdminAction(me, "purge", "self_withdraw");
   revalidatePath("/auth-method");
   redirect("/auth-method");
 }
@@ -68,5 +73,8 @@ export async function adminRevokeBiometric(formData: FormData): Promise<void> {
     data: { authMethod: "gps", faceConsentAt: null },
   });
   await purgePhotosSafely(target.id);
+  // 감사로그 — 관리자가 "누구의" 생체정보를 파기했는지가 핵심이라 대상 이름을 함께 남긴다.
+  // (회사 격리 검사를 통과한 뒤이므로 내 회사 직원임이 보장된다)
+  await logAdminAction(me, "purge", `admin_revoke:${target.name}`);
   revalidatePath("/biometrics");
 }
