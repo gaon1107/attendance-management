@@ -55,13 +55,21 @@ export function readClientMeta(h: HeaderLike): { ip: string | null; userAgent: s
   return { ip: getClientIp(h), userAgent: h.get("user-agent") };
 }
 
-// [1년 자동 파기] 접속기록은 IP·기기·이메일이 담긴 개인정보 → 보관기간이 지나면 지운다.
-// 보관기간 = 365일(사장님 결정 2026-07-16). 사진 90일 파기(clock-photo.ts)와 같은 방식:
-// 별도 스케줄러 없이, 보안 화면을 열 때 하루 1회만 실제로 돈다.
-// 사진과 달리 행 자체를 삭제한다(파일이 없어 "파기 표시"를 남길 대상이 없고, 기록 보존의무 대상도 아님).
+// [접속기록 자동 파기] 접속기록은 IP·기기·이메일이 담긴 개인정보 → 보관기간이 지나면 지운다.
+// 사진 90일 파기(clock-photo.ts)와 같은 방식: 별도 스케줄러 없이 보안 화면을 열 때 하루 1회만 돈다.
+//
+// 🚨 현재 비활성(PURGE_ENABLED=false) — 삭제는 되돌릴 수 없어 법적 확인 전까지 멈춘다(사장님 결정 2026-07-16).
+//    쟁점: 접속기록은 "개인정보라 빨리 지워야 하는 것"이 아니라 「개인정보의 안전성 확보조치 기준」상
+//    최소 1년(민감정보 처리 시스템은 2년) **보관 의무**가 있는 자료다. 이 제품은 얼굴=생체정보(민감정보)를
+//    처리하므로 2년이 맞을 가능성이 있다. security-architect·법무 확인 후 아래 두 상수를 확정할 것.
+//    ※ 사진(생체정보 원본)은 빨리 지울수록 좋고, 접속기록(감사 로그)은 오래 남겨야 한다 — 성격이 정반대다.
 export const ACCESS_RETENTION_DAYS = 365;
+const PURGE_ENABLED = false;
+
 let lastAccessPurgeAt = 0;
 export async function purgeExpiredAccessEvents(): Promise<void> {
+  if (!PURGE_ENABLED) return; // 법적 보관기간 확정 전까지 삭제하지 않는다(복구 불가)
+
   const now = Date.now();
   if (now - lastAccessPurgeAt < 24 * 60 * 60 * 1000) return; // 하루 1회
   lastAccessPurgeAt = now;
