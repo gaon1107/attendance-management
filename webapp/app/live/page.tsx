@@ -8,7 +8,7 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { ipMatches } from "@/lib/ip";
-import { workModeLabel, locationStatusLabel } from "@/lib/location";
+import { locationStatusLabel } from "@/lib/location";
 import { LiveClient, type LiveData, type WorkingPerson } from "./LiveClient";
 
 function hhmm(d: Date): string {
@@ -56,6 +56,9 @@ export default async function LivePage() {
 
   // 오늘 접속 집계 — 로그인·출퇴근 접속을 사내망/외부로 나눈다(officeIps 있을 때만 판정).
   const hasIpRule = Boolean(company?.officeIps && company.officeIps.trim());
+  // take는 상한(안전장치). 초과하면 조용히 잘려 숫자가 실제보다 작아지므로 잘림 여부를 함께 내려보낸다.
+  // (사무직 하루 수천 건은 현실적으로 드물지만, 잘렸다면 화면에 "+"로 정직하게 알린다 — 6단계와 같은 원칙)
+  const ACCESS_CAP = 5000;
   const accessEvents = await prisma.accessEvent.findMany({
     where: {
       companyId: me.companyId,
@@ -65,8 +68,10 @@ export default async function LivePage() {
       ip: { not: null },
     },
     select: { ip: true },
-    take: 5000,
+    take: ACCESS_CAP + 1, // +1로 "정확히 상한"과 "잘림"을 구분
   });
+  const accessCapped = accessEvents.length > ACCESS_CAP;
+  if (accessCapped) accessEvents.length = ACCESS_CAP;
   let officeCount = 0, outsideCount = 0, unknownCount = 0;
   for (const e of accessEvents) {
     const ip = (e.ip ?? "").trim();
@@ -86,7 +91,7 @@ export default async function LivePage() {
       : null,
     working: buckets,
     workingTotal,
-    access: { office: officeCount, outside: outsideCount, unknown: unknownCount, hasIpRule },
+    access: { office: officeCount, outside: outsideCount, unknown: unknownCount, hasIpRule, capped: accessCapped },
     generatedAt: hhmm(new Date()),
   };
 

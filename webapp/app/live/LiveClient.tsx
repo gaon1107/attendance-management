@@ -28,7 +28,7 @@ export type LiveData = {
   office: { lat: number; lng: number; radius: number; address: string | null } | null;
   working: { office: WorkingPerson[]; home: WorkingPerson[]; field: WorkingPerson[] };
   workingTotal: number;
-  access: { office: number; outside: number; unknown: number; hasIpRule: boolean };
+  access: { office: number; outside: number; unknown: number; hasIpRule: boolean; capped: boolean };
   generatedAt: string; // 이 데이터를 만든 시각 HH:MM
 };
 
@@ -38,8 +38,12 @@ export function LiveClient({ data }: { data: LiveData }) {
   const router = useRouter();
   const [auto, setAuto] = useState(true);
   const [pending, setPending] = useState(false);
+  // 인터벌 콜백이 항상 최신 auto 값을 읽도록 ref에 담아둔다(인터벌을 재생성하지 않기 위함).
+  // ⚠️ ref 대입은 렌더 중이 아니라 effect 안에서 한다(렌더 중 ref 수정은 React 안티패턴 — lint 에러).
   const autoRef = useRef(auto);
-  autoRef.current = auto;
+  useEffect(() => {
+    autoRef.current = auto;
+  }, [auto]);
 
   // 30초마다 서버 데이터 재요청. 탭이 숨겨져 있으면 건너뛴다(부하 절약).
   useEffect(() => {
@@ -115,7 +119,7 @@ export function LiveClient({ data }: { data: LiveData }) {
           {/* 오늘 접속(사내망/외부) — 지도 아래 */}
           <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", marginTop: 16 }}>
             <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", fontSize: 16, fontWeight: 700 }}>
-              오늘 접속 <span style={{ fontSize: 13, fontWeight: 400, color: "var(--text-sub)" }}>· 총 {accessTotal}건</span>
+              오늘 접속 <span style={{ fontSize: 13, fontWeight: 400, color: "var(--text-sub)" }}>· 총 {accessTotal}{a.capped ? "+" : ""}건</span>
             </div>
             <div className="kpi-grid" style={{ padding: 16, gap: 12 }}>
               {[
