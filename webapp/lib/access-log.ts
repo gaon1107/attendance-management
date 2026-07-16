@@ -69,6 +69,12 @@ export function readClientMeta(h: HeaderLike): { ip: string | null; userAgent: s
 //    이 숫자를 줄이는 것은 법 위반이 될 수 있다. 변경 전 반드시 법무 확인.
 export const ACCESS_RETENTION_DAYS = 730; // 2년 — 법정 하한(민감정보 처리 시스템)
 
+// 한 번에 지우는 건수. 2년치가 한꺼번에 만료되면 수십만 건이 될 수 있는데, 이를 단일 DELETE로 지우면
+// SQLite 쓰기 락이 길게 걸려 그 사이 출퇴근 기록이 대기한다. 작게 끊어 락을 짧게 쪼갠다.
+const PURGE_BATCH = 5000;
+// 한 번의 실행에서 도는 최대 배치 수(안전 상한). 남으면 다음 날 이어서 지운다 — 무한루프·장시간 점유 방지.
+const PURGE_MAX_BATCHES = 20;
+
 let lastAccessPurgeAt = 0;
 export async function purgeExpiredAccessEvents(): Promise<void> {
   const now = Date.now();
@@ -77,9 +83,27 @@ export async function purgeExpiredAccessEvents(): Promise<void> {
 
   try {
     const cutoff = new Date(now - ACCESS_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-    const r = await prisma.accessEvent.deleteMany({ where: { createdAt: { lt: cutoff } } });
-    if (r.count > 0) {
-      console.log(`[access-log] 보관기간(${ACCESS_RETENTION_DAYS}일) 지난 접속기록 ${r.count}건 파기 완료`);
+    let deleted = 0;
+
+    // 배치 삭제 — 만료분을 PURGE_BATCH건씩 끊어 지운다.
+    // id만 먼저 뽑아(색인 @@index([createdAt]) 사용) 그 id들만 지우는 2단계 방식:
+    // deleteMany에는 limit이 없어 "몇 건만 지우기"를 이렇게 표현한다.
+    for (let i = 0; i < PURGE_MAX_BATCHES; i++) {
+      const batch = await prisma.accessEvent.findMany({
+        where: { createdAt: { lt: cutoff } },
+        select: { id: true },
+        take: PURGE_BATCH,
+      });
+      if (batch.length === 0) break; // 지울 게 없으면 끝
+
+      const r = await prisma.accessEvent.deleteMany({ where: { id: { in: batch.map((b) => b.id) } } });
+      deleted += r.count;
+
+      if (batch.length < PURGE_BATCH) break; // 마지막 배치였음
+    }
+
+    if (deleted > 0) {
+      console.log(`[access-log] 보관기간(${ACCESS_RETENTION_DAYS}일) 지난 접속기록 ${deleted}건 파기 완료`);
     }
   } catch (e) {
     // 파기 실패가 화면 조회를 막으면 안 됨 — 로그만 남기고 나중에 재시도.

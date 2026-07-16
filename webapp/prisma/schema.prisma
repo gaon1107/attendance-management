@@ -319,4 +319,8 @@ model AccessEvent {
 
   @@index([companyId, createdAt])
   @@index([kind])
+  // 파기 전용 색인 — 파기 쿼리는 where: { createdAt: { lt: cutoff } }로 companyId가 없어
+  // 위 복합 색인(선두 컬럼=companyId)을 타지 못하고 풀스캔이 된다. 2년치가 쌓인 뒤 첫 파기 때
+  // 대량 삭제가 길게 잠기는 것을 막기 위해 createdAt 단독 색인을 둔다.
+  @@index([createdAt])
 }
