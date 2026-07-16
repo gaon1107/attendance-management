@@ -7,7 +7,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { workedMinutes, formatMinutes, isLate } from "@/lib/worktime";
 import { workModeLabel, locationStatusLabel } from "@/lib/location";
 import { effectiveWorkDays, isWorkDay } from "@/lib/workdays";
-import { countUncheckedAnomalies, ALERT_BADGE_DAYS } from "@/lib/anomaly";
+import { countUncheckedAnomalies } from "@/lib/anomaly";
 
 function hhmm(d: Date): string {
   return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -90,9 +90,12 @@ export default async function DashboardPage() {
   // 이상접속 미확인 건수(접속/보안 6단계) — 알림 화면과 **같은 함수**를 써서 두 곳 숫자가 어긋나지 않게 한다.
   // ⚠️ 이 부가 기능이 고장 나도 대시보드(본기능)는 떠야 한다 → 실패하면 0으로 두고 넘어간다.
   let alertCount = 0;
+  let alertCapped = false; // 기록이 너무 많아 일부만 검사한 경우 — 숫자가 실제보다 적다("N건+"로 표시)
   if (company) {
     try {
-      alertCount = await countUncheckedAnomalies(me.companyId, company, company.securityCheckedAt);
+      const r = await countUncheckedAnomalies(me.companyId, company, company.securityCheckedAt);
+      alertCount = r.count;
+      alertCapped = r.capped;
     } catch (e) {
       console.warn("[dashboard] 이상접속 집계 실패(대시보드는 정상 표시):", e);
     }
@@ -265,7 +268,8 @@ export default async function DashboardPage() {
               {alertCount > 0 && (
                 <Link href="/security/alerts" style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6", textDecoration: "none", color: "var(--text)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                   <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}>🔒 이상 접속</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: "var(--danger)" }}>{alertCount}건</span>
+                  {/* 잘렸으면 "+"를 붙여 정직하게 — 조용히 적은 숫자를 말하면 관리자가 다 봤다고 믿는다. */}
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "var(--danger)" }}>{alertCount}건{alertCapped ? "+" : ""}</span>
                 </Link>
               )}
               {/* 미출근 */}

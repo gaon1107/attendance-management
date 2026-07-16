@@ -43,6 +43,7 @@ export function AlertsClient({
   todayISO,
   capped,
   newCount,
+  badgeDays,
   checkedAtText,
   rules,
 }: {
@@ -52,6 +53,7 @@ export function AlertsClient({
   todayISO: string;
   capped: boolean;
   newCount: number;
+  badgeDays: number;
   checkedAtText: string | null;
   rules: { nightOn: boolean; nightStart: number; nightEnd: number; failOn: boolean; failCount: number };
 }) {
@@ -76,7 +78,8 @@ export function AlertsClient({
       <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.7 }}>
         지금 적용 중인 감지 기준: <b>차단 IP 재시도</b>(항상){" "}
         · <b>로그인 실패 반복</b> {rules.failOn ? `하루 ${rules.failCount}회 이상` : <span style={{ color: "var(--text-sub)" }}>꺼짐</span>}{" "}
-        · <b>심야 로그인</b> {rules.nightOn ? `${hh(rules.nightStart)}~${hh(rules.nightEnd)}` : <span style={{ color: "var(--text-sub)" }}>꺼짐</span>}{" "}
+        {/* 끝 시각은 미포함 — "22시~06시"라 쓰면 06:00 로그인도 뜰 것 같지만 안 뜬다. 정확히 "06시 전까지". */}
+        · <b>심야 로그인</b> {rules.nightOn ? `${hh(rules.nightStart)}부터 ${hh(rules.nightEnd)} 전까지` : <span style={{ color: "var(--text-sub)" }}>꺼짐</span>}{" "}
         <a href="/settings" style={{ color: "var(--primary)", fontWeight: 700, textDecoration: "none", marginLeft: 4 }}>기준 변경</a>
         <br />
         ※ 판정은 <b>지금 기준으로 매번 다시 계산</b>합니다 — 기준을 바꾸면 과거 기록의 표시도 함께 바뀝니다.
@@ -84,16 +87,20 @@ export function AlertsClient({
 
       {capped && (
         <div style={{ background: "#FEF3C7", color: "#B45309", fontSize: 13, fontWeight: 700, padding: "10px 12px", borderRadius: 8, marginBottom: 12, lineHeight: 1.6 }}>
-          ⚠️ 이 기간의 접속기록이 너무 많아 최근 2,000건까지만 검사했습니다. <b>표시된 횟수가 실제보다 적을 수 있습니다.</b> 기간을 좁혀서 다시 봐주세요.
+          ⚠️ 이 기간의 접속기록이 너무 많아 일부만 검사했습니다. 표시된 횟수가 실제보다 적을 수 있고,{" "}
+          <b>일부 이상은 목록에 아예 나타나지 않을 수 있습니다.</b> 기간을 좁혀서 다시 봐주세요.
+          {/* 축소 진술 금지 — "횟수가 적을 수 있다"고만 쓰면 관리자는 목록이 완전하다고 믿는다(검수 지적). */}
         </div>
       )}
 
       {/* KPI */}
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
         {[
-          { label: "이상 접속", value: rows.length, color: "var(--text)" },
-          { label: "주의", value: highCount, color: highCount > 0 ? "var(--danger)" : "var(--text-sub)" },
-          { label: "아직 확인 안 함", value: newCount, color: newCount > 0 ? "var(--warning)" : "var(--text-sub)" },
+          { label: "이상 접속 (선택 기간)", value: rows.length, color: "var(--text)" },
+          { label: "주의 (선택 기간)", value: highCount, color: highCount > 0 ? "var(--danger)" : "var(--text-sub)" },
+          // ⚠️ 이 KPI만 기준이 다르다 — 대시보드 배지와 같은 창(최근 N일). 라벨에 그 사실을 밝혀야
+          //    "왜 위 숫자랑 안 맞지?"가 생기지 않는다.
+          { label: `아직 확인 안 함 (최근 ${badgeDays}일)`, value: newCount, color: newCount > 0 ? "var(--warning)" : "var(--text-sub)" },
         ].map((k) => (
           <div key={k.label} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "18px 20px" }}>
             <div style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700, marginBottom: 14, whiteSpace: "nowrap" }}>{k.label}</div>
@@ -132,10 +139,14 @@ export function AlertsClient({
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
           {checkedAtText && <span style={{ fontSize: 12, color: "var(--text-sub)" }}>마지막 확인: {checkedAtText}</span>}
+          {/* 이 버튼은 "지금 이 순간까지 발생한 이상 전체"를 확인 처리한다(보고 있는 기간과 무관).
+              그러니 라벨도 "전부"라고 말해야 한다 — 화면 기간의 건수를 라벨로 쓰면 관리자가 본 적 없는
+              과거 경보까지 조용히 끄면서 "N건 확인"이라 말하는 거짓말이 된다(검수 지적). */}
           <form action={markSecurityChecked}>
             <button
               type="submit"
               disabled={newCount === 0}
+              title="지금까지 발생한 이상을 모두 확인한 것으로 표시합니다(보고 있는 기간과 무관)."
               style={{
                 height: 38, padding: "0 16px", borderRadius: 8, border: "1px solid var(--border)",
                 background: newCount > 0 ? "var(--primary)" : "#fff",
@@ -144,7 +155,7 @@ export function AlertsClient({
                 cursor: newCount > 0 ? "pointer" : "default",
               }}
             >
-              {newCount > 0 ? `확인함 (${newCount}건)` : "모두 확인됨"}
+              {newCount > 0 ? `${newCount}건 모두 확인` : "모두 확인됨"}
             </button>
           </form>
         </div>
@@ -217,7 +228,9 @@ export function AlertsClient({
 
       <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 12, lineHeight: 1.7 }}>
         · 같은 IP의 반복 시도는 <b>한 줄로 묶어</b> 횟수로 보여줍니다(하루 수천 건이 그대로 쌓이면 오히려 아무것도 못 봅니다).
-        <br />· 노란 배경 = 아직 확인하지 않은 이상입니다. [확인함]을 누르면 대시보드 배지가 꺼집니다.
+        <br />· 노란 배경 = 아직 확인하지 않은 이상입니다. <b>[모두 확인]은 지금까지 발생한 이상 전체</b>를 확인 처리합니다(보고 있는 기간과 무관).
+        <br />· 로그인 실패는 <b>자정을 기준으로 하루씩 끊어</b> 셉니다. 자정을 걸쳐 나눠 시도하면 각각 따로 세어져 기준에 안 걸릴 수 있습니다(이때는 <b>5회 실패 계정 잠금</b>이 함께 막습니다).
+        <br />· 접속 위치(IP) 판정은 <b>서버 설정에 따라 달라집니다</b>. 배포 시 설정이 없으면 모든 직원이 같은 IP로 보여 실패 알림이 잘못 뜰 수 있습니다.
         <br />· 이메일·문자 알림은 <b>서버 배포 후 지원 예정</b>입니다. 지금은 이 화면과 대시보드에서 확인해주세요.
       </div>
     </div>

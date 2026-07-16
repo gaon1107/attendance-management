@@ -7,7 +7,7 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { toISODate } from "@/lib/period";
-import { detectAnomalies, ALERT_BADGE_DAYS } from "@/lib/anomaly";
+import { detectAnomalies, countUncheckedAnomalies, badgeWindow, ALERT_BADGE_DAYS } from "@/lib/anomaly";
 import { SecurityTabs } from "@/app/security/SecurityTabs";
 import { AlertsClient, type AlertRow } from "./AlertsClient";
 
@@ -30,9 +30,9 @@ export default async function SecurityAlertsPage({
 
   const sp = await searchParams;
   const todayISO = toISODate(new Date());
-  const now = new Date();
-  // 기본 기간 = 최근 7일(대시보드 배지와 같은 창) — 알림은 오래된 것보다 최신이 중요하다.
-  const defFrom = toISODate(new Date(now.getTime() - (ALERT_BADGE_DAYS - 1) * 24 * 60 * 60 * 1000));
+  // 기본 기간 = 대시보드 배지와 **같은 창**(badgeWindow). 직접 계산하면 안 된다 —
+  // 배지는 시각 기준, 화면은 날짜 기준이라 창이 어긋나면 "배지는 켜졌는데 화면에선 끌 수 없는" 사고가 난다.
+  const defFrom = toISODate(badgeWindow().start);
   const defTo = todayISO;
   const normISO = (s: string | undefined, fb: string): string => {
     if (s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s + "T00:00:00").getTime())) return s;
@@ -69,6 +69,12 @@ export default async function SecurityAlertsPage({
 
   const { anomalies, capped } = await detectAnomalies(me.companyId, start, end, company);
 
+  // [확인함] 버튼의 건수는 **보고 있는 기간이 아니라 배지와 같은 창**에서 센다.
+  // 이유: 이 버튼은 "이 시각 이전 전부"를 확인 처리한다(securityCheckedAt = now). 화면에 보이는 기간의
+  // 건수를 라벨로 쓰면 "2건 확인"이라 말하고 실제로는 안 보이던 과거까지 묵살하는 거짓말이 된다.
+  // 배지와 같은 숫자를 쓰면 버튼·배지·대시보드가 항상 일치한다.
+  const unchecked = await countUncheckedAnomalies(me.companyId, company, company.securityCheckedAt);
+
   const checkedAt = company.securityCheckedAt;
   const rows: AlertRow[] = anomalies.map((a) => ({
     id: a.id,
@@ -84,8 +90,6 @@ export default async function SecurityAlertsPage({
     isNew: !checkedAt || a.at > checkedAt,
   }));
 
-  const newCount = rows.filter((r) => r.isNew).length;
-
   return (
     <AppShell user={me} active="security" title="이상 접속" subtitle={me.company.name}>
       <SecurityTabs active="alerts" />
@@ -94,8 +98,9 @@ export default async function SecurityAlertsPage({
         from={fromISO}
         to={toISO}
         todayISO={todayISO}
-        capped={capped}
-        newCount={newCount}
+        capped={capped || unchecked.capped}
+        newCount={unchecked.count}
+        badgeDays={ALERT_BADGE_DAYS}
         checkedAtText={checkedAt ? checkedAt.toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }) : null}
         rules={{
           nightOn: company.alertNightOn,

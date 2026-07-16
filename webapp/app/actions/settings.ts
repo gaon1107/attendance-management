@@ -200,8 +200,17 @@ export async function saveAlertRules(
   const nightOn = formData.get("alertNightOn") !== null;
   const failOn = formData.get("alertFailOn") !== null;
 
-  const nightStart = Number(formData.get("alertNightStart"));
-  const nightEnd = Number(formData.get("alertNightEnd"));
+  // ⚠️ 필드가 통째로 없으면 Number(null) = 0이라 검증을 그냥 통과한다(0시로 저장됨).
+  //    폼이 바뀌거나 요청이 조작되면 조용히 엉뚱한 값이 저장되므로 "없음"을 먼저 막는다.
+  const rawStart = formData.get("alertNightStart");
+  const rawEnd = formData.get("alertNightEnd");
+  const rawFail = formData.get("alertFailCount");
+  if (rawStart === null || rawEnd === null || rawFail === null) {
+    return { error: "입력값이 올바르지 않습니다. 화면을 새로고침한 뒤 다시 시도해주세요." };
+  }
+
+  const nightStart = Number(rawStart);
+  const nightEnd = Number(rawEnd);
   if (!Number.isInteger(nightStart) || nightStart < 0 || nightStart > 23) {
     return { error: "심야 시작 시각은 0~23 사이로 입력해주세요." };
   }
@@ -213,7 +222,7 @@ export async function saveAlertRules(
     return { error: "심야 시작과 끝이 같으면 하루 종일이 심야가 됩니다. 다르게 정해주세요." };
   }
 
-  const failCount = Number(formData.get("alertFailCount"));
+  const failCount = Number(rawFail);
   // 하한 3: 1~2회는 오타로도 나와 알림이 무의미해진다. 상한 50: 그 이상이면 사실상 꺼둔 것과 같다.
   if (!Number.isInteger(failCount) || failCount < 3 || failCount > 50) {
     return { error: "로그인 실패 기준은 3~50회 사이로 입력해주세요." };
