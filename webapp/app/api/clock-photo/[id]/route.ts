@@ -18,9 +18,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const photo = await prisma.clockPhoto.findFirst({ where: { id, companyId: me.companyId } });
   if (!photo) return NextResponse.json({ message: "사진 기록을 찾을 수 없습니다." }, { status: 404 });
 
-  // ⑤ 정상 확인된 사진은 열람 대상이 아니다 — 부정 방지 재검토(위조 의심·판독 실패)만 연다.
-  //    화면에서 링크를 숨겨도 URL로 직접 요청할 수 있으므로 서버에서 실제로 거부한다(개인정보 최소열람).
-  if (photo.livenessStatus === "ok") {
+  // ⑤ 열람은 부정 방지 재검토가 필요한 건(위조 의심·판독 실패)만 허용한다 — 정상 확인 사진은 차단.
+  //    ⚠️ **화이트리스트**로 막는다: "정상(ok)만 차단"이 아니라 "suspect·error만 허용".
+  //    이유 — 나중에 판정 상태값이 하나라도 늘면(예: pending) 블랙리스트("ok만 차단")는 그 사진을 자동 노출한다.
+  //    생체정보 최소열람이 목적이므로, 모르는 상태는 막는 쪽(fail-safe)이 맞다.
+  //    화면 링크를 숨겨도 URL로 직접 요청할 수 있으므로 서버에서 실제로 거부한다.
+  if (photo.livenessStatus !== "suspect" && photo.livenessStatus !== "error") {
     return NextResponse.json({ message: "정상 확인된 사진은 열람 대상이 아닙니다." }, { status: 403 });
   }
 

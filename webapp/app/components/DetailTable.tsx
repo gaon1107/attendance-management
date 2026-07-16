@@ -17,9 +17,9 @@ function PhotoBadge({ p, label }: { p: ClockPhotoLite; label: string }) {
   else { bg = "#F3F4F6"; color = "#6B7280"; text = "판독 실패"; }
   const scoreText = p.livenessScore === null ? "" : ` ${Math.round(p.livenessScore * 100)}%`;
   const suspect = p.livenessStatus === "suspect";
-  // 정상(ok) 사진은 열람 대상이 아니다 — 관리자 감시 우려 축소(서버 API도 ok는 403으로 거부).
-  //   부정 방지 재검토가 필요한 위조 의심(suspect)·판독 실패(error)만 [사진 보기]를 연다.
-  const viewable = p.livenessStatus !== "ok";
+  // 부정 방지 재검토가 필요한 위조 의심(suspect)·판독 실패(error)만 [사진 보기]를 연다(감시 우려 축소).
+  //   화이트리스트로 판정한다 — 서버 API(route.ts ⑤)와 동일 기준. 모르는 상태는 안 여는 쪽(fail-safe).
+  const viewable = p.livenessStatus === "suspect" || p.livenessStatus === "error";
 
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
