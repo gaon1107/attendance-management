@@ -7,6 +7,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { workedMinutes, formatMinutes, isLate } from "@/lib/worktime";
 import { workModeLabel, locationStatusLabel } from "@/lib/location";
 import { effectiveWorkDays, isWorkDay } from "@/lib/workdays";
+import { countUncheckedAnomalies, ALERT_BADGE_DAYS } from "@/lib/anomaly";
 
 function hhmm(d: Date): string {
   return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -33,10 +34,14 @@ export default async function DashboardPage() {
   });
   const employeeCount = employees.length;
 
-  // 근무기준(지각 판정용) + 회사 기본 근무요일
+  // 근무기준(지각 판정용) + 회사 기본 근무요일 + 이상접속 감지 기준(6단계 — 조회를 늘리지 않고 같이 가져온다)
   const company = await prisma.company.findUnique({
     where: { id: me.companyId },
-    select: { workStartTime: true, lateGraceMin: true, workDays: true },
+    select: {
+      workStartTime: true, lateGraceMin: true, workDays: true,
+      securityCheckedAt: true,
+      alertNightOn: true, alertNightStart: true, alertNightEnd: true, alertFailOn: true, alertFailCount: true,
+    },
   });
   const hasRule = !!company?.workStartTime;
 
@@ -81,6 +86,17 @@ export default async function DashboardPage() {
     orderBy: { createdAt: "desc" },
     select: { title: true, createdAt: true },
   });
+
+  // 이상접속 미확인 건수(접속/보안 6단계) — 알림 화면과 **같은 함수**를 써서 두 곳 숫자가 어긋나지 않게 한다.
+  // ⚠️ 이 부가 기능이 고장 나도 대시보드(본기능)는 떠야 한다 → 실패하면 0으로 두고 넘어간다.
+  let alertCount = 0;
+  if (company) {
+    try {
+      alertCount = await countUncheckedAnomalies(me.companyId, company, company.securityCheckedAt);
+    } catch (e) {
+      console.warn("[dashboard] 이상접속 집계 실패(대시보드는 정상 표시):", e);
+    }
+  }
 
   // 실제 데이터로만 집계 (DB에 없는 값은 만들지 않는다)
   const checkedInPeople = new Set(todays.map((r) => r.userId)).size;
@@ -244,6 +260,14 @@ export default async function DashboardPage() {
           <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
             <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", fontSize: 15, fontWeight: 700 }}>오늘 알림</div>
             <div style={{ display: "flex", flexDirection: "column" }}>
+              {/* 이상 접속(6단계) — 있을 때만 표시. 보안 사안이라 목록 맨 위에 둔다.
+                  건수는 [보안로그 → 이상 접속]에서 [확인함]을 누르면 0이 된다(같은 판정 함수를 씀). */}
+              {alertCount > 0 && (
+                <Link href="/security/alerts" style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6", textDecoration: "none", color: "var(--text)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}>🔒 이상 접속</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "var(--danger)" }}>{alertCount}건</span>
+                </Link>
+              )}
               {/* 미출근 */}
               <Link href="/records" style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6", textDecoration: "none", color: "var(--text)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
