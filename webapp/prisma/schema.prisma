@@ -314,7 +314,10 @@ model AccessEvent {
   ip         String?  // 접속 IP(개발 PC는 127.0.0.1). 프록시 뒤 운영에서만 진짜 외부 IP.
   userAgent  String?  // 원본 User-Agent(감사·추후 분석용).
   device     String?  // 표시용 기기 라벨(예: "iPhone" · "Windows PC"). userAgent에서 파생.
-  meta       String?  // 부가정보(JSON 문자열). 필요 시만.
+  // 부가정보(평문 짧은 라벨). 예: "bad_credentials"(로그인 실패 사유) · "office"(출퇴근 근무형태)
+  //   · "office_network"(바뀐 설정 이름) · "admin_revoke:홍길동 (계정 xxx)"(파기 대상).
+  // ⚠️ 설정 "값"·비밀값은 넣지 않는다(로그가 유출 통로가 됨). 표시 라벨은 lib/access-labels.ts.
+  meta       String?
   createdAt  DateTime @default(now())
 
   @@index([companyId, createdAt])

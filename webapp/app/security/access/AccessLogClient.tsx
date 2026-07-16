@@ -11,7 +11,7 @@ export type AccessRow = {
   timeText: string;
   name: string;
   email: string;
-  kind: string; // login | login_fail | logout | clock_in | clock_out
+  kind: string; // login | login_fail | logout | clock_in | clock_out | config | purge
   kindLabel: string;
   device: string;
   ip: string;
@@ -46,7 +46,8 @@ const KIND_FILTERS = [
   { key: "all", label: "전체", kinds: [] as string[] },
   { key: "auth", label: "로그인", kinds: ["login", "login_fail", "logout"] },
   { key: "clock", label: "출퇴근", kinds: ["clock_in", "clock_out"] },
-  { key: "admin", label: "관리자 동작", kinds: ["config", "purge"] },
+  // 라벨이 "관리자 동작"이 아닌 이유: 생체정보 파기에는 직원 "본인 철회"도 섞인다(대부분은 관리자 동작).
+  { key: "admin", label: "설정·파기", kinds: ["config", "purge"] },
 ];
 
 export function AccessLogClient({
@@ -83,7 +84,8 @@ export function AccessLogClient({
   const uniqueIps = new Set(shown.filter((r) => r.ip !== "—").map((r) => r.ip)).size;
 
   const kpis = [
-    { label: "전체 접속", value: shown.length, unit: "건", color: "var(--text)" },
+    // "접속"이 아니라 "기록" — 설정 변경·파기 같은 관리자 동작도 함께 세기 때문(4단계).
+    { label: "전체 기록", value: shown.length, unit: "건", color: "var(--text)" },
     { label: "사내망", value: officeCount, unit: "건", color: "var(--success)" },
     { label: "외부 접속", value: outsideCount, unit: "건", color: outsideCount > 0 ? "var(--warning)" : "var(--text)" },
     { label: "접속 IP 종류", value: uniqueIps, unit: "개", color: "var(--text)" },

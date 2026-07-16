@@ -1,5 +1,5 @@
-// 접속 로그(관리자 전용) — 로그인·출퇴근 등 모든 접속을 IP·기기 중심으로 조회.
-//  · 데이터: AccessEvent 전체 종류(로그인/실패/로그아웃/출근/퇴근). 회사 격리(companyId = 내 회사).
+// 접속 로그(관리자 전용) — 로그인·출퇴근·관리자 동작을 IP·기기 중심으로 조회.
+//  · 데이터: AccessEvent(로그인/실패/로그아웃/출근/퇴근/설정변경/생체정보 파기). 회사 격리(companyId = 내 회사).
 //  · 사내망/외부 판정: 회사 허용 IP(officeIps)와 대조 — 출퇴근 위치확인과 동일한 ipMatches 규칙 사용(무수정 재사용).
 //  · 기간: createdAt 기준(기본 이번 달), 성능 위해 최대 92일 — 로그인 이력 화면과 동일 규칙.
 import { redirect } from "next/navigation";
@@ -35,7 +35,7 @@ export default async function AccessLogPage({
   if (!me) redirect("/login");
   if (me.role !== "admin") redirect("/attendance");
 
-  // 접속기록 1년 자동 파기의 정기 트리거 — 관리자가 이 화면을 열 때(하루 1회만 실제 동작),
+  // 접속기록 2년 자동 파기의 정기 트리거 — 관리자가 이 화면을 열 때(하루 1회만 실제 동작),
   // 화면 응답을 보낸 뒤(after) 실행되어 조회 속도에 영향 없음. (사진 90일 파기와 동일 방식)
   after(() => purgeExpiredAccessEvents());
 
