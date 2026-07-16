@@ -2,7 +2,7 @@
 // 차단 IP 관리(관리자) — 추가 폼 + 현재 명단 + 차단 후보.
 //  · 권한·회사격리·검증은 서버(page.tsx / actions/ip-block.ts)가 책임. 여기선 입력·표시만.
 //  · 폼이 넓어 어색하지 않도록 .split-2 2단 배치(디자인룰 §2).
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { addBlockedIp, removeBlockedIp } from "@/app/actions/ip-block";
 
 export type BlockedRow = {
@@ -44,6 +44,14 @@ export function BlockedIpClient({
   const [pattern, setPattern] = useState("");
   const [reason, setReason] = useState("");
 
+  // 저장에 성공하면 입력칸을 비운다 — 안 비우면 연타 시 "이미 차단 목록에 있는 IP" 에러가 뜬다.
+  useEffect(() => {
+    if (state.ok) {
+      setPattern("");
+      setReason("");
+    }
+  }, [state]);
+
   return (
     <div>
       {/* 안내 — 이 기능의 위험과 안전장치를 먼저 알린다 */}
@@ -74,8 +82,14 @@ export function BlockedIpClient({
                 value={pattern}
                 onChange={(e) => setPattern(e.target.value)}
               />
-              <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 6 }}>
+              <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 6, lineHeight: 1.6 }}>
                 뒷자리를 빼면 그 대역 전체가 막힙니다. <b>넓게 막을수록 애먼 사람이 막힐 수 있으니</b> 되도록 정확한 IP를 쓰세요.
+                {pattern.includes(":") && (
+                  <>
+                    <br />
+                    <b style={{ color: "var(--warning)" }}>⚠️ IPv6는 이 주소와 정확히 같을 때만 막힙니다</b>(대역 차단 불가). IPv6는 주소가 자주 바뀌어 차단 효과가 낮습니다.
+                  </>
+                )}
               </div>
             </div>
             <div style={{ marginBottom: 16 }}>
@@ -202,7 +216,7 @@ export function BlockedIpClient({
                       {r.pattern}
                       {r.ineffective && (
                         <div style={{ fontSize: 12, fontWeight: 400, color: "var(--warning)" }}>
-                          사내망과 겹쳐 실제로는 차단되지 않습니다
+                          사내망과 겹쳐 실제로는 차단되지 않습니다(사내망이 항상 우선)
                         </div>
                       )}
                     </td>

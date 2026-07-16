@@ -14,8 +14,10 @@ import { purgeExpiredAccessEvents } from "@/lib/access-log";
 import { SecurityTabs } from "@/app/security/SecurityTabs";
 import { AccessLogClient, type AccessRow } from "./AccessLogClient";
 
-// 이 화면에서 다루는 종류 — 로그인 계열 + 출퇴근(3단계) + 관리자 동작(4단계: 설정변경·생체정보 파기).
-const ACCESS_KINDS = ["login", "login_fail", "logout", "clock_in", "clock_out", "config", "purge"];
+// 이 화면에서 다루는 종류 — 로그인 계열 + 출퇴근(3단계) + 관리자 동작(4단계) + 차단 거부(5단계).
+// ⚠️ 새 kind를 기록하기 시작하면 **반드시 여기와 export/route.ts의 KIND_GROUPS·화면 필터에 함께 추가**할 것.
+//    빠뜨리면 DB엔 쌓이는데 화면·엑셀 어디에도 안 보이고 2년 뒤 조용히 파기된다(5단계에서 실제로 겪음).
+const ACCESS_KINDS = ["login", "login_fail", "logout", "clock_in", "clock_out", "config", "purge", "blocked"];
 
 // Date → "MM-DD HH:MM"
 function fmtDateTime(d: Date): string {

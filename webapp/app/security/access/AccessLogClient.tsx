@@ -44,7 +44,7 @@ const RESULT_STYLE: Record<string, { bg: string; dot: string; color: string }> =
 // ⚠️ export/route.ts의 KIND_GROUPS와 같은 규칙을 유지할 것(화면과 엑셀이 어긋나면 안 됨).
 const KIND_FILTERS = [
   { key: "all", label: "전체", kinds: [] as string[] },
-  { key: "auth", label: "로그인", kinds: ["login", "login_fail", "logout"] },
+  { key: "auth", label: "로그인", kinds: ["login", "login_fail", "logout", "blocked"] },
   { key: "clock", label: "출퇴근", kinds: ["clock_in", "clock_out"] },
   // 라벨이 "관리자 동작"이 아닌 이유: 생체정보 파기에는 직원 "본인 철회"도 섞인다(대부분은 관리자 동작).
   { key: "admin", label: "설정·파기", kinds: ["config", "purge"] },

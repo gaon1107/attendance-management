@@ -34,11 +34,11 @@ export function isIpBlocked(ip: string | null, officeIps: string | null | undefi
 export async function isBlockedForCompany(companyId: string, ip: string | null): Promise<boolean> {
   if (!ip) return false;
   try {
-    const [company, blocks] = await Promise.all([
-      prisma.company.findUnique({ where: { id: companyId }, select: { officeIps: true } }),
-      prisma.blockedIp.findMany({ where: { companyId }, select: { pattern: true } }),
-    ]);
-    if (blocks.length === 0) return false; // 규칙이 없으면 볼 것도 없음(대부분의 경우)
+    // 차단 규칙부터 조회 — 대부분의 회사는 규칙이 0건이라 여기서 끝난다(로그인마다 회사 조회 1회 절약).
+    const blocks = await prisma.blockedIp.findMany({ where: { companyId }, select: { pattern: true } });
+    if (blocks.length === 0) return false;
+
+    const company = await prisma.company.findUnique({ where: { id: companyId }, select: { officeIps: true } });
     return isIpBlocked(ip, company?.officeIps ?? null, blocks);
   } catch (e) {
     console.warn("[ip-block] 차단 조회 실패(차단하지 않고 진행):", e);
