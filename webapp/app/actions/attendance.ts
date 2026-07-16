@@ -18,20 +18,26 @@ async function logClockAccess(
   kind: "clock_in" | "clock_out",
   meta?: string | null
 ): Promise<void> {
-  // 헤더는 after 밖에서 미리 읽는다(Next 16: 서버액션은 안에서도 되지만, 페이지와 규칙을 통일).
-  const { ip, userAgent } = readClientMeta(await headers());
-  after(() =>
-    recordAccess({
-      companyId: me.companyId,
-      userId: me.id,
-      actorName: me.name,
-      kind,
-      result: "success",
-      ip,
-      userAgent,
-      meta: meta ?? null,
-    })
-  );
+  // ⚠️ 전체를 try/catch로 감싼다: recordAccess 안쪽뿐 아니라 headers()·after() 호출 자체가 실패해도
+  //    출퇴근이 에러화면으로 끝나면 안 된다(DB엔 출근이 남았는데 사용자는 실패로 오해 → 재클릭 시 조용히 무시됨).
+  try {
+    // 헤더는 after 밖에서 미리 읽는다(Next 16: 서버액션은 안에서도 되지만, 페이지와 규칙을 통일).
+    const { ip, userAgent } = readClientMeta(await headers());
+    after(() =>
+      recordAccess({
+        companyId: me.companyId,
+        userId: me.id,
+        actorName: me.name,
+        kind,
+        result: "success",
+        ip,
+        userAgent,
+        meta: meta ?? null,
+      })
+    );
+  } catch (e) {
+    console.warn("[access-log] 출퇴근 접속기록 등록 실패(출퇴근은 정상 처리됨):", e);
+  }
 }
 
 // 출근 — 근무형태(사무실/재택/외근)와, 사무실이면 현재 좌표를 받는다.

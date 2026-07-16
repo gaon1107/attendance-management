@@ -73,8 +73,10 @@ export async function purgeExpiredAccessEvents(): Promise<void> {
       console.log(`[access-log] 보관기간(${ACCESS_RETENTION_DAYS}일) 지난 접속기록 ${r.count}건 파기 완료`);
     }
   } catch (e) {
-    // 파기 실패가 화면 조회를 막으면 안 됨 — 로그만 남기고 다음 기회에 재시도
-    lastAccessPurgeAt = 0;
-    console.error("[access-log] 자동 파기 실패:", e);
+    // 파기 실패가 화면 조회를 막으면 안 됨 — 로그만 남기고 나중에 재시도.
+    // ⚠️ 0으로 되돌리지 않는다: DB 잠금·타임아웃 같은 장애 중이면 화면을 열 때마다 무거운 DELETE를
+    //    다시 던져 부하를 키운다. 1시간 뒤 재시도하도록 뒤로 물린다(백오프).
+    lastAccessPurgeAt = now - 23 * 60 * 60 * 1000;
+    console.error("[access-log] 자동 파기 실패(1시간 뒤 재시도):", e);
   }
 }

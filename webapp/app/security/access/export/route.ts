@@ -57,8 +57,10 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   // 동작 필터(전체/로그인/출퇴근) — 알 수 없는 값이면 전체로 취급(URL 조작 방어).
+  // ⚠️ hasOwn 필수: 그냥 KIND_GROUPS[key]로 읽으면 "constructor"·"__proto__" 같은 프로토타입 키가
+  //    함수·객체를 돌려줘 ?? 를 통과하고 prisma에 넘어가 500이 난다(검수 지적 반영).
   const kindKey = url.searchParams.get("kind") ?? "all";
-  const kinds = KIND_GROUPS[kindKey] ?? ACCESS_KINDS;
+  const kinds = Object.hasOwn(KIND_GROUPS, kindKey) ? KIND_GROUPS[kindKey] : ACCESS_KINDS;
 
   // 사내망 판정 기준 = 회사 허용 IP(화면과 동일).
   const company = await prisma.company.findUnique({
@@ -97,7 +99,8 @@ export async function GET(request: Request): Promise<Response> {
     };
   });
 
-  // 통합검색어(q)가 있으면 화면과 동일하게 거른다 → "보이는 것만" 엑셀에.
+  // 통합검색어(q)가 있으면 화면과 동일한 규칙으로 거른다.
+  // ※ 조회 상한은 화면(2000)보다 크므로(감사 목적) 엑셀이 화면보다 많을 수 있다 — 의도된 차이.
   const terms = queryTerms(url.searchParams.get("q") ?? "");
   const filtered = terms.length ? rows.filter((r) => matchesTerms(r.search, terms)) : rows;
 

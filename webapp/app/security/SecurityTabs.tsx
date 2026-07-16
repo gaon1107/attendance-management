@@ -11,7 +11,8 @@ export function SecurityTabs({ active }: { active: "logins" | "access" }) {
   return (
     <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid var(--border)" }}>
       {TABS.map((t) => {
-        const on = t.href.endsWith(active);
+        // 정확히 일치로 판정 — endsWith면 "/security/xxx-access" 같은 경로가 생겼을 때 두 탭이 동시에 켜진다.
+        const on = t.href === `/security/${active}`;
         return (
           <a
             key={t.href}

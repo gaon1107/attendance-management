@@ -25,13 +25,19 @@ export function accessResultLabel(result: string): string {
   return result;
 }
 
-// 실패 사유(meta) → 사람이 읽을 설명(로그인 실패 분석용). 알 수 없으면 빈 문자열.
+// 부가정보(meta) → 사람이 읽을 설명. 알 수 없으면 빈 문자열.
+//  · 로그인 실패 사유(실패 분석용) + 출퇴근 근무형태(접속 로그 "비고"용)를 함께 다룬다.
 export function accessMetaLabel(meta: string | null | undefined): string {
   if (!meta) return "";
   const map: Record<string, string> = {
+    // 로그인 실패 사유
     deactivated: "비활성(퇴사) 계정",
     locked: "잠금 상태",
     bad_credentials: "비밀번호 불일치",
+    // 출퇴근 근무형태(actions/attendance.ts가 meta에 넣는 값)
+    office: "사무실",
+    home: "재택",
+    field: "외근",
   };
-  return map[meta] ?? "";
+  return Object.hasOwn(map, meta) ? map[meta] : "";
 }
