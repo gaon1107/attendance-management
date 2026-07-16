@@ -54,3 +54,27 @@ export async function recordAccess(e: AccessInput): Promise<void> {
 export function readClientMeta(h: HeaderLike): { ip: string | null; userAgent: string | null } {
   return { ip: getClientIp(h), userAgent: h.get("user-agent") };
 }
+
+// [1년 자동 파기] 접속기록은 IP·기기·이메일이 담긴 개인정보 → 보관기간이 지나면 지운다.
+// 보관기간 = 365일(사장님 결정 2026-07-16). 사진 90일 파기(clock-photo.ts)와 같은 방식:
+// 별도 스케줄러 없이, 보안 화면을 열 때 하루 1회만 실제로 돈다.
+// 사진과 달리 행 자체를 삭제한다(파일이 없어 "파기 표시"를 남길 대상이 없고, 기록 보존의무 대상도 아님).
+export const ACCESS_RETENTION_DAYS = 365;
+let lastAccessPurgeAt = 0;
+export async function purgeExpiredAccessEvents(): Promise<void> {
+  const now = Date.now();
+  if (now - lastAccessPurgeAt < 24 * 60 * 60 * 1000) return; // 하루 1회
+  lastAccessPurgeAt = now;
+
+  try {
+    const cutoff = new Date(now - ACCESS_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    const r = await prisma.accessEvent.deleteMany({ where: { createdAt: { lt: cutoff } } });
+    if (r.count > 0) {
+      console.log(`[access-log] 보관기간(${ACCESS_RETENTION_DAYS}일) 지난 접속기록 ${r.count}건 파기 완료`);
+    }
+  } catch (e) {
+    // 파기 실패가 화면 조회를 막으면 안 됨 — 로그만 남기고 다음 기회에 재시도
+    lastAccessPurgeAt = 0;
+    console.error("[access-log] 자동 파기 실패:", e);
+  }
+}

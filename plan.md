@@ -1,95 +1,108 @@
-# Plan: 접속/보안 모니터링 (2번 화면군, 풀세트) — 2026-07-14 — 상태: 검토 대기
+# Plan: 접속/보안 3단계 — IP·기기 접속 로그 (2026-07-16) — 상태: **✅ 승인됨(옵션 A) · 구현 중**
 
-> 근거·영향분석: research.md. 사장님 결정(7/14): **③ 풀세트**(로그인 이력 + IP·기기 접속로그 + 이상알림 + 차단IP·자동차단).
-> 큰 작업이라 **6단계로 분해**한다. 각 단계 = 독립적으로 완성·커밋·검증 가능. **한 단계 끝날 때마다 보고 후 다음 단계로.**
-
----
-
-## ⚠️ 먼저 짚는 현실 (사장님 확인 필요 — 아래 "메모 공간"에 O/X)
-1. **개발 PC(localhost)에서는 IP가 `127.0.0.1`로만 잡힙니다.** 진짜 외부 IP·해외 판정은 **운영 서버 배포 후**에야 보입니다. 이번엔 "구조·화면·형태"를 완성하고, 실제 값 검증은 배포 후가 됩니다. → 진행해도 될까요?
-2. **이메일/SMS 실발송 수단이 아직 없습니다.** 이상 접속 알림은 이번에 **"앱 안 대시보드 알림 + 설정 화면"까지** 만들고, **이메일/SMS는 켜고 끄는 자리만 두되 실제 발송은 다음(인프라 붙일 때)**으로 둡니다. → 이 방식 OK?
-3. **해외/국가 판정(GeoIP)** 은 외부 데이터가 필요합니다. 이번엔 회사 허용IP 기준 **"사내망 / 외부"까지만** 판정하고, 해외·국가 표기는 **자리만** 둡니다(나중에 GeoIP 붙이면 채워짐). → OK?
-4. **자동차단**은 잘못 만들면 관리자 본인이 잠깁니다. 그래서 **"현재 접속 IP·회사 허용IP는 절대 차단 못 하게" 안전장치**를 먼저 넣고, 차단은 **로그인·출퇴근 진입점에서만** 적용(전체 미들웨어는 커스텀 Next 문서 확인 후 결정)합니다. → OK?
+> 근거·영향분석: research.md(2026-07-16). 전체 6단계 중 **3단계**. 1~2단계는 완료(커밋 5d596d8·8474980·daf2ce2).
+> 사장님 결정(7/16): **접속기록 보관 = 1년**, 개발 PC IP 한계(127.0.0.1) 감수하고 진행.
+> 남은 단계(참고): 4=관리자 감사로그 · 5=차단IP·자동차단 · 6=이상접속 알림.
 
 ---
 
 ## 1. 접근 방식 (+이유)
-- **데이터 수집(테이블+기록) → 화면 → 차단/알림** 순서. 화면만 먼저 만들면 빈 표가 되므로 수집을 1단계로.
-- 공통 모듈(`createSession`·`getClientIp`·`ipMatches`)은 **시그니처 유지, 기록은 호출부에서 add-only**(safe-coding-skill).
-- 화면은 전부 기존 공통부품 재사용: 기간 달력(`RangeCalendarNav`)·통합검색(`SearchBox`)·엑셀 내보내기 패턴·관리자 격리 패턴(`records` 표준).
-- 접속기록은 **개인정보** → 보관기간(예: 1년) + 자동파기(오래된 것 정리)를 처음부터 설계.
 
-## 2. 수정/생성 파일 목록 (단계별)
-### 1단계 — 접속 데이터 수집 기반
-- 생성: `webapp/prisma/schema.prisma`에 `AccessEvent` 모델 추가 + migrate.
-- 생성: `webapp/lib/access-log.ts` — `recordAccess({companyId,userId?,actorName?,emailTried?,kind,result,ip,userAgent,meta?})` 한 줄 기록 헬퍼(실패해도 로그인/요청을 막지 않게 try/catch·비동기).
-- 생성: `webapp/lib/device.ts` — userAgent → "iPhone / Android / PC(브라우저)" 간단 판별.
-- 수정(add-only): `auth.ts`(로그인 성공/실패 기록)·`invites.ts`(가입후 로그인 기록). **`session.ts`/`createSession` 본체는 무수정.**
+- **DB 창고는 그대로 쓴다.** `AccessEvent` 테이블에 "출근/퇴근" 칸이 이미 준비돼 있음 → **스키마 변경 없음** = 서버 껐다 켜는 작업(EPERM 문제) 불필요, 기존 데이터 무영향.
+- **화면은 [보안로그] 안에 탭 2개**(로그인 이력 / 접속 로그)로. 사이드바 메뉴를 늘리지 않아 기존 UI를 안 흔든다.
+- **1년 파기는 이미 검증된 방식 복제** — 사진 90일 파기(`purgeExpiredPhotos`)와 똑같이 "하루 1회만 실제로 도는" 방식. 새 서버·스케줄러 불필요.
+- 화면 부품은 전부 재사용: 기간달력(`RangeCalendarNav`)·통합검색(`SearchBox`)·엑셀 패턴 — 2단계 로그인 이력 화면과 동일.
 
-### 2단계 — 로그인 이력 화면(관리자 감사)
-- 생성: `webapp/app/security/logins/page.tsx` + 클라이언트(목록 필터) + `export/route.ts`(엑셀).
-- 수정: `Sidebar.tsx` — NavKey `security`("보안로그") 그룹 신설(add-only).
+## 2. 🔀 사장님이 골라주실 것 — 출퇴근 접속을 어디에 기록할까
 
-### 3단계 — IP·기기 접속 로그 화면
-- 생성: `webapp/app/security/access/page.tsx`(로그인+출퇴근 접속 통합, `ipMatches`로 사내망/외부 판정) + 엑셀.
-- 수정(add-only): 출퇴근 시 접속 IP·기기도 `AccessEvent`에 남기도록 `attendance.ts` **후처리 지점**(clockIn/clockOut 본체 밖)에서 기록.
+`clockIn`/`clockOut`은 **4곳에서 쓰는 공통 함수**입니다(일반 출근·일반 퇴근·얼굴 화면 퇴근·얼굴 출퇴근). 그래서 safe-coding 절차상 선택을 받습니다.
 
-### 4단계 — 관리자 감사로그 확장(설정변경·조회·파기)
-- 수정(add-only): 설정 저장·생체정보 파기 등 관리자 주요 action에 `recordAccess(kind:'config'|'purge'...)` 한 줄. (건별 영향 최소)
-- 2단계 화면에 "동작 유형" 필터 추가.
+| | **옵션 A (권장)** | 옵션 B |
+|---|---|---|
+| 방법 | 출퇴근 함수 **맨 끝에 기록 1줄** 추가 | 함수는 안 건드리고 **호출하는 4곳에 각각** 추가 |
+| 장점 | 4곳 자동 커버·빠짐 없음·중복 없음. 판정 로직 무수정 | "본체 무수정" 규칙을 글자 그대로 지킴 |
+| 단점 | project-status의 "clockIn/clockOut 본체 무수정"을 **끝에 add-only로 완화** | 4곳 중 하나 빠뜨릴 위험 + 얼굴 경로는 이중 기록 위험(얼굴 출퇴근이 내부에서 또 호출) |
+| 안전장치 | 기록은 `after()`로 **응답 보낸 뒤** 실행 + try/catch → 실패해도 출퇴근은 정상. 기존 코드 한 줄도 안 고치고 **끝에 덧붙이기만** | — |
 
-### 5단계 — 차단 IP 관리 + 자동차단(안전장치 포함)
-- 리서치 TODO: `node_modules/next/dist/docs/`에서 미들웨어/요청 훅 방식 확인(구현 전 필수).
-- 생성: `BlockedIp` 모델 + migrate. `webapp/lib/ip-block.ts` — `isBlocked(ip, company)`(+ **화이트리스트: officeIps·요청자 현재 IP는 절대 차단 안 함**).
-- 생성: `webapp/app/security/blocked/page.tsx`(목록·추가·해제) + 서버액션.
-- 적용: 로그인/출퇴근 진입점에서 `isBlocked` 검사(차단 시 거부+기록). 전체 미들웨어 적용은 문서 확인 후 별도 판단.
+→ **권장 = 옵션 A.** 이유: "본체 무수정" 규칙의 원래 목적은 *출퇴근 판정 로직을 흔들지 말라*인데, 옵션 A는 판정이 다 끝난 뒤 맨 끝에 기록만 덧붙이므로 목적을 지킵니다. 얼굴 출퇴근이 이 함수를 재사용하는 구조라 옵션 B는 오히려 버그 위험이 큽니다.
+**A/B 중 하나를 아래 메모 공간에 적어주세요.**
 
-### 6단계 — 이상 접속 알림(감지 규칙 + 대시보드 알림)
-- 생성: 알림설정(Company 컬럼 or `AlertRule`) + `webapp/app/security/alerts/page.tsx`(규칙 on/off·수준·채널).
-- 생성: `SecurityAlert` 모델 + 감지(심야/새기기/연속실패 — 사내 데이터만으로 가능한 것부터. 해외=GeoIP 보류).
-- 대시보드/알림센터에 이상접속 배지. **이메일/SMS는 채널 토글만(실발송 비활성·"준비중" 표기).**
+## 3. 수정/생성 파일 목록
 
-## 3. 🛡️ 사이드 이펙트 방어
-- **로그인 흐름**: 기록 실패가 로그인을 막으면 안 됨 → `recordAccess`는 try/catch, 실패는 콘솔 경고만. 로그인 성공/실패 판정 로직은 무수정.
-- **출퇴근**: `attendance.ts` clockIn/clockOut **본체 무수정**(project-status 🚧 준수), 기록은 후처리에서만.
-- **공통 모듈**: `createSession`·`getClientIp`·`ipMatches` 시그니처 불변(3+2곳 호출부 안전).
-- **자동차단 자기잠금**: 화이트리스트(officeIps+현재 접속 IP) 예외 + 관리자 해제경로는 차단 대상에서 제외.
-- **DB 마이그레이션**: 신규 테이블만 추가(기존 컬럼 무변경) → 기존 데이터 무영향.
-- **구현 후 반드시 테스트할 기존 기능**: 로그인/로그아웃·초대가입·출퇴근(사내망 판정 포함)·설정 저장·기존 화면 회귀.
+### 생성 (새 파일 — 기존 기능 영향 0)
+- `webapp/app/security/access/page.tsx` — 접속 로그 화면(서버). 로그인+출퇴근 통합, 사내망/외부 판정
+- `webapp/app/security/access/AccessLogClient.tsx` — 목록·필터(클라이언트)
+- `webapp/app/security/access/export/route.ts` — 엑셀 내보내기
+- `webapp/app/security/SecurityTabs.tsx` — [로그인 이력 | 접속 로그] 탭 부품
 
-## 4. 작업분해 TODO
-- [ ] 1-a: `AccessEvent` 모델 + migrate + `lib/access-log.ts`·`lib/device.ts` — 커밋
-- [ ] 1-b: auth·invites 로그인 성공/실패 기록(add-only) — 커밋 → **보고·중간확인**
-- [ ] 2: 로그인 이력 화면 + 엑셀 + 사이드바 "보안로그" — 커밋 → **보고**
-- [ ] 3: IP·기기 접속 로그 화면 + 출퇴근 접속 기록 — 커밋 → **보고**
-- [ ] 4: 관리자 감사로그 확장(설정변경·파기 등) — 커밋 → **보고**
-- [ ] 5: (문서확인 후) 차단 IP 관리 + 자동차단(안전장치) — 커밋 → **보고**
-- [ ] 6: 이상 접속 알림 설정·감지·대시보드 알림 — 커밋 → **보고**
-- [ ] 각 단계: 영향받은 기존 기능 회귀 테스트
-- [ ] 마지막: code-reviewer 검수 + project-status.md·PROGRESS.md 갱신
+### 수정 (전부 add-only — 기존 줄 안 고침)
+- `webapp/lib/access-log.ts` — `purgeExpiredAccessEvents()` **함수 추가**(365일, 하루 1회 가드). 기존 `recordAccess` 무수정
+- `webapp/app/actions/attendance.ts` — 옵션 A 채택 시 clockIn·clockOut **맨 끝에 기록 1줄씩**
+- `webapp/app/security/logins/page.tsx` — 탭 부품 1줄 삽입 + 파기 트리거 1줄
 
-## 5. 핵심 로직 샘플 (계획용, 실제 구현 아님)
+### 변경 없음
+- `prisma/schema.prisma`(스키마 무변경) · `lib/ip.ts` · `lib/device.ts` · `lib/access-labels.ts` · `Sidebar.tsx`
+
+## 4. 🛡️ 사이드 이펙트 방어
+
+| 위험 | 대응 |
+|---|---|
+| **출퇴근이 안 찍힘/느려짐** | 기록은 `after()`(응답 후) + try/catch. 기록이 터져도 출퇴근 결과 불변. 판정·중복방지 로직 한 줄도 안 고침 |
+| **얼굴 출퇴근 이중 기록** | 옵션 A는 함수 안 1곳에만 넣어 구조적으로 중복 불가 |
+| **사내망 판정 깨짐** | `getClientIp`·`ipMatches` **완전 무수정**(읽기만) — 5개 호출처 안전 |
+| **사진 90일 파기 오작동** | `purgeExpiredPhotos`는 손대지 않고 **별도 함수** 신설 |
+| **접속기록이 남의 회사에 보임** | `companyId: me.companyId` 강제 + 관리자 role 검사 (logins 화면과 동일) |
+| **화면 느려짐** | 기간 최대 92일 + `take` 상한 + 기존 인덱스 `[companyId, createdAt]` 사용 |
+| **1년 파기가 실수로 최근 기록 삭제** | 커밋 전 개발 DB에서 "365일 지난 가짜 기록 1건 넣고 → 그것만 지워지고 최근 건 남는지" 실측 |
+
+### 구현 후 반드시 테스트할 기존 기능
+- [ ] 일반 출근·퇴근 (버튼) — 정상 기록되는가
+- [ ] 외출·복귀
+- [ ] 사무실 모드 사내망(IP) 위치 확인 — "확인됨" 그대로 나오는가
+- [ ] 얼굴 출퇴근 경로(코드 회귀 확인)
+- [ ] 로그인·로그아웃·로그인 실패 기록 (2단계 화면)
+- [ ] 로그인 이력 화면 기간·검색·엑셀
+- [ ] 출퇴근 사진 90일 파기 로직 무영향
+
+## 5. 작업분해 TODO
+
+- [ ] 3-a: `lib/access-log.ts`에 `purgeExpiredAccessEvents()`(365일·하루1회) 추가 + 파기 실측 — 커밋
+- [ ] 3-b: (옵션 A 승인 시) `attendance.ts` clockIn/clockOut 끝에 접속기록 add-only — 커밋
+- [ ] 3-c: 탭 부품 + `/security/access` 화면(사내망/외부 판정·기간·검색·KPI) — 커밋
+- [ ] 3-d: 엑셀 내보내기 + 파기 트리거 연결 — 커밋
+- [ ] 3-e: 위 "구현 후 테스트" 7항목 회귀 테스트 (실행 증거 확보)
+- [ ] 3-f: code-reviewer 검수 → 치명·중간 수정 → project-status.md·PROGRESS.md 갱신
+
+## 6. 핵심 로직 샘플 (계획용 — 실제 구현 아님)
+
 ```ts
-// lib/access-log.ts — 기록은 절대 본기능을 막지 않는다
-export async function recordAccess(e: AccessInput): Promise<void> {
-  try { await prisma.accessEvent.create({ data: { ...e, createdAt: new Date() } }); }
-  catch (err) { console.warn("[access-log] 기록 실패(무시):", err); }
+// lib/access-log.ts — 1년 지난 접속기록 자동 파기 (사진 90일 파기와 동일 방식)
+const ACCESS_RETENTION_DAYS = 365;
+let lastPurgeAt = 0;
+export async function purgeExpiredAccessEvents(): Promise<void> {
+  if (Date.now() - lastPurgeAt < 24 * 60 * 60 * 1000) return;  // 하루 1회만
+  lastPurgeAt = Date.now();
+  try {
+    const cutoff = new Date(Date.now() - ACCESS_RETENTION_DAYS * 86400_000);
+    const r = await prisma.accessEvent.deleteMany({ where: { createdAt: { lt: cutoff } } });
+    if (r.count) console.log(`[access-log] 보관기간(1년) 지난 접속기록 ${r.count}건 파기`);
+  } catch (e) { console.warn("[access-log] 파기 실패(무시):", e); }
 }
-// 자동차단 화이트리스트 — 자기잠금 방지
-function isBlocked(ip: string|null, company: Company, blocks: BlockedIp[]): boolean {
-  if (!ip) return false;
-  if (ipMatches(ip, company.officeIps)) return false;   // 사내망은 절대 차단 안 함
-  return blocks.some(b => b.status === "block" && ipMatches(ip, b.pattern));
-}
+
+// actions/attendance.ts — clockIn 맨 끝(기존 코드 아래)에만 덧붙임. 판정 로직 무수정.
+  const { ip, userAgent } = readClientMeta(await headers());
+  after(() => recordAccess({ companyId: me.companyId, userId: me.id, actorName: me.name,
+    kind: "clock_in", result: "success", ip, userAgent, meta: mode }));
 ```
 
-## 6. 구현하지 않을 것 (이번 범위 제외 + 이유)
-- **이메일/SMS 실발송** — 발송 인프라 미결(자리·설정만). 
-- **해외·국가(GeoIP) 판정** — 외부 데이터 미결(사내망/외부까지만).
-- **전역 미들웨어 자동차단** — 커스텀 Next 확인 전엔 진입점(로그인·출퇴근) 한정.
-- **입사일 기반 연차 자동산정** 등 2번과 무관 항목.
+## 7. 구현하지 않을 것 (이번 범위 제외 + 이유)
+
+- **해외·국가(GeoIP) 판정** — 외부 데이터 필요. 이번엔 **사내망/외부**까지만, 국가 칸은 자리만.
+- **차단·알림** — 5·6단계 몫.
+- **XFF 위조 방어(신뢰 프록시)** — 인프라 사안(운영 배포 시). 코드가 아니라 서버 설정으로 해결.
+- **다른 화면의 접속기록**(설정변경·조회) — 4단계 몫.
 
 ## 📌 사용자 메모 공간 (검토 후 여기에 적어주세요)
-- 위 "먼저 짚는 현실" 1~4번에 O/X 부탁드립니다.
-- 단계를 더 줄이거나(예: 1~3단계만 먼저) 순서를 바꾸고 싶으시면 여기에.
+- **2번 항목 A / B 중 선택**: → **A 승인(2026-07-16 사장님)** — 출퇴근 함수 맨 끝에 add-only 기록.
+- 그 외 바꾸고 싶은 점:
 -
