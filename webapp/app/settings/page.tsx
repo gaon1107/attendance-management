@@ -10,6 +10,7 @@ import { OfficeLocationForm } from "./OfficeLocationForm";
 import { OfficeNetworkForm } from "./OfficeNetworkForm";
 import { FaceRuleForm } from "./FaceRuleForm";
 import { LivenessRuleForm } from "./LivenessRuleForm";
+import { AlertRulesForm } from "./AlertRulesForm";
 
 export default async function SettingsPage() {
   const me = await getCurrentUser();
@@ -23,6 +24,7 @@ export default async function SettingsPage() {
       officeAddress: true, officeAddressDetail: true,
       workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true,
       standardWorkHours: true, faceMinPercent: true, faceMinBrightness: true, livenessPercent: true,
+      alertNightOn: true, alertNightStart: true, alertNightEnd: true, alertFailOn: true, alertFailCount: true,
     },
   });
 
@@ -46,6 +48,17 @@ export default async function SettingsPage() {
       <div className="split-2" style={{ marginBottom: 16 }}>
         <FaceRuleForm initialPercent={company?.faceMinPercent ?? 30} initialBrightness={company?.faceMinBrightness ?? 0} />
         <LivenessRuleForm initialPercent={company?.livenessPercent ?? 50} />
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <AlertRulesForm
+          initial={{
+            nightOn: company?.alertNightOn ?? true,
+            nightStart: company?.alertNightStart ?? 22,
+            nightEnd: company?.alertNightEnd ?? 6,
+            failOn: company?.alertFailOn ?? true,
+            failCount: company?.alertFailCount ?? 5,
+          }}
+        />
       </div>
       <OfficeLocationForm
         initial={{

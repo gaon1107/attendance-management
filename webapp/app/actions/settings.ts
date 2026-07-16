@@ -184,3 +184,55 @@ export async function saveWorkRules(
   revalidatePath("/settings");
   return { ok: true };
 }
+
+// 이상접속 감지 기준 저장 — 관리자만 (접속/보안 6단계).
+// ※ [차단 IP 재시도]는 여기 없다 — 관리자가 직접 막은 IP라 오탐이 0이고, 끌 이유가 없다.
+export async function saveAlertRules(
+  _prev: { error?: string; ok?: boolean },
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean }> {
+  const me = await getCurrentUser();
+  if (!me || me.role !== "admin") {
+    return { error: "권한이 없습니다." };
+  }
+
+  // 체크박스는 체크됐을 때만 값이 온다(안 오면 꺼짐).
+  const nightOn = formData.get("alertNightOn") !== null;
+  const failOn = formData.get("alertFailOn") !== null;
+
+  const nightStart = Number(formData.get("alertNightStart"));
+  const nightEnd = Number(formData.get("alertNightEnd"));
+  if (!Number.isInteger(nightStart) || nightStart < 0 || nightStart > 23) {
+    return { error: "심야 시작 시각은 0~23 사이로 입력해주세요." };
+  }
+  if (!Number.isInteger(nightEnd) || nightEnd < 0 || nightEnd > 23) {
+    return { error: "심야 끝 시각은 0~23 사이로 입력해주세요." };
+  }
+  // 시작 = 끝이면 하루 24시간이 전부 심야가 되어 로그인마다 알림이 터진다. 저장 자체를 막는다.
+  if (nightOn && nightStart === nightEnd) {
+    return { error: "심야 시작과 끝이 같으면 하루 종일이 심야가 됩니다. 다르게 정해주세요." };
+  }
+
+  const failCount = Number(formData.get("alertFailCount"));
+  // 하한 3: 1~2회는 오타로도 나와 알림이 무의미해진다. 상한 50: 그 이상이면 사실상 꺼둔 것과 같다.
+  if (!Number.isInteger(failCount) || failCount < 3 || failCount > 50) {
+    return { error: "로그인 실패 기준은 3~50회 사이로 입력해주세요." };
+  }
+
+  await prisma.company.update({
+    where: { id: me.companyId },
+    data: {
+      alertNightOn: nightOn,
+      alertNightStart: nightStart,
+      alertNightEnd: nightEnd,
+      alertFailOn: failOn,
+      alertFailCount: failCount,
+    },
+  });
+
+  await logAdminAction(me, "config", "alert_rules"); // 감사로그(성공 시에만)
+  revalidatePath("/settings");
+  revalidatePath("/security/alerts"); // 기준이 바뀌면 판정이 바뀐다
+  revalidatePath("/dashboard"); // 배지 숫자도 바뀐다
+  return { ok: true };
+}
