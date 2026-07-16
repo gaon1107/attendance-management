@@ -1,5 +1,8 @@
 // [관리자 전용] 출퇴근 촬영 사진 열람 — 암호화 파일을 복호화해 이미지로 내려준다.
-// 보호 장치: ① 관리자만 ② 내 회사 사진만(회사 격리) ③ 열람 기록(누가·언제) ④ 파기된 사진은 안내만.
+// 보호 장치: ① 관리자만 ② 내 회사 사진만(회사 격리) ③ 열람 기록(누가·언제) ④ 파기된 사진은 안내만
+//          ⑤ **정상(ok) 확인된 사진은 열람 차단** — 관리자의 상시 감시 우려를 줄인다(개인정보 최소열람).
+//            열람 목적은 "부정 방지 재검토"뿐이므로, 재검토가 필요한 위조 의심(suspect)·판독 실패(error)만 연다.
+//            ⚠️ 화면 링크를 숨기는 것만으로는 부족하다(URL 직접 접근) — 여기 서버에서 실제로 막아야 한다.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
@@ -14,6 +17,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   // 회사 격리 — 반드시 내 회사 사진만
   const photo = await prisma.clockPhoto.findFirst({ where: { id, companyId: me.companyId } });
   if (!photo) return NextResponse.json({ message: "사진 기록을 찾을 수 없습니다." }, { status: 404 });
+
+  // ⑤ 정상 확인된 사진은 열람 대상이 아니다 — 부정 방지 재검토(위조 의심·판독 실패)만 연다.
+  //    화면에서 링크를 숨겨도 URL로 직접 요청할 수 있으므로 서버에서 실제로 거부한다(개인정보 최소열람).
+  if (photo.livenessStatus === "ok") {
+    return NextResponse.json({ message: "정상 확인된 사진은 열람 대상이 아닙니다." }, { status: 403 });
+  }
 
   // 열람 전에 보관기간 파기부터(하루 1회만 실제 동작) — 기한 지난 사진이 열리는 일 방지
   await purgeExpiredPhotos();

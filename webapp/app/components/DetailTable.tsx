@@ -17,6 +17,9 @@ function PhotoBadge({ p, label }: { p: ClockPhotoLite; label: string }) {
   else { bg = "#F3F4F6"; color = "#6B7280"; text = "판독 실패"; }
   const scoreText = p.livenessScore === null ? "" : ` ${Math.round(p.livenessScore * 100)}%`;
   const suspect = p.livenessStatus === "suspect";
+  // 정상(ok) 사진은 열람 대상이 아니다 — 관리자 감시 우려 축소(서버 API도 ok는 403으로 거부).
+  //   부정 방지 재검토가 필요한 위조 의심(suspect)·판독 실패(error)만 [사진 보기]를 연다.
+  const viewable = p.livenessStatus !== "ok";
 
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -26,6 +29,9 @@ function PhotoBadge({ p, label }: { p: ClockPhotoLite; label: string }) {
       </span>
       {p.fileDeletedAt ? (
         <span style={{ fontSize: 11, color: "#9CA3AF" }}>(사진 파기됨)</span>
+      ) : !viewable ? (
+        // 정상 확인 건 — 사진은 열지 않는다(개인정보 최소열람). 판정 결과 배지만 남긴다.
+        <span style={{ fontSize: 11, color: "#9CA3AF" }}>(정상 · 열람 제한)</span>
       ) : (
         // 위조 의심이면 사진 보기를 버튼처럼 강조(관리자가 바로 눌러 확인)
         <a
