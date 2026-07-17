@@ -69,9 +69,14 @@
 - [x] 4단계: `lib/holiday-server.ts` 정부 API 수집·저장(실패 안전) + `.env` 키 완료
 - [x] 5단계: `app/actions/holidays.ts` + `HolidayForm.tsx` + settings 배치 완료
 - [x] 6단계: 6개 화면 연결 완료(records·[userId]·my-records·dashboard·reports·actions/leave)
-- [ ] ⏳ **게이트: 서버 정지 → prisma generate + migrate + tsc/eslint 검증** (여기서 대기)
-- [ ] 7단계: 영향받는 기존 기능 5종 회귀 테스트(위 목록)
-- [ ] 8단계: code-reviewer 검수 + project-status.md 갱신
+- [x] 게이트: 서버 정지 → generate + migrate(20260717030911_add_holidays) + tsc/eslint exit 0 완료
+- [x] 7단계: 회귀 테스트 완료 — 내근태 실화면: 7/17 공휴일→휴일근무, 07-16/14 지각 유지, 07-15 결근 유지, 주말 휴일근무 유지
+- [x] 8단계: code-reviewer 치명0·중간1(0건응답 삭제방어) 수정·재검증 + 문서 갱신 완료
+
+## ✅ 완료 (2026-07-17) — 실데이터·실화면 검증
+- 정부 API 실호출 성공(2026 22건·2027 24건, 대체공휴일 포함, 7/17 제헌절 포함)
+- 내근태 화면에서 7/17 6건 전부 "휴일근무" 확인(지각 사라짐)
+- 커밋: 순수로직(1~2단계) + 완성(3~8단계) 2건
 
 ## 5. 핵심 로직 샘플 (계획용 스니펫, 실제 구현 아님)
 ```ts
