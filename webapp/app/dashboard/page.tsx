@@ -53,13 +53,15 @@ export default async function DashboardPage() {
   const [calNat, calComp, calEvents] = await Promise.all([
     prisma.holiday.findMany({ where: { date: { startsWith: calPrefix } }, select: { date: true, name: true } }),
     prisma.companyHoliday.findMany({ where: { companyId: me.companyId, date: { startsWith: calPrefix } }, select: { id: true, date: true, name: true } }),
-    prisma.companyEvent.findMany({ where: { companyId: me.companyId, date: { startsWith: calPrefix } }, select: { id: true, date: true, title: true, color: true }, orderBy: { createdAt: "asc" } }),
+    // 대시보드는 관리자용 → 회사 일정(userId=null)만. 직원 개인 일정은 프라이버시상 제외.
+    prisma.companyEvent.findMany({ where: { companyId: me.companyId, userId: null, date: { startsWith: calPrefix } }, select: { id: true, date: true, title: true, color: true }, orderBy: { createdAt: "asc" } }),
   ]);
   const calByDate: Record<string, DayData> = {};
   const ensureDay = (iso: string): DayData => (calByDate[iso] ??= { events: [] });
   for (const h of calNat) ensureDay(h.date).nationalHoliday = h.name;
   for (const c of calComp) ensureDay(c.date).companyHoliday = { id: c.id, name: c.name };
-  for (const e of calEvents) ensureDay(e.date).events.push({ id: e.id, title: e.title, color: e.color });
+  // 대시보드 캘린더는 읽기전용이라 mine/삭제는 쓰지 않음. 전부 회사 일정(personal=false).
+  for (const e of calEvents) ensureDay(e.date).events.push({ id: e.id, title: e.title, color: e.color, mine: false, personal: false });
 
   // 지각 = 근무일 + 기준시각 이후 출근일 때만
   const lateUserIds = new Set(

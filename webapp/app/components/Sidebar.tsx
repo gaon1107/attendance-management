@@ -88,7 +88,7 @@ function groupsFor(role: string): NavGroup[] {
       { caption: "내근태", tintBg: "#E3F5EA", tintText: "#15803D", items: toItems(["attendance", "auth-method"]) },
     ];
   }
-  return [{ caption: "", items: toItems(["attendance", "my-records", "leave", "corrections", "notice", "auth-method"]) }];
+  return [{ caption: "", items: toItems(["attendance", "my-records", "schedule", "leave", "corrections", "notice", "auth-method"]) }];
 }
 
 export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {

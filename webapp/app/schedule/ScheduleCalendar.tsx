@@ -10,13 +10,15 @@ import { addCompanyHoliday, deleteCompanyHoliday } from "@/app/actions/holidays"
 export type DayData = {
   nationalHoliday?: string; // 법정공휴일 이름(읽기전용)
   companyHoliday?: { id: string; name: string }; // 회사 휴무일
-  events: { id: string; title: string; color: string | null }[]; // 회사 일정
+  // 일정. mine=내가 삭제 가능한지 / personal=개인 일정(true)인지 회사 일정(false)인지.
+  events: { id: string; title: string; color: string | null; mine: boolean; personal: boolean }[];
 };
 
 const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
 const pad = (n: number) => String(n).padStart(2, "0");
 const isoOf = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`;
-const EVENT_BG = "#2563EB";
+const EVENT_BG = "#2563EB"; // 회사 일정(파랑)
+const PERSONAL_BG = "#059669"; // 개인 일정(초록) — 직원이 자기 일정을 구분하기 쉽게
 
 const navBtn: React.CSSProperties = {
   width: 34, height: 34, display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -25,11 +27,12 @@ const navBtn: React.CSSProperties = {
 };
 
 export function ScheduleCalendar({
-  year, month, todayISO, byDate, prevYm, nextYm, todayYm,
+  year, month, todayISO, byDate, prevYm, nextYm, todayYm, canManageCompany,
 }: {
   year: number; month: number; todayISO: string;
   byDate: Record<string, DayData>;
   prevYm: string; nextYm: string; todayYm: string;
+  canManageCompany: boolean; // 관리자만 회사 일정·휴무일 관리. 직원은 개인 일정만.
 }) {
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -45,7 +48,9 @@ export function ScheduleCalendar({
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 16, fontWeight: 700 }}>일정 캘린더</div>
         <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 4 }}>
-          날짜를 클릭해 회사 일정을 등록하거나 그 날을 휴무일로 지정하세요. (법정공휴일은 빨간색으로 자동 표시됩니다)
+          {canManageCompany
+            ? "날짜를 클릭해 회사 일정을 등록하거나 그 날을 휴무일로 지정하세요. (법정공휴일은 빨간색으로 자동 표시됩니다)"
+            : "회사 공휴일·휴무일·일정은 보기만 할 수 있고, 날짜를 클릭해 내 개인 일정을 추가할 수 있어요. (개인 일정은 나만 봅니다)"}
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -100,7 +105,7 @@ export function ScheduleCalendar({
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#6D28D9", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>휴무 · {data.companyHoliday.name}</span>
               )}
               {shownEvents.map((ev) => (
-                <span key={ev.id} style={{ fontSize: 11, fontWeight: 600, color: "#fff", background: ev.color || EVENT_BG, borderRadius: 4, padding: "1px 5px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <span key={ev.id} style={{ fontSize: 11, fontWeight: 600, color: "#fff", background: ev.color || (ev.personal ? PERSONAL_BG : EVENT_BG), borderRadius: 4, padding: "1px 5px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {ev.title}
                 </span>
               ))}
@@ -115,6 +120,7 @@ export function ScheduleCalendar({
         <Legend color="#DC2626" label="법정공휴일(자동)" />
         <Legend color="#6D28D9" label="회사 휴무일" />
         <Legend color={EVENT_BG} label="회사 일정" />
+        {!canManageCompany && <Legend color={PERSONAL_BG} label="내 일정" />}
       </div>
 
       {selected && (
@@ -122,6 +128,7 @@ export function ScheduleCalendar({
           key={selected}
           iso={selected}
           data={byDate[selected]}
+          canManageCompany={canManageCompany}
           onClose={() => setSelected(null)}
         />
       )}
@@ -138,8 +145,8 @@ function Legend({ color, label }: { color: string; label: string }) {
   );
 }
 
-// 하루 상세 모달 — 그 날 공휴일/휴무일/일정 관리.
-function DayModal({ iso, data, onClose }: { iso: string; data: DayData | undefined; onClose: () => void }) {
+// 하루 상세 모달 — 그 날 공휴일/휴무일/일정. 관리자는 회사 일정·휴무일 관리, 직원은 개인 일정만.
+function DayModal({ iso, data, canManageCompany, onClose }: { iso: string; data: DayData | undefined; canManageCompany: boolean; onClose: () => void }) {
   const [addEvState, addEvAction, addEvPending] = useActionState(addEvent, {});
   const [delEvState, delEvAction] = useActionState(deleteEvent, {});
   const [addHolState, addHolAction, addHolPending] = useActionState(addCompanyHoliday, {});
@@ -165,29 +172,37 @@ function DayModal({ iso, data, onClose }: { iso: string; data: DayData | undefin
           </div>
         )}
 
-        {/* 회사 휴무일 지정/해제 */}
-        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>회사 휴무일 <span style={{ fontWeight: 400, color: "var(--text-sub)" }}>(지정하면 지각·결근 판정에서 제외)</span></div>
-          {data?.companyHoliday ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: "#6D28D9", flex: 1 }}>휴무 · {data.companyHoliday.name}</span>
-              <form action={delHolAction}>
-                <input type="hidden" name="id" value={data.companyHoliday.id} />
-                <button type="submit" style={{ height: 34, padding: "0 14px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--danger)", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>휴무 해제</button>
+        {/* 회사 휴무일 — 관리자만 지정/해제. 직원에겐 "휴무일" 안내만(있을 때). */}
+        {canManageCompany ? (
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>회사 휴무일 <span style={{ fontWeight: 400, color: "var(--text-sub)" }}>(지정하면 지각·결근 판정에서 제외)</span></div>
+            {data?.companyHoliday ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: "#6D28D9", flex: 1 }}>휴무 · {data.companyHoliday.name}</span>
+                <form action={delHolAction}>
+                  <input type="hidden" name="id" value={data.companyHoliday.id} />
+                  <button type="submit" style={{ height: 34, padding: "0 14px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--danger)", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>휴무 해제</button>
+                </form>
+              </div>
+            ) : (
+              <form action={addHolAction} style={{ display: "flex", gap: 8 }}>
+                <input type="hidden" name="date" value={iso} />
+                <input name="name" defaultValue="휴무일" maxLength={50} style={{ flex: 1, height: 40, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 14, outline: "none" }} />
+                <button type="submit" disabled={addHolPending} style={{ height: 40, padding: "0 16px", border: "none", borderRadius: 8, background: "#6D28D9", color: "#fff", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: addHolPending ? "default" : "pointer", opacity: addHolPending ? 0.6 : 1, whiteSpace: "nowrap" }}>휴무 지정</button>
               </form>
+            )}
+            {addHolState?.error && <div style={{ fontSize: 12, color: "var(--danger)", fontWeight: 700, marginTop: 6 }}>{addHolState.error}</div>}
+            {delHolState?.error && <div style={{ fontSize: 12, color: "var(--danger)", fontWeight: 700, marginTop: 6 }}>{delHolState.error}</div>}
+          </div>
+        ) : (
+          data?.companyHoliday && (
+            <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14, fontSize: 13, fontWeight: 700, color: "#6D28D9" }}>
+              회사 휴무일 · {data.companyHoliday.name}
             </div>
-          ) : (
-            <form action={addHolAction} style={{ display: "flex", gap: 8 }}>
-              <input type="hidden" name="date" value={iso} />
-              <input name="name" defaultValue="휴무일" maxLength={50} style={{ flex: 1, height: 40, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 14, outline: "none" }} />
-              <button type="submit" disabled={addHolPending} style={{ height: 40, padding: "0 16px", border: "none", borderRadius: 8, background: "#6D28D9", color: "#fff", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: addHolPending ? "default" : "pointer", opacity: addHolPending ? 0.6 : 1, whiteSpace: "nowrap" }}>휴무 지정</button>
-            </form>
-          )}
-          {addHolState?.error && <div style={{ fontSize: 12, color: "var(--danger)", fontWeight: 700, marginTop: 6 }}>{addHolState.error}</div>}
-          {delHolState?.error && <div style={{ fontSize: 12, color: "var(--danger)", fontWeight: 700, marginTop: 6 }}>{delHolState.error}</div>}
-        </div>
+          )
+        )}
 
-        {/* 회사 일정 */}
+        {/* 일정 — 회사 일정(파랑)은 보기 전용(삭제는 관리자만=mine), 개인 일정(초록)은 본인만 삭제 */}
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>일정</div>
           {events.length === 0 ? (
@@ -196,21 +211,28 @@ function DayModal({ iso, data, onClose }: { iso: string; data: DayData | undefin
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
               {events.map((ev) => (
                 <div key={ev.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 8 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 2, background: ev.color || EVENT_BG, flexShrink: 0 }} />
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: ev.color || (ev.personal ? PERSONAL_BG : EVENT_BG), flexShrink: 0 }} />
                   <span style={{ fontSize: 14, flex: 1, wordBreak: "break-word" }}>{ev.title}</span>
-                  <form action={delEvAction}>
-                    <input type="hidden" name="id" value={ev.id} />
-                    <button type="submit" style={{ height: 30, padding: "0 10px", border: "1px solid var(--border)", borderRadius: 6, background: "#fff", color: "var(--danger)", fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>삭제</button>
-                  </form>
+                  {ev.personal && <span style={{ fontSize: 11, fontWeight: 700, color: PERSONAL_BG, flexShrink: 0 }}>내 일정</span>}
+                  {ev.mine ? (
+                    <form action={delEvAction}>
+                      <input type="hidden" name="id" value={ev.id} />
+                      <button type="submit" style={{ height: 30, padding: "0 10px", border: "1px solid var(--border)", borderRadius: 6, background: "#fff", color: "var(--danger)", fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>삭제</button>
+                    </form>
+                  ) : (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-sub)", flexShrink: 0 }}>회사</span>
+                  )}
                 </div>
               ))}
             </div>
           )}
+          {/* 추가 폼 — 관리자=회사 일정 / 직원=내 개인 일정 */}
           <form action={addEvAction} style={{ display: "flex", gap: 8 }}>
             <input type="hidden" name="date" value={iso} />
-            <input name="title" required placeholder="일정 내용(예: 월례회의)" maxLength={100} style={{ flex: 1, height: 40, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 14, outline: "none" }} />
-            <button type="submit" disabled={addEvPending} style={{ height: 40, padding: "0 18px", border: "none", borderRadius: 8, background: "var(--primary)", color: "#fff", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: addEvPending ? "default" : "pointer", opacity: addEvPending ? 0.6 : 1, whiteSpace: "nowrap" }}>추가</button>
+            <input name="title" required placeholder={canManageCompany ? "회사 일정 내용(예: 월례회의)" : "내 일정 내용(예: 병원 예약)"} maxLength={100} style={{ flex: 1, height: 40, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 14, outline: "none" }} />
+            <button type="submit" disabled={addEvPending} style={{ height: 40, padding: "0 18px", border: "none", borderRadius: 8, background: canManageCompany ? "var(--primary)" : PERSONAL_BG, color: "#fff", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: addEvPending ? "default" : "pointer", opacity: addEvPending ? 0.6 : 1, whiteSpace: "nowrap" }}>{canManageCompany ? "추가" : "내 일정 추가"}</button>
           </form>
+          {!canManageCompany && <div style={{ fontSize: 11, color: "var(--text-sub)", marginTop: 6 }}>회사 일정·휴무일은 관리자만 등록합니다. 여기서 추가하면 <b>나만 보는 개인 일정</b>이 됩니다.</div>}
           {addEvState?.error && <div style={{ fontSize: 12, color: "var(--danger)", fontWeight: 700, marginTop: 6 }}>{addEvState.error}</div>}
           {delEvState?.error && <div style={{ fontSize: 12, color: "var(--danger)", fontWeight: 700, marginTop: 6 }}>{delEvState.error}</div>}
         </div>

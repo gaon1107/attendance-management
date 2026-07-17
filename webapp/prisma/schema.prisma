@@ -393,17 +393,23 @@ model CompanyHoliday {
   @@index([companyId])
 }
 
-// 회사 일정 — 관리자가 [일정] 캘린더에서 날짜에 등록하는 메모/이벤트(예: "월례회의", "출하").
+// 일정 — [일정] 캘린더에서 날짜에 등록하는 메모/이벤트(예: "월례회의", "출하").
 // ※ 표시 전용 — 지각·결근·연차 등 근태 판정에는 영향을 주지 않는다(휴무일은 CompanyHoliday가 담당).
+// ※ userId 로 "회사 일정"과 "개인 일정"을 구분한다:
+//    · userId = null  → 회사 일정(관리자 등록, 전 직원 공용, 관리자만 편집)
+//    · userId = 값     → 개인 일정(그 직원 본인만 보고·편집. 프라이버시상 타인에게 노출 안 함)
+//    ※ User와 외래키로 묶지 않고 값만 저장(AccessEvent와 동일 — 계정이 지워져도 조회 로직 단순).
 model CompanyEvent {
   id        String   @id @default(cuid())
   companyId String
   company   Company  @relation(fields: [companyId], references: [id])
+  userId    String?  // null=회사 일정 / 값=개인 일정 소유자
   date      String   // "YYYY-MM-DD" (하루짜리)
-  title     String   // 일정 내용(관리자 입력, 표시 전용)
+  title     String   // 일정 내용(표시 전용)
   color     String?  // 막대 색(선택, 없으면 기본색)
-  createdBy String?  // 등록한 관리자 이름 스냅샷
+  createdBy String?  // 등록한 사람 이름 스냅샷
   createdAt DateTime @default(now())
 
   @@index([companyId, date])
+  @@index([userId])
 }
