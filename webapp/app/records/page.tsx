@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { RecordsClient, type RecordRow } from "./RecordsClient";
-import { workedMinutes, formatMinutes, isLate } from "@/lib/worktime";
+import { workedMinutes, formatMinutes, isLate, isEarlyLeave } from "@/lib/worktime";
 import { parseAnchor, toISODate } from "@/lib/period";
 import { workModeLabel, locationLabel, hhmm, monthDayDow } from "@/lib/labels";
 import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
@@ -62,7 +62,7 @@ export default async function RecordsPage({
 
   const company = await prisma.company.findUnique({
     where: { id: me.companyId },
-    select: { workStartTime: true, lateGraceMin: true, workDays: true, holidayAutoOn: true },
+    select: { workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true, holidayAutoOn: true },
   });
 
   // 조회 기간의 쉬는 날(공휴일·회사휴무일) 집합 — 지각·결근 판정에서 제외한다.
@@ -75,12 +75,14 @@ export default async function RecordsPage({
   });
 
   const hasRule = !!company?.workStartTime;
+  const hasEndRule = !!company?.workEndTime;
 
   // 각 기록을 화면 표시값(직렬화 가능한 순수 객체)으로 미리 계산 → 통합검색은 "화면에 보이는 모든 컬럼"의 글자로 판단.
   const rows: RecordRow[] = records.map((r) => {
     const onWorkDay = isEffectiveWorkDay(r.clockIn, effectiveWorkDays(r.user.workDays, company?.workDays), offDays);
     const holiday = !onWorkDay;
     const late = onWorkDay ? isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0) : null;
+    const early = onWorkDay ? isEarlyLeave(r.clockOut, company?.workEndTime ?? null) : null;
     const suspect = r.clockPhotos.some((p) => p.livenessStatus === "suspect");
     const review = !suspect && r.clockPhotos.some((p) => p.livenessStatus === "error");
     const dateText = monthDayDow(r.clockIn);
@@ -89,7 +91,14 @@ export default async function RecordsPage({
     const location = locationLabel(r.locationStatus);
     const inText = hhmm(r.clockIn);
     const outText = r.clockOut ? hhmm(r.clockOut) : "근무 중";
-    const lateText = holiday ? "휴일근무" : late === null ? "" : late ? "지각" : "정상";
+    // 검색·표시용 텍스트: 휴일근무 우선, 그 외엔 지각·조퇴 뱃지들(둘 다 가능), 아무 문제 없으면 정상.
+    const lateText = holiday
+      ? "휴일근무"
+      : late === null && early === null
+        ? ""
+        : late || early
+          ? [late ? "지각" : "", early ? "조퇴" : ""].filter(Boolean).join(" ")
+          : "정상";
     const worked = formatMinutes(workedMinutes(r));
     const badge = suspect ? "위조 의심" : review ? "확인 필요" : "";
     // "근무 중"은 지금 이 순간 기준 — 오늘 출근했고 아직 퇴근 안 한 사람만(과거 미퇴근 기록이 부풀리지 않게)
@@ -101,7 +110,7 @@ export default async function RecordsPage({
       initial: r.user.name.slice(0, 1),
       dateText, dateISO, workMode, location, inText, outText,
       hasClockOut: !!r.clockOut,
-      holiday, late, worked, suspect, review, isWorkingNow,
+      holiday, late, early, worked, suspect, review, isWorkingNow,
       search: [dateText, r.user.name, workMode, location, inText, outText, lateText, worked, badge].join(" ").toLowerCase(),
     };
   });
@@ -127,7 +136,7 @@ export default async function RecordsPage({
           검색 기간이 너무 길어 시작일부터 최대 {MAX_DAYS}일까지만 표시합니다.
         </div>
       )}
-      <RecordsClient rows={rows} from={fromISO} to={toISO} hasRule={hasRule} todayISO={todayISO} />
+      <RecordsClient rows={rows} from={fromISO} to={toISO} hasRule={hasRule} hasEndRule={hasEndRule} todayISO={todayISO} />
     </AppShell>
   );
 }

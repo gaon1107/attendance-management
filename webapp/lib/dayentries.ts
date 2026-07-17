@@ -1,5 +1,5 @@
 // 근태 상세(직원별/내근태)용 계산 — 출퇴근 기록 + 결근(과거 근무일 무기록)을 날짜별로 합치고 집계한다.
-import { workedMinutes, isLate } from "@/lib/worktime";
+import { workedMinutes, isLate, isEarlyLeave } from "@/lib/worktime";
 import { toISODate } from "@/lib/period";
 import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
 
@@ -21,10 +21,10 @@ export type AttRow = {
   breaks: BreakLike[];
   clockPhotos?: ClockPhotoLite[];
 };
-type Company = { workStartTime: string | null; lateGraceMin: number; workDays: string } | null;
+type Company = { workStartTime: string | null; workEndTime: string | null; lateGraceMin: number; workDays: string } | null;
 
 export type DayEntry =
-  | { type: "att"; date: Date; rec: AttRow; holiday: boolean; late: boolean | null; minutes: number }
+  | { type: "att"; date: Date; rec: AttRow; holiday: boolean; late: boolean | null; early: boolean | null; minutes: number }
   | { type: "absent"; date: Date }
   | { type: "leave"; date: Date; label: string };
 
@@ -33,9 +33,11 @@ export type DayDetail = {
   totalMinutes: number;
   days: number; // 출근한 날 수
   lateCount: number;
+  earlyLeaveCount: number; // 조퇴 건수
   absentCount: number; // 결근 일수
   leaveDaysCount: number; // 이 기간에 휴가로 처리된 근무일 수
-  hasRule: boolean; // 근무 기준시각이 설정돼 있는가(지각 판정 가능 여부)
+  hasRule: boolean; // 출근 기준시각이 설정돼 있는가(지각 판정 가능 여부)
+  hasEndRule: boolean; // 퇴근 기준시각이 설정돼 있는가(조퇴 판정 가능 여부)
 };
 
 // rows: 기간 내 출퇴근 기록. start/end: 조회 기간(end 미포함).
@@ -52,11 +54,14 @@ export function buildDayEntries(
 ): DayDetail {
   const wd = effectiveWorkDays(userWorkDays, company?.workDays);
   const hasRule = !!company?.workStartTime;
+  const hasEndRule = !!company?.workEndTime;
 
   const attEntries: DayEntry[] = rows.map((r) => {
     const onWorkDay = isEffectiveWorkDay(r.clockIn, wd, offDays);
     const late = onWorkDay ? isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0) : null;
-    return { type: "att", date: r.clockIn, rec: r, holiday: !onWorkDay, late, minutes: workedMinutes(r) };
+    // 조퇴도 지각과 동일 게이팅: 근무일에만. 퇴근기록 없음(근무중)·기준시각 미설정은 isEarlyLeave가 null 반환.
+    const early = onWorkDay ? isEarlyLeave(r.clockOut, company?.workEndTime ?? null) : null;
+    return { type: "att", date: r.clockIn, rec: r, holiday: !onWorkDay, late, early, minutes: workedMinutes(r) };
   });
 
   // 결근 = 과거(오늘 이전) 근무일 중 출근 기록이 없는 날. 단, 승인된 휴가일은 결근이 아니라 "휴가".
@@ -84,6 +89,7 @@ export function buildDayEntries(
   const totalMinutes = attEntries.reduce((s, e) => s + (e.type === "att" ? e.minutes : 0), 0);
   const days = new Set(rows.map((r) => toISODate(r.clockIn))).size;
   const lateCount = attEntries.filter((e) => e.type === "att" && e.late === true).length;
+  const earlyLeaveCount = attEntries.filter((e) => e.type === "att" && e.early === true).length;
 
-  return { entries, totalMinutes, days, lateCount, absentCount, leaveDaysCount, hasRule };
+  return { entries, totalMinutes, days, lateCount, earlyLeaveCount, absentCount, leaveDaysCount, hasRule, hasEndRule };
 }

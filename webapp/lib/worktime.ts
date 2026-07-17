@@ -38,3 +38,16 @@ export function isLate(clockIn: Date, workStartTime: string | null, graceMin: nu
   const inMinutes = clockIn.getHours() * 60 + clockIn.getMinutes();
   return inMinutes > limit;
 }
+
+// 조퇴 여부 판정 — 회사가 정한 퇴근 기준시각보다 일찍 퇴근하면 조퇴. (지각 isLate와 대칭, 유예 없음)
+// 퇴근 기록이 없거나(근무중) 기준시각이 없으면(회사 미설정) null을 반환한다(조퇴 판정 안 함).
+// ※ isLate와 동일하게 시:분(time-of-day)만 비교한다 — 자정을 넘겨 근무하는 야간근무는 정확히 판정하지 못하는
+//    기존 지각 판정과 같은 한계를 공유한다(사무직 주간근무 대상).
+export function isEarlyLeave(clockOut: Date | null, workEndTime: string | null): boolean | null {
+  if (!clockOut || !workEndTime) return null;
+  const [h, m] = workEndTime.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  const limit = h * 60 + m; // 퇴근 기준시각을 분으로
+  const outMinutes = clockOut.getHours() * 60 + clockOut.getMinutes();
+  return outMinutes < limit;
+}

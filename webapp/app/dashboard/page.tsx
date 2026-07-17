@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
-import { workedMinutes, formatMinutes, isLate } from "@/lib/worktime";
+import { workedMinutes, formatMinutes, isLate, isEarlyLeave } from "@/lib/worktime";
 import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
 import { countUncheckedAnomalies } from "@/lib/anomaly";
@@ -37,12 +37,13 @@ export default async function DashboardPage() {
   const company = await prisma.company.findUnique({
     where: { id: me.companyId },
     select: {
-      workStartTime: true, lateGraceMin: true, workDays: true, holidayAutoOn: true,
+      workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true, holidayAutoOn: true,
       securityCheckedAt: true,
       alertNightOn: true, alertNightStart: true, alertNightEnd: true, alertFailOn: true, alertFailCount: true,
     },
   });
   const hasRule = !!company?.workStartTime;
+  const hasEndRule = !!company?.workEndTime;
 
   // 오늘의 쉬는 날(공휴일·회사휴무일) 집합 — 지각·미출근·휴일근무 판정에서 제외한다.
   const offDays = await loadOffDays(me.companyId, company?.holidayAutoOn ?? true, startOfToday, startOfToday);
@@ -75,6 +76,17 @@ export default async function DashboardPage() {
   );
   const lateCount = lateUserIds.size;
 
+  // 조퇴 = 근무일 + 퇴근기록이 있고 퇴근 기준시각보다 일찍 퇴근일 때만(근무중=미퇴근은 제외)
+  const earlyUserIds = new Set(
+    todays
+      .filter((r) => {
+        const wd = effectiveWorkDays(r.user.workDays, company?.workDays);
+        return isEffectiveWorkDay(r.clockIn, wd, offDays) && isEarlyLeave(r.clockOut, company?.workEndTime ?? null);
+      })
+      .map((r) => r.userId)
+  );
+  const earlyCount = earlyUserIds.size;
+
   // 오늘 승인된 휴가자(연차·병가 등)는 미출근에서 제외
   const now = new Date();
   const onLeaveToday = await prisma.leaveRequest.findMany({
@@ -95,6 +107,8 @@ export default async function DashboardPage() {
 
   // 지각 직원 이름(오늘 출근기록 기준)
   const lateNames = [...lateUserIds].map((id) => todays.find((r) => r.userId === id)?.user.name ?? "직원");
+  // 조퇴 직원 이름(오늘 퇴근기록 기준)
+  const earlyNames = [...earlyUserIds].map((id) => todays.find((r) => r.userId === id)?.user.name ?? "직원");
 
   // 승인 대기 휴가 건수 + 비밀번호 재설정 요청 건수 + 최신 공지(오늘 알림 카드용)
   const pendingLeaveCount = await prisma.leaveRequest.count({ where: { companyId: me.companyId, status: "pending" } });
@@ -209,6 +223,14 @@ export default async function DashboardPage() {
                   <span style={{ fontSize: 14, fontWeight: 700, color: hasRule && lateCount > 0 ? "var(--warning)" : "var(--text-sub)" }}>{hasRule ? `${lateCount}명` : "—"}</span>
                 </div>
                 {hasRule && lateCount > 0 && <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 4, lineHeight: 1.5 }}>{lateNames.join(", ")}</div>}
+              </Link>
+              {/* 조퇴 */}
+              <Link href="/records" style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6", textDecoration: "none", color: "var(--text)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}>조퇴</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: hasEndRule && earlyCount > 0 ? "var(--warning)" : "var(--text-sub)" }}>{hasEndRule ? `${earlyCount}명` : "—"}</span>
+                </div>
+                {hasEndRule && earlyCount > 0 && <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 4, lineHeight: 1.5 }}>{earlyNames.join(", ")}</div>}
               </Link>
               {/* 승인 대기 휴가 */}
               <Link href="/leave/approvals" style={{ padding: "12px 18px", borderBottom: (pendingResetCount > 0 || pendingCorrectionCount > 0 || latestNotice) ? "1px solid #F3F4F6" : "none", textDecoration: "none", color: "var(--text)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>

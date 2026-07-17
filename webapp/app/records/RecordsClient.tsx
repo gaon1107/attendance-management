@@ -25,6 +25,7 @@ export type RecordRow = {
   hasClockOut: boolean;
   holiday: boolean;
   late: boolean | null;
+  early: boolean | null;
   worked: string;
   suspect: boolean;
   review: boolean;
@@ -40,12 +41,14 @@ export function RecordsClient({
   from,
   to,
   hasRule,
+  hasEndRule,
   todayISO,
 }: {
   rows: RecordRow[];
   from: string;
   to: string;
   hasRule: boolean;
+  hasEndRule: boolean;
   todayISO: string;
 }) {
   const router = useRouter();
@@ -60,12 +63,14 @@ export function RecordsClient({
   const total = filtered.length;
   const working = filtered.filter((r) => r.isWorkingNow).length;
   const lateCount = filtered.filter((r) => r.late === true).length;
+  const earlyLeaveCount = filtered.filter((r) => r.early === true).length;
   const suspectCount = filtered.filter((r) => r.suspect).length;
   const reviewCount = filtered.filter((r) => r.review).length;
 
   const kpis = [
     { label: "출근 기록", value: `${total}`, unit: "건", color: "var(--text)" },
     { label: "지각", value: hasRule ? `${lateCount}` : "—", unit: hasRule ? "건" : "", color: lateCount > 0 ? "var(--warning)" : "var(--text)" },
+    { label: "조퇴", value: hasEndRule ? `${earlyLeaveCount}` : "—", unit: hasEndRule ? "건" : "", color: earlyLeaveCount > 0 ? "var(--warning)" : "var(--text)" },
     { label: "근무 중", value: `${working}`, unit: "명", color: working > 0 ? "var(--success)" : "var(--text)" },
   ];
 
@@ -77,7 +82,7 @@ export function RecordsClient({
         <SearchBox value={q} onChange={setQ} />
       </div>
 
-      <div className="kpi-grid-3" style={{ marginBottom: 16 }}>
+      <div className="kpi-grid" style={{ marginBottom: 16 }}>
         {kpis.map((k) => (
           <div key={k.label} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 20px" }}>
             <div style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700, marginBottom: 10, whiteSpace: "nowrap" }}>{k.label}</div>
@@ -106,7 +111,7 @@ export function RecordsClient({
                 <th style={th}>위치</th>
                 <th style={th}>출근</th>
                 <th style={th}>퇴근</th>
-                <th style={th}>지각</th>
+                <th style={th}>지각/조퇴</th>
                 <th style={{ ...th, textAlign: "right" }}>실근무</th>
               </tr>
             </thead>
@@ -141,12 +146,23 @@ export function RecordsClient({
                     <td style={td}>
                       {r.holiday ? (
                         <span style={{ fontSize: 13, fontWeight: 700, color: "#6D28D9" }}>휴일근무</span>
-                      ) : r.late === null ? (
+                      ) : r.late === null && r.early === null ? (
                         <span style={{ color: "#9CA3AF" }}>—</span>
-                      ) : r.late ? (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px", borderRadius: 6, background: "#FEF3C7" }}>
-                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--warning)" }} />
-                          <span style={{ fontSize: 13, fontWeight: 700, color: "#B45309" }}>지각</span>
+                      ) : r.late || r.early ? (
+                        // 지각·조퇴는 동시에 생길 수 있어 각각 알약 뱃지로 함께 표시.
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          {r.late && (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px", borderRadius: 6, background: "#FEF3C7" }}>
+                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--warning)" }} />
+                              <span style={{ fontSize: 13, fontWeight: 700, color: "#B45309" }}>지각</span>
+                            </span>
+                          )}
+                          {r.early && (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px", borderRadius: 6, background: "#FFEDD5" }}>
+                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#C2410C" }} />
+                              <span style={{ fontSize: 13, fontWeight: 700, color: "#C2410C" }}>조퇴</span>
+                            </span>
+                          )}
                         </span>
                       ) : (
                         <span style={{ fontSize: 13, fontWeight: 700, color: "#15803D" }}>정상</span>

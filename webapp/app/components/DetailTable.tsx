@@ -75,18 +75,19 @@ function LivenessCell({ photos }: { photos?: ClockPhotoLite[] }) {
 }
 
 export function DetailTable({ detail, showLiveness = false }: { detail: DayDetail; showLiveness?: boolean }) {
-  const { entries, totalMinutes, days, lateCount, absentCount, hasRule } = detail;
+  const { entries, totalMinutes, days, lateCount, earlyLeaveCount, absentCount, hasRule, hasEndRule } = detail;
 
   const kpis = [
     { label: "근무일수", value: `${days}`, unit: "일", color: "var(--text)" },
     { label: "실근무 합계", value: formatMinutes(totalMinutes), unit: "", color: "var(--primary)" },
     { label: "지각", value: hasRule ? `${lateCount}` : "—", unit: hasRule ? "건" : "", color: lateCount > 0 ? "var(--warning)" : "var(--text)" },
+    { label: "조퇴", value: hasEndRule ? `${earlyLeaveCount}` : "—", unit: hasEndRule ? "건" : "", color: earlyLeaveCount > 0 ? "var(--warning)" : "var(--text)" },
     { label: "결근", value: `${absentCount}`, unit: "일", color: absentCount > 0 ? "var(--danger)" : "var(--text)" },
   ];
 
   return (
     <>
-      <div className="kpi-grid" style={{ marginBottom: 16 }}>
+      <div className="kpi-grid-5" style={{ marginBottom: 16 }}>
         {kpis.map((k) => (
           <div key={k.label} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 20px" }}>
             <div style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700, marginBottom: 10, whiteSpace: "nowrap" }}>{k.label}</div>
@@ -108,7 +109,7 @@ export function DetailTable({ detail, showLiveness = false }: { detail: DayDetai
                 <th style={th}>위치</th>
                 <th style={th}>출근</th>
                 <th style={th}>퇴근</th>
-                <th style={th}>지각</th>
+                <th style={th}>지각/조퇴</th>
                 <th style={th}>외출</th>
                 <th style={{ ...th, textAlign: "right" }}>실근무</th>
                 {showLiveness && <th style={th}>본인 확인</th>}
@@ -160,10 +161,14 @@ export function DetailTable({ detail, showLiveness = false }: { detail: DayDetai
                       <td style={td}>
                         {e.holiday ? (
                           <span style={{ fontSize: 13, fontWeight: 700, color: "#6D28D9" }}>휴일근무</span>
-                        ) : e.late === null ? (
+                        ) : e.late === null && e.early === null ? (
                           <span style={{ color: "#9CA3AF" }}>—</span>
-                        ) : e.late ? (
-                          <span style={{ fontSize: 13, fontWeight: 700, color: "#B45309" }}>지각</span>
+                        ) : e.late || e.early ? (
+                          // 지각·조퇴는 동시에 생길 수 있어 각각 뱃지로 함께 표시(늦게 와서 일찍 감).
+                          <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+                            {e.late && <span style={{ fontSize: 13, fontWeight: 700, color: "#B45309" }}>지각</span>}
+                            {e.early && <span style={{ fontSize: 13, fontWeight: 700, color: "#C2410C" }}>조퇴</span>}
+                          </span>
                         ) : (
                           <span style={{ fontSize: 13, fontWeight: 700, color: "#15803D" }}>정상</span>
                         )}

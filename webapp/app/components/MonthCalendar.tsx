@@ -59,7 +59,9 @@ export function MonthCalendar({
             bg = "#F0FDF4";
             sub = formatMinutes(e.minutes);
             if (e.holiday) badge = { text: "휴일", color: "#6D28D9" };
+            else if (e.late && e.early) badge = { text: "지각·조퇴", color: "#C2410C" };
             else if (e.late) badge = { text: "지각", color: "#B45309" };
+            else if (e.early) badge = { text: "조퇴", color: "#C2410C" };
             else badge = { text: "출근", color: "#15803D" };
           } else if (e?.type === "leave") {
             bg = "#EFF6FF";
@@ -102,6 +104,7 @@ export function MonthCalendar({
       <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 14, fontSize: 12, color: "var(--text-sub)" }}>
         <Legend color="#15803D" label="출근" />
         <Legend color="#B45309" label="지각" />
+        <Legend color="#C2410C" label="조퇴" />
         <Legend color="#2563EB" label="휴가" />
         <Legend color="#DC2626" label="결근" />
         <Legend color="#6D28D9" label="휴일근무" />

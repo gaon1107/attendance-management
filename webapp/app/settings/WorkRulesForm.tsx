@@ -41,9 +41,9 @@ export function WorkRulesForm({
     <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
       <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>근무제·기준시간</div>
       <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
-        표준 출근·퇴근 기준시각을 정하면 <b>지각·정상</b>을 판정할 수 있습니다. (기준시각 + 유예 이후 출근 = 지각)
+        표준 출근·퇴근 기준시각을 정하면 <b>지각·조퇴·정상</b>을 판정할 수 있습니다. (출근 기준시각 + 유예 이후 출근 = 지각 / 퇴근 기준시각보다 일찍 퇴근 = 조퇴)
         <br />
-        시각을 <b>없음</b>으로 두면 지각 판정을 하지 않고 실근무시간만 기록합니다.
+        해당 시각을 <b>없음</b>으로 두면 그 판정(지각/조퇴)을 하지 않고 실근무시간만 기록합니다.
       </p>
 
       <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: 16 }}>

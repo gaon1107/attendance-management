@@ -45,7 +45,7 @@ export default async function MyRecordsPage({
 
   const company = await prisma.company.findUnique({
     where: { id: me.companyId },
-    select: { workStartTime: true, lateGraceMin: true, workDays: true, holidayAutoOn: true },
+    select: { workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true, holidayAutoOn: true },
   });
 
   // 기간(start~end)으로 내 출퇴근 + 승인 휴가를 모아 상세를 만든다.
