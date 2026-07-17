@@ -48,7 +48,9 @@ export async function addCompanyHoliday(_prev: Result, formData: FormData): Prom
   });
 
   await logAdminAction(me, "config", "company_holiday_add");
+  // [설정] 폼과 [일정] 캘린더 두 곳에서 호출된다 — 두 화면 모두 새로고침해야 반영이 즉시 보인다.
   revalidatePath("/settings");
+  revalidatePath("/schedule");
   return { ok: true };
 }
 
@@ -65,7 +67,9 @@ export async function deleteCompanyHoliday(_prev: Result, formData: FormData): P
   if (res.count === 0) return { error: "이미 삭제되었거나 대상을 찾을 수 없습니다." };
 
   await logAdminAction(me, "config", "company_holiday_del");
+  // [설정]·[일정] 두 화면 모두 새로고침(위 add와 동일 이유).
   revalidatePath("/settings");
+  revalidatePath("/schedule");
   return { ok: true };
 }
 
