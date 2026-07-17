@@ -5,7 +5,7 @@ import { hashPassword } from "@/lib/password";
 import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { parseDays, daysToCsv } from "@/lib/workdays";
-import { parseProfile } from "@/lib/employee-profile";
+import { parseProfile, employeeNoTaken } from "@/lib/employee-profile";
 
 export async function addEmployee(
   _prev: { error?: string; ok?: boolean },
@@ -87,6 +87,15 @@ export async function updateEmployeeProfile(
 
   const parsed = parseProfile(formData);
   if (!parsed.ok) return { error: parsed.error };
+  // 사번 중복검사 — 같은 회사 다른 활성 직원과 겹치면 저장 거부(본인은 제외).
+  //  · 사번이 "실제로 바뀐" 경우에만 검사한다. 기능 도입 前 이미 중복이던 레거시 데이터가 있어도
+  //    사번을 안 건드린 저장(전화번호만 수정 등)은 막지 않기 위함(중복은 다음에 사번을 고칠 때 정리됨).
+  if (
+    parsed.profile.employeeNo !== target.employeeNo &&
+    (await employeeNoTaken(me.companyId, parsed.profile.employeeNo, target.id))
+  ) {
+    return { error: "이미 같은 사번을 쓰는 직원이 있습니다. 다른 사번을 입력해 주세요." };
+  }
   await prisma.user.update({
     where: { id: target.id },
     data: {

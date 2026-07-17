@@ -3,6 +3,8 @@
 // 전부 선택 항목이라 비어 있으면 null로 저장한다(빈 칸으로 저장 = 값 삭제).
 // 잘못된 입력은 조용히 자르거나 굴리지 않고(무결성 우선) 안내 에러로 되돌린다.
 
+import { prisma } from "@/lib/db";
+
 export type ProfileInput = {
   phone: string | null;
   position: string | null;
@@ -59,4 +61,28 @@ export function parseProfile(fd: FormData): ProfileParse {
       hireDate: hireDate.value,
     },
   };
+}
+
+// [사번 중복검사] 같은 회사에 같은 사번을 쓰는 "다른 활성 직원"이 있는지 확인한다.
+//  · 초대가입·관리자수정 두 저장 경로가 같은 규칙을 쓰도록 공용화(email 중복검사와 같은 앱단 방식).
+//  · employeeNo=null(미입력)이면 중복 대상이 아니므로 검사하지 않는다(여러 명 미입력 허용).
+//  · deactivatedAt=null(활성)만 대상 → 퇴사자 사번은 신입이 재사용 가능(과거 기록은 그대로 보존).
+//  · exceptUserId: 본인 제외(관리자 수정 시 자기 사번 유지한 채 다른 항목만 고쳐도 자기충돌 오탐 방지).
+//  ※ 앱단 검사라 이론상 동시제출 경쟁(TOCTOU)은 완벽 차단이 아니다(관리자 1명·간헐 가입이라 실사용 위험 극소).
+export async function employeeNoTaken(
+  companyId: string,
+  employeeNo: string | null,
+  exceptUserId?: string
+): Promise<boolean> {
+  if (!employeeNo) return false; // 미입력은 중복검사 대상 아님
+  const dup = await prisma.user.findFirst({
+    where: {
+      companyId,
+      employeeNo,
+      deactivatedAt: null,
+      ...(exceptUserId ? { id: { not: exceptUserId } } : {}),
+    },
+    select: { id: true },
+  });
+  return !!dup;
 }

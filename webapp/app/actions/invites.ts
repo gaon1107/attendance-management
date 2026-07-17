@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { getCurrentUser, createSession } from "@/lib/session";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
-import { parseProfile } from "@/lib/employee-profile";
+import { parseProfile, employeeNoTaken } from "@/lib/employee-profile";
 import { randomBytes } from "crypto";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -66,6 +66,10 @@ export async function acceptInvite(
   const parsed = parseProfile(formData);
   if (!parsed.ok) return { error: parsed.error };
   const profile = parsed.profile;
+  // 사번 중복검사 — 초대한 회사에 같은 사번을 쓰는 활성 직원이 이미 있으면 가입 거부(email 검사와 같은 방식).
+  if (await employeeNoTaken(invite.companyId, profile.employeeNo)) {
+    return { error: "이미 같은 사번을 쓰는 직원이 있습니다. 관리자에게 확인해 주세요." };
+  }
 
   const user = await prisma.user.create({
     data: {
