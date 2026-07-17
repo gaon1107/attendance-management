@@ -103,7 +103,7 @@ export default async function DashboardPage() {
   const latestNotice = await prisma.announcement.findFirst({
     where: { companyId: me.companyId },
     orderBy: { createdAt: "desc" },
-    select: { title: true, body: true, authorName: true, createdAt: true },
+    select: { title: true, body: true, authorName: true, createdAt: true, noticeDate: true },
   });
 
   // 이상접속 미확인 건수(접속/보안 6단계) — 알림 화면과 **같은 함수**를 써서 두 곳 숫자가 어긋나지 않게 한다.
@@ -236,7 +236,9 @@ export default async function DashboardPage() {
                     title: latestNotice.title,
                     body: latestNotice.body,
                     authorName: latestNotice.authorName,
-                    dateLabel: latestNotice.createdAt.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }),
+                    // 캘린더·배너와 같은 "표시 날짜" 기준으로 표기(미지정이면 작성일).
+                    dateLabel: (latestNotice.noticeDate ? new Date(`${latestNotice.noticeDate}T00:00:00`) : latestNotice.createdAt)
+                      .toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }),
                   }}
                 />
               )}

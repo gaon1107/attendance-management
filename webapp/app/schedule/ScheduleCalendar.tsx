@@ -2,11 +2,12 @@
 // 일정 캘린더(클라이언트) — 월 그리드 + 날짜 클릭 시 모달로 일정/휴무일 관리.
 //  · 법정공휴일(빨강, 읽기전용) · 회사 휴무일(보라 배지) · 회사 일정(막대) 표시.
 //  · 등록/삭제는 서버액션(addEvent/deleteEvent + 기존 add/deleteCompanyHoliday)으로. 저장 후 목록은 서버 재검증으로 갱신.
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import Link from "next/link";
 import { addEvent, deleteEvent } from "@/app/actions/schedule";
 import { addCompanyHoliday, deleteCompanyHoliday } from "@/app/actions/holidays";
 import { createNotice, deleteNotice } from "@/app/actions/notice";
+import { DatePicker } from "@/app/components/DatePicker";
 
 export type DayData = {
   nationalHoliday?: string; // 법정공휴일 이름(읽기전용)
@@ -54,7 +55,7 @@ export function ScheduleCalendar({
         <div style={{ fontSize: 16, fontWeight: 700 }}>일정 캘린더</div>
         <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 4 }}>
           {canManageCompany
-            ? "날짜를 클릭해 회사 일정을 등록하거나 그 날을 휴무일로 지정하세요. 공지는 아래 '공지 작성'으로 올리면 오늘 날짜에 표시됩니다. (법정공휴일은 빨간색으로 자동 표시)"
+            ? "날짜를 클릭해 회사 일정을 등록하거나 그 날을 휴무일로 지정하세요. 공지는 아래 '공지 작성'으로 올리며 표시 날짜를 지정할 수 있습니다. (법정공휴일은 빨간색으로 자동 표시)"
             : "회사 공휴일·휴무일·공지·일정은 보기만 할 수 있고, 날짜를 클릭해 내 개인 일정을 추가할 수 있어요. (개인 일정은 나만 봅니다)"}
         </div>
       </div>
@@ -73,10 +74,10 @@ export function ScheduleCalendar({
           ) : (
             <>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: "#92400E" }}>📢 새 공지 작성 <span style={{ fontWeight: 400, fontSize: 12, color: "var(--text-sub)" }}>(오늘 날짜로 등록 · 전 직원 알림)</span></div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#92400E" }}>📢 새 공지 작성 <span style={{ fontWeight: 400, fontSize: 12, color: "var(--text-sub)" }}>(표시 날짜 지정 · 전 직원 알림)</span></div>
                 <button type="button" onClick={() => setComposeOpen(false)} style={{ width: 28, height: 28, border: "1px solid var(--border)", borderRadius: 7, background: "#fff", color: "var(--text-sub)", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>✕</button>
               </div>
-              <NoticeCompose onDone={() => setComposeOpen(false)} />
+              <NoticeCompose onDone={() => setComposeOpen(false)} defaultDate={todayISO} />
             </>
           )}
         </div>
@@ -303,9 +304,14 @@ function DayModal({ iso, data, canManageCompany, onClose }: { iso: string; data:
   );
 }
 
-// 공지 작성 폼(관리자, 캘린더 상단) — 제목+내용. 등록되면 오늘 날짜 칸에 표시되고 입력창을 비운다.
-function NoticeCompose({ onDone }: { onDone: () => void }) {
+// 공지 작성 폼(관리자, 캘린더 상단) — 표시 날짜+제목+내용. 등록되면 지정 날짜 칸에 표시되고 입력창을 비운다.
+function NoticeCompose({ onDone, defaultDate }: { onDone: () => void; defaultDate: string }) {
   const [state, formAction, pending] = useActionState(createNotice, {});
+  // 등록 성공 시 폼을 닫는다 → 다음에 열면 컴포넌트가 새로 떠서 날짜 선택기가 기본(오늘)으로 초기화된다.
+  // (등록 결과는 캘린더에 바로 반영되므로 성공을 눈으로 확인 가능하다.)
+  useEffect(() => {
+    if (state?.ok) onDone();
+  }, [state?.ok, onDone]);
   const inputStyle: React.CSSProperties = {
     width: "100%", padding: "0 12px", height: 42, border: "1px solid #D1D5DB", borderRadius: 8,
     fontFamily: "inherit", fontSize: 14, color: "var(--text)", outline: "none", background: "#fff",
@@ -319,6 +325,10 @@ function NoticeCompose({ onDone }: { onDone: () => void }) {
       }}
       style={{ display: "flex", flexDirection: "column", gap: 10 }}
     >
+      <div>
+        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#92400E", marginBottom: 6 }}>표시 날짜 <span style={{ fontWeight: 400, color: "var(--text-sub)" }}>(이 날짜 칸에 공지가 표시됩니다 · 기본 오늘)</span></label>
+        <DatePicker name="date" defaultValue={defaultDate} allowClear={false} placeholder="날짜 선택" />
+      </div>
       <input name="title" type="text" placeholder="공지 제목 (예: 7월 워크샵 안내)" maxLength={100} style={inputStyle} />
       <textarea name="body" rows={3} maxLength={5000} placeholder="공지 내용을 입력하세요." style={{ ...inputStyle, height: "auto", padding: "10px 12px", resize: "vertical", lineHeight: 1.6 }} />
       {state?.error && <div style={{ fontSize: 12, color: "var(--danger)", fontWeight: 700 }}>{state.error}</div>}

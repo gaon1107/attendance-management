@@ -49,7 +49,18 @@ export default async function SchedulePage({
     prisma.holiday.findMany({ where: { date: { startsWith: monthPrefix } }, select: { date: true, name: true } }),
     prisma.companyHoliday.findMany({ where: { companyId: me.companyId, date: { startsWith: monthPrefix } }, select: { id: true, date: true, name: true } }),
     prisma.companyEvent.findMany({ where: eventWhere, select: { id: true, date: true, title: true, color: true, userId: true }, orderBy: { createdAt: "asc" } }),
-    prisma.announcement.findMany({ where: { companyId: me.companyId, createdAt: { gte: monthStart, lt: monthEnd } }, select: { id: true, title: true, body: true, authorName: true, createdAt: true }, orderBy: { createdAt: "asc" } }),
+    // 이 달에 표시할 공지 = 표시 날짜(noticeDate)가 이 달이거나, 표시 날짜 미지정이면 작성일(createdAt)이 이 달인 것.
+    prisma.announcement.findMany({
+      where: {
+        companyId: me.companyId,
+        OR: [
+          { noticeDate: { startsWith: monthPrefix } },
+          { noticeDate: null, createdAt: { gte: monthStart, lt: monthEnd } },
+        ],
+      },
+      select: { id: true, title: true, body: true, authorName: true, createdAt: true, noticeDate: true },
+      orderBy: { createdAt: "asc" },
+    }),
   ]);
 
   // 날짜(ISO) → 그 날의 데이터로 합친다. mine = 내가 삭제할 수 있는 일정인지(관리자=회사 일정 / 직원=본인 개인).
@@ -61,9 +72,10 @@ export default async function SchedulePage({
     const mine = isAdmin ? e.userId === null : e.userId === me.id;
     ensure(e.date).events.push({ id: e.id, title: e.title, color: e.color, mine, personal: e.userId !== null });
   }
-  // 공지는 올린 날(작성일) 칸에 표시. 작성일을 로컬 날짜(ISO)로 변환해 버킷팅.
+  // 공지는 표시 날짜(noticeDate) 칸에 표시. 미지정이면 작성일(createdAt)의 로컬 날짜(ISO)로 버킷팅.
   for (const nt of notices) {
-    const day = ensure(toISODate(nt.createdAt));
+    const iso = nt.noticeDate ?? toISODate(nt.createdAt);
+    const day = ensure(iso);
     (day.notices ??= []).push({ id: nt.id, title: nt.title, body: nt.body, authorName: nt.authorName });
   }
   // "새 알림 NEW" 읽음처리는 지금 보고 있는 이 달에 안 읽은 공지가 실제로 있을 때만 한다.

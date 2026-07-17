@@ -257,6 +257,9 @@ model Announcement {
   body       String
   authorName String   // 작성 시점의 관리자 이름(스냅샷)
   createdAt  DateTime @default(now())
+  // 캘린더에 표시할 날짜("YYYY-MM-DD"). null이면 작성일(createdAt)에 표시(기존 공지 호환).
+  // 관리자가 공지 작성 시 원하는 날짜를 지정할 수 있다. 표시 위치 전용(작성 시각과 별개).
+  noticeDate String?
 }
 
 // 근태 정정 요청 — 직원이 특정 날짜의 출퇴근을 고쳐달라고 요청하고, 관리자가 승인/반려한다.
