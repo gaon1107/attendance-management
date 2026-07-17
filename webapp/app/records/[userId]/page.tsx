@@ -11,7 +11,7 @@ import { PeriodNav } from "@/app/components/PeriodNav";
 import { DetailTable } from "@/app/components/DetailTable";
 import { MonthCalendar } from "@/app/components/MonthCalendar";
 import { buildDayEntries } from "@/lib/dayentries";
-import { leaveLabelByDate } from "@/lib/leave";
+import { leaveLabelByDate, leaveTypeByDate } from "@/lib/leave";
 import { loadOffDays } from "@/lib/holiday-server";
 import { normalizeUnit, parseAnchor, rangeFor, shiftAnchor, toISODate } from "@/lib/period";
 
@@ -79,7 +79,7 @@ export default async function RecordDetailPage({
       where: { userId: target!.id, companyId: me!.companyId, status: "approved", startDate: { lt: end }, endDate: { gte: start } },
       select: { type: true, startDate: true, endDate: true },
     });
-    return buildDayEntries(rows, target!.workDays, company, start, end, leaveLabelByDate(leaves), offDays);
+    return buildDayEntries(rows, target!.workDays, company, start, end, leaveLabelByDate(leaves), offDays, leaveTypeByDate(leaves));
   }
 
   const backBtn = (

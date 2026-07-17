@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { effectiveWorkDays } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
-import { LEAVE_TYPES, leaveTypeDeducts, computeLeaveDays, parseYmd, usedLeaveDays } from "@/lib/leave";
+import { REQUESTABLE_TYPES, isSingleDayLeave, leaveTypeDeducts, computeLeaveDays, parseYmd, usedLeaveDays } from "@/lib/leave";
 
 // 직원: 휴가 신청. 종류·기간을 받아 근무요일 기준 사용일수를 계산하고 대기 상태로 만든다.
 export async function requestLeave(
@@ -16,15 +16,14 @@ export async function requestLeave(
   if (!me) return { error: "로그인이 필요합니다." };
 
   const type = String(formData.get("type") ?? "");
-  if (!LEAVE_TYPES.some((t) => t.key === type)) return { error: "휴가 종류를 선택해주세요." };
+  if (!(REQUESTABLE_TYPES as readonly string[]).includes(type)) return { error: "휴가 종류를 선택해주세요." };
 
   const start = parseYmd(String(formData.get("startDate") ?? ""));
-  // 반차는 하루만. 종료일 없으면 시작일과 같게.
   const endRaw = String(formData.get("endDate") ?? "");
+  const singleDay = isSingleDayLeave(type); // 반차(오전·오후)·병가·조퇴는 하루짜리(종료일 없음)
   // 여러 날짜 종류(연차 등)는 종료일 필수 — 빈 값이 조용히 "당일"로 처리되지 않게 명시적으로 막는다.
-  // (폼의 '하루짜리' 기준 = 반차·병가와 동일하게 둔다. 그 외는 종료일을 반드시 골라야 함.)
-  if (type !== "half" && type !== "sick" && !parseYmd(endRaw)) return { error: "종료일을 선택해주세요." };
-  const end = type === "half" ? start : parseYmd(endRaw) ?? start;
+  if (!singleDay && !parseYmd(endRaw)) return { error: "종료일을 선택해주세요." };
+  const end = singleDay ? start : parseYmd(endRaw) ?? start;
   if (!start || !end) return { error: "날짜를 올바르게 선택해주세요." };
   if (end < start) return { error: "종료일이 시작일보다 빠릅니다." };
 
@@ -37,7 +36,8 @@ export async function requestLeave(
   const offDays = await loadOffDays(me.companyId, company?.holidayAutoOn ?? true, start, end);
 
   const days = computeLeaveDays(type, start, end, wd, offDays);
-  if (days <= 0) return { error: "선택한 기간에 근무일이 없습니다. 근무요일을 확인해주세요." };
+  // 조퇴는 연차 차감이 없어 days=0이 정상 → 근무일수 검사에서 제외한다. (그 외는 근무일이 0이면 신청 무의미)
+  if (type !== "early_leave" && days <= 0) return { error: "선택한 기간에 근무일이 없습니다. 근무요일을 확인해주세요." };
 
   // 연차·반차는 잔여를 넘을 수 없다(병가는 차감 안 함).
   if (leaveTypeDeducts(type)) {

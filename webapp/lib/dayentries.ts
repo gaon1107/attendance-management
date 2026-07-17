@@ -2,6 +2,7 @@
 import { workedMinutes, isLate, isEarlyLeave } from "@/lib/worktime";
 import { toISODate } from "@/lib/period";
 import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
+import { leaveTypeLabel, leaveSuppressesLate, leaveSuppressesEarly } from "@/lib/leave";
 
 type BreakLike = { startAt: Date; endAt: Date | null; reason: string };
 // 출퇴근 촬영 사진·판독 기록(관리자 근태 상세 전용). 조회하지 않은 화면(내근태 등)에서는 undefined — 기존 동작 무변경.
@@ -24,7 +25,8 @@ export type AttRow = {
 type Company = { workStartTime: string | null; workEndTime: string | null; lateGraceMin: number; workDays: string } | null;
 
 export type DayEntry =
-  | { type: "att"; date: Date; rec: AttRow; holiday: boolean; late: boolean | null; early: boolean | null; minutes: number }
+  // approvedLeave: 그날 승인된 반차/조퇴 라벨(있으면 지각·조퇴 대신 이 뱃지를 보여줌). 없으면 null.
+  | { type: "att"; date: Date; rec: AttRow; holiday: boolean; late: boolean | null; early: boolean | null; approvedLeave: string | null; minutes: number }
   | { type: "absent"; date: Date }
   | { type: "leave"; date: Date; label: string };
 
@@ -50,7 +52,9 @@ export function buildDayEntries(
   start: Date,
   end: Date,
   leaveByDate: Map<string, string> = new Map(),
-  offDays: Set<string> = new Set()
+  offDays: Set<string> = new Set(),
+  // 승인된 반차/조퇴 종류맵(날짜 ISO → 종류 key). 출근한 날 지각·조퇴를 면제하는 데 쓴다. 안 넘기면 면제 없음(기존 동작).
+  leaveTypeByDate: Map<string, string> = new Map()
 ): DayDetail {
   const wd = effectiveWorkDays(userWorkDays, company?.workDays);
   const hasRule = !!company?.workStartTime;
@@ -58,10 +62,15 @@ export function buildDayEntries(
 
   const attEntries: DayEntry[] = rows.map((r) => {
     const onWorkDay = isEffectiveWorkDay(r.clockIn, wd, offDays);
-    const late = onWorkDay ? isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0) : null;
+    let late = onWorkDay ? isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0) : null;
     // 조퇴도 지각과 동일 게이팅: 근무일에만. 퇴근기록 없음(근무중)·기준시각 미설정은 isEarlyLeave가 null 반환.
-    const early = onWorkDay ? isEarlyLeave(r.clockOut, company?.workEndTime ?? null) : null;
-    return { type: "att", date: r.clockIn, rec: r, holiday: !onWorkDay, late, early, minutes: workedMinutes(r) };
+    let early = onWorkDay ? isEarlyLeave(r.clockOut, company?.workEndTime ?? null) : null;
+    // 승인된 반차/조퇴가 있으면 해당 자동판정을 면제(null)하고, 승인 뱃지 라벨을 남긴다.
+    const lt = leaveTypeByDate.get(toISODate(r.clockIn));
+    if (lt && leaveSuppressesLate(lt)) late = null;
+    if (lt && leaveSuppressesEarly(lt)) early = null;
+    const approvedLeave = lt ? leaveTypeLabel(lt) : null;
+    return { type: "att", date: r.clockIn, rec: r, holiday: !onWorkDay, late, early, approvedLeave, minutes: workedMinutes(r) };
   });
 
   // 결근 = 과거(오늘 이전) 근무일 중 출근 기록이 없는 날. 단, 승인된 휴가일은 결근이 아니라 "휴가".

@@ -59,7 +59,11 @@ export function MonthCalendar({
             bg = "#F0FDF4";
             sub = formatMinutes(e.minutes);
             if (e.holiday) badge = { text: "휴일", color: "#6D28D9" };
-            else if (e.late && e.early) badge = { text: "지각·조퇴", color: "#C2410C" };
+            else if (e.approvedLeave) {
+              // 승인 반차/조퇴가 있어도 그날 "면제 안 된" 지각/조퇴가 남아 있으면 함께 표기(예: 오전 반차인데 무단 조퇴).
+              const extra = [e.late ? "지각" : "", e.early ? "조퇴" : ""].filter(Boolean).join("·");
+              badge = extra ? { text: `${e.approvedLeave}·${extra}`, color: "#C2410C" } : { text: e.approvedLeave, color: "#2563EB" };
+            } else if (e.late && e.early) badge = { text: "지각·조퇴", color: "#C2410C" };
             else if (e.late) badge = { text: "지각", color: "#B45309" };
             else if (e.early) badge = { text: "조퇴", color: "#C2410C" };
             else badge = { text: "출근", color: "#15803D" };

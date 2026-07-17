@@ -92,11 +92,11 @@ export default async function ReportsPage({
   // 기간에 걸치는 승인된 휴가 → 직원별 휴가일 집합(결근에서 제외)
   const leaves = await prisma.leaveRequest.findMany({
     where: { companyId: me.companyId, status: "approved", startDate: { lt: end }, endDate: { gte: start } },
-    select: { userId: true, startDate: true, endDate: true },
+    select: { userId: true, type: true, startDate: true, endDate: true }, // type: 조퇴는 leaveDateSet에서 제외됨
   });
   const leaveByUser = new Map<string, Set<string>>();
   for (const [uid, list] of Object.entries(
-    leaves.reduce<Record<string, { startDate: Date; endDate: Date }[]>>((acc, l) => {
+    leaves.reduce<Record<string, { type: string; startDate: Date; endDate: Date }[]>>((acc, l) => {
       (acc[l.userId] ??= []).push(l);
       return acc;
     }, {})

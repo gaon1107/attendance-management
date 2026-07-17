@@ -2,7 +2,7 @@
 // 휴가 신청 폼(직원) — 종류·기간·사유. 반차/병가는 하루만(종료일 숨김).
 import { useActionState, useState } from "react";
 import { requestLeave } from "@/app/actions/leave";
-import { LEAVE_TYPES } from "@/lib/leave";
+import { REQUESTABLE_TYPES, leaveTypeLabel, isSingleDayLeave } from "@/lib/leave";
 import { DatePicker } from "@/app/components/DatePicker";
 
 const inputStyle: React.CSSProperties = {
@@ -14,15 +14,15 @@ const labelStyle: React.CSSProperties = { display: "block", fontSize: 13, fontWe
 export function LeaveRequestForm() {
   const [state, formAction, pending] = useActionState(requestLeave, {});
   const [type, setType] = useState("annual");
-  const singleDay = type === "half" || type === "sick"; // 하루짜리는 종료일 없음
+  const singleDay = isSingleDayLeave(type); // 반차(오전·오후)·병가·조퇴는 하루짜리(종료일 없음)
 
   return (
     <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div>
         <label style={labelStyle}>종류</label>
         <select name="type" value={type} onChange={(e) => setType(e.target.value)} style={inputStyle}>
-          {LEAVE_TYPES.map((t) => (
-            <option key={t.key} value={t.key}>{t.label}</option>
+          {REQUESTABLE_TYPES.map((k) => (
+            <option key={k} value={k}>{leaveTypeLabel(k)}</option>
           ))}
         </select>
       </div>

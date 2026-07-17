@@ -11,6 +11,7 @@ import { parseAnchor, toISODate } from "@/lib/period";
 import { workModeLabel, locationLabel, hhmm, monthDayDow } from "@/lib/labels";
 import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
+import { leaveTypeLabel, leaveSuppressesLate, leaveSuppressesEarly } from "@/lib/leave";
 import { after } from "next/server";
 import { purgeExpiredPhotos } from "@/lib/clock-photo";
 
@@ -77,12 +78,32 @@ export default async function RecordsPage({
   const hasRule = !!company?.workStartTime;
   const hasEndRule = !!company?.workEndTime;
 
+  // 기간에 걸치는 "승인된" 반차/조퇴/휴가 → (직원|날짜)별 종류맵. 그날 지각·조퇴 자동판정을 면제하는 데 쓴다.
+  const approvedLeaves = await prisma.leaveRequest.findMany({
+    where: { companyId: me.companyId, status: "approved", startDate: { lt: end }, endDate: { gte: start } },
+    select: { userId: true, type: true, startDate: true, endDate: true },
+  });
+  const leaveByUserDate = new Map<string, string>(); // "userId|ISO" → 종류 key
+  for (const lv of approvedLeaves) {
+    const cur = new Date(lv.startDate.getFullYear(), lv.startDate.getMonth(), lv.startDate.getDate());
+    const last = new Date(lv.endDate.getFullYear(), lv.endDate.getMonth(), lv.endDate.getDate());
+    while (cur <= last) {
+      leaveByUserDate.set(`${lv.userId}|${toISODate(cur)}`, lv.type);
+      cur.setDate(cur.getDate() + 1);
+    }
+  }
+
   // 각 기록을 화면 표시값(직렬화 가능한 순수 객체)으로 미리 계산 → 통합검색은 "화면에 보이는 모든 컬럼"의 글자로 판단.
   const rows: RecordRow[] = records.map((r) => {
     const onWorkDay = isEffectiveWorkDay(r.clockIn, effectiveWorkDays(r.user.workDays, company?.workDays), offDays);
     const holiday = !onWorkDay;
-    const late = onWorkDay ? isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0) : null;
-    const early = onWorkDay ? isEarlyLeave(r.clockOut, company?.workEndTime ?? null) : null;
+    let late = onWorkDay ? isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0) : null;
+    let early = onWorkDay ? isEarlyLeave(r.clockOut, company?.workEndTime ?? null) : null;
+    // 승인된 반차/조퇴가 있으면 그날 지각·조퇴 면제 + 승인 라벨 표기.
+    const lt = leaveByUserDate.get(`${r.userId}|${toISODate(r.clockIn)}`);
+    if (lt && leaveSuppressesLate(lt)) late = null;
+    if (lt && leaveSuppressesEarly(lt)) early = null;
+    const approvedLeave = lt ? leaveTypeLabel(lt) : null;
     const suspect = r.clockPhotos.some((p) => p.livenessStatus === "suspect");
     const review = !suspect && r.clockPhotos.some((p) => p.livenessStatus === "error");
     const dateText = monthDayDow(r.clockIn);
@@ -91,13 +112,13 @@ export default async function RecordsPage({
     const location = locationLabel(r.locationStatus);
     const inText = hhmm(r.clockIn);
     const outText = r.clockOut ? hhmm(r.clockOut) : "근무 중";
-    // 검색·표시용 텍스트: 휴일근무 우선, 그 외엔 지각·조퇴 뱃지들(둘 다 가능), 아무 문제 없으면 정상.
+    // 검색·표시용 텍스트: 휴일근무 우선, 승인 반차/조퇴 라벨 + 자동 지각/조퇴, 아무 문제 없으면 정상.
     const lateText = holiday
       ? "휴일근무"
-      : late === null && early === null
-        ? ""
-        : late || early
-          ? [late ? "지각" : "", early ? "조퇴" : ""].filter(Boolean).join(" ")
+      : approvedLeave || late || early
+        ? [approvedLeave ?? "", late ? "지각" : "", early ? "조퇴" : ""].filter(Boolean).join(" ")
+        : late === null && early === null
+          ? ""
           : "정상";
     const worked = formatMinutes(workedMinutes(r));
     const badge = suspect ? "위조 의심" : review ? "확인 필요" : "";
@@ -110,7 +131,7 @@ export default async function RecordsPage({
       initial: r.user.name.slice(0, 1),
       dateText, dateISO, workMode, location, inText, outText,
       hasClockOut: !!r.clockOut,
-      holiday, late, early, worked, suspect, review, isWorkingNow,
+      holiday, late, early, approvedLeave, worked, suspect, review, isWorkingNow,
       search: [dateText, r.user.name, workMode, location, inText, outText, lateText, worked, badge].join(" ").toLowerCase(),
     };
   });

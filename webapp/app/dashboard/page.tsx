@@ -7,6 +7,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { workedMinutes, formatMinutes, isLate, isEarlyLeave } from "@/lib/worktime";
 import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
+import { leaveSuppressesLate, leaveSuppressesEarly } from "@/lib/leave";
 import { countUncheckedAnomalies } from "@/lib/anomaly";
 import { DashboardCalendar } from "./DashboardCalendar";
 import { LatestNoticeModal } from "./LatestNoticeModal";
@@ -65,23 +66,38 @@ export default async function DashboardPage() {
   // 대시보드 캘린더는 읽기전용이라 mine/삭제는 쓰지 않음. 전부 회사 일정(personal=false).
   for (const e of calEvents) ensureDay(e.date).events.push({ id: e.id, title: e.title, color: e.color, mine: false, personal: false });
 
-  // 지각 = 근무일 + 기준시각 이후 출근일 때만
+  // 오늘 승인된 반차/조퇴/휴가 → 직원별 종류맵. 승인자는 지각·조퇴 자동판정에서 제외한다.
+  const approvedToday = await prisma.leaveRequest.findMany({
+    where: { companyId: me.companyId, status: "approved", startDate: { lte: startOfToday }, endDate: { gte: startOfToday } },
+    select: { userId: true, type: true },
+  });
+  const leaveTypeTodayByUser = new Map<string, string>();
+  for (const l of approvedToday) leaveTypeTodayByUser.set(l.userId, l.type);
+
+  // 지각 = 근무일 + 기준시각 이후 출근일 때만. 단, 승인된 반차/휴가로 지각이 면제되는 직원은 제외.
   const lateUserIds = new Set(
     todays
       .filter((r) => {
         const wd = effectiveWorkDays(r.user.workDays, company?.workDays);
-        return isEffectiveWorkDay(r.clockIn, wd, offDays) && isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0);
+        if (!isEffectiveWorkDay(r.clockIn, wd, offDays)) return false;
+        if (!isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0)) return false;
+        const lt = leaveTypeTodayByUser.get(r.userId);
+        return !(lt && leaveSuppressesLate(lt));
       })
       .map((r) => r.userId)
   );
   const lateCount = lateUserIds.size;
 
-  // 조퇴 = 근무일 + 퇴근기록이 있고 퇴근 기준시각보다 일찍 퇴근일 때만(근무중=미퇴근은 제외)
+  // 조퇴 = 근무일 + 퇴근기록이 있고 퇴근 기준시각보다 일찍 퇴근일 때만(근무중=미퇴근은 제외).
+  // 단, 승인된 오후 반차/조퇴로 면제되는 직원은 제외.
   const earlyUserIds = new Set(
     todays
       .filter((r) => {
         const wd = effectiveWorkDays(r.user.workDays, company?.workDays);
-        return isEffectiveWorkDay(r.clockIn, wd, offDays) && isEarlyLeave(r.clockOut, company?.workEndTime ?? null);
+        if (!isEffectiveWorkDay(r.clockIn, wd, offDays)) return false;
+        if (!isEarlyLeave(r.clockOut, company?.workEndTime ?? null)) return false;
+        const lt = leaveTypeTodayByUser.get(r.userId);
+        return !(lt && leaveSuppressesEarly(lt));
       })
       .map((r) => r.userId)
   );

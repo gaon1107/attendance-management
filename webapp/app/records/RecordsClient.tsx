@@ -26,6 +26,7 @@ export type RecordRow = {
   holiday: boolean;
   late: boolean | null;
   early: boolean | null;
+  approvedLeave: string | null; // 승인된 반차/조퇴 라벨(있으면 그날 지각·조퇴 면제)
   worked: string;
   suspect: boolean;
   review: boolean;
@@ -146,11 +147,15 @@ export function RecordsClient({
                     <td style={td}>
                       {r.holiday ? (
                         <span style={{ fontSize: 13, fontWeight: 700, color: "#6D28D9" }}>휴일근무</span>
-                      ) : r.late === null && r.early === null ? (
-                        <span style={{ color: "#9CA3AF" }}>—</span>
-                      ) : r.late || r.early ? (
-                        // 지각·조퇴는 동시에 생길 수 있어 각각 알약 뱃지로 함께 표시.
+                      ) : r.approvedLeave || r.late || r.early ? (
+                        // 승인 반차/조퇴(파랑) + 자동 지각/조퇴(주황) 알약 뱃지. 승인이 있으면 그날 지각·조퇴 면제됨.
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          {r.approvedLeave && (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px", borderRadius: 6, background: "#DBEAFE" }}>
+                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2563EB" }} />
+                              <span style={{ fontSize: 13, fontWeight: 700, color: "#1D4ED8" }}>{r.approvedLeave}</span>
+                            </span>
+                          )}
                           {r.late && (
                             <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px", borderRadius: 6, background: "#FEF3C7" }}>
                               <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--warning)" }} />
@@ -164,6 +169,8 @@ export function RecordsClient({
                             </span>
                           )}
                         </span>
+                      ) : r.late === null && r.early === null ? (
+                        <span style={{ color: "#9CA3AF" }}>—</span>
                       ) : (
                         <span style={{ fontSize: 13, fontWeight: 700, color: "#15803D" }}>정상</span>
                       )}

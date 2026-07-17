@@ -161,14 +161,15 @@ export function DetailTable({ detail, showLiveness = false }: { detail: DayDetai
                       <td style={td}>
                         {e.holiday ? (
                           <span style={{ fontSize: 13, fontWeight: 700, color: "#6D28D9" }}>휴일근무</span>
-                        ) : e.late === null && e.early === null ? (
-                          <span style={{ color: "#9CA3AF" }}>—</span>
-                        ) : e.late || e.early ? (
-                          // 지각·조퇴는 동시에 생길 수 있어 각각 뱃지로 함께 표시(늦게 와서 일찍 감).
+                        ) : e.approvedLeave || e.late || e.early ? (
+                          // 승인 반차/조퇴(파랑)와 자동 지각/조퇴(주황)를 함께 표시. 승인이 있으면 그날은 지각·조퇴가 면제됨.
                           <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+                            {e.approvedLeave && <span style={{ fontSize: 13, fontWeight: 700, color: "#1D4ED8" }}>{e.approvedLeave}</span>}
                             {e.late && <span style={{ fontSize: 13, fontWeight: 700, color: "#B45309" }}>지각</span>}
                             {e.early && <span style={{ fontSize: 13, fontWeight: 700, color: "#C2410C" }}>조퇴</span>}
                           </span>
+                        ) : e.late === null && e.early === null ? (
+                          <span style={{ color: "#9CA3AF" }}>—</span>
                         ) : (
                           <span style={{ fontSize: 13, fontWeight: 700, color: "#15803D" }}>정상</span>
                         )}

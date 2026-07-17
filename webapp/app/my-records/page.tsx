@@ -10,7 +10,7 @@ import { RangeCalendarNav } from "@/app/components/RangeCalendarNav";
 import { DetailTable } from "@/app/components/DetailTable";
 import { MonthCalendar } from "@/app/components/MonthCalendar";
 import { buildDayEntries } from "@/lib/dayentries";
-import { leaveLabelByDate } from "@/lib/leave";
+import { leaveLabelByDate, leaveTypeByDate } from "@/lib/leave";
 import { loadOffDays } from "@/lib/holiday-server";
 import { parseAnchor, rangeFor, shiftAnchor, toISODate } from "@/lib/period";
 
@@ -60,7 +60,7 @@ export default async function MyRecordsPage({
       where: { userId: me!.id, companyId: me!.companyId, status: "approved", startDate: { lt: end }, endDate: { gte: start } },
       select: { type: true, startDate: true, endDate: true },
     });
-    return buildDayEntries(rows, me!.workDays, company, start, end, leaveLabelByDate(leaves), offDays);
+    return buildDayEntries(rows, me!.workDays, company, start, end, leaveLabelByDate(leaves), offDays, leaveTypeByDate(leaves));
   }
 
   // ── 달력 보기 (월 단위) ──────────────────────────────
