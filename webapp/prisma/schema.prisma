@@ -43,6 +43,7 @@ model Company {
   // 공휴일에도 정상근무하는 업종(병원·서비스업)은 꺼둔다. 회사 수동 휴무일(CompanyHoliday)은 이 스위치와 무관하게 항상 적용.
   holidayAutoOn Boolean  @default(true)
   companyHolidays CompanyHoliday[]
+  companyEvents CompanyEvent[]
   // 얼굴 인식 기준 크기(%) — 얼굴 폭이 화면 폭의 이 비율 이상이어야 출퇴근 인식·등록 통과.
   // 해상도가 아니라 "비율"이라 카메라마다 화질이 달라도 같은 의미. 멀리 든 사진(작은 얼굴) 부정 차단용.
   faceMinPercent Int     @default(30)
@@ -390,4 +391,19 @@ model CompanyHoliday {
   // 회사·날짜당 1건만(같은 날 중복 등록 방지)
   @@unique([companyId, date])
   @@index([companyId])
+}
+
+// 회사 일정 — 관리자가 [일정] 캘린더에서 날짜에 등록하는 메모/이벤트(예: "월례회의", "출하").
+// ※ 표시 전용 — 지각·결근·연차 등 근태 판정에는 영향을 주지 않는다(휴무일은 CompanyHoliday가 담당).
+model CompanyEvent {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  date      String   // "YYYY-MM-DD" (하루짜리)
+  title     String   // 일정 내용(관리자 입력, 표시 전용)
+  color     String?  // 막대 색(선택, 없으면 기본색)
+  createdBy String?  // 등록한 관리자 이름 스냅샷
+  createdAt DateTime @default(now())
+
+  @@index([companyId, date])
 }
