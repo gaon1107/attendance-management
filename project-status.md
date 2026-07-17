@@ -6,7 +6,17 @@
 
 ## ▶▶ 다음 세션 시작점 (여기부터 읽기) — 2026-07-18
 
-### 🆕 방금 완료: C-1 사번(employeeNo) 회사내 중복검사 (커밋 473003e)
+### 🆕 방금 완료: B-1 조퇴(早退) 판정 신설 (커밋 52f2b2f)
+지각과 대칭으로, 퇴근 기준시각(`workEndTime`)보다 일찍 퇴근하면 "조퇴"로 판정·표시. **workEndTime은 이미 설정 저장되던 휴면 필드라 DB 무변경(마이그레이션 없음).**
+- **수정 11파일**: 공용 `worktime.ts`(isEarlyLeave 추가)·`dayentries.ts`(early/earlyLeaveCount/hasEndRule) + 표시 DetailTable·MonthCalendar·records/page·RecordsClient·dashboard·WorkRulesForm + my-records·records/[userId](workEndTime select) + globals.css(.kpi-grid-5).
+- **표시**: 근태상세(KPI "조퇴"+표 "지각/조퇴" 동시뱃지)·달력 조퇴뱃지·전체 근태현황·대시보드 오늘 조퇴 명단. 지각+조퇴 동시 가능.
+- **게이팅**: 근무일 + 퇴근기록 있음 + workEndTime 설정 시에만. 미설정 회사는 "—"(영향 0).
+- **검증**: tsc·eslint 0, isEarlyLeave 순수함수 7종 PASS, 실DB(뉴가온 18:00) 정확. code-reviewer 치명0·중간2 반영/보고.
+- ⚠️ **알려진 한계(사장님 판단 필요)**: ①**오후 반차**로 일찍 퇴근하면 조퇴로 잡힘 — 지각의 오전 반차→지각과 **동일한 기존 한계**. 지각·조퇴 함께 "승인 휴가일은 판정 제외"로 고치는 건 별도 작업(원하면 진행). ②자정 넘김 야간근무 미지원(지각과 동일).
+- 🖥️ **사장님 최종 육안 확인 1가지**: 근태상세 상단 KPI가 이제 5장(근무일수·실근무·지각·조퇴·결근)입니다. 데스크톱에서 잘 배치되는지 한 번만 봐주세요(인앱브라우저가 로컬서버 접근 못 해 제가 픽셀 확인은 못 함 — 다만 RecordsClient 4장은 기존 4개 화면과 동일 패턴이라 안전).
+- ▶ **다음 추천: A-2 이메일/문자 발송 연동**(초대·임시비번 자동발송) 또는 사장님 지정.
+
+### ✅ 완료: C-1 사번(employeeNo) 회사내 중복검사 (커밋 473003e)
 같은 회사에서 사번이 겹치게 저장되던 것을 앱단에서 차단(email 중복검사와 같은 방식, 스키마 무변경=마이그레이션 없음).
 - **수정 3파일**: `lib/employee-profile.ts`(공용 헬퍼 `employeeNoTaken` 추가, parseProfile 무수정) / `updateEmployeeProfile`(관리자수정) / `acceptInvite`(초대가입).
 - **규칙**: 사번 미입력(null)은 검사 안 함 · 활성직원만(퇴사자 사번 재사용 허용) · 본인제외 · **사번이 실제 바뀔 때만 검사**(레거시 중복 데이터 있어도 전화번호만 수정하는 저장은 안 막힘 — 검수 중간지적 반영).

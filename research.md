@@ -1,38 +1,39 @@
-# Research: C-1 사번(employeeNo) 회사내 중복검사 (2026-07-17)
+# Research: B-1 조퇴(早退) 판정 신설 (2026-07-18)
 
-## 무엇을 고치나 (한 줄)
-같은 회사 안에서 **사번이 겹치게 저장되는 것**을 막는다. 지금은 검사 없이 그대로 저장돼 두 직원이 같은 사번을 가질 수 있다.
+## 무엇을 만드나 (한 줄)
+지각(출근 기준시각보다 늦음)과 **대칭으로**, **퇴근 기준시각(workEndTime)보다 일찍 퇴근하면 "조퇴"로 판정·표시**한다. 현재 조퇴 판정은 전혀 없음.
 
-## 관련 파일과 역할
-- **prisma/schema.prisma:154** `employeeNo String?` — 선택 항목(null 허용), `@unique` 없음. 주석에도 "현재 중복검사 없음(단순 저장)".
-- **lib/employee-profile.ts** `parseProfile(fd)` — 폼값 → 정규화(공백제거, 60자 상한, 빈값=null). **초대가입·관리자수정 공용**. 순수 함수(DB 접근 없음). employeeNo는 line 48·58.
-- **저장 경로 2곳(여기에 검사 추가)**:
-  1. **app/actions/employees.ts:75 `updateEmployeeProfile`** — 관리자가 직원 상세에서 인적정보 수정. `me.role==="admin"` + 회사격리(`findFirst{id, companyId: me.companyId}`). `{error?}` 반환 → 폼이 에러 표시(ProfileForm.tsx).
-  2. **app/actions/invites.ts:44 `acceptInvite`** — 초대 링크로 신규 직원 가입. `companyId = invite.companyId`. 이미 email 중복검사 존재(line 62-63, `findUnique` + `{error}`) → **같은 패턴으로 사번 검사 추가하면 일관됨**. `{error?}` 반환 → InviteForm.tsx가 표시.
-- **표시 화면(읽기, 무수정)**: employees/[id]/page.tsx(사번 표시), ProfileForm.tsx(수정폼 input), InviteForm.tsx(가입폼 input).
+## 핵심 발견
+- **`workEndTime`(퇴근 기준시각 "HH:MM")은 이미 존재**: schema.prisma:36, [설정→근무제·기준시간]에서 저장(settings.ts:150·176), 폼에도 시/분 드롭다운 있음(WorkRulesForm). **그런데 어떤 판정에도 안 쓰임(휴면 필드).** → 조퇴 판정에 그대로 사용 → **DB 변경·마이그레이션 없음(서버 안 꺼도 됨).**
+- 지각 판정 = 순수함수 `isLate(clockIn, workStartTime, graceMin)`(worktime.ts:33). null=회사 미설정 시 판정 안 함.
 
-## 🔴 영향 범위 (employeeNo 쓰는 모든 곳 — grep 전수)
-- 쓰기(값 저장): `updateEmployeeProfile`, `acceptInvite` **2곳뿐**. (여기만 검사 추가 대상)
-- 읽기(표시): employees/[id]/page.tsx:71·147, ProfileForm.tsx:49, InviteForm.tsx:55 — 단순 표시/입력, 검사와 무관.
-- `parseProfile`는 **공용 파서**지만 이번엔 **무수정**(파싱은 그대로, 중복검사는 파서 바깥 DB 조회로 별도 추가). → 다른 기능(전화·직급·입사일) 회귀 위험 없음.
+## 관련 파일과 역할 (지각이 있는 모든 곳 = 조퇴 대칭 대상)
+- **lib/worktime.ts** `isLate`(33) — 여기에 대칭 `isEarlyLeave(clockOut, workEndTime)` **신규 추가**(무수정, 함수만 추가).
+- **lib/dayentries.ts `buildDayEntries`**(공용 계산) — `DayEntry.att`에 `late`(27)·집계 `lateCount`(86)·`hasRule`(54)를 만든다. → `early`·`earlyLeaveCount`·`hasEndRule` **추가**(기존 필드 무수정).
+- **app/components/DetailTable.tsx** — DayEntry를 받아 KPI "지각"(83)·표 "지각" 열(111·163~166) 표시. → 조퇴 KPI·열 추가.
+- **app/components/MonthCalendar.tsx** — DayEntry로 달력 뱃지 "지각"(62·104). → 조퇴 뱃지 추가.
+- **app/records/page.tsx**(전체 근태현황, 관리자) — `isLate` 직접 사용(83)해 `late`·`lateText`(92) 만들어 RecordsClient에 넘김. → `early` 추가.
+- **app/records/RecordsClient.tsx** — KPI "지각"(68)·표 "지각" 열(109·144~149). → 조퇴 추가 + props 타입.
+- **app/dashboard/page.tsx** — 오늘 알림에 지각 명단(72·209~211). → (선택) 오늘 조퇴 명단 추가.
+- **app/settings/WorkRulesForm.tsx** — 안내문구 "기준시각+유예 이후 출근=지각"(44) → 조퇴 문구 보완(카피만).
 
-## 공통 모듈 여부 / 건드리면 안 되는 부분
-- `parseProfile`(공용) **무수정** — 순수 파서 유지(DB 의존성 안 넣음).
-- schema.prisma **무변경 권장**(아래 접근방식 참고) → 마이그레이션·서버끄기 불필요.
-- 회사격리 기존 검사 유지.
+## 🔴 영향 범위 / 공용 모듈 (safe-coding 대상)
+- **공용 모듈 2개 수정**: `worktime.ts`(함수 추가만), `dayentries.ts`(필드 추가만). **기존 `isLate`·`late`·`lateCount` 무수정** → 지각 로직 회귀 위험 격리.
+- **`buildDayEntries` 소비처 = DetailTable·MonthCalendar 뿐**(grep 전수: my-records·records/[userId]가 buildDayEntries 호출→이 둘에 전달). 새 필드는 **옵셔널 추가**라 기존 소비처가 안 읽어도 안 깨짐(TS union에 필드 추가는 기존 구조분해 무영향).
+- `DayEntry`/`DayDetail` 타입을 읽는 다른 곳 없음(이 둘 외 소비처 없음 확인).
 
 ## DB·API 변경 여부, 위험 요소
-- **접근 A(앱단 검사, 권장)**: 저장 전에 "같은 회사에 같은 사번 가진 다른 직원이 있나" DB 조회 → 있으면 친절한 에러 반환. **스키마 무변경 → 마이그레이션·서버끄기 없음.** 기존 email 중복검사와 동일한 방식(코드 일관).
-  - 위험: 이론상 동시 제출 경쟁(TOCTOU) — 거의 동시에 같은 사번 2건 저장 시 둘 다 통과 가능. 관리자 1명·간헐적 가입이라 실사용 확률 극히 낮음. 완벽 차단은 접근 B 필요.
-- **접근 B(DB 유니크 제약)**: `@@unique([companyId, employeeNo])` 추가. 이론상 완벽하나 ①**마이그레이션=서버 끄기(EPERM)** ②기존 중복 데이터 있으면 마이그레이션 실패 ③SQLite는 NULL 여러 개 허용(사번 미입력 다수 OK)이나 Prisma 원시 에러를 잡아 친절 메시지로 바꾸는 처리 필요. → 무겁고 범위 큼.
-- **결정 필요 사항**:
-  - (가) 검사 대상에 **퇴사자(deactivatedAt≠null)** 포함? → 제외 권장(퇴사한 사람 사번을 신입이 재사용 가능하게). 포함하면 과거 사번이 영구 점유됨.
-  - (나) 대소문자/공백: 이미 parseProfile이 trim함. 대소문자 구분은 그대로(사번은 보통 숫자·하이픈이라 문제 적음).
+- **DB 변경 없음**(workEndTime 재사용). 마이그레이션·서버끄기 없음.
+- **판정 방식(결정 필요)**: `isEarlyLeave`에 유예를 둘까?
+  - (A, 추천) **유예 없음**: 퇴근시각(time-of-day) < workEndTime 이면 조퇴. 단순·명확, 새 필드 없음.
+  - (B) `lateGraceMin` 재사용: workEndTime - grace 보다 일찍이면 조퇴. 단 lateGraceMin은 의미상 "출근 유예"라 혼동 우려.
+  - (C) 조퇴 전용 유예 필드 신설 → 스키마 변경(마이그레이션) → 범위 커짐. 지금은 제외 권장.
+- **오버나이트(야간근무) 한계**: `isLate`가 이미 시:분(time-of-day)만 비교해 자정 넘김을 판정 못 하는 한계가 있고, `isEarlyLeave`도 **동일하게 미러링**한다(02시 퇴근을 조퇴로 오판 가능). 제품이 사무직(주간) 대상이라 기존 지각과 같은 수준의 한계 수용. 화면/문구에 명시.
+- 조퇴는 **근무일 + clockOut 존재 + workEndTime 설정** 시에만. 휴일(휴일근무)·미퇴근(근무중)·미설정은 null(판정 안 함) — 지각과 동일 게이팅.
 
 ## 결론 (계획 시 고려사항)
-1. **접근 A(앱단 검사)** 채택 권장 — 가볍고 안전, 마이그레이션 없음, 기존 email 검사와 일관.
-2. 공용 헬퍼 `employeeNoTaken(companyId, employeeNo, exceptUserId?)` 하나로 두 경로가 같은 규칙 사용(중복 로직 방지). 활성 직원(deactivatedAt=null)만 검사.
-3. `updateEmployeeProfile`은 **자기 자신 제외**(exceptUserId=target.id) — 본인 사번 유지한 채 다른 항목 수정 시 자기와 충돌 오탐 방지.
-4. `acceptInvite`는 email 검사 바로 뒤에 사번 검사 추가(같은 자리·같은 형식).
-5. 사번 **미입력(null)**은 검사 안 함(여러 명 미입력 허용).
-6. (선택) 접근 B(유니크 제약)는 추후 방어층으로 별도 승인 시 — 지금은 범위 밖.
+1. `isEarlyLeave` 순수함수 신설(isLate와 대칭, 유예는 (A) 없음 권장).
+2. `buildDayEntries`에 `early`/`earlyLeaveCount`/`hasEndRule` 추가(기존 무수정).
+3. 표시 4곳 대칭 반영: DetailTable·MonthCalendar(공용경로) + records/page+RecordsClient(전체현황) + (선택)dashboard + 설정 문구.
+4. DB·마이그레이션 없음 → 서버 재시작 불필요.
+5. 지각과 동일 게이팅(근무일·clockOut有·기준시각有)으로 오판 최소화.
