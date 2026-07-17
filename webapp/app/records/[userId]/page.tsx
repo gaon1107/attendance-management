@@ -49,7 +49,9 @@ export default async function RecordDetailPage({
 
   const sp = await searchParams;
   const isCal = sp.view === "cal";
-  const unit = normalizeUnit(sp.unit);
+  // 근태 상세는 기본값을 "일"로 — 근태현황에서 특정 날짜를 클릭해 들어오면 그 날을 먼저 보여준다.
+  // (unit 파라미터가 없을 때만 day. 주/월은 탭으로 그대로 선택 가능.)
+  const unit = normalizeUnit(sp.unit ?? "day");
   const anchor = parseAnchor(sp.date);
 
   const company = await prisma.company.findUnique({
