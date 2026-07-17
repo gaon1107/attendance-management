@@ -6,6 +6,15 @@
 
 ## ▶▶ 다음 세션 시작점 (여기부터 읽기) — 2026-07-17
 
+### 🆕 방금 완료: A-1 생체정보 파기 → 얼굴서버(GaonFR) 원본삭제 배선 (커밋 b832b0a)
+직원이 얼굴정보를 철회/파기할 때, 지금까지 우리 DB표시·로컬사진만 지우고 **사내 얼굴서버(GaonFR)의 얼굴 원본은 안 지워지던** 미완성(코드주석 "2단계") 부분을 실제 삭제로 연결. 법적 파기 의무 이행.
+- **수정 1파일**: `webapp/app/actions/authmethod.ts`. 파기 3함수(chooseGps·withdrawBiometric·adminRevokeBiometric)에 `unenrollFaceSafely` 배선. 스키마 무변경(마이그레이션·서버끄기 불필요).
+- **동작**: GaonFR 먼저 삭제 → 성공했을 때만 등록표시(faceEnrolledAt/Count) 해제(실패 시 재시도 서명 남김). 철회 자체(authMethod=gps·consent=null)는 항상. 감사로그 result = 로컬+GaonFR 둘 다 성공해야 "성공".
+- **안전장치**: GaonFR 무응답 시 10초 타임아웃(face.ts 무수정, call-site Promise.race)으로 화면 안 멈춤. 유령 "얼굴 등록됨" 표시 버그도 해소.
+- code-reviewer **치명0**(2회 검수, 화면·출퇴근 회귀 없음 코드대조 검증). tsc·eslint 0.
+- 🔴 **사장님 실검증만 남음**: 얼굴서버(gaonfrdev) 켜고 → 직원 얼굴등록 → [인증방식]에서 철회 or 관리자 [생체정보]에서 파기 → GaonFR에서 실제로 사라지는지 + [보안로그→접속로그] 감사기록 result 확인. (이 환경엔 실카메라·서버 없음)
+- 🟡 **후속(A-1-b, 백로그 기록됨)**: GaonFR 삭제가 실패했을 때 자동 재시도할 운영장치 없음 → 재시도 배치 or fail로그 관리자 노출(배포 필수 아님, 파기 완결용).
+
 ### 🧭 지금 할 일 = 보완작업 백로그에서 선택 (최우선 안내)
 곁가지(공휴일·일정캘린더·공지통합·공지표시날짜·근태상세 기본'일') **전부 완료**, 얼굴인증 웹캠 **사장님 확인 완료**(정상 99%·위조 잘 잡힘).
 → **다음 작업은 [보완작업-백로그-2026-07-17.md](보완작업-백로그-2026-07-17.md)에서 사장님이 항목 선택 대기 중.**
@@ -201,6 +210,7 @@ MES식 **회사 일정 캘린더** 신설(관리자 [일정] 메뉴, `/schedule`
 - **webapp/lib/access-log.ts `ACCESS_RETENTION_DAYS=730`**: 법정 하한(안전성 확보조치 기준 §8 — 민감정보 시스템 2년). **줄이면 법 위반** — 변경 전 법무 확인 필수
 - **webapp/lib/ip.ts (`getClientIp`·`ipMatches`)**: 공통 함수(호출처 5곳 — 출퇴근 사내망 판정 포함). 오탐 지적 있으나 **별도 승인 없이 수정 금지**
 - **webapp/app/actions/attendance.ts clockIn/clockOut 본체**: 무수정 유지. 접속기록은 **맨 끝 add-only 1줄**만 허용(사장님 승인 옵션 A, 2026-07-16)
+- **webapp/app/actions/authmethod.ts 파기 3함수**: 순서 규칙 = ①`wasEnrolled`/`had`를 update **전에** 캡처 ②`unenrollFaceSafely` **먼저**(GaonFR 삭제) ③성공(`unenrolled`)했을 때만 `faceEnrolledAt/Count` 해제 ④감사로그는 `redirect()` **앞**에서 `purged && unenrolled`로. 순서를 뒤집으면 "DB는 파기인데 서버엔 얼굴이 남는" 최악 잔존이 생기거나 감사가 거짓말을 한다. lib/face.ts의 unenrollFace는 **호출만**(무수정).
 - **webapp/lib/liveness.ts**(+demo 원본)의 전처리 상수(배율 4.0/2.7·80×80·BGR·보간 linear): 원 모델 재현 — 변경 금지(점수 왜곡)
 - webapp actions/attendance.ts clockIn/clockOut 본체: 이번 이식에서도 무수정 유지 — 계속 수정 금지
 - lib/face.ts: recognizeFace에 faceRect·imageSize "추가만" 됨(7/11) — 기존 필드·판정 로직 수정 금지

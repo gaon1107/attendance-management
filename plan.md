@@ -1,90 +1,76 @@
-# Plan: 일정 캘린더 직원 노출 + 공지 통합 (2026-07-17) — 상태: 1차·2차 모두 완료 ✅
-
-## ✅ 1차 완료 (커밋 6f5fe28)
-직원에게 일정 캘린더 노출 + 개인 일정. 회사 것=보기만, 개인=본인 관리, 프라이버시 확인. 실화면·검수 통과.
-
-## ✅ 2차 완료 (공지 통합) — 옵션 A(공지=작성일 칸 표시, 스키마 무변경)
-공지를 캘린더에 흡수: 작성일 칸 📢 표시·모달 본문·관리자 작성/삭제·직원 읽기전용. [공지]메뉴 제거(/notice 라우트 보존).
-NEW 뱃지 유지(배너 링크=공지 작성월 /schedule, 그 달 안 읽은 공지 있을 때만 읽음처리). 대시보드 최신공지 모달.
-검수 반영: ①뱃지 가시성 버그·②본문 5000자 제한 수정. ③타임존은 배포 시 TZ=Asia/Seoul 고정 사안(전 앱 공통).
-실화면 검증(관리자/직원 두 시선·뱃지 시나리오)·tsc/eslint 0 통과.
-
-## ✅ 3차 완료 (공지 표시 날짜 지정) — 옵션 B(커밋 8ef2d34)
-`Announcement.noticeDate`(선택) 추가. 공용 DatePicker(기본 오늘)로 관리자가 표시 날짜 지정, 미지정이면 작성일 표시(호환).
-/schedule·배너·대시보드 표시날짜 일치. 검수 반영: 무효날짜 서버차단·성공시 폼 초기화·대시보드 날짜 일치.
-알려진 한계(읽음시각 1개 → 여러 달 미확인 배지): 사장님 "이대로 두기" 결정. 근본해결=공지별 읽음추적(별도).
-▶ 곁가지 전부 종료 → 마스터 플로우(얼굴인증 2phase 웹캠 실테스트) 복귀.
-
-
-> 곁가지(사장님 지시). 규모 커서 2단계로 나눔. 사장님 결정 = "통합+NEW 유지".
+# Plan: A-1 생체정보 파기 시 GaonFR 원본삭제 배선 (2026-07-17) — 상태: ✅ 코드완료(커밋 b832b0a), 사장님 실검증만 대기
 
 ## 1. 접근 방식 (+이유)
-- 캘린더는 **한 라우트(/schedule)를 역할분기**: 관리자=등록 가능, 직원=읽기전용(등록 폼 숨김). → 코드 중복 없이 안전.
-- 공지는 **표를 병합하지 않고**(Announcement 그대로) 캘린더에 **함께 표시만**. 공지 놓침은 **NEW 뱃지 유지**로 방어.
-- 스키마 변경 없음 → **마이그레이션 불필요**(서버 정지 게이트 없음).
+`webapp/app/actions/authmethod.ts`의 파기 3함수(chooseGps·withdrawBiometric·adminRevokeBiometric)를
+**이미 검증된 `deleteMyFace` 패턴 그대로** 미러링해 GaonFR 얼굴 삭제를 연결한다.
+- 이유: 신규 방식을 만들지 않고 **동일 저장소에 이미 있는 정답 패턴**을 재사용 → 위험 최소·리뷰 쉬움.
+- 새 표·새 라이브러리·스키마 변경 **없음**(값만 변경) → 마이그레이션·서버 재시작 불필요.
 
-## 2. 단계별 계획
+## 2. 수정/생성 파일 목록
+- **수정 1개**: `webapp/app/actions/authmethod.ts`
+  - (신규 헬퍼) `unenrollFaceSafely(userId, companyId, wasEnrolled): Promise<boolean>` — 이 파일 안에서만 사용.
+  - `chooseGps` / `withdrawBiometric` / `adminRevokeBiometric` 각각 배선 3줄 수준 추가.
+  - import에 `unenrollFace` 추가(`@/lib/face`).
+- **무수정**: lib/face.ts, lib/audit.ts, lib/clock-photo.ts, prisma/schema.prisma(=마이그레이션 없음).
 
-### 1차 — 직원에게 일정 캘린더 노출 (회사 것=보기만 / 내 일정=관리)
-**핵심: 일정을 2종류로 구분** — 회사 일정(관리자, 전 직원 공용) vs 개인 일정(직원 본인, 본인만).
-- **스키마**: `CompanyEvent`에 `userId String?` 추가 (null=회사 일정, 값=개인 일정 소유자). **FK 없이 값만**(User 모델 무수정, AccessEvent와 동일 방식). ⚠️ 마이그레이션 = **서버 정지 필요**. 기존 일정은 전부 userId null(회사)로 남아 정상.
-- **권한(actions/schedule.ts)**:
-  - `addEvent`: 관리자→회사 일정(userId null) / 직원→개인 일정(userId=me.id). **직원도 추가 허용**(기존 admin-only 완화, 단 개인만).
-  - `deleteEvent`: **본인 개인 일정**이거나 **(관리자 AND 회사 일정)** 일 때만 삭제. 남의 개인 일정·직원의 회사 일정 삭제 불가.
-- **조회(page.tsx)**: 관리자→회사 일정만(userId null). 직원→회사 일정(null, 읽기전용) + 본인 개인(me.id, 편집가능). 개인 일정은 **본인에게만** 보임(프라이버시). 이벤트별 `mine`(내가 지울 수 있나) 플래그 계산해 전달.
-- **화면(ScheduleCalendar 모달)**:
-  - 회사 일정: 모두 표시, **삭제 버튼은 mine일 때만**.
-  - 일정 추가 폼: 관리자="회사 일정 추가" / 직원="내 일정 추가"(항상 노출).
-  - **휴무일 지정/해제·공지작성 = 관리자만**(canManageCompany). 직원은 이 폼들 숨김.
-- `app/schedule/page.tsx`: 직원 접근 허용(admin redirect 제거).
-- `Sidebar.tsx`: **직원 그룹에 "schedule"(일정) 추가**.
-- 검증: ①직원 [일정]에서 회사 공휴일/휴무/일정 **보기만**(삭제버튼 없음) ②직원이 **내 일정 추가/삭제** 가능 ③직원 개인 일정이 **관리자·다른 직원에겐 안 보임** ④관리자는 회사 일정·휴무일 기존대로 등록.
+## 3. 🛡️ 사이드 이펙트 방어
+- **영향받는 화면(faceEnrolledAt/faceEnrollCount을 null/0로 변경)**: auth-method·attendance·face-enroll 페이지 — 전부 읽기전용 표시/게이팅. 파기 후 "미등록"으로 보이는 게 정상(현재의 유령 "등록됨" 표시 버그도 함께 해소). **깨지는 로직 없음.**
+- **본기능 무차단 원칙 유지**: GaonFR 삭제가 실패/지연돼도 DB 파기·로컬 사진 파기·redirect는 정상 완료. 감사로그 result만 "fail"로 정직하게 기록(audit.ts 원칙 ④). → `unenrollFaceSafely`는 try/catch로 감싸 예외를 삼키고 bool만 반환(`purgePhotosSafely`와 동일 방어).
+- **회사 격리 유지**: adminRevoke의 기존 `companyId` 검사·`hadBiometric` 조기반환 그대로. unenroll은 검사 통과 뒤에만.
+- **구현 후 반드시 테스트할 기존 기능**:
+  1. 일반(얼굴 무관) GPS 직원의 chooseGps → 오류 없이 GPS 전환(unenroll 미호출)
+  2. 얼굴 등록 직원 withdraw → DB 파기 + GaonFR 삭제 + 감사로그
+  3. 관리자 adminRevoke → 대상 직원 GaonFR 삭제 + 감사로그(대상명 포함)
+  4. deleteMyFace(내 얼굴삭제, 무수정) 회귀 없음
+  5. 재동의(agreeBiometric) 후 화면이 "미등록"에서 정상 시작(유령표시 해소 확인)
 
-### 2차 — 공지 통합 + [공지] 메뉴 정리
-- **표시**: 캘린더 날짜에 공지도 함께(📢 아이콘 막대). 클릭→모달에서 **본문 읽기**. `DayData`에 `notices:[{id,title,body,authorName}]` 추가, page에서 그 달 Announcement(createdAt 기준) 조회.
-- **관리자 공지 작성 위치**(메뉴 제거 대체): 캘린더 날짜 모달에 **관리자만 "공지 작성"**(제목+본문). 기존 `NoticeForm`/`createNotice` 액션 재사용.
-- **[공지] 메뉴 제거**: Sidebar 관리자·직원 양쪽에서 notice 제거. (라우트 `/notice`는 당장 삭제 안 함 — 링크만 끊음, 안전)
-- **NEW 안전장치 유지**: 직원 출퇴근 화면 배너의 "새 알림 N"은 그대로. 링크만 `/notice`→`/schedule`. **읽음처리(markNoticesSeen)**는 직원이 캘린더를 열 때 실행(기존 MarkNoticesSeen 재사용).
-- **대시보드 최신 공지 → 모달**: 관리자 대시보드 "오늘 알림"의 최신공지 클릭 시 페이지 이동 대신 **모달로 본문**.
-- **(선택) 휴가·정정 요청 모달 미리보기**: 지금도 건수+링크는 있음. 원하면 클릭 시 모달로 강화(2차 후반/별도).
+## 4. 작업분해 TODO
+- [x] 1단계: `authmethod.ts` import에 `unenrollFace` 추가 + 헬퍼 `unenrollFaceSafely` 작성
+- [x] 2단계: `chooseGps` 배선
+- [x] 3단계: `withdrawBiometric` 동일 배선
+- [x] 4단계: `adminRevokeBiometric` 동일 배선(target 기준)
+- [x] 5단계: tsc + eslint 0 확인 (통과)
+- [x] 7단계: code-reviewer 검수 2회 → 중간2·경미2 반영(타임아웃 call-site / unenroll 먼저→성공시만 표시해제 / adminRevoke 고아상태 게이트 / clearTimeout). 재검토 치명0·회귀0.
+- [x] 8단계: git 커밋(b832b0a) + project-status.md·백로그 갱신
+- [ ] 6단계: **얼굴서버 실검증(사장님 환경)** — 등록→철회/파기→GaonFR 실제 삭제·감사로그 result 확인. (남은 것은 이것뿐)
 
-## 3. 수정/생성 파일
-### 1차
-- 수정 `prisma/schema.prisma`(CompanyEvent.userId 추가) + **마이그레이션**(서버 정지)
-- 수정 `app/actions/schedule.ts`(addEvent 역할별 userId / deleteEvent 소유권 검사)
-- 수정 `app/schedule/ScheduleCalendar.tsx`(회사=보기/개인=편집 분기, 폼 권한) · `app/schedule/page.tsx`(직원 허용 + 이벤트 조회·mine 계산) · `app/components/Sidebar.tsx`(직원에 일정 추가)
-### 2차
-- 수정 `ScheduleCalendar.tsx`(공지 표시·모달 본문·관리자 공지작성) · `app/schedule/page.tsx`(월 공지 조회 + 읽음처리) · `Sidebar.tsx`(notice 제거) · `app/attendance/page.tsx`(배너 링크 변경) · `app/dashboard/page.tsx`(최신공지 모달)
-- 재사용: `NoticeForm`/`actions/notice.ts`(createNotice·markNoticesSeen) — 무수정 재사용 지향
+## 5. 핵심 로직 샘플 (계획용 스니펫, 실제 구현 아님)
+```ts
+import { unenrollFace } from "@/lib/face";
 
-## 4. 🛡️ 사이드 이펙트 방어
-| 위험 | 대응 |
-|---|---|
-| 직원 프라이버시(개인 일정이 새어나감) | 개인 일정 조회는 **userId=me.id로 격리**. 관리자·타직원 조회에 포함 안 됨 |
-| 직원이 회사 일정/남의 일정을 지움 | deleteEvent가 **소유권 검사**(본인 개인 or 관리자+회사만). 서버에서 차단 |
-| 직원이 휴무일·공지를 등록 | 그 폼은 관리자만 노출 + 서버액션 admin 확인(이중) |
-| CompanyEvent.userId 추가 마이그레이션 | 기존 행=null(회사)로 안전 전환. 서버 정지 게이트 |
-| 기존 addEvent가 admin-only였음 | 직원 허용으로 완화하되 **개인(userId=me.id)만** 생성 가능하게 제한 |
-| 공지 놓침(2차, 캘린더에만) | **NEW 뱃지·배너 유지**(출퇴근 화면). 링크만 캘린더로 |
-| [공지] 메뉴 제거로 작성 불가(2차) | 관리자 공지작성을 **캘린더 모달로 이전**(NoticeForm 재사용). 라우트는 남겨둬 안전망 |
-| Sidebar 공통 수정 | 항목 추가/제거만(기존 항목 무수정). NavKey Record 4곳 일관 |
-| 공지 데이터 | 표 병합 안 함(Announcement 그대로), 기존 공지 보존 |
+// GaonFR에 등록된 얼굴 원본을 삭제한다. 등록이 없으면 지울 것도 없어 성공으로 본다.
+// 삭제 실패가 파기(철회) 자체를 막지 않도록 예외를 삼키고 결과(bool)만 알린다(purgePhotosSafely와 동일 방어).
+// 반환값 = "얼굴서버에 남은 얼굴이 없음이 보장되는가".
+async function unenrollFaceSafely(userId: string, companyId: string, wasEnrolled: boolean): Promise<boolean> {
+  if (!wasEnrolled) return true; // 등록된 얼굴이 없으면 지울 것도 없음
+  try {
+    const r = await unenrollFace(userId, companyId); // FaceId=직원 id, Group=회사 id
+    if (!r.success) console.error("[authmethod] 얼굴서버 원본 삭제 실패(파기는 정상 처리됨):", r.message);
+    return r.success;
+  } catch (e) {
+    console.error("[authmethod] 얼굴서버 원본 삭제 오류(파기는 정상 처리됨):", e);
+    return false;
+  }
+}
 
-**구현 후 테스트**: ①직원 일정 읽기전용(등록버튼 없음) ②관리자 일정 등록 여전히 동작 ③공지 작성→캘린더/모달 표시 ④안읽은 공지 NEW 뱃지 여전히 뜸→캘린더 열면 사라짐 ⑤대시보드 최신공지 모달 ⑥출퇴근 화면 배너 정상.
-
-## 5. 구현하지 않을 것 (범위 제외)
-- Announcement·CompanyEvent 표 병합(데이터 위험 — 화면 통합만)
-- `/notice` 라우트 파일 물리 삭제(링크만 끊고 보존 — 되돌리기 쉽게)
-- 직원의 일정/공지 등록(관리자만)
-- 공지 예약발행·중요도 고정 등 신규 공지 기능
-
-## 6. 핵심 로직 샘플 (계획용)
-```tsx
-// ScheduleCalendar: <DayModal canEdit={canEdit} .../>
-//   canEdit ? <등록/삭제/휴무토글 폼> : <그 날 공휴일·휴무·일정·공지 읽기전용 목록>
-// page.tsx(2차): notices = 그 달 Announcement(createdAt), byDate[iso].notices.push(...)
+// 예: withdrawBiometric
+const had = hadBiometric(me);
+const wasEnrolled = me.faceEnrolledAt !== null;           // update 전에 캡처
+await prisma.user.update({
+  where: { id: me.id },
+  data: { authMethod: "gps", faceConsentAt: null, faceEnrolledAt: null, faceEnrollCount: 0 }, // 등록표시까지 정리
+});
+const purged = await purgePhotosSafely(me.id);
+const unenrolled = await unenrollFaceSafely(me.id, me.companyId, wasEnrolled);
+if (had) await logAdminAction(me, "purge", "self_withdraw", (purged && unenrolled) ? "success" : "fail");
 ```
+※ chooseGps=target "switch_to_gps", adminRevoke=`me`→`target` 치환·대상명 로그 유지.
+
+## 6. 구현하지 않을 것 (범위 제외 + 이유)
+- **unenrollFace 타임아웃 추가(face.ts)**: 공통모듈 수정·deleteMyFace 동반 영향 → 별도 승인 사안. 기본 제외(기존 위험 유지, 아래 메모에서 선택 가능).
+- **GaonFR 삭제 실패 자동 재시도 큐**: 백로그 사안(지금은 result=fail 기록 + 재파기로 대응).
+- 직원관리 감사로그 확장, 알림센터 통합(C-2) 등 다른 백로그 항목.
 
 ## 📌 사용자 메모 공간 (검토 후 여기에 적어주세요)
+- (선택) unenrollFace에 10초 타임아웃도 같이 넣을까요? → 넣기 / 안 넣기:
 -
-</content>
