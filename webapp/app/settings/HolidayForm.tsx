@@ -5,6 +5,7 @@
 // 이 설정은 지각·결근·연차 계산에서 "쉬는 날"로 반영된다.
 import { useActionState, useState } from "react";
 import { saveHolidayAuto, addCompanyHoliday, deleteCompanyHoliday, syncHolidaysNow } from "@/app/actions/holidays";
+import { DatePicker } from "@/app/components/DatePicker";
 
 type Holiday = { id: string; date: string; name: string };
 
@@ -75,7 +76,10 @@ export function HolidayForm({
         </p>
 
         <form action={addAction} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 12 }}>
-          <input name="date" type="date" required style={{ ...inputStyle, width: 170 }} />
+          {/* 공용 단일 날짜 선택기(앱 공통 달력) — hidden input(name="date")으로 제출되어 서버액션은 그대로 동작 */}
+          <div style={{ width: 170 }}>
+            <DatePicker name="date" placeholder="날짜 선택" allowClear={false} />
+          </div>
           <input name="name" type="text" required placeholder="휴무일 이름(예: 창립기념일)" maxLength={50} style={{ ...inputStyle, flex: 1, minWidth: 180 }} />
           <button type="submit" disabled={addPending}
             style={{ height: 44, border: "none", borderRadius: 8, background: "var(--primary)", color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: addPending ? "default" : "pointer", opacity: addPending ? 0.6 : 1, padding: "0 20px", whiteSpace: "nowrap" }}>
