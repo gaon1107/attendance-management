@@ -1,6 +1,6 @@
 // 휴가 계산 도구 — 종류·사용일수·잔여, 그리고 "승인된 휴가일"을 결근 판정에서 빼기 위한 날짜 집합.
 import { toISODate } from "@/lib/period";
-import { isWorkDay } from "@/lib/workdays";
+import { isEffectiveWorkDay } from "@/lib/workdays";
 
 // 휴가 종류. deducts=true면 연차 잔여에서 차감(연차·반차). 병가는 차감하지 않는다.
 export const LEAVE_TYPES: { key: string; label: string; deducts: boolean }[] = [
@@ -32,21 +32,22 @@ export function parseYmd(s: string): Date | null {
 }
 
 // [start, end] 사이(포함)의 근무일 수. 근무요일(Set)만 센다.
-export function countWorkdaysBetween(start: Date, end: Date, workDays: Set<number>): number {
+// offDays(쉬는 날 ISO 집합)를 넘기면 공휴일·회사휴무일은 근무일에서 제외한다. 안 넘기면(기본 빈 Set) 기존 동작.
+export function countWorkdaysBetween(start: Date, end: Date, workDays: Set<number>, offDays: Set<string> = new Set()): number {
   let n = 0;
   const cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
   const last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
   while (cur <= last) {
-    if (isWorkDay(cur, workDays)) n++;
+    if (isEffectiveWorkDay(cur, workDays, offDays)) n++;
     cur.setDate(cur.getDate() + 1);
   }
   return n;
 }
 
-// 신청 시 사용일수 계산. 반차=0.5(단일일), 연차·병가=기간 내 근무일 수.
-export function computeLeaveDays(type: string, start: Date, end: Date, workDays: Set<number>): number {
+// 신청 시 사용일수 계산. 반차=0.5(단일일), 연차·병가=기간 내 근무일 수(공휴일·회사휴무일 제외).
+export function computeLeaveDays(type: string, start: Date, end: Date, workDays: Set<number>, offDays: Set<string> = new Set()): number {
   if (type === "half") return 0.5;
-  return countWorkdaysBetween(start, end, workDays);
+  return countWorkdaysBetween(start, end, workDays, offDays);
 }
 
 // 승인된 신청들 중 연차 잔여에서 차감되는 사용일수 합(연차·반차). 병가는 제외.

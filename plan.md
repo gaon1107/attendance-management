@@ -1,59 +1,97 @@
-# Plan: 얼굴 출퇴근 "3장 동일" 오탐 수정(A안) — 2026-07-17 — 상태: **구현 중(승인됨)**
+# Plan: 공휴일·회사휴무일 반영 (2026-07-17) — 상태: 검토 대기
 
-> 사장님 승인: A안 = 근본 원인(촬영 방식) 개선. 서버 부정방지 장치는 그대로, 촬영이 **진짜로 다른 3장**을 보내게만.
-> 원인(확정): 카메라 예열 전 같은 프레임이 3번 찍혀 서버 "동일 3장 = 정지영상/가상카메라 의심"에 걸림(진짜 사람 오탐).
+## 1. 접근 방식 (+이유)
+"근무일이냐"를 판단하는 순수함수 `isWorkDay`(요일만 봄)는 **그대로 두고**, 그 위에
+"이 날은 쉬는 날(휴일)인가"를 **합성**하는 새 판정을 추가한다.
 
-## 1. 무엇을 (쉬운 말)
-카메라가 켜지자마자 같은 화면 3장을 찍던 걸, **①깨어난 뒤 ②실제로 화면이 바뀔 때마다** 3장 찍게 바꾼다.
-그래도 3장이 같으면(정말 멈춘 카메라) **몇 번 다시** 찍어 서로 다른 장 확보. 끝까지 같으면 그대로 보냄(서버가 판단).
+```
+실질 근무일 = isWorkDay(요일) AND (그 날짜가 휴일 목록에 없음)
+```
 
-## 2. 수정 파일 — `webapp/app/attendance/FaceClockPanel.tsx` 촬영부만
-- 모듈 헬퍼 추가: `waitForFreshFrame(video)` — `requestVideoFrameCallback`(rVFC)로 "새 프레임 도착" 1회 대기(폴백=타임아웃).
-  `findDuplicateIndex(blobs)` — 바이트 동일 쌍 탐지(크기 같을 때만 바이트 비교로 비용 절약).
-- `captureAndSubmit`의 3장 루프(현재 0.3초 고정)를 **예열 → 프레임 동기 3장 → 동일 안전망**으로 교체.
-- `captureOneBlob`·submit·FormData·fallback·카메라 정리 = **무변경**(재사용).
+휴일 목록 = **(A) 자동 공휴일**(정부 API로 1회 수집→DB 저장) + **(B) 회사 수동 휴무일**.
+회사가 (A)를 **끄면** 자동 공휴일은 목록에서 빠지고, (B)는 토글과 무관하게 항상 적용.
 
-### 변경 없음 (🚧)
-- 서버 `actions/face.ts`·`lib/liveness.ts`(동일감지·모델 판정·밝기) · 얼굴 등록(FaceCapture=1장) · 스키마 · 1280×720·품질0.9·재압축.
+- 이유: 6곳이 호출하는 공통함수 `isWorkDay`의 시그니처를 안 건드려 회귀 위험을 격리. 각 화면은 "휴일 날짜 집합(Set)"만 추가로 읽어 판정에 넘긴다.
+- 사장님 아이디어 반영: API는 **매번 안 부르고** 서버 DB에 저장해두고 화면은 저장분을 뿌린다(장애 무관·빠름).
+
+## 2. 수정/생성 파일 목록
+
+### 신규
+- `prisma/schema.prisma` — 표 2개 + 회사 토글 1개 추가 (⚠️ 마이그레이션 = 서버 정지 필요)
+  - `Holiday`(전국 공용 공휴일: date, name, year) — 전 회사가 공유(공휴일은 전국 동일)
+  - `CompanyHoliday`(회사별 수동 휴무일: companyId, date, name)
+  - `Company.holidayAutoOn Boolean @default(true)` — 자동 공휴일 반영 토글
+- `lib/holidays.ts` — **순수 로직**: 휴일 날짜 Set 만들기 + `isEffectiveWorkDay(date, workDays, offDays)`
+- `lib/holiday-sync.ts` — **정부 API 호출·저장**(서버 전용). 실패해도 기존 저장분 유지.
+- `app/actions/holidays.ts` — 서버액션: 토글 저장 / 수동휴무일 추가·삭제 / "지금 갱신"
+- `app/settings/HolidayForm.tsx` — 설정 화면 UI(토글 + 갱신버튼 + 수동휴무일 목록)
+- `lib/holidays.test.ts` (또는 수동검증 스크립트) — 순수함수 단위 검증
+- `.env` — `HOLIDAY_API_KEY`(공공데이터포털 인증키) 한 줄 추가 (키는 커밋 안 함)
+
+### 수정 (휴일 Set을 읽어 판정에 넘김 — add-only 성격)
+- `lib/workdays.ts` — `isEffectiveWorkDay` 추가(기존 `isWorkDay`·`effectiveWorkDays` 무수정)
+- `lib/dayentries.ts` — `buildDayEntries(..., offDays=new Set())` 인자 추가. **기본 빈 Set = 기존 동작 그대로**
+- `lib/leave.ts` — `countWorkdaysBetween/ computeLeaveDays(..., offDays=new Set())` 인자 추가(기본 빈 Set)
+- `app/records/page.tsx` — 기간 휴일 조회→Set→판정
+- `app/records/[userId]/page.tsx` · `app/my-records/page.tsx` — buildDayEntries에 Set 전달
+- `app/dashboard/page.tsx` — 오늘 기준 휴일 반영(지각 카운트·미출근·휴일근무 표시)
+- `app/reports/page.tsx` — 결근 계산에 휴일 반영
+- `app/actions/leave.ts` — 휴가 신청 시 연차 차감일 계산에 휴일 반영
+- `app/settings/page.tsx` — HolidayForm 배치 + 회사 토글·수동휴무일 조회
+
+### 손대지 않는 것
+- `isWorkDay`, `effectiveWorkDays`, `leaveDateSet`, `leaveLabelByDate` — 시그니처 유지
+- 표시 컴포넌트(DetailTable·MonthCalendar·RecordsClient) — 상위에서 넘기는 `holiday` 플래그만 따라감(무수정)
 
 ## 3. 🛡️ 사이드 이펙트 방어
 | 위험 | 대응 |
 |---|---|
-| **rVFC 미지원**(Firefox·구형) | `typeof video.requestVideoFrameCallback === "function"` 분기, 없으면 **기존 setTimeout(0.3초) 폴백** = 회귀 0 |
-| **예열·재캡처 무한 대기** | 전부 타임아웃·유한 횟수(추가 최대 3회). 최악이어도 3장 떠서 전송(출퇴근 안 막음) |
-| **바이트 비교 비용** | 크기 다르면 비교 스킵(대부분). 같을 때만 바이트 비교 |
-| **정말 멈춘 카메라(주입 공격)** | 재캡처해도 계속 동일 → **그대로 서버가 걸러야 정상**(안전장치 유지). 클라 재시도는 유한 |
-| **submit 이중잠금·fallback·카메라 정리** | 촬영 루프 내부만 교체, 나머지 유지 |
-| **no any / lint** | rVFC는 타입 확장으로 처리(any 금지) |
+| 공통함수 시그니처 변경으로 6곳 붕괴 | `isWorkDay`는 무수정. 새 함수 `isEffectiveWorkDay`만 추가 |
+| `buildDayEntries`/leave 함수에 인자 추가 → 기존 호출 깨짐 | **기본값 빈 Set** → 인자 안 넘기면 100% 기존 동작 |
+| 자동 토글 기본 ON → 기존 회사 과거 기록 표시가 바뀜 | **의도된 변경**(공휴일 지각/결근이 사라짐 = 원하는 결과). 단 사장님께 "과거 표시도 소급 반영됨" 명시 |
+| 과거에 저장된 연차 사용일수 | 기존 저장분은 **재계산 안 함**(그대로). 신규 휴가 신청부터 공휴일 반영 |
+| API 키 없음/정부사이트 장애 | 갱신 버튼이 **친절한 오류만** 내고 기존 저장분 유지. 수동휴무일(B)은 항상 동작 |
+| 휴일 데이터 아직 없음(빈 표) | 빈 Set = 오늘과 동일 동작(안전). 갱신하면 채워짐 |
+| 공휴일 정상근무 업종 오탐 | 토글 OFF 시 자동공휴일 완전 제외 |
+| SQLite 마이그레이션 EPERM | 사장님 3000 서버 끄고 진행(별도 게이트) |
 
-### 구현 후 테스트
-- [ ] 코드: tsc·eslint 통과, 폴백 경로(rVFC 없을 때) 논리 확인
-- [ ] 정상 얼굴 출퇴근 여전히 동작(서버 무수정이라 회귀 없음)
-- [ ] **[사장님 웹캠]** 진짜 얼굴 출근이 이제 "정상"으로(오탐 사라짐) + 폰/정지영상은 여전히 "위조 의심"
+### 구현 후 반드시 테스트할 기존 기능
+1. 주말 출근 → 여전히 "휴일근무"로 뜨는지(회귀 없음)
+2. 평일 정상 지각 → 여전히 "지각"으로 뜨는지
+3. 과거 근무일 무기록 → 여전히 "결근"으로 집계되는지
+4. 휴가 신청 사용일수 계산(공휴일 없는 구간) 동일한지
+5. 대시보드 지각 수·미출근 수 동일한지
 
-## 4. 핵심 로직 (계획 스니펫)
-```js
-function waitForFreshFrame(video, timeoutMs = 600) {
-  return new Promise((resolve) => {
-    const rvfc = video.requestVideoFrameCallback;
-    if (typeof rvfc !== "function") return void setTimeout(resolve, timeoutMs);
-    let done = false;
-    const t = setTimeout(() => { if (!done) { done = true; resolve(); } }, timeoutMs);
-    rvfc.call(video, () => { if (!done) { done = true; clearTimeout(t); resolve(); } });
-  });
+## 4. 작업분해 TODO
+- [ ] 1단계: `lib/holidays.ts` 순수 로직 + `isEffectiveWorkDay` 작성 + 단위검증 — 파일: lib/holidays.ts, lib/workdays.ts
+- [ ] 2단계: 판정부 배선(빈 Set 기본값) — dayentries·leave·records·[userId]·my-records·dashboard·reports·actions/leave. **이 시점까지 동작 100% 동일**(회귀 테스트 통과 확인)
+- [ ] 3단계(게이트): 스키마 추가 + 마이그레이션 — **사장님 서버 정지 필요** — 파일: prisma/schema.prisma
+- [ ] 4단계: `lib/holiday-sync.ts` 정부 API 수집·저장(실패 안전) + `.env` 키 자리
+- [ ] 5단계: `app/actions/holidays.ts`(토글/추가/삭제/갱신) + `HolidayForm.tsx` + settings 배치
+- [ ] 6단계: 각 화면이 실제 휴일 Set(회사토글+수동)을 읽어 판정에 연결
+- [ ] 7단계: 영향받는 기존 기능 5종 회귀 테스트(위 목록)
+- [ ] 8단계: code-reviewer 검수 + tsc/eslint + project-status.md 갱신
+
+## 5. 핵심 로직 샘플 (계획용 스니펫, 실제 구현 아님)
+```ts
+// lib/workdays.ts (추가)
+export function isEffectiveWorkDay(date: Date, workDays: Set<number>, offDays: Set<string>): boolean {
+  return isWorkDay(date, workDays) && !offDays.has(toISODate(date));
 }
-// 예열 + 프레임 동기 3장
-await waitForFreshFrame(video);                 // 예열
-for (let i = 0; i < 3; i++) { await waitForFreshFrame(video); push(captureOneBlob()); }
-// 동일 안전망(유한 재캡처)
-for (let e = 0, d; e < 3 && (d = await findDuplicateIndex(blobs)) >= 0; e++) {
-  await waitForFreshFrame(video); blobs[d] = captureOneBlob();  // 중복 한 장 교체
-}
+
+// 각 화면: 휴일 Set 구성
+// offDays = (company.holidayAutoOn ? 전국공휴일ISO : 없음) ∪ 회사수동휴무일ISO
 ```
+정부 API: 공공데이터포털 특일정보 `getRestDeInfo`(연/월별 공휴일). 응답의 `locdate`(YYYYMMDD)·`dateName`을 저장.
+갱신 트리거: **[지금 갱신] 버튼**(핵심) + 화면 조회 시 없는 연도면 `after()`로 조용히 1회 보충(선택·베스트에포트).
 
-## 5. 작업분해
-- [ ] 1: `FaceClockPanel.tsx` 촬영부 교체(헬퍼+루프) — 커밋
-- [ ] 2: tsc·eslint·회귀 확인 → code-reviewer → 문서 갱신 (진짜 오탐 해소는 사장님 웹캠 최종확인)
+## 6. 구현하지 않을 것 (범위 제외)
+- 부서별/개인별 휴무일(회사 전체 공통만) — 필요해지면 2차
+- "공휴일인데 우리는 근무" 반대 예외(그 업종은 토글 OFF로 해결)
+- 과거 저장 연차의 소급 재계산(정합성·혼란 방지)
+- 자동 스케줄러(cron) 상시 구동 — 버튼 + 지연보충으로 대체
+- 휴일 이름을 화면에 새로 표기(현행 "휴일근무" 배지 유지)
 
-## 6. 구현 안 함
-- 서버 동일감지 완화(안전장치 유지) · 얼굴 등록 촬영 변경(1장이라 무관) · B/C안(미채택).
+## 📌 사용자 메모 공간 (검토 후 여기에 적어주세요)
+-
+</content>
