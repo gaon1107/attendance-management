@@ -9,7 +9,8 @@ import { RecordsClient, type RecordRow } from "./RecordsClient";
 import { workedMinutes, formatMinutes, isLate } from "@/lib/worktime";
 import { parseAnchor, toISODate } from "@/lib/period";
 import { workModeLabel, locationLabel, hhmm, monthDayDow } from "@/lib/labels";
-import { effectiveWorkDays, isWorkDay } from "@/lib/workdays";
+import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
+import { loadOffDays } from "@/lib/holiday-server";
 import { after } from "next/server";
 import { purgeExpiredPhotos } from "@/lib/clock-photo";
 
@@ -61,8 +62,11 @@ export default async function RecordsPage({
 
   const company = await prisma.company.findUnique({
     where: { id: me.companyId },
-    select: { workStartTime: true, lateGraceMin: true, workDays: true },
+    select: { workStartTime: true, lateGraceMin: true, workDays: true, holidayAutoOn: true },
   });
+
+  // 조회 기간의 쉬는 날(공휴일·회사휴무일) 집합 — 지각·결근 판정에서 제외한다.
+  const offDays = await loadOffDays(me.companyId, company?.holidayAutoOn ?? true, start, end);
 
   const records = await prisma.attendance.findMany({
     where: { companyId: me.companyId, clockIn: { gte: start, lt: end } },
@@ -74,7 +78,7 @@ export default async function RecordsPage({
 
   // 각 기록을 화면 표시값(직렬화 가능한 순수 객체)으로 미리 계산 → 통합검색은 "화면에 보이는 모든 컬럼"의 글자로 판단.
   const rows: RecordRow[] = records.map((r) => {
-    const onWorkDay = isWorkDay(r.clockIn, effectiveWorkDays(r.user.workDays, company?.workDays));
+    const onWorkDay = isEffectiveWorkDay(r.clockIn, effectiveWorkDays(r.user.workDays, company?.workDays), offDays);
     const holiday = !onWorkDay;
     const late = onWorkDay ? isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0) : null;
     const suspect = r.clockPhotos.some((p) => p.livenessStatus === "suspect");

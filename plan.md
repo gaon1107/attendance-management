@@ -63,14 +63,15 @@
 5. 대시보드 지각 수·미출근 수 동일한지
 
 ## 4. 작업분해 TODO
-- [ ] 1단계: `lib/holidays.ts` 순수 로직 + `isEffectiveWorkDay` 작성 + 단위검증 — 파일: lib/holidays.ts, lib/workdays.ts
-- [ ] 2단계: 판정부 배선(빈 Set 기본값) — dayentries·leave·records·[userId]·my-records·dashboard·reports·actions/leave. **이 시점까지 동작 100% 동일**(회귀 테스트 통과 확인)
-- [ ] 3단계(게이트): 스키마 추가 + 마이그레이션 — **사장님 서버 정지 필요** — 파일: prisma/schema.prisma
-- [ ] 4단계: `lib/holiday-sync.ts` 정부 API 수집·저장(실패 안전) + `.env` 키 자리
-- [ ] 5단계: `app/actions/holidays.ts`(토글/추가/삭제/갱신) + `HolidayForm.tsx` + settings 배치
-- [ ] 6단계: 각 화면이 실제 휴일 Set(회사토글+수동)을 읽어 판정에 연결
+- [x] 1단계: `lib/holidays.ts` 순수 로직 + `isEffectiveWorkDay` — 완료(5케이스 검증·tsc 0·커밋)
+- [x] 2단계: 판정부 배선(빈 Set 기본값) — dayentries·leave 완료(커밋). **동작 100% 동일 확인**
+- [x] 3단계(게이트) 스키마 파일 수정 완료(prisma validate 통과) — ⏳ **마이그레이션 실행은 서버 정지 대기**
+- [x] 4단계: `lib/holiday-server.ts` 정부 API 수집·저장(실패 안전) + `.env` 키 완료
+- [x] 5단계: `app/actions/holidays.ts` + `HolidayForm.tsx` + settings 배치 완료
+- [x] 6단계: 6개 화면 연결 완료(records·[userId]·my-records·dashboard·reports·actions/leave)
+- [ ] ⏳ **게이트: 서버 정지 → prisma generate + migrate + tsc/eslint 검증** (여기서 대기)
 - [ ] 7단계: 영향받는 기존 기능 5종 회귀 테스트(위 목록)
-- [ ] 8단계: code-reviewer 검수 + tsc/eslint + project-status.md 갱신
+- [ ] 8단계: code-reviewer 검수 + project-status.md 갱신
 
 ## 5. 핵심 로직 샘플 (계획용 스니펫, 실제 구현 아님)
 ```ts

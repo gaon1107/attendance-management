@@ -39,6 +39,10 @@ model Company {
   standardWorkHours Float @default(8)
   // 회사 기본 근무요일(JS getDay 기준: 0=일 … 6=토) CSV. 기본 월~금. 이 요일에만 지각·결근 판정.
   workDays      String   @default("1,2,3,4,5")
+  // 법정공휴일 자동 반영 스위치. 켜짐이면 전국 공휴일(Holiday 표)을 "쉬는 날"로 본다(지각·결근·연차 제외).
+  // 공휴일에도 정상근무하는 업종(병원·서비스업)은 꺼둔다. 회사 수동 휴무일(CompanyHoliday)은 이 스위치와 무관하게 항상 적용.
+  holidayAutoOn Boolean  @default(true)
+  companyHolidays CompanyHoliday[]
   // 얼굴 인식 기준 크기(%) — 얼굴 폭이 화면 폭의 이 비율 이상이어야 출퇴근 인식·등록 통과.
   // 해상도가 아니라 "비율"이라 카메라마다 화질이 달라도 같은 의미. 멀리 든 사진(작은 얼굴) 부정 차단용.
   faceMinPercent Int     @default(30)
@@ -356,5 +360,34 @@ model BlockedIp {
   createdBy String? // 막은 관리자 이름 스냅샷(계정이 지워져도 감사 추적 가능)
   createdAt DateTime @default(now())
 
+  @@index([companyId])
+}
+
+// 전국 법정공휴일 — 공공데이터포털(한국천문연구원 특일정보 API)에서 수집해 저장.
+// ※ 공휴일은 전국 동일하므로 회사와 무관하게 1벌만 공유한다(회사별 적용 여부는 Company.holidayAutoOn).
+// ※ 화면은 이 저장분을 읽어 판정한다(정부 API를 매 요청마다 부르지 않음 = 장애 무관·빠름).
+model Holiday {
+  id        String   @id @default(cuid())
+  date      String   @unique // "YYYY-MM-DD" (KST). 대체공휴일도 각각 한 줄.
+  name      String   // 공휴일 이름(예: "광복절", "설날")
+  year      Int      // 조회·갱신 편의(연 단위 재수집)
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([year])
+}
+
+// 회사 수동 휴무일 — 관리자가 직접 지정한 쉬는 날(창립기념일·임시공휴일 즉시 반영 등).
+// ※ Company.holidayAutoOn 스위치와 무관하게 항상 "쉬는 날"로 적용된다.
+model CompanyHoliday {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  date      String   // "YYYY-MM-DD"
+  name      String   // 휴무일 이름(예: "창립기념일")
+  createdBy String?  // 등록한 관리자 이름 스냅샷
+  createdAt DateTime @default(now())
+
+  // 회사·날짜당 1건만(같은 날 중복 등록 방지)
+  @@unique([companyId, date])
   @@index([companyId])
 }

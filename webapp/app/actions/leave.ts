@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { effectiveWorkDays } from "@/lib/workdays";
+import { loadOffDays } from "@/lib/holiday-server";
 import { LEAVE_TYPES, leaveTypeDeducts, computeLeaveDays, parseYmd, usedLeaveDays } from "@/lib/leave";
 
 // 직원: 휴가 신청. 종류·기간을 받아 근무요일 기준 사용일수를 계산하고 대기 상태로 만든다.
@@ -30,10 +31,12 @@ export async function requestLeave(
   const reason = String(formData.get("reason") ?? "").trim() || null;
 
   // 내 근무요일(회사 기본 또는 개인 예외)
-  const company = await prisma.company.findUnique({ where: { id: me.companyId }, select: { workDays: true } });
+  const company = await prisma.company.findUnique({ where: { id: me.companyId }, select: { workDays: true, holidayAutoOn: true } });
   const wd = effectiveWorkDays(me.workDays, company?.workDays);
+  // 신청 기간의 쉬는 날(공휴일·회사휴무일)은 연차 차감에서 제외한다.
+  const offDays = await loadOffDays(me.companyId, company?.holidayAutoOn ?? true, start, end);
 
-  const days = computeLeaveDays(type, start, end, wd);
+  const days = computeLeaveDays(type, start, end, wd, offDays);
   if (days <= 0) return { error: "선택한 기간에 근무일이 없습니다. 근무요일을 확인해주세요." };
 
   // 연차·반차는 잔여를 넘을 수 없다(병가는 차감 안 함).

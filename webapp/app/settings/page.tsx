@@ -11,6 +11,7 @@ import { OfficeNetworkForm } from "./OfficeNetworkForm";
 import { FaceRuleForm } from "./FaceRuleForm";
 import { LivenessRuleForm } from "./LivenessRuleForm";
 import { AlertRulesForm } from "./AlertRulesForm";
+import { HolidayForm } from "./HolidayForm";
 
 export default async function SettingsPage() {
   const me = await getCurrentUser();
@@ -25,10 +26,23 @@ export default async function SettingsPage() {
       workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true,
       standardWorkHours: true, faceMinPercent: true, faceMinBrightness: true, livenessPercent: true,
       alertNightOn: true, alertNightStart: true, alertNightEnd: true, alertFailOn: true, alertFailCount: true,
+      holidayAutoOn: true,
     },
   });
 
   const currentIp = getClientIp(await headers());
+
+  // 공휴일·휴무일 설정용 데이터: 회사 수동 휴무일 목록 + 저장된 전국 공휴일 요약(건수·연도).
+  const [companyHolidays, holidayYears] = await Promise.all([
+    prisma.companyHoliday.findMany({
+      where: { companyId: me.companyId },
+      select: { id: true, date: true, name: true },
+      orderBy: { date: "asc" },
+    }),
+    prisma.holiday.findMany({ select: { year: true }, distinct: ["year"], orderBy: { year: "asc" } }),
+  ]);
+  const syncedCount = await prisma.holiday.count();
+  const syncedYears = holidayYears.map((h) => `${h.year}년`).join("·");
 
   return (
     <AppShell user={me} active="settings" title="설정" subtitle={`${me.company.name} · 관리자 ${me.name}`}>
@@ -57,6 +71,16 @@ export default async function SettingsPage() {
             nightEnd: company?.alertNightEnd ?? 6,
             failOn: company?.alertFailOn ?? true,
             failCount: company?.alertFailCount ?? 5,
+          }}
+        />
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <HolidayForm
+          initial={{
+            autoOn: company?.holidayAutoOn ?? true,
+            holidays: companyHolidays,
+            syncedCount,
+            syncedYears,
           }}
         />
       </div>

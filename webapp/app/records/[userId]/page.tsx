@@ -12,6 +12,7 @@ import { DetailTable } from "@/app/components/DetailTable";
 import { MonthCalendar } from "@/app/components/MonthCalendar";
 import { buildDayEntries } from "@/lib/dayentries";
 import { leaveLabelByDate } from "@/lib/leave";
+import { loadOffDays } from "@/lib/holiday-server";
 import { normalizeUnit, parseAnchor, rangeFor, shiftAnchor, toISODate } from "@/lib/period";
 
 // 표/달력 전환 토글(내 근태와 동일한 모양).
@@ -53,11 +54,12 @@ export default async function RecordDetailPage({
 
   const company = await prisma.company.findUnique({
     where: { id: me.companyId },
-    select: { workStartTime: true, lateGraceMin: true, workDays: true },
+    select: { workStartTime: true, lateGraceMin: true, workDays: true, holidayAutoOn: true },
   });
 
   // 기간(start~end)으로 이 직원의 출퇴근 + 승인 휴가를 모아 상세를 만든다.
   async function loadDetail(start: Date, end: Date) {
+    const offDays = await loadOffDays(me!.companyId, company?.holidayAutoOn ?? true, start, end);
     const rows = await prisma.attendance.findMany({
       where: { userId: target!.id, companyId: me!.companyId, clockIn: { gte: start, lt: end } },
       include: {
@@ -75,7 +77,7 @@ export default async function RecordDetailPage({
       where: { userId: target!.id, companyId: me!.companyId, status: "approved", startDate: { lt: end }, endDate: { gte: start } },
       select: { type: true, startDate: true, endDate: true },
     });
-    return buildDayEntries(rows, target!.workDays, company, start, end, leaveLabelByDate(leaves));
+    return buildDayEntries(rows, target!.workDays, company, start, end, leaveLabelByDate(leaves), offDays);
   }
 
   const backBtn = (

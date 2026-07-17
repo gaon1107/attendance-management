@@ -6,7 +6,8 @@ import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { workedMinutes, formatMinutes, isLate } from "@/lib/worktime";
 import { workModeLabel, locationStatusLabel } from "@/lib/location";
-import { effectiveWorkDays, isWorkDay } from "@/lib/workdays";
+import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
+import { loadOffDays } from "@/lib/holiday-server";
 import { countUncheckedAnomalies } from "@/lib/anomaly";
 
 function hhmm(d: Date): string {
@@ -38,19 +39,22 @@ export default async function DashboardPage() {
   const company = await prisma.company.findUnique({
     where: { id: me.companyId },
     select: {
-      workStartTime: true, lateGraceMin: true, workDays: true,
+      workStartTime: true, lateGraceMin: true, workDays: true, holidayAutoOn: true,
       securityCheckedAt: true,
       alertNightOn: true, alertNightStart: true, alertNightEnd: true, alertFailOn: true, alertFailCount: true,
     },
   });
   const hasRule = !!company?.workStartTime;
 
+  // 오늘의 쉬는 날(공휴일·회사휴무일) 집합 — 지각·미출근·휴일근무 판정에서 제외한다.
+  const offDays = await loadOffDays(me.companyId, company?.holidayAutoOn ?? true, startOfToday, startOfToday);
+
   // 지각 = 근무일 + 기준시각 이후 출근일 때만
   const lateUserIds = new Set(
     todays
       .filter((r) => {
         const wd = effectiveWorkDays(r.user.workDays, company?.workDays);
-        return isWorkDay(r.clockIn, wd) && isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0);
+        return isEffectiveWorkDay(r.clockIn, wd, offDays) && isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0);
       })
       .map((r) => r.userId)
   );
@@ -69,7 +73,7 @@ export default async function DashboardPage() {
   const absentNames = employees
     .filter((e) => {
       const wd = effectiveWorkDays(e.workDays, company?.workDays);
-      return isWorkDay(now, wd) && !clockedInIds.has(e.id) && !onLeaveTodayIds.has(e.id);
+      return isEffectiveWorkDay(now, wd, offDays) && !clockedInIds.has(e.id) && !onLeaveTodayIds.has(e.id);
     })
     .map((e) => e.name);
   const absentCount = absentNames.length;
@@ -195,9 +199,9 @@ export default async function DashboardPage() {
                     todays.map((rec) => {
                       const working = !rec.clockOut;
                       const wd = effectiveWorkDays(rec.user.workDays, company?.workDays);
-                      const onWorkDay = isWorkDay(rec.clockIn, wd);
+                      const onWorkDay = isEffectiveWorkDay(rec.clockIn, wd, offDays);
                       const late = onWorkDay && isLate(rec.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0);
-                      const holiday = !onWorkDay; // 근무일 아닌 날 근무 = 휴일근무
+                      const holiday = !onWorkDay; // 근무일 아닌 날(주말·공휴일·휴무일) 근무 = 휴일근무
                       return (
                         <tr key={rec.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                           <td style={td}>

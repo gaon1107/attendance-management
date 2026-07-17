@@ -7,7 +7,8 @@ import { AppShell } from "@/app/components/AppShell";
 import { ReportsClient, type ReportRow } from "./ReportsClient";
 import { workedMinutes } from "@/lib/worktime";
 import { parseAnchor, toISODate } from "@/lib/period";
-import { effectiveWorkDays, isWorkDay } from "@/lib/workdays";
+import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
+import { loadOffDays } from "@/lib/holiday-server";
 import { leaveDateSet } from "@/lib/leave";
 
 export default async function ReportsPage({
@@ -54,7 +55,9 @@ export default async function ReportsPage({
     toISO = toISODate(capEnd);
   }
 
-  const company = await prisma.company.findUnique({ where: { id: me.companyId }, select: { workDays: true, standardWorkHours: true } });
+  const company = await prisma.company.findUnique({ where: { id: me.companyId }, select: { workDays: true, standardWorkHours: true, holidayAutoOn: true } });
+  // 결근 계산용 쉬는 날(공휴일·회사휴무일) 집합 — 조회 기간 전체.
+  const offDays = await loadOffDays(me.companyId, company?.holidayAutoOn ?? true, start, end);
   // 초과근무 판정 기준 = 기준 일 근무시간(분). 하루 실근무가 이보다 많으면 초과분을 연장으로 집계.
   const standardWorkHours = company?.standardWorkHours ?? 8;
   const standardMin = Math.round(standardWorkHours * 60);
@@ -110,7 +113,7 @@ export default async function ReportsPage({
     let n = 0;
     for (let cur = new Date(start); cur < absLimit; cur = new Date(cur.getTime() + 86400000)) {
       const iso = toISODate(cur);
-      if (isWorkDay(cur, wd) && !attended.has(iso) && !leaveDays.has(iso)) n++;
+      if (isEffectiveWorkDay(cur, wd, offDays) && !attended.has(iso) && !leaveDays.has(iso)) n++;
     }
     return n;
   }
