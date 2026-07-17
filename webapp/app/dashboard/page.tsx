@@ -5,14 +5,11 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { workedMinutes, formatMinutes, isLate } from "@/lib/worktime";
-import { workModeLabel, locationStatusLabel } from "@/lib/location";
 import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
 import { countUncheckedAnomalies } from "@/lib/anomaly";
-
-function hhmm(d: Date): string {
-  return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
-}
+import { DashboardCalendar } from "./DashboardCalendar";
+import type { DayData } from "@/app/schedule/ScheduleCalendar";
 
 export default async function DashboardPage() {
   const me = await getCurrentUser();
@@ -48,6 +45,21 @@ export default async function DashboardPage() {
 
   // 오늘의 쉬는 날(공휴일·회사휴무일) 집합 — 지각·미출근·휴일근무 판정에서 제외한다.
   const offDays = await loadOffDays(me.companyId, company?.holidayAutoOn ?? true, startOfToday, startOfToday);
+
+  // 이번 달 일정 캘린더 데이터(대시보드 카드) — 법정공휴일(전국)·회사 휴무일·회사 일정.
+  const calYear = startOfToday.getFullYear();
+  const calMonth = startOfToday.getMonth(); // 0-based
+  const calPrefix = `${calYear}-${String(calMonth + 1).padStart(2, "0")}`;
+  const [calNat, calComp, calEvents] = await Promise.all([
+    prisma.holiday.findMany({ where: { date: { startsWith: calPrefix } }, select: { date: true, name: true } }),
+    prisma.companyHoliday.findMany({ where: { companyId: me.companyId, date: { startsWith: calPrefix } }, select: { id: true, date: true, name: true } }),
+    prisma.companyEvent.findMany({ where: { companyId: me.companyId, date: { startsWith: calPrefix } }, select: { id: true, date: true, title: true, color: true }, orderBy: { createdAt: "asc" } }),
+  ]);
+  const calByDate: Record<string, DayData> = {};
+  const ensureDay = (iso: string): DayData => (calByDate[iso] ??= { events: [] });
+  for (const h of calNat) ensureDay(h.date).nationalHoliday = h.name;
+  for (const c of calComp) ensureDay(c.date).companyHoliday = { id: c.id, name: c.name };
+  for (const e of calEvents) ensureDay(e.date).events.push({ id: e.id, title: e.title, color: e.color });
 
   // 지각 = 근무일 + 기준시각 이후 출근일 때만
   const lateUserIds = new Set(
@@ -129,9 +141,6 @@ export default async function DashboardPage() {
     { label: "오늘 실근무 평균", value: formatMinutes(avgMinutes), unit: "", color: "var(--text)" },
   ];
 
-  const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "10px 20px" };
-  const td: React.CSSProperties = { padding: "12px 20px", fontSize: 15, verticalAlign: "middle" };
-
   const datePill = (
     <div
       style={{
@@ -162,103 +171,9 @@ export default async function DashboardPage() {
             ))}
           </div>
 
-          {/* 오늘 출퇴근 현황 표 */}
-          <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-            <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border)" }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>오늘 출퇴근 현황</div>
-              <span style={{ fontSize: 13, color: "var(--text-sub)" }}>
-                전체 <strong style={{ color: "var(--text)" }}>{employeeCount}명</strong> 기준
-                {absentCount > 0 && (
-                  <span style={{ color: "var(--text-sub)", fontWeight: 700, marginLeft: 8 }}>· 미출근 {absentCount}명</span>
-                )}
-                {hasRule && lateCount > 0 && (
-                  <span style={{ color: "var(--warning)", fontWeight: 700, marginLeft: 8 }}>· 지각 {lateCount}명</span>
-                )}
-              </span>
-            </div>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
-                <thead>
-                  <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
-                    <th style={th}>이름</th>
-                    <th style={th}>인증방식</th>
-                    <th style={th}>출근</th>
-                    <th style={th}>퇴근</th>
-                    <th style={th}>실근무</th>
-                    <th style={th}>상태</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {todays.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
-                        아직 오늘 출근한 직원이 없습니다.
-                      </td>
-                    </tr>
-                  ) : (
-                    todays.map((rec) => {
-                      const working = !rec.clockOut;
-                      const wd = effectiveWorkDays(rec.user.workDays, company?.workDays);
-                      const onWorkDay = isEffectiveWorkDay(rec.clockIn, wd, offDays);
-                      const late = onWorkDay && isLate(rec.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0);
-                      const holiday = !onWorkDay; // 근무일 아닌 날(주말·공휴일·휴무일) 근무 = 휴일근무
-                      return (
-                        <tr key={rec.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                          <td style={td}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                              <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#EEF2F7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>
-                                {rec.user.name.slice(0, 1)}
-                              </div>
-                              <div>
-                                <span style={{ fontWeight: 700 }}>{rec.user.name}</span>
-                                {rec.user.role === "admin" && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}> (관리자)</span>}
-                                <div style={{ display: "flex", gap: 5, marginTop: 3 }}>
-                                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-sub)", background: "#F3F4F6", padding: "2px 7px", borderRadius: 999 }}>
-                                    {workModeLabel(rec.workMode)}
-                                  </span>
-                                  {late && (
-                                    <span style={{ fontSize: 11, fontWeight: 700, color: "#B45309", background: "#FEF3C7", padding: "2px 7px", borderRadius: 999 }}>
-                                      지각
-                                    </span>
-                                  )}
-                                  {holiday && (
-                                    <span style={{ fontSize: 11, fontWeight: 700, color: "#6D28D9", background: "#EDE9FE", padding: "2px 7px", borderRadius: 999 }}>
-                                      휴일근무
-                                    </span>
-                                  )}
-                                  {rec.workMode === "office" && rec.locationStatus !== "verified" && rec.locationStatus && (
-                                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--warning)", background: "#FEF3C7", padding: "2px 7px", borderRadius: 999 }}>
-                                      {locationStatusLabel(rec.locationStatus)}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td style={{ ...td, color: "var(--text-sub)" }}>
-                            {rec.user.authMethod === "face" ? "얼굴인증" : rec.user.authMethod === "gps" ? "GPS" : "—"}
-                          </td>
-                          <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{hhmm(rec.clockIn)}</td>
-                          <td style={{ ...td, fontVariantNumeric: "tabular-nums", color: rec.clockOut ? "var(--text)" : "var(--text-sub)" }}>
-                            {rec.clockOut ? hhmm(rec.clockOut) : "—"}
-                          </td>
-                          <td style={{ ...td, fontWeight: 700, color: "var(--primary)", fontVariantNumeric: "tabular-nums" }}>
-                            {formatMinutes(workedMinutes(rec))}
-                          </td>
-                          <td style={td}>
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px", borderRadius: 6, background: working ? "#DCFCE7" : "#F3F4F6" }}>
-                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: working ? "var(--success)" : "#9CA3AF" }} />
-                              <span style={{ fontSize: 13, fontWeight: 700, color: working ? "#15803D" : "#374151" }}>{working ? "근무 중" : "퇴근"}</span>
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          {/* 이번 달 일정 캘린더 (기존 "오늘 출퇴근 현황" 표는 [근태현황]과 중복이라 제거 —
+              오늘 요약은 상단 KPI·우측 알림에 있고, 상세 명단은 [근태현황]에서 본다) */}
+          <DashboardCalendar year={calYear} month={calMonth} byDate={calByDate} />
         </div>
 
         {/* 오른쪽: 오늘 알림 + 실시간 근무 인원 (실제 데이터) */}
