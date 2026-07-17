@@ -6,12 +6,15 @@ import { useActionState, useState } from "react";
 import Link from "next/link";
 import { addEvent, deleteEvent } from "@/app/actions/schedule";
 import { addCompanyHoliday, deleteCompanyHoliday } from "@/app/actions/holidays";
+import { createNotice, deleteNotice } from "@/app/actions/notice";
 
 export type DayData = {
   nationalHoliday?: string; // 법정공휴일 이름(읽기전용)
   companyHoliday?: { id: string; name: string }; // 회사 휴무일
   // 일정. mine=내가 삭제 가능한지 / personal=개인 일정(true)인지 회사 일정(false)인지.
   events: { id: string; title: string; color: string | null; mine: boolean; personal: boolean }[];
+  // 공지(사내 공지사항) — 올린 날(작성일) 칸에 표시. 본문은 모달에서 읽는다.
+  notices?: { id: string; title: string; body: string; authorName: string }[];
 };
 
 const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
@@ -19,6 +22,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const isoOf = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`;
 const EVENT_BG = "#2563EB"; // 회사 일정(파랑)
 const PERSONAL_BG = "#059669"; // 개인 일정(초록) — 직원이 자기 일정을 구분하기 쉽게
+const NOTICE_BG = "#D97706"; // 공지(주황) — 일정과 구분
 
 const navBtn: React.CSSProperties = {
   width: 34, height: 34, display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -35,6 +39,7 @@ export function ScheduleCalendar({
   canManageCompany: boolean; // 관리자만 회사 일정·휴무일 관리. 직원은 개인 일정만.
 }) {
   const [selected, setSelected] = useState<string | null>(null);
+  const [composeOpen, setComposeOpen] = useState(false);
 
   const firstWeekday = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -49,10 +54,33 @@ export function ScheduleCalendar({
         <div style={{ fontSize: 16, fontWeight: 700 }}>일정 캘린더</div>
         <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 4 }}>
           {canManageCompany
-            ? "날짜를 클릭해 회사 일정을 등록하거나 그 날을 휴무일로 지정하세요. (법정공휴일은 빨간색으로 자동 표시됩니다)"
-            : "회사 공휴일·휴무일·일정은 보기만 할 수 있고, 날짜를 클릭해 내 개인 일정을 추가할 수 있어요. (개인 일정은 나만 봅니다)"}
+            ? "날짜를 클릭해 회사 일정을 등록하거나 그 날을 휴무일로 지정하세요. 공지는 아래 '공지 작성'으로 올리면 오늘 날짜에 표시됩니다. (법정공휴일은 빨간색으로 자동 표시)"
+            : "회사 공휴일·휴무일·공지·일정은 보기만 할 수 있고, 날짜를 클릭해 내 개인 일정을 추가할 수 있어요. (개인 일정은 나만 봅니다)"}
         </div>
       </div>
+
+      {/* 관리자 공지 작성 — 공지는 '오늘 날짜'로 등록되어 전 직원에게 알림이 간다(작성일 칸에 표시). */}
+      {canManageCompany && (
+        <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: composeOpen ? 16 : 0, marginBottom: 14, background: "#FFFBEB" }}>
+          {!composeOpen ? (
+            <button
+              type="button"
+              onClick={() => setComposeOpen(true)}
+              style={{ width: "100%", height: 44, border: "none", borderRadius: 10, background: "#FFFBEB", color: "#B45309", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+            >
+              📢 공지 작성
+            </button>
+          ) : (
+            <>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#92400E" }}>📢 새 공지 작성 <span style={{ fontWeight: 400, fontSize: 12, color: "var(--text-sub)" }}>(오늘 날짜로 등록 · 전 직원 알림)</span></div>
+                <button type="button" onClick={() => setComposeOpen(false)} style={{ width: 28, height: 28, border: "1px solid var(--border)", borderRadius: 7, background: "#fff", color: "var(--text-sub)", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>✕</button>
+              </div>
+              <NoticeCompose onDone={() => setComposeOpen(false)} />
+            </>
+          )}
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <div style={{ display: "flex", gap: 6 }}>
           <Link href={`/schedule?ym=${prevYm}`} style={navBtn}>‹</Link>
@@ -79,8 +107,11 @@ export function ScheduleCalendar({
           const isToday = iso === todayISO;
           // 공휴일·회사휴무일·일요일이면 빨강, 토요일이면 파랑, 그 외 기본색
           const dayColor = data?.nationalHoliday || data?.companyHoliday || dow === 0 ? "#DC2626" : dow === 6 ? "#2563EB" : "var(--text)";
+          const shownNotices = data?.notices?.slice(0, 2) ?? [];
           const shownEvents = data?.events?.slice(0, 3) ?? [];
-          const moreCount = (data?.events?.length ?? 0) - shownEvents.length;
+          const moreCount =
+            ((data?.notices?.length ?? 0) - shownNotices.length) +
+            ((data?.events?.length ?? 0) - shownEvents.length);
 
           return (
             <button
@@ -104,6 +135,11 @@ export function ScheduleCalendar({
               {data?.companyHoliday && (
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#6D28D9", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>휴무 · {data.companyHoliday.name}</span>
               )}
+              {shownNotices.map((nt) => (
+                <span key={nt.id} style={{ fontSize: 11, fontWeight: 600, color: "#fff", background: NOTICE_BG, borderRadius: 4, padding: "1px 5px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  📢 {nt.title}
+                </span>
+              ))}
               {shownEvents.map((ev) => (
                 <span key={ev.id} style={{ fontSize: 11, fontWeight: 600, color: "#fff", background: ev.color || (ev.personal ? PERSONAL_BG : EVENT_BG), borderRadius: 4, padding: "1px 5px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {ev.title}
@@ -120,6 +156,7 @@ export function ScheduleCalendar({
         <Legend color="#DC2626" label="법정공휴일(자동)" />
         <Legend color="#6D28D9" label="회사 휴무일" />
         <Legend color={EVENT_BG} label="회사 일정" />
+        <Legend color={NOTICE_BG} label="공지" />
         {!canManageCompany && <Legend color={PERSONAL_BG} label="내 일정" />}
       </div>
 
@@ -155,6 +192,7 @@ function DayModal({ iso, data, canManageCompany, onClose }: { iso: string; data:
   const [y, m, d] = iso.split("-").map(Number);
   const dow = WEEK[new Date(y, m - 1, d).getDay()];
   const events = data?.events ?? [];
+  const notices = data?.notices ?? [];
 
   return (
     <>
@@ -169,6 +207,30 @@ function DayModal({ iso, data, canManageCompany, onClose }: { iso: string; data:
         {data?.nationalHoliday && (
           <div style={{ fontSize: 13, fontWeight: 700, color: "#DC2626", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "8px 12px", marginBottom: 14 }}>
             법정공휴일 · {data.nationalHoliday} <span style={{ fontWeight: 400, color: "var(--text-sub)" }}>(자동, 해제 불가)</span>
+          </div>
+        )}
+
+        {/* 공지(사내 공지) — 그 날 올라온 공지 본문을 읽는다. 관리자는 삭제 가능. */}
+        {notices.length > 0 && (
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "#B45309" }}>📢 공지</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {notices.map((nt) => (
+                <div key={nt.id} style={{ border: "1px solid #FDE68A", background: "#FFFBEB", borderRadius: 8, padding: "10px 12px" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: "#92400E", lineHeight: 1.4 }}>{nt.title}</div>
+                    {canManageCompany && (
+                      <form action={deleteNotice}>
+                        <input type="hidden" name="id" value={nt.id} />
+                        <button type="submit" style={{ height: 26, padding: "0 8px", border: "1px solid #FDE68A", borderRadius: 6, background: "#fff", color: "var(--danger)", fontFamily: "inherit", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>삭제</button>
+                      </form>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.7, whiteSpace: "pre-wrap", marginTop: 6 }}>{nt.body}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-sub)", marginTop: 8 }}>{nt.authorName}</div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -238,5 +300,39 @@ function DayModal({ iso, data, canManageCompany, onClose }: { iso: string; data:
         </div>
       </div>
     </>
+  );
+}
+
+// 공지 작성 폼(관리자, 캘린더 상단) — 제목+내용. 등록되면 오늘 날짜 칸에 표시되고 입력창을 비운다.
+function NoticeCompose({ onDone }: { onDone: () => void }) {
+  const [state, formAction, pending] = useActionState(createNotice, {});
+  const inputStyle: React.CSSProperties = {
+    width: "100%", padding: "0 12px", height: 42, border: "1px solid #D1D5DB", borderRadius: 8,
+    fontFamily: "inherit", fontSize: 14, color: "var(--text)", outline: "none", background: "#fff",
+  };
+
+  return (
+    <form
+      action={async (fd) => {
+        const res = await formAction(fd);
+        void res;
+      }}
+      style={{ display: "flex", flexDirection: "column", gap: 10 }}
+    >
+      <input name="title" type="text" placeholder="공지 제목 (예: 7월 워크샵 안내)" maxLength={100} style={inputStyle} />
+      <textarea name="body" rows={3} maxLength={5000} placeholder="공지 내용을 입력하세요." style={{ ...inputStyle, height: "auto", padding: "10px 12px", resize: "vertical", lineHeight: 1.6 }} />
+      {state?.error && <div style={{ fontSize: 12, color: "var(--danger)", fontWeight: 700 }}>{state.error}</div>}
+      {state?.ok && <div style={{ fontSize: 12, color: "var(--success)", fontWeight: 700 }}>공지를 등록했습니다.</div>}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          type="submit"
+          disabled={pending}
+          style={{ height: 42, border: "none", borderRadius: 8, background: "#B45309", color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: pending ? "default" : "pointer", opacity: pending ? 0.6 : 1, padding: "0 22px" }}
+        >
+          {pending ? "등록 중..." : "공지 등록"}
+        </button>
+        <button type="button" onClick={onDone} style={{ height: 42, border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--text-sub)", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", padding: "0 18px" }}>닫기</button>
+      </div>
+    </form>
   );
 }

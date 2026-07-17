@@ -15,12 +15,17 @@ export async function createNotice(
   const body = String(formData.get("body") ?? "").trim();
   if (!title || !body) return { error: "제목과 내용을 모두 입력해주세요." };
   if (title.length > 100) return { error: "제목은 100자 이내로 입력해주세요." };
+  if (body.length > 5000) return { error: "내용은 5000자 이내로 입력해주세요." };
 
   await prisma.announcement.create({
     data: { companyId: me.companyId, title, body, authorName: me.name },
   });
 
+  // 공지는 캘린더(작성일 칸)·대시보드 최신공지·출퇴근 배너에도 나타나므로 함께 갱신한다.
   revalidatePath("/notice");
+  revalidatePath("/schedule");
+  revalidatePath("/dashboard");
+  revalidatePath("/attendance");
   return { ok: true };
 }
 
@@ -42,4 +47,7 @@ export async function deleteNotice(formData: FormData): Promise<void> {
   if (!notice) return;
   await prisma.announcement.delete({ where: { id: notice.id } });
   revalidatePath("/notice");
+  revalidatePath("/schedule");
+  revalidatePath("/dashboard");
+  revalidatePath("/attendance");
 }

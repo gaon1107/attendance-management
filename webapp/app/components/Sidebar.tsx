@@ -84,11 +84,11 @@ function toItems(keys: NavKey[]): Item[] {
 function groupsFor(role: string): NavGroup[] {
   if (role === "admin") {
     return [
-      { caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(["dashboard", "live", "employees", "records", "schedule", "reports", "leave-approvals", "leave-summary", "notice", "biometrics", "security", "company", "settings"]) },
+      { caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(["dashboard", "live", "employees", "records", "schedule", "reports", "leave-approvals", "leave-summary", "biometrics", "security", "company", "settings"]) },
       { caption: "내근태", tintBg: "#E3F5EA", tintText: "#15803D", items: toItems(["attendance", "auth-method"]) },
     ];
   }
-  return [{ caption: "", items: toItems(["attendance", "my-records", "schedule", "leave", "corrections", "notice", "auth-method"]) }];
+  return [{ caption: "", items: toItems(["attendance", "my-records", "schedule", "leave", "corrections", "auth-method"]) }];
 }
 
 export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {

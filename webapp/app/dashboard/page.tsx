@@ -9,6 +9,7 @@ import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
 import { countUncheckedAnomalies } from "@/lib/anomaly";
 import { DashboardCalendar } from "./DashboardCalendar";
+import { LatestNoticeModal } from "./LatestNoticeModal";
 import type { DayData } from "@/app/schedule/ScheduleCalendar";
 
 export default async function DashboardPage() {
@@ -102,7 +103,7 @@ export default async function DashboardPage() {
   const latestNotice = await prisma.announcement.findFirst({
     where: { companyId: me.companyId },
     orderBy: { createdAt: "desc" },
-    select: { title: true, createdAt: true },
+    select: { title: true, body: true, authorName: true, createdAt: true },
   });
 
   // 이상접속 미확인 건수(접속/보안 6단계) — 알림 화면과 **같은 함수**를 써서 두 곳 숫자가 어긋나지 않게 한다.
@@ -228,12 +229,16 @@ export default async function DashboardPage() {
                   <span style={{ fontSize: 14, fontWeight: 700, color: "var(--primary)" }}>{pendingCorrectionCount}건</span>
                 </Link>
               )}
-              {/* 최신 공지 */}
+              {/* 최신 공지 — 클릭 시 모달로 본문(공지 화면이 캘린더로 통합되어 페이지 이동 대신 모달) */}
               {latestNotice && (
-                <Link href="/notice" style={{ padding: "12px 18px", textDecoration: "none", color: "var(--text)" }}>
-                  <div style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700, marginBottom: 4 }}>📢 최신 공지</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{latestNotice.title}</div>
-                </Link>
+                <LatestNoticeModal
+                  notice={{
+                    title: latestNotice.title,
+                    body: latestNotice.body,
+                    authorName: latestNotice.authorName,
+                    dateLabel: latestNotice.createdAt.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }),
+                  }}
+                />
               )}
             </div>
           </section>

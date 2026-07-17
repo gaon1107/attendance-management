@@ -44,8 +44,13 @@ export default async function AttendancePage() {
   const latestNotice = await prisma.announcement.findFirst({
     where: { companyId: me.companyId },
     orderBy: { createdAt: "desc" },
-    select: { title: true },
+    select: { title: true, createdAt: true },
   });
+  // 공지는 캘린더의 "작성월" 칸에 표시되므로, 배너 클릭 시 그 공지가 있는 달로 이동시킨다.
+  // (그냥 /schedule로 보내면 기본이 이번 달이라, 지난달 공지를 못 본 채 읽음처리될 수 있다.)
+  const latestNoticeYm = latestNotice
+    ? `${latestNotice.createdAt.getFullYear()}-${String(latestNotice.createdAt.getMonth() + 1).padStart(2, "0")}`
+    : "";
   // 안 읽은 공지(알림) 수 = 마지막 확인 시각 이후 올라온 공지. (확인 시각 없으면 전부)
   const unreadNotices = await prisma.announcement.count({
     where: { companyId: me.companyId, ...(me.noticesSeenAt ? { createdAt: { gt: me.noticesSeenAt } } : {}) },
@@ -112,7 +117,7 @@ export default async function AttendancePage() {
 
       {latestNotice && (
         <a
-          href="/notice"
+          href={`/schedule?ym=${latestNoticeYm}`}
           style={{ display: "flex", alignItems: "center", gap: 8, background: unreadNotices > 0 ? "#FEF2F2" : "var(--bg)", border: `1px solid ${unreadNotices > 0 ? "#FECACA" : "var(--border)"}`, borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 14, color: "var(--text)", fontWeight: 700, textDecoration: "none" }}
         >
           <span style={{ flexShrink: 0 }}>{unreadNotices > 0 ? "🔔" : "📢"}</span>
