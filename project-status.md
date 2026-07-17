@@ -6,7 +6,16 @@
 
 ## ▶▶ 다음 세션 시작점 (여기부터 읽기) — 2026-07-18
 
-### 🆕 방금 완료: B-1 조퇴(早退) 판정 신설 (커밋 52f2b2f)
+### 🆕 방금 완료: 조퇴·오전/오후 반차 신청→승인→근태 자동반영 (커밋 7986f1e)
+사장님 모델: **직원이 [휴가]에서 조퇴·오전반차·오후반차 신청(미래 예약 가능) → 관리자 승인 → 그날 출퇴근 시 자동으로 그렇게 처리**(지각·조퇴 오탐 없이 정식 표기). B-1 자동감지는 유지 → "승인 조퇴 vs 무단 조퇴" 구분 완성. **스키마 무변경**(LeaveRequest.type에 half_am/half_pm/early_leave 추가).
+- **규칙**: 오전반차=지각 면제 / 오후반차·조퇴=조퇴 면제 / 조퇴=연차 차감0·반차=0.5 차감 / 승인 없으면 무단 조퇴 그대로 잡힘.
+- **수정 12파일**: 공용 lib/leave.ts·dayentries.ts + 신청폼·records·RecordsClient·DetailTable·MonthCalendar·dashboard·reports + my-records·records/[userId].
+- **검증**: tsc·eslint 0, 로직 13종 PASS, code-reviewer 치명0·중간2 반영(①조퇴는 하루휴가 아님→무단결근 은폐 방지 ②달력에 승인+미면제위반 병기).
+- ⚠️ **알려진 한계(검수 경미, 사장님 판단)**: ①오전/오후 반차 승인 후 그날 아예 무단결근이면 "휴가"로 표시돼 반나절 결근이 안 잡힘(반차의 구조적 한계) ②같은 날 반차+연차 중복신청 방지 없음(1.5일 이중차감 가능) ③pending 여러 건 몰아 승인 시 잔여 초과 가능(기존 한계).
+- 🖥️ **미검증**: 실화면 렌더는 서버 재시작+전체빌드 검증 필요(아래). 직원 신청→관리자 승인→근태상세 반영 사장님 실확인 권장.
+- ▶ **다음 추천: A-2 이메일/문자 발송 연동** 또는 사장님 지정.
+
+### ✅ 완료: B-1 조퇴(早退) 판정 신설 (커밋 52f2b2f)
 지각과 대칭으로, 퇴근 기준시각(`workEndTime`)보다 일찍 퇴근하면 "조퇴"로 판정·표시. **workEndTime은 이미 설정 저장되던 휴면 필드라 DB 무변경(마이그레이션 없음).**
 - **수정 11파일**: 공용 `worktime.ts`(isEarlyLeave 추가)·`dayentries.ts`(early/earlyLeaveCount/hasEndRule) + 표시 DetailTable·MonthCalendar·records/page·RecordsClient·dashboard·WorkRulesForm + my-records·records/[userId](workEndTime select) + globals.css(.kpi-grid-5).
 - **표시**: 근태상세(KPI "조퇴"+표 "지각/조퇴" 동시뱃지)·달력 조퇴뱃지·전체 근태현황·대시보드 오늘 조퇴 명단. 지각+조퇴 동시 가능.

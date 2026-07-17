@@ -1,73 +1,87 @@
-# Plan: B-1 조퇴(早退) 판정 신설 (2026-07-18) — 상태: 검토 대기
+# Plan: 조퇴·반차 신청→승인→근태 자동반영 (2026-07-18) — 상태: 검토 대기
 
 ## 1. 접근 방식 (+이유)
-지각(`isLate`)과 **완전 대칭**으로 조퇴 판정을 신설한다. 이미 있는 휴면 필드 `workEndTime`(퇴근 기준시각)을 사용한다.
-- 이유: ①검증된 지각 로직을 그대로 미러링 → 위험 최소 ②`workEndTime` 재사용 → **DB 변경·마이그레이션 없음(서버끄기 불필요)** ③공용 모듈은 "추가만" 해 지각 회귀 격리.
-- 판정 규칙(추천 A): **퇴근시각(time-of-day) < workEndTime 이면 조퇴**(유예 없음). 근무일 + 퇴근기록 존재 + workEndTime 설정 시에만.
+기존 "휴가 신청→관리자 승인" 흐름에 **새 종류(오전반차·오후반차·조퇴)를 얹고**, 승인된 날은 그날 출퇴근의 지각·조퇴 판정을 **면제하고 승인 뱃지로 표기**한다.
+- 이유: ①`LeaveRequest.type`이 자유 문자열 → **스키마 변경/마이그레이션 없음** ②신청·승인 인프라 재사용 ③내가 만든 자동 조퇴감지는 유지 → "승인 조퇴 vs 무단 조퇴" 구분 완성.
+- 결정 반영: 조퇴=연차 차감0 / 반차=오전·오후 구분 / 신청=기존 [휴가] 메뉴.
 
-## 2. 수정/생성 파일 목록 (스키마 무변경)
+## 2. 수정/생성 파일 (스키마 무변경 · 마이그레이션 없음)
 | # | 파일 | 변경 |
 |---|---|---|
-| 1 | lib/worktime.ts | `isEarlyLeave(clockOut, workEndTime)` **함수 추가**(isLate 무수정) |
-| 2 | lib/dayentries.ts | DayEntry.att에 `early`, DayDetail에 `earlyLeaveCount`·`hasEndRule` **추가**(기존 무수정) |
-| 3 | app/components/DetailTable.tsx | KPI "조퇴" + 표 "조퇴" 표시(지각과 나란히) |
-| 4 | app/components/MonthCalendar.tsx | 달력 "조퇴" 뱃지 + 범례 |
-| 5 | app/records/page.tsx | `early` 계산해 RecordsClient에 전달 |
-| 6 | app/records/RecordsClient.tsx | KPI "조퇴" + 표 "조퇴" + props 타입 |
-| 7 | app/dashboard/page.tsx | (선택) 오늘 "조퇴" 명단 1줄 |
-| 8 | app/settings/WorkRulesForm.tsx | 안내문구에 조퇴 설명 보완(카피만) |
+| 1 | lib/leave.ts | 종류 3개 추가(half_am·half_pm·early_leave), 신청가능목록·단일일목록, computeLeaveDays(조퇴=0), `leaveTypeByDate`·`suppressesLate/Early` 헬퍼 |
+| 2 | app/actions/leave.ts `requestLeave` | 단일일 종류 확장 + 조퇴(days=0) 거부 예외 + 종류검증 |
+| 3 | app/leave/LeaveRequestForm.tsx | 드롭다운 신청가능목록·singleDay 확장 |
+| 4 | lib/dayentries.ts | att엔트리: 승인 반차/조퇴면 지각·조퇴 면제 + `approvedLeave` 필드. 새 인자 leaveTypeByDate(옵셔널) |
+| 5 | app/my-records/page.tsx · records/[userId]/page.tsx | buildDayEntries에 leaveTypeByDate 전달 |
+| 6 | app/components/DetailTable.tsx · MonthCalendar.tsx | "지각/조퇴" 자리에 승인 반차/조퇴 뱃지(파랑) |
+| 7 | app/records/page.tsx · RecordsClient.tsx | 직원별 승인휴가맵으로 지각·조퇴 면제 + 뱃지 |
+| 8 | app/dashboard/page.tsx | 오늘 지각·조퇴 집계에서 승인자 제외 |
 
 ## 3. 🛡️ 사이드 이펙트 방어
-- **공용 모듈 추가만**: `isLate`·`late`·`lateCount`·`hasRule` 전부 무수정 → 지각/실근무 판정 회귀 없음. 새 필드는 옵셔널 추가라 기존 소비처(DetailTable·MonthCalendar) 구조분해에 무영향.
-- **동일 게이팅**: 조퇴는 지각과 똑같이 `onWorkDay && clockOut && workEndTime` 일 때만. 휴일근무·근무중(미퇴근)·미설정은 조퇴 아님(null).
-- **workEndTime 없는 회사**: `hasEndRule=false` → 조퇴 KPI "—"·뱃지 없음(기존 지각 미설정과 동일 UX). 기존 회사 영향 0.
+- **면제는 "승인된" 것만**: 승인 없는 진짜 조퇴/지각은 그대로 잡힘(기능 유지). status=approved만 반영.
+- **자동감지 무수정**: isLate·isEarlyLeave 그대로. 면제는 판정 뒤 덮어쓰기(null).
+- **호출부 옵셔널 인자**: leaveTypeByDate 기본 빈 맵 → 안 넘긴 곳은 기존 동작(회귀 안전).
+- **연차 차감 정확성**: 오전/오후 반차=0.5 차감·조퇴=0. `usedLeaveDays`/연차정산 회귀 실검증.
+- **레거시 `half` 호환**: 과거 반차 신청은 라벨 표시 유지, 면제 시 지각·조퇴 둘 다 면제.
 - **구현 후 반드시 테스트할 기존 기능**:
-  1. 지각 판정·지각 건수·달력 지각 뱃지 **그대로**(회귀 없음)
-  2. 실근무시간(workedMinutes)·결근·휴가 집계 그대로
-  3. workEndTime 설정 회사: 일찍 퇴근 → 조퇴 표시 / 정시 이후 → 조퇴 아님
-  4. workEndTime 미설정 회사: 조퇴 "—"(판정 안 함)
-  5. 휴일근무·근무중(미퇴근) → 조퇴 아님
-  6. 한 기록이 지각+조퇴 동시(늦게 와서 일찍 감) → 둘 다 표시
+  1. 연차/병가 신청·승인·결근제외·연차정산 **회귀 없음**
+  2. 오전 반차 승인 → 그날 늦게 출근해도 **지각 아님**, "오전 반차" 표기
+  3. 오후 반차/조퇴 승인 → 일찍 퇴근해도 **조퇴 아님**, "오후 반차"/"조퇴" 표기
+  4. 승인 없이 일찍 퇴근 → 여전히 **"조퇴"(무단)** 로 잡힘
+  5. 조퇴 신청 → 연차 잔여 **안 줄어듦**, 반차 신청 → 0.5 줄어듦
+  6. 미래 날짜 신청(사전예약) → 승인 → 그날 반영
+  7. 대시보드 오늘 지각·조퇴 수에서 승인자 제외
 
-## 4. 작업분해 TODO
-- [ ] 1단계: `isEarlyLeave` 순수함수 + `buildDayEntries` 필드 추가(공용 2파일)
-- [ ] 2단계: DetailTable(KPI+표) 조퇴 표시
-- [ ] 3단계: MonthCalendar 조퇴 뱃지+범례
-- [ ] 4단계: records/page + RecordsClient 조퇴(전체 근태현황)
-- [ ] 5단계: (선택) dashboard 오늘 조퇴 명단 + WorkRulesForm 문구
-- [ ] 6단계: tsc + eslint 0
-- [ ] 7단계: 실DB로 6종 시나리오 검증(순수함수 단위 + 실기록)
-- [ ] 8단계: code-reviewer 검수 + 치명·중간 반영
-- [ ] 9단계: git 커밋 + 문서 갱신
+## 4. 작업분해 TODO (3덩어리로 커밋)
+**A. 신청·승인 (종류 추가)**
+- [ ] 1: lib/leave.ts 종류·차감·단일일·헬퍼
+- [ ] 2: actions/leave.ts requestLeave 확장(조퇴 days=0 예외)
+- [ ] 3: LeaveRequestForm 드롭다운·singleDay
+- [ ] 4: 신청·승인·연차정산 실검증(DB)
+
+**B. 근태 반영(공용 경로: 근태상세·달력)**
+- [ ] 5: dayentries.ts 면제+approvedLeave
+- [ ] 6: my-records·records/[userId] 인자 전달
+- [ ] 7: DetailTable·MonthCalendar 뱃지
+- [ ] 8: 실검증(오전/오후/조퇴/무단)
+
+**C. 전체현황·대시보드 반영**
+- [ ] 9: records/page+RecordsClient 직원별 면제·뱃지
+- [ ] 10: dashboard 오늘 집계 제외
+- [ ] 11: tsc+eslint 0, npm run build(전 페이지), code-reviewer, 문서갱신
 
 ## 5. 핵심 로직 샘플 (계획용, 실제 구현 아님)
 ```ts
-// worktime.ts (isLate와 대칭 추가)
-// 조퇴 여부 — 회사가 정한 퇴근 기준시각보다 일찍 퇴근이면 조퇴.
-// clockOut 없음(근무중) 또는 기준시각 미설정이면 null(판정 안 함). isLate와 동일하게 시:분만 비교.
-export function isEarlyLeave(clockOut: Date | null, workEndTime: string | null): boolean | null {
-  if (!clockOut || !workEndTime) return null;
-  const [h, m] = workEndTime.split(":").map(Number);
-  if (Number.isNaN(h) || Number.isNaN(m)) return null;
-  const limit = h * 60 + m;
-  const outMinutes = clockOut.getHours() * 60 + clockOut.getMinutes();
-  return outMinutes < limit;
-}
+// lib/leave.ts
+export const LEAVE_TYPES = [
+  { key:"annual",     label:"연차",      deducts:true  },
+  { key:"half_am",    label:"오전 반차", deducts:true  }, // 0.5 차감, 지각 면제
+  { key:"half_pm",    label:"오후 반차", deducts:true  }, // 0.5 차감, 조퇴 면제
+  { key:"early_leave",label:"조퇴",      deducts:false }, // 차감 없음, 조퇴 면제
+  { key:"sick",       label:"병가",      deducts:false },
+  { key:"half",       label:"반차",      deducts:true  }, // 레거시(과거 데이터 라벨용)
+];
+export const REQUESTABLE_TYPES = ["annual","half_am","half_pm","early_leave","sick"]; // 드롭다운
+export function computeLeaveDays(type, ...) { if(type==="early_leave") return 0; if(type.startsWith("half")) return 0.5; ... }
+export function suppressesLate(type){ return ["half_am","half","annual","sick"].includes(type); }
+export function suppressesEarly(type){ return ["half_pm","early_leave","half","annual","sick"].includes(type); }
+export function leaveTypeByDate(approved){ /* date(ISO)→type key 맵 */ }
 
-// dayentries.ts (Company 타입에 workEndTime 추가, 계산 추가)
-const early = onWorkDay ? isEarlyLeave(r.clockOut, company?.workEndTime ?? null) : null;
-// ...att entry에 early 포함
-const earlyLeaveCount = attEntries.filter((e) => e.type === "att" && e.early === true).length;
-const hasEndRule = !!company?.workEndTime;
+// lib/dayentries.ts (att 계산)
+const lt = leaveTypeByDate.get(iso);        // 그날 승인된 휴가 종류
+let late  = onWorkDay ? isLate(...)  : null;
+let early = onWorkDay ? isEarlyLeave(...) : null;
+if (lt && suppressesLate(lt))  late  = null; // 승인 → 지각 면제
+if (lt && suppressesEarly(lt)) early = null; // 승인 → 조퇴 면제
+const approvedLeave = lt ? leaveTypeLabel(lt) : null; // 뱃지용
 ```
-표시: 지각 뱃지 옆에 동일 스타일 "조퇴"(색만 구분). KPI에 "조퇴 N건". 한 줄에 지각·조퇴 동시 가능.
+표시: "지각/조퇴" 칸 = 휴일근무 > 승인뱃지(파랑, 예 "오후 반차") > 지각·조퇴(주황) > 정상.
 
 ## 6. 구현하지 않을 것 (범위 제외)
-- **조퇴 전용 유예 필드**(스키마 변경) — 지금은 유예 없음(A안). 필요 시 추후.
-- **야간근무 자정넘김 정확판정** — isLate와 동일한 기존 한계 수용(사무직 대상).
-- **조퇴 사유 입력·결재** — 별도 기능(범위 밖).
+- 조퇴 "예정 시각" 입력(사장님 모델=날짜만) · 반차 시간단위 · 결재선 다단계 · 조퇴 알림.
+- 자동감지 삭제(무단 조퇴 잡기 위해 유지).
+- 기존 `half` 데이터의 오전/오후 소급 분류(그대로 둠).
 
 ## 📌 사용자 메모 공간 (검토 후 여기에 적어주세요)
-- 조퇴 유예: (A)없음 / (B)지각유예 재사용 → 선택:
-- dashboard 오늘 조퇴 명단도 넣을까요? (예/아니오):
+- 한 번에 다(A+B+C) 갈까요, A(신청)부터 단계별로 볼까요?:
 -
