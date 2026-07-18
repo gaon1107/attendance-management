@@ -13,7 +13,7 @@ import { AnnualLeaveForm } from "./AnnualLeaveForm";
 import { DepartmentAssignForm } from "./DepartmentAssignForm";
 import { ProfileForm } from "./ProfileForm";
 import { parseDays, effectiveWorkDays, daysLabel } from "@/lib/workdays";
-import { usedLeaveDays } from "@/lib/leave";
+import { usedLeaveDays, annualLeaveGranted, grantedAnnualLeave } from "@/lib/leave";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
@@ -57,7 +57,9 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
     select: { type: true, days: true, status: true },
   });
   const leaveUsed = usedLeaveDays(empLeaves);
-  const leaveRemaining = emp.annualLeaveDays - leaveUsed;
+  const leaveAutoDays = grantedAnnualLeave(emp.hireDate); // 입사일 기준 자동 발생값
+  const leaveGranted = annualLeaveGranted(emp); // 적용값(override 우선)
+  const leaveRemaining = Math.round((leaveGranted - leaveUsed) * 10) / 10;
 
   const authLabel = emp.authMethod === "face" ? "얼굴인증" : emp.authMethod === "gps" ? "GPS(위치)" : "미설정";
   const consented = !!emp.faceConsentAt;
@@ -173,9 +175,9 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
       <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>연차</div>
         <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
-          올해 부여할 연차 일수입니다. 사용 <b>{leaveUsed}일</b> · 잔여 <b style={{ color: leaveRemaining > 0 ? "var(--primary)" : "var(--danger)" }}>{leaveRemaining}일</b>. (직원이 신청·승인한 연차·반차가 사용에 반영됩니다.)
+          발생 <b>{leaveGranted}일</b> · 사용 <b>{leaveUsed}일</b> · 잔여 <b style={{ color: leaveRemaining > 0 ? "var(--primary)" : "var(--danger)" }}>{leaveRemaining}일</b>. (입사일 기준으로 자동 발생하며, 직원이 신청·승인한 연차·반차가 사용에 반영됩니다.)
         </p>
-        <AnnualLeaveForm id={emp.id} initialDays={emp.annualLeaveDays} />
+        <AnnualLeaveForm id={emp.id} autoDays={leaveAutoDays} override={emp.annualLeaveOverride} hasHireDate={!!emp.hireDate} />
       </div>
 
       {/* 비밀번호 재설정 (재직중일 때만) */}

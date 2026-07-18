@@ -94,7 +94,9 @@ export async function rejectLeave(formData: FormData): Promise<void> {
   revalidatePath("/leave");
 }
 
-// 관리자: 직원 연차 부여 일수 설정(직원 상세). 회사 격리.
+// 관리자: 직원 연차 수동조정(override) 설정/해제(직원 상세). 회사 격리.
+//  · auto=1  → override를 null로 지워 입사일 기준 자동계산으로 되돌린다.
+//  · 그 외    → 입력한 일수를 override로 저장(특별부여/감액). 자동값보다 우선.
 export async function setAnnualLeave(
   _prev: { error?: string; ok?: boolean },
   formData: FormData
@@ -103,13 +105,20 @@ export async function setAnnualLeave(
   if (!me || me.role !== "admin") return { error: "권한이 없습니다." };
 
   const id = String(formData.get("id") ?? "");
-  const days = Number(formData.get("days"));
-  if (Number.isNaN(days) || days < 0 || days > 365) return { error: "연차 일수는 0~365일 사이로 입력해주세요." };
-
   const target = await prisma.user.findFirst({ where: { id, companyId: me.companyId } });
   if (!target) return { error: "직원을 찾을 수 없습니다." };
 
-  await prisma.user.update({ where: { id: target.id }, data: { annualLeaveDays: days } });
+  // 자동계산으로 되돌리기(수동조정 해제)
+  if (String(formData.get("auto") ?? "") === "1") {
+    await prisma.user.update({ where: { id: target.id }, data: { annualLeaveOverride: null } });
+    revalidatePath(`/employees/${id}`);
+    return { ok: true };
+  }
+
+  const days = Number(formData.get("days"));
+  if (Number.isNaN(days) || days < 0 || days > 365) return { error: "연차 일수는 0~365일 사이로 입력해주세요." };
+
+  await prisma.user.update({ where: { id: target.id }, data: { annualLeaveOverride: days } });
   revalidatePath(`/employees/${id}`);
   return { ok: true };
 }
