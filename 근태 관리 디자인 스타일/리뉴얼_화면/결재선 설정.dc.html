@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#F9FAFB;font-family:Pretendard,-apple-system,sans-serif;color:#111827;display:flex;">
+
+  <aside style="width:76px;flex-shrink:0;background:#FFFFFF;border-right:1px solid #E5E7EB;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:16px 0;">
+    <div style="width:36px;height:36px;border-radius:9px;background:#2563EB;display:flex;align-items:center;justify-content:center;margin-bottom:22px;"><span style="color:#fff;font-size:17px;font-weight:700;">근</span></div>
+    <nav style="display:flex;flex-direction:column;gap:4px;width:100%;align-items:center;">
+      <sc-for list="{{ menu }}" as="m" hint-placeholder-count="8">
+        <a href="#" style="position:relative;width:56px;height:50px;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-decoration:none;background:{{ m.bg }};color:{{ m.color }};" style-hover="background:#F3F4F6;">
+          <span style="width:19px;height:19px;display:flex;" dangerouslySetInnerHTML="{{ m.icon }}"></span>
+          <span style="font-size:11px;font-weight:700;">{{ m.label }}</span>
+        </a>
+      </sc-for>
+    </nav>
+    <div style="margin-top:auto;width:32px;height:32px;border-radius:50%;background:#EEF2F7;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#374151;">관</div>
+  </aside>
+
+  <main style="flex:1;min-width:0;padding:24px 28px 48px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <div>
+        <div style="font-size:22px;font-weight:700;line-height:1.2;">결재선 설정</div>
+        <div style="font-size:13px;color:#6B7280;margin-top:3px;">휴가·출장 등 신청서의 승인 경로를 지정합니다.</div>
+      </div>
+      <button style="height:40px;padding:0 18px;border:none;border-radius:7px;background:#2563EB;color:#fff;font-family:inherit;font-size:15px;font-weight:700;white-space:nowrap;cursor:pointer;" style-hover="background:#1D4ED8;">저장</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:start;">
+
+      <!-- Doc type list -->
+      <section style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;">
+        <div style="padding:12px 16px;border-bottom:1px solid #E5E7EB;font-size:13px;font-weight:700;color:#6B7280;">신청 종류</div>
+        <sc-for list="{{ docTypes }}" as="d" hint-placeholder-count="4">
+          <div onClick="{{ d.select }}" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #F3F4F6;cursor:pointer;background:{{ d.rowBg }};border-left:3px solid {{ d.accent }};" style-hover="background:#F9FAFB;">
+            <span style="font-size:15px;font-weight:700;color:{{ d.nameColor }};">{{ d.name }}</span>
+            <span style="font-size:13px;color:#9CA3AF;">{{ d.steps }}</span>
+          </div>
+        </sc-for>
+      </section>
+
+      <!-- Approval line editor -->
+      <section style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:22px 24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+          <div style="font-size:16px;font-weight:700;">{{ selName }} 결재선</div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <span style="font-size:13px;color:#6B7280;font-weight:700;">자동 승인</span>
+            <button onClick="{{ toggleAuto }}" style="width:44px;height:26px;border:none;border-radius:13px;background:{{ autoTrack }};cursor:pointer;position:relative;"><span style="position:absolute;top:3px;left:{{ autoKnob }};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.2);transition:left 0.15s;"></span></button>
+          </label>
+        </div>
+
+        <!-- Flow -->
+        <div style="display:flex;align-items:stretch;gap:0;overflow-x:auto;padding-bottom:4px;">
+          <sc-for list="{{ steps }}" as="s" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;flex-shrink:0;">
+              <div style="width:150px;border:1px solid {{ s.border }};border-radius:9px;padding:14px 16px;background:{{ s.bg }};">
+                <div style="font-size:13px;font-weight:700;color:{{ s.stepColor }};margin-bottom:8px;">{{ s.step }}</div>
+                <div style="display:flex;align-items:center;gap:9px;">
+                  <div style="width:30px;height:30px;border-radius:50%;background:#EEF2F7;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#374151;">{{ s.initial }}</div>
+                  <div style="min-width:0;">
+                    <div style="font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ s.name }}</div>
+                    <div style="font-size:13px;color:#9CA3AF;">{{ s.role }}</div>
+                  </div>
+                </div>
+              </div>
+              <sc-if value="{{ s.hasArrow }}" hint-placeholder-val="{{ true }}">
+                <span style="width:28px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#C7CDD4;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+              </sc-if>
+            </div>
+          </sc-for>
+          <!-- add step -->
+          <div style="display:flex;align-items:center;flex-shrink:0;">
+            <button style="width:150px;height:78px;border:1px dashed #C7CDD4;border-radius:9px;background:#fff;color:#2563EB;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;" style-hover="background:#F9FAFB;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              결재자 추가
+            </button>
+          </div>
+        </div>
+
+        <div style="height:1px;background:#F3F4F6;margin:22px 0;"></div>
+
+        <!-- Options -->
+        <div style="display:flex;flex-direction:column;">
+          <sc-for list="{{ options }}" as="o" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-top:1px solid #F3F4F6;">
+              <div><div style="font-size:15px;font-weight:700;">{{ o.title }}</div><div style="font-size:13px;color:#9CA3AF;">{{ o.desc }}</div></div>
+              <button onClick="{{ o.toggle }}" style="width:44px;height:26px;border:none;border-radius:13px;background:{{ o.track }};cursor:pointer;position:relative;"><span style="position:absolute;top:3px;left:{{ o.knob }};width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.2);transition:left 0.15s;"></span></button>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { sel: 0, auto: false, opt: { skip: true, cc: false } };
+  renderVals() {
+    const ic = (p) => ({ __html: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>' });
+    const raw = [
+      ['대시보드', false, '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>'],
+      ['직원관리', false, '<circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1"/><path d="M16 3.5a3 3 0 0 1 0 6"/>'],
+      ['근태현황', false, '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
+      ['휴가관리', false, '<path d="M8 2v4M16 2v4M3 10h18"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M9 16l2 2 4-4"/>'],
+      ['리포트', false,   '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'],
+      ['생체정보', false, '<path d="M12 11a3 3 0 0 0-3 3v3"/><path d="M6 8a8 8 0 0 1 12 0"/><path d="M4 12a10 10 0 0 1 16 0"/><path d="M12 15v4"/>'],
+      ['설정', true,      '<circle cx="12" cy="12" r="3"/><path d="M20 12a8 8 0 1 0-8 8"/><path d="M12 8v4l3 2"/>'],
+    ];
+    const menu = raw.map(([label, active, p]) => ({
+      label, icon: ic(p),
+      weight: active ? 700 : 400,
+      color: active ? '#2563EB' : '#374151',
+      bg: active ? '#EFF6FF' : 'transparent',
+      iconColor: active ? '#2563EB' : '#9CA3AF',
+    }));
+    const sel = this.state.sel;
+    const data = [
+      { name:'휴가 신청', steps:'2단계', line:[['1차 승인','정우성','팀장','정'],['최종 승인','문지호','경영지원팀장','문']] },
+      { name:'출장 신청', steps:'3단계', line:[['1차 승인','정우성','팀장','정'],['2차 승인','강한울','본부장','강'],['최종 승인','문지호','대표','문']] },
+      { name:'근태 정정', steps:'1단계', line:[['승인','정우성','팀장','정']] },
+      { name:'초과근무', steps:'2단계', line:[['1차 승인','정우성','팀장','정'],['최종 승인','문지호','경영지원팀장','문']] },
+    ];
+    const docTypes = data.map((d, i) => {
+      const a = i === sel;
+      return { name:d.name, steps:d.steps, select: () => this.setState({ sel: i }),
+        rowBg: a?'#EFF6FF':'#fff', accent: a?'#2563EB':'transparent', nameColor: a?'#1D4ED8':'#111827' };
+    });
+    const cur = data[sel];
+    const steps = cur.line.map((l, i) => ({
+      step: l[0], name: l[1], role: l[2], initial: l[3],
+      hasArrow: true,
+      border: '#E5E7EB', bg: '#fff', stepColor: '#2563EB',
+    }));
+    const optDefs = [
+      ['skip', '상위자 부재 시 자동 위임', '결재자가 3일 이상 부재하면 대리 결재자에게 전달'],
+      ['cc', '완료 시 참조자 알림', '최종 승인/반려 시 참조자에게 알림을 보냅니다'],
+    ];
+    const options = optDefs.map(([key, title, desc]) => {
+      const on = this.state.opt[key];
+      return { title, desc,
+        toggle: () => this.setState(s => ({ opt: { ...s.opt, [key]: !s.opt[key] } })),
+        track: on ? '#2563EB' : '#D1D5DB', knob: on ? '21px' : '3px' };
+    });
+    return {
+      menu, docTypes, steps, options,
+      selName: cur.name,
+      toggleAuto: () => this.setState(s => ({ auto: !s.auto })),
+      autoTrack: this.state.auto ? '#2563EB' : '#D1D5DB',
+      autoKnob: this.state.auto ? '21px' : '3px',
+    };
+  }
+}
+</script>
+</body>
+</html>

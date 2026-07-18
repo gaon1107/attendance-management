@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#F9FAFB;font-family:Pretendard,-apple-system,sans-serif;color:#111827;display:flex;">
+
+  <aside style="width:76px;flex-shrink:0;background:#FFFFFF;border-right:1px solid #E5E7EB;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:16px 0;">
+    <div style="width:36px;height:36px;border-radius:9px;background:#2563EB;display:flex;align-items:center;justify-content:center;margin-bottom:22px;"><span style="color:#fff;font-size:17px;font-weight:700;">근</span></div>
+    <nav style="display:flex;flex-direction:column;gap:4px;width:100%;align-items:center;">
+      <sc-for list="{{ menu }}" as="m" hint-placeholder-count="8">
+        <a href="#" style="position:relative;width:56px;height:50px;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-decoration:none;background:{{ m.bg }};color:{{ m.color }};" style-hover="background:#F3F4F6;">
+          <span style="width:19px;height:19px;display:flex;" dangerouslySetInnerHTML="{{ m.icon }}"></span>
+          <span style="font-size:11px;font-weight:700;">{{ m.label }}</span>
+        </a>
+      </sc-for>
+    </nav>
+    <div style="margin-top:auto;width:32px;height:32px;border-radius:50%;background:#EEF2F7;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#374151;">관</div>
+  </aside>
+
+  <main style="flex:1;min-width:0;padding:24px 28px 48px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div>
+        <div style="font-size:22px;font-weight:700;line-height:1.2;">관리자 로그인 이력</div>
+        <div style="font-size:13px;color:#6B7280;margin-top:3px;">관리자 계정의 로그인·주요 작업 감사 기록입니다.</div>
+      </div>
+      <button style="height:40px;padding:0 16px;border:1px solid #D1D5DB;border-radius:7px;background:#fff;color:#374151;font-family:inherit;font-size:15px;font-weight:700;white-space:nowrap;cursor:pointer;" style-hover="background:#F9FAFB;">내보내기</button>
+    </div>
+
+    <!-- Filter -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <select style="height:40px;padding:0 12px;border:1px solid #D1D5DB;border-radius:7px;font-family:inherit;font-size:15px;color:#111827;outline:none;background:#fff;"><option>전체 관리자</option><option>홍길동 (최고관리자)</option><option>문지호 (인사)</option></select>
+      <select style="height:40px;padding:0 12px;border:1px solid #D1D5DB;border-radius:7px;font-family:inherit;font-size:15px;color:#111827;outline:none;background:#fff;"><option>전체 동작</option><option>로그인</option><option>설정 변경</option><option>데이터 조회</option></select>
+      <div style="position:relative;flex:1;max-width:240px;">
+        <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:#9CA3AF;display:flex;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></span>
+        <input placeholder="IP·동작 검색" style="width:100%;height:40px;padding:0 12px 0 36px;border:1px solid #D1D5DB;border-radius:7px;font-family:inherit;font-size:15px;outline:none;" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,0.12);" />
+      </div>
+    </div>
+
+    <!-- Table -->
+    <section style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;">
+      <div style="overflow-x:auto;">
+      <table style="width:100%;min-width:860px;border-collapse:collapse;">
+        <thead>
+          <tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB;">
+            <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:10px 20px;white-space:nowrap;">시각</th>
+            <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:10px 14px;white-space:nowrap;">관리자</th>
+            <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:10px 14px;white-space:nowrap;">동작</th>
+            <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:10px 14px;white-space:nowrap;">대상</th>
+            <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:10px 14px;white-space:nowrap;">IP</th>
+            <th style="text-align:left;font-size:13px;font-weight:700;color:#6B7280;padding:10px 20px;white-space:nowrap;">결과</th>
+          </tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{ rows }}" as="r" hint-placeholder-count="8">
+            <tr style="border-bottom:1px solid #F3F4F6;">
+              <td style="padding:11px 20px;font-size:15px;color:#6B7280;font-variant-numeric:tabular-nums;white-space:nowrap;">{{ r.time }}</td>
+              <td style="padding:11px 14px;white-space:nowrap;">
+                <div style="display:flex;align-items:center;gap:9px;">
+                  <div style="width:28px;height:28px;border-radius:50%;background:#EEF2F7;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#374151;">{{ r.initial }}</div>
+                  <div><div style="font-size:15px;font-weight:700;">{{ r.name }}</div><div style="font-size:13px;color:#9CA3AF;">{{ r.role }}</div></div>
+                </div>
+              </td>
+              <td style="padding:11px 14px;white-space:nowrap;">
+                <span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:6px;background:{{ r.actBg }};"><span style="font-size:13px;font-weight:700;color:{{ r.actFg }};">{{ r.action }}</span></span>
+              </td>
+              <td style="padding:11px 14px;font-size:15px;color:#374151;white-space:nowrap;">{{ r.target }}</td>
+              <td style="padding:11px 14px;font-size:15px;color:#6B7280;font-variant-numeric:tabular-nums;white-space:nowrap;">{{ r.ip }}</td>
+              <td style="padding:11px 20px;white-space:nowrap;">
+                <span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:6px;background:#F3F4F6;"><span style="width:6px;height:6px;border-radius:50%;background:{{ r.dot }};"></span><span style="font-size:13px;font-weight:700;color:#374151;white-space:nowrap;">{{ r.result }}</span></span>
+              </td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const ic = (p) => ({ __html: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>' });
+    const raw = [
+      ['대시보드', false, '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>'],
+      ['직원관리', false, '<circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1"/><path d="M16 3.5a3 3 0 0 1 0 6"/>'],
+      ['근태현황', false, '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
+      ['휴가관리', false, '<path d="M8 2v4M16 2v4M3 10h18"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M9 16l2 2 4-4"/>'],
+      ['리포트', false,   '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'],
+      ['생체정보', false, '<path d="M12 11a3 3 0 0 0-3 3v3"/><path d="M6 8a8 8 0 0 1 12 0"/><path d="M4 12a10 10 0 0 1 16 0"/><path d="M12 15v4"/>'],
+      ['설정', true,     '<circle cx="12" cy="12" r="3"/><path d="M20 12a8 8 0 1 0-8 8"/><path d="M12 8v4l3 2"/>'],
+    ];
+    const menu = raw.map(([label, active, p]) => ({
+      label, icon: ic(p),
+      weight: active ? 700 : 400,
+      color: active ? '#2563EB' : '#374151',
+      bg: active ? '#EFF6FF' : 'transparent',
+      iconColor: active ? '#2563EB' : '#9CA3AF',
+    }));
+    const A = {
+      login:  { action:'로그인', actBg:'#F3F4F6', actFg:'#374151' },
+      config: { action:'설정 변경', actBg:'#EFF6FF', actFg:'#1D4ED8' },
+      view:   { action:'데이터 조회', actBg:'#F3F4F6', actFg:'#6B7280' },
+      danger: { action:'생체정보 파기', actBg:'#FEE2E2', actFg:'#B91C1C' },
+    };
+    const ok = { result:'성공', dot:'#16A34A' };
+    const fail = { result:'실패', dot:'#DC2626' };
+    const rows = [
+      { time:'07-05 09:02', initial:'홍', name:'홍길동', role:'최고관리자', ...A.login, target:'—', ip:'211.45.128.34', ...ok },
+      { time:'07-04 17:40', initial:'홍', name:'홍길동', role:'최고관리자', ...A.config, target:'근무 규칙 · 지각 10분', ip:'211.45.128.34', ...ok },
+      { time:'07-04 15:22', initial:'문', name:'문지호', role:'인사관리자', ...A.danger, target:'박도현 얼굴 데이터', ip:'211.45.128.51', ...ok },
+      { time:'07-04 11:08', initial:'문', name:'문지호', role:'인사관리자', ...A.view, target:'법정 근로기록 (3년)', ip:'211.45.128.51', ...ok },
+      { time:'07-04 08:41', initial:'홍', name:'홍길동', role:'최고관리자', ...A.login, target:'—', ip:'211.45.128.34', ...ok },
+      { time:'07-03 22:14', initial:'홍', name:'홍길동', role:'최고관리자', ...A.login, target:'—', ip:'58.140.77.9', ...fail },
+      { time:'07-03 14:30', initial:'문', name:'문지호', role:'인사관리자', ...A.config, target:'결재선 · 출장 3단계', ip:'211.45.128.51', ...ok },
+      { time:'07-03 09:15', initial:'홍', name:'홍길동', role:'최고관리자', ...A.view, target:'실근무 리포트 6월', ip:'211.45.128.34', ...ok },
+    ];
+    return { menu, rows };
+  }
+}
+</script>
+</body>
+</html>

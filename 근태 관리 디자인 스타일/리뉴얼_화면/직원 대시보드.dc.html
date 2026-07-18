@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+</style>
+</helmet>
+<div style="min-height:100vh;background:#F9FAFB;font-family:Pretendard,-apple-system,sans-serif;color:#111827;display:flex;">
+
+  <!-- Thin icon rail -->
+  <aside style="width:76px;flex-shrink:0;background:#fff;border-right:1px solid #E5E7EB;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:16px 0;">
+    <div style="width:36px;height:36px;border-radius:9px;background:#2563EB;display:flex;align-items:center;justify-content:center;margin-bottom:24px;"><span style="color:#fff;font-size:17px;font-weight:700;">근</span></div>
+    <nav style="display:flex;flex-direction:column;gap:6px;width:100%;align-items:center;">
+      <sc-for list="{{ rail }}" as="r" hint-placeholder-count="4">
+        <a href="#" style="width:52px;height:52px;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-decoration:none;background:{{ r.bg }};color:{{ r.fg }};" style-hover="background:#F3F4F6;">
+          <span style="width:20px;height:20px;display:flex;" dangerouslySetInnerHTML="{{ r.icon }}"></span>
+          <span style="font-size:11px;font-weight:700;">{{ r.label }}</span>
+        </a>
+      </sc-for>
+    </nav>
+  </aside>
+
+  <!-- Left info panel -->
+  <aside style="width:264px;flex-shrink:0;background:#fff;border-right:1px solid #E5E7EB;min-height:100vh;padding:22px 20px;display:flex;flex-direction:column;">
+    <div style="font-size:13px;color:#6B7280;margin-bottom:2px;">좋은 아침이에요</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+      <span style="font-size:20px;font-weight:700;">홍길동 님</span>
+      <span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:6px;background:#EFF6FF;"><span style="width:6px;height:6px;border-radius:50%;background:#2563EB;"></span><span style="font-size:13px;font-weight:700;color:#1D4ED8;">근무 중</span></span>
+    </div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px;">
+      <span style="font-size:13px;color:#6B7280;">7월 6일 (Mon)</span>
+      <span style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;color:#2563EB;">03:41:12</span>
+    </div>
+
+    <!-- in/out card -->
+    <div style="border:1px solid #E5E7EB;border-radius:11px;padding:14px 16px;margin-bottom:12px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="text-align:center;flex:1;"><div style="font-size:13px;color:#6B7280;margin-bottom:4px;">출근</div><div style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;">09:02</div></div>
+        <span style="color:#C7CDD4;padding:0 8px;">→</span>
+        <div style="text-align:center;flex:1;"><div style="font-size:13px;color:#6B7280;margin-bottom:4px;">퇴근</div><div style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;color:#9CA3AF;">—</div></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:22px;">
+      <button style="flex:1.5;height:48px;border:none;border-radius:9px;background:#2563EB;color:#fff;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;" style-hover="background:#1D4ED8;">퇴근하기</button>
+      <button style="flex:1;height:48px;border:1px solid #D1D5DB;border-radius:9px;background:#fff;color:#374151;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;" style-hover="background:#F9FAFB;">외출</button>
+    </div>
+
+    <div style="font-size:13px;color:#6B7280;font-weight:700;margin-bottom:10px;">연차 현황</div>
+    <div style="border:1px solid #E5E7EB;border-radius:11px;padding:16px;text-align:center;margin-bottom:12px;">
+      <div style="font-size:13px;color:#6B7280;margin-bottom:4px;">잔여 연차</div>
+      <div style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;color:#2563EB;line-height:1;">15.5<span style="font-size:14px;font-weight:400;color:#6B7280;">일</span></div>
+      <div style="font-size:13px;color:#9CA3AF;margin-top:5px;">총 20일 중</div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <div style="flex:1;border:1px solid #E5E7EB;border-radius:9px;padding:10px 12px;"><span style="font-size:13px;color:#6B7280;">사용 </span><span style="font-size:15px;font-weight:700;">4.5일</span></div>
+      <div style="flex:1;border:1px solid #E5E7EB;border-radius:9px;padding:10px 12px;"><span style="font-size:13px;color:#6B7280;">잔여 </span><span style="font-size:15px;font-weight:700;">15.5일</span></div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main style="flex:1;min-width:0;display:flex;flex-direction:column;">
+    <!-- Top bar -->
+    <header style="height:60px;flex-shrink:0;background:#fff;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;justify-content:space-between;padding:0 28px;">
+      <span style="font-size:16px;font-weight:700;">㈜하늘테크</span>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <button style="width:36px;height:36px;border:none;background:transparent;color:#6B7280;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;" style-hover="background:#F3F4F6;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+        <div style="width:32px;height:32px;border-radius:50%;background:#EEF2F7;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#374151;">홍</div>
+      </div>
+    </header>
+
+    <div style="flex:1;min-width:0;padding:20px 28px 40px;">
+      <!-- KPI strip -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:18px;">
+        <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="3">
+          <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px 22px;">
+            <div style="font-size:13px;color:#6B7280;font-weight:700;margin-bottom:12px;">{{ k.label }}</div>
+            <div style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1;">{{ k.value }}<span style="font-size:15px;font-weight:400;color:#6B7280;margin-left:3px;">{{ k.unit }}</span></div>
+            <div style="display:flex;align-items:center;gap:5px;margin-top:10px;">
+              <span style="color:{{ k.deltaColor }};display:flex;" dangerouslySetInnerHTML="{{ k.arrow }}"></span>
+              <span style="font-size:13px;font-weight:700;color:{{ k.deltaColor }};">{{ k.delta }}</span>
+              <span style="font-size:13px;color:#9CA3AF;">{{ k.deltaNote }}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- Weekly progress + tabs -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button style="width:34px;height:34px;border:1px solid #E5E7EB;border-radius:8px;background:#fff;color:#6B7280;cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <span style="font-size:18px;font-weight:700;">7월 5일 ~ 7월 11일</span>
+          <button style="width:34px;height:34px;border:1px solid #E5E7EB;border-radius:8px;background:#fff;color:#6B7280;cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>
+        </div>
+        <div style="display:inline-flex;background:#EEF2F7;border-radius:8px;padding:3px;">
+          <button style="height:34px;padding:0 18px;border:none;border-radius:6px;background:#fff;color:#2563EB;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.08);">주간</button>
+          <button style="height:34px;padding:0 18px;border:none;border-radius:6px;background:transparent;color:#6B7280;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;">월간</button>
+        </div>
+      </div>
+
+      <!-- Progress card -->
+      <section style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:22px 24px;margin-bottom:16px;display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:24px;align-items:center;">
+        <div>
+          <div style="font-size:13px;color:#6B7280;font-weight:700;margin-bottom:6px;">주간 누적</div>
+          <div style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;color:#2563EB;line-height:1;margin-bottom:14px;">32<span style="font-size:15px;color:#6B7280;font-weight:400;">시간 41분</span></div>
+          <div style="position:relative;height:8px;border-radius:5px;background:#F3F4F6;">
+            <div style="position:absolute;left:0;top:0;height:100%;width:63%;background:#2563EB;border-radius:5px;"></div>
+            <div style="position:absolute;left:77%;top:-3px;bottom:-3px;width:2px;background:#C7CDD4;"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:6px;"><span style="font-size:13px;color:#9CA3AF;">0</span><span style="font-size:13px;color:#9CA3AF;">40h</span><span style="font-size:13px;color:#9CA3AF;">52h</span></div>
+        </div>
+        <div style="border-left:1px solid #F3F4F6;padding-left:24px;"><div style="font-size:13px;color:#6B7280;margin-bottom:6px;">출근일</div><div style="font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;">4<span style="font-size:14px;color:#6B7280;font-weight:400;">일</span></div></div>
+        <div style="border-left:1px solid #F3F4F6;padding-left:24px;"><div style="font-size:13px;color:#6B7280;margin-bottom:6px;">총 근로</div><div style="font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;">32:41</div></div>
+        <div style="border-left:1px solid #F3F4F6;padding-left:24px;"><div style="font-size:13px;color:#6B7280;margin-bottom:6px;">초과 근무</div><div style="font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;color:#B45309;">3:07</div></div>
+      </section>
+
+      <!-- Week grid -->
+      <section style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;margin-bottom:16px;">
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);">
+          <sc-for list="{{ days }}" as="d" hint-placeholder-count="7">
+            <div style="border-right:1px solid #F3F4F6;border-bottom:1px solid #F3F4F6;min-height:132px;padding:12px;background:{{ d.bg }};">
+              <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:12px;">
+                <span style="font-size:13px;font-weight:700;color:{{ d.dowColor }};">{{ d.dow }}</span>
+                <sc-if value="{{ d.today }}" hint-placeholder-val="{{ false }}"><span style="width:22px;height:22px;border-radius:50%;background:#2563EB;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;">{{ d.date }}</span></sc-if>
+                <sc-if value="{{ d.notToday }}" hint-placeholder-val="{{ true }}"><span style="font-size:13px;font-weight:700;color:{{ d.dowColor }};">{{ d.date }}</span></sc-if>
+              </div>
+              <sc-if value="{{ d.worked }}" hint-placeholder-val="{{ false }}">
+                <div style="background:#EFF6FF;border-radius:7px;padding:8px 9px;text-align:center;">
+                  <div style="font-size:13px;font-weight:700;color:#1D4ED8;font-variant-numeric:tabular-nums;">{{ d.hours }}</div>
+                  <div style="font-size:11px;color:#60A5FA;font-variant-numeric:tabular-nums;margin-top:2px;">{{ d.range }}</div>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+      <!-- Bottom detail -->
+      <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:16px;">
+        <section style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;">
+          <div style="padding:14px 20px;border-bottom:1px solid #E5E7EB;font-size:15px;font-weight:700;">7월 6일 (Mon) 근무 상세</div>
+          <table style="width:100%;border-collapse:collapse;">
+            <tbody>
+              <sc-for list="{{ detail }}" as="r" hint-placeholder-count="3">
+                <tr style="border-bottom:1px solid #F3F4F6;">
+                  <td style="padding:12px 20px;width:44px;"><span style="width:30px;height:30px;border-radius:8px;background:#F3F4F6;color:{{ r.iconFg }};display:flex;align-items:center;justify-content:center;" dangerouslySetInnerHTML="{{ r.icon }}"></span></td>
+                  <td style="padding:12px 8px;font-size:15px;font-weight:700;">{{ r.label }}</td>
+                  <td style="padding:12px 20px;font-size:15px;text-align:right;font-variant-numeric:tabular-nums;color:{{ r.valColor }};">{{ r.value }}</td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </section>
+        <section style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;">
+          <div style="padding:14px 20px;border-bottom:1px solid #E5E7EB;font-size:15px;font-weight:700;">공지</div>
+          <sc-for list="{{ notices }}" as="n" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 20px;border-bottom:1px solid #F3F4F6;">
+              <span style="width:6px;height:6px;border-radius:50%;background:{{ n.dot }};flex-shrink:0;"></span>
+              <span style="flex:1;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ n.title }}</span>
+              <span style="font-size:13px;color:#9CA3AF;flex-shrink:0;">{{ n.date }}</span>
+            </div>
+          </sc-for>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const ic = (p, s) => ({ __html: '<svg width="' + (s||20) + '" height="' + (s||20) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>' });
+    const rail = [
+      ['홈', true, '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9v11h14V9"/>'],
+      ['근태', false, '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>'],
+      ['근무', false, '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'],
+      ['부재', false, '<circle cx="9" cy="8" r="4"/><path d="M3 21v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 3 1"/><path d="M17 8l4 4M21 8l-4 4"/>'],
+    ].map(([label, active, p]) => ({
+      label, icon: ic(p, 20),
+      bg: active ? '#EFF6FF' : 'transparent',
+      fg: active ? '#2563EB' : '#9CA3AF',
+    }));
+
+    const up = ic('<path d="M12 19V5M5 12l7-7 7 7"/>', 14);
+    const down = ic('<path d="M12 5v14M5 12l7 7 7-7"/>', 14);
+    const kpis = [
+      { label:'이번주 근무', value:'32', unit:'시간 41분', delta:'2시간 12분', deltaNote:'전주 대비', deltaColor:'#15803D', arrow:up },
+      { label:'이번달 초과근무', value:'3', unit:'시간 07분', delta:'1시간 40분', deltaNote:'전월 대비', deltaColor:'#B91C1C', arrow:down },
+      { label:'이번달 누계', value:'129', unit:'시간 30분', delta:'8시간 10분', deltaNote:'전월 대비', deltaColor:'#15803D', arrow:up },
+    ];
+
+    const mk = (dow, date, dowColor, opt) => ({ dow, date, dowColor,
+      today: !!(opt&&opt.today), notToday: !(opt&&opt.today),
+      bg: (opt&&opt.today) ? '#F9FAFB' : '#fff',
+      worked: !!(opt&&opt.hours), hours: opt&&opt.hours, range: opt&&opt.range });
+    const days = [
+      mk('일','5','#DC2626',{}),
+      mk('월','6','#374151',{today:true}),
+      mk('화','7','#374151',{hours:'8:20',range:'09:00–18:20'}),
+      mk('수','8','#374151',{hours:'8:48',range:'08:52–18:40'}),
+      mk('목','9','#374151',{hours:'9:35',range:'08:47–19:22'}),
+      mk('금','10','#374151',{hours:'8:15',range:'08:55–18:10'}),
+      mk('토','11','#2563EB',{}),
+    ];
+
+    const di = (p, fg) => ({ icon: ic(p, 16), iconFg: fg });
+    const detail = [
+      { ...di('<path d="M5 12l4 4 10-10"/>', '#16A34A'), label:'출근', value:'09:02', valColor:'#111827' },
+      { ...di('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', '#B45309'), label:'자리비움', value:'12분', valColor:'#B45309' },
+      { ...di('<path d="M16 17l5-5-5-5M21 12H9M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7"/>', '#2563EB'), label:'퇴근 예정', value:'18:00', valColor:'#9CA3AF' },
+    ];
+
+    return {
+      rail, kpis, days, detail,
+      notices: [
+        { dot:'#2563EB', title:'7월 근무제 변경 안내', date:'7/1' },
+        { dot:'#16A34A', title:'여름 휴가 신청 안내', date:'6/28' },
+        { dot:'#9CA3AF', title:'사내 WiFi 비밀번호 변경', date:'6/25' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

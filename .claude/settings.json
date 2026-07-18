@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe -ExecutionPolicy Bypass -NoProfile -File \"%CLAUDE_PROJECT_DIR%\\.claude\\hooks\\design-rule-reminder.ps1\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
