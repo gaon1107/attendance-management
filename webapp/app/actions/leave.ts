@@ -39,6 +39,13 @@ export async function requestLeave(
   // 조퇴는 연차 차감이 없어 days=0이 정상 → 근무일수 검사에서 제외한다. (그 외는 근무일이 0이면 신청 무의미)
   if (type !== "early_leave" && days <= 0) return { error: "선택한 기간에 근무일이 없습니다. 근무요일을 확인해주세요." };
 
+  // 무차감 다일 휴가(경조·공가·특별)는 잔여 한도가 없어 상한이 없다 → 1회 신청 근무일수 상한으로 비정상 장기신청을 막는다.
+  //  (연차·반차는 아래 잔여검사로 제한됨. 조퇴·병가는 하루라 이 상한에 걸리지 않음.)
+  const MAX_NONDEDUCT_DAYS = 60;
+  if (!leaveTypeDeducts(type) && days > MAX_NONDEDUCT_DAYS) {
+    return { error: `한 번에 신청할 수 있는 근무일수(${MAX_NONDEDUCT_DAYS}일)를 넘었습니다. 기간을 나눠 신청해주세요.` };
+  }
+
   // 연차·반차는 잔여를 넘을 수 없다(병가는 차감 안 함).
   if (leaveTypeDeducts(type)) {
     const mine = await prisma.leaveRequest.findMany({

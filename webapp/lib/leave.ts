@@ -2,10 +2,12 @@
 import { toISODate } from "@/lib/period";
 import { isEffectiveWorkDay } from "@/lib/workdays";
 
-// 휴가/근태 종류. deducts=true면 연차 잔여에서 차감(연차·반차). 병가·조퇴는 차감하지 않는다.
+// 휴가/근태 종류. deducts=true면 연차 잔여에서 차감(연차·반차). 병가·조퇴·경조·공가·특별휴가는 차감하지 않는다.
 //  · half_am(오전 반차): 오전에 쉬고 오후 출근 → 그날 "지각" 면제
 //  · half_pm(오후 반차): 오전 근무 후 오후에 쉼(일찍 퇴근) → 그날 "조퇴" 면제
 //  · early_leave(조퇴): 승인된 조기 퇴근 → "조퇴" 면제, 연차 차감 없음
+//  · family_event(경조휴가)·official(공가)·special(특별휴가): 유급이되 연차 잔여를 깎지 않는 별도 휴가.
+//    기간(다일) 신청 가능, 종일 휴가라 그날 예외 출근 시 지각·조퇴 둘 다 면제(병가와 같은 계열).
 //  · half(레거시): 과거 "반차" 데이터 호환용(신규 신청 불가). 면제 시 지각·조퇴 둘 다 면제.
 export const LEAVE_TYPES: { key: string; label: string; deducts: boolean }[] = [
   { key: "annual", label: "연차", deducts: true },
@@ -13,11 +15,14 @@ export const LEAVE_TYPES: { key: string; label: string; deducts: boolean }[] = [
   { key: "half_pm", label: "오후 반차", deducts: true },
   { key: "early_leave", label: "조퇴", deducts: false },
   { key: "sick", label: "병가", deducts: false },
+  { key: "family_event", label: "경조휴가", deducts: false },
+  { key: "official", label: "공가", deducts: false },
+  { key: "special", label: "특별휴가", deducts: false },
   { key: "half", label: "반차", deducts: true }, // 레거시(과거 데이터 라벨용, 신규 신청 목록 제외)
 ];
 
 // 직원이 새로 신청할 수 있는 종류(드롭다운). 레거시 half는 제외한다.
-export const REQUESTABLE_TYPES = ["annual", "half_am", "half_pm", "early_leave", "sick"] as const;
+export const REQUESTABLE_TYPES = ["annual", "half_am", "half_pm", "early_leave", "sick", "family_event", "official", "special"] as const;
 
 // 하루짜리(종료일 없음) 종류 — 반차·병가·조퇴. 연차만 기간(시작~종료).
 export const SINGLE_DAY_TYPES = ["half", "half_am", "half_pm", "sick", "early_leave"] as const;
@@ -36,12 +41,14 @@ export function leaveTypeDeducts(type: string): boolean {
 
 // [근태 면제 규칙] 승인된 이 종류가 그날의 "지각"/"조퇴" 자동판정을 면제하는가.
 //  · 오전 반차 = 늦게 출근 정당 → 지각 면제.  · 오후 반차·조퇴 = 일찍 퇴근 정당 → 조퇴 면제.
-//  · 종일 휴가(연차·병가·레거시 반차)를 쓴 날에 예외적으로 출근했다면 지각·조퇴 둘 다 면제(안전).
+//  · 종일 휴가(연차·병가·경조·공가·특별·레거시 반차)를 쓴 날에 예외적으로 출근했다면 지각·조퇴 둘 다 면제(안전).
 export function leaveSuppressesLate(type: string): boolean {
-  return type === "half_am" || type === "half" || type === "annual" || type === "sick";
+  return type === "half_am" || type === "half" || type === "annual" || type === "sick"
+    || type === "family_event" || type === "official" || type === "special";
 }
 export function leaveSuppressesEarly(type: string): boolean {
-  return type === "half_pm" || type === "early_leave" || type === "half" || type === "annual" || type === "sick";
+  return type === "half_pm" || type === "early_leave" || type === "half" || type === "annual" || type === "sick"
+    || type === "family_event" || type === "official" || type === "special";
 }
 
 export function leaveStatusLabel(status: string): string {

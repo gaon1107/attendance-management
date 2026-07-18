@@ -243,7 +243,9 @@ model LeaveRequest {
   company    Company   @relation(fields: [companyId], references: [id])
   userId     String
   user       User      @relation(fields: [userId], references: [id])
-  // 종류: "annual"(연차) | "half"(반차, 0.5일) | "sick"(병가, 연차 차감 없음)
+  // 종류: annual(연차) | half_am·half_pm(반차 0.5일) | early_leave(조퇴) | sick(병가) |
+  //       family_event(경조휴가) | official(공가) | special(특별휴가) | half(레거시 반차).
+  //       sick·조퇴·경조·공가·특별은 연차 차감 없음(deducts=false). 정의·차감·면제는 lib/leave.ts가 단일 출처.
   type       String
   startDate  DateTime  // 시작일(자정 기준). 반차·병가 단일일은 start==end.
   endDate    DateTime  // 종료일(자정 기준, 포함)
