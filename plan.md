@@ -1,64 +1,61 @@
-# Plan: B-2 연차 자동발생 (2026-07-18) — 상태: 검토 대기
+# Plan: A-2 문자(아이원24) 발송 — 초대·임시비번 (2026-07-18) — 상태: 검토 대기
 
-## 사장님 결정 (확정)
-- 기준일 = **입사일 기준**
-- 정확도 = **간소(근속기간만)** — 개근·80% 출근율은 "충족 가정", 예외는 관리자 수동조정
-- 수동 조정 = **유지**(자동값 기본 + 관리자 예외 부여/감액)
+## 확정 전제(사장님 결정)
+문자(아이원24) / 초대·임시비번만 / 시스템 공용 계정(.env) / **버튼 수동 발송 + 1회 제한**(비용 통제).
 
-## 1. 접근 방식 (+이유)
-"발생(부여) 연차"를 **입사일+오늘로 매번 자동계산**하되, 관리자가 예외적으로 **덮어쓸 수 있는 값(override)**을 둔다.
-- 자동계산은 `lib/leave.ts`에 **순수함수 add-only** → 기존 로직 무수정, 단위테스트로 검증 쉬움.
-- 발생을 읽는 5곳 전부 **공용 헬퍼 하나**(`annualLeaveGranted(user)`)를 부르게 해 숫자 불일치 방지.
-- override는 **nullable 컬럼 1개**(`annualLeaveOverride Float?`)로 저장. `null`=자동, 값=관리자 지정.
-  - 이유: 지금 `annualLeaveDays`(기본 15, non-null)는 "자동인지 관리자가 정한 15인지" 구분 불가 → 자동/수동을 나누려면 nullable 필드가 정직한 유일한 방법. (과거 `add_notice_date`와 같은 "nullable 추가=하위호환" 패턴)
+## 1. 접근 방식
+- 원본(Java) **코드가 아니라 아이원24 API 규격만 재사용** → `lib/sms.ts`에 TypeScript로 재구현.
+- 문자는 **부가 수단**: 초대하면 링크는 지금처럼 화면에 뜸(무료). 관리자가 **"문자로 보내기"를 눌러야** 발송(유료) → 비용을 사람이 직접 통제.
+- **1회 제한 + 발송 로그**: 새 `SmsLog` 테이블로 ①같은 초대/요청 중복발송 차단 ②나중에 회사별 발송량·비용 확인 근거.
 
-## 2. 자동계산 공식 (간소·입사일 기준)
-```
-grantedAnnualLeave(hireDate, 오늘):
-  입사일 없음 → 15 반환 (안전 기본값, 화면에 "입사일 입력 시 정확 계산" 안내)
-  근속 = 오늘 − 입사일
-  1년 미만 → min(완전근속개월, 11)      // 1개월당 1일(개근 가정), 최대 11
-  1년 이상 → base = 15
-             3년 이상이면 base += floor((근속연수 − 1) / 2)   // 3년차 16, 이후 2년마다 +1
-             min(base, 25) 반환                              // 법정 한도 25
-검증표: 11개월=11 / 1년=15 / 2년=15 / 3년=16 / 5년=17 / 21년=25(상한)
-```
-
-## 3. 수정/생성 파일 목록
+## 2. 수정/생성 파일
 | # | 파일 | 변경 |
 |---|---|---|
-| 1 | `prisma/schema.prisma` | User에 `annualLeaveOverride Float?` **추가**(nullable). 마이그레이션 1건. ⚠️서버 끄기 |
-| 2 | `lib/leave.ts` | `grantedAnnualLeave(hireDate, asOf?)` 순수함수 + `annualLeaveGranted(user)` 헬퍼 **추가(add-only)** |
-| 3 | `app/actions/leave.ts` | `requestLeave` 잔여계산→헬퍼 / `setAnnualLeave`→override에 저장 + "자동으로 되돌리기"(null) 지원 |
-| 4 | `app/leave/page.tsx` | 부여/잔여 헬퍼 사용 + "자동 계산" 표기 |
-| 5 | `app/employees/[id]/page.tsx` | 잔여 헬퍼 사용 |
-| 6 | `app/employees/[id]/AnnualLeaveForm.tsx` | 자동값 표시 + 수동 override 입력 + "자동으로" 버튼 |
-| 7 | `app/leave-summary/page.tsx` | 올해 발생=헬퍼(자동), 과거연도 '—' 로직 유지 |
-| 8 | `app/leave-summary/export/route.ts` | 발생=헬퍼 |
+| 1 | `package.json` | `iconv-lite` 추가(EUC-KR 인코딩, 순수 JS 표준) |
+| 2 | `lib/sms.ts` (신규) | 아이원24 발송: `smsByteLength`(EUC-KR)·`sendSms({to,text,subject})`·성공판정·SMS/LMS 자동구분. env에서 계정 읽기(없으면 안전 실패) |
+| 3 | `prisma/schema.prisma` (+마이그레이션) | `SmsLog`(companyId·userId?·kind·refId·toNumber·result·detail?·createdAt). ⚠️서버 끄기 |
+| 4 | `app/actions/sms.ts` (신규) | `sendInviteSms(inviteId,url,to)`·`sendTempPasswordSms(requestId,temp,to?)` — admin+회사격리+1회+로그 |
+| 5 | `app/employees/InviteLink.tsx` | 전화번호 입력 + "문자로 보내기" 버튼(발송 후 '발송됨' 표시) |
+| 6 | `app/employees/PendingResetRequests.tsx` | 임시비번 발급 후 "문자로 보내기"(직원 phone, 없으면 비활성+안내) |
+
+## 3. 아이원24 발송 로직(lib/sms.ts 핵심)
+```
+sendSms({to, text, subject?}):
+  계정 = env(IONE_SMS_ID/PW/SENDER); 하나라도 없으면 {ok:false, detail:"발송계정 미설정"} (throw 안 함)
+  pslma = smsByteLength(text) <= 90 ? "0"(SMS) : "1"(LMS)
+  params = {pslma,pid,ppwd,pdestphone:to(하이픈제거),psendphone:SENDER,psubject,pmsg:text, 나머지 ""}
+  body = EUC-KR로 form-urlencode (iconv-lite)
+  POST send-url, Content-Type: ...charset=euc-kr
+  응답 body(EUC-KR) 비어있으면 성공 → {ok:true}, 아니면 {ok:false, detail:응답}
+  네트워크 예외 → {ok:false, detail} (본기능 안 막음)
+```
+- 메시지 문구(짧게): 초대="[{회사}] 근태관리 초대입니다. {url} (7일 이내 가입)" / 임시비번="[{회사}] 임시 비밀번호: {temp} — 로그인 후 변경해 주세요."
 
 ## 4. 🛡️ 사이드 이펙트 방어
-- **발생을 읽는 5곳 일치**: 전부 `annualLeaveGranted(user)` 한 함수로 통일 → 화면마다 숫자 다른 사고 방지.
-- **이미 쓴 연차 > 새 자동발생**일 수 있음(예: 수동 20일→자동 15일): 잔여가 음수가 될 수 있음.
-  → 잔여는 **실제값 그대로 표시**(음수 숨기지 않음, 관리자가 인지). 신청 초과검사는 기존대로 잔여 기준 유지.
-- **hireDate 미입력 직원**: 자동 15일 fallback + 화면 안내(계산이 멈추지 않게).
-- **override 있는 직원**: 자동계산 무시하고 그 값 사용(관리자 의도 존중).
-- **마이그레이션 데이터**: 기존 직원 전원 `annualLeaveOverride = null`(=전원 자동 전환). 기존 `annualLeaveDays` 값은 더 이상 안 읽음(휴면). ※ 특별값 있던 직원은 관리자가 override 재입력. (대안: 마이그레이션에서 기존값을 override로 복사 → 아래 메모 참고)
-- **구현 후 반드시 테스트할 기존 기능**: ①휴가 신청 초과검사 ②직원 [휴가] 부여/잔여 ③직원상세 잔여+수동폼 ④연차정산 화면·엑셀(올해/과거연도) ⑤일반 출퇴근·다른 화면 회귀 없음.
+- **문자는 부가기능**: 발송 실패·계정 미설정이어도 **초대 생성·임시비번 발급 본기능은 그대로**(독립). 화면에만 실패 안내.
+- **회사격리**: 두 발송 액션 모두 admin + `companyId` 재검증. 초대는 미사용·미만료도 확인.
+- **1회 제한**: `SmsLog`에 (kind,refId,result=success) 있으면 재발송 차단(버튼 비활성/안내).
+- **전화번호**: 하이픈 제거·숫자만·최소 자릿수 검증. 임시비번은 직원 phone 없으면 발송 불가 안내.
+- **비밀정보**: 계정·발신번호는 .env(하드코딩 금지). SmsLog에 **임시비밀번호 본문 저장 안 함**(발송 사실·수신번호·성공여부만).
+- **구현 후 테스트할 기존 기능**: ①초대 생성/취소/가입 ②비번 재설정 요청/발급 ③직원관리 화면 렌더 ④일반 흐름 회귀.
 
 ## 5. 작업분해 TODO
-- [ ] 1. `lib/leave.ts`에 `grantedAnnualLeave`+`annualLeaveGranted` 추가 + **단위테스트**(경계값 11개월/1·2·3·5·21년/입사일없음/override)
-- [ ] 2. `prisma/schema.prisma` `annualLeaveOverride Float?` 추가 → (서버 끄고) 마이그레이션·generate
-- [ ] 3. `setAnnualLeave`(override 저장 + 자동복귀) + `AnnualLeaveForm` UI(자동값·수동·자동버튼)
-- [ ] 4. 읽는 5곳 헬퍼로 교체(requestLeave·leave/page·employees/[id]·leave-summary page·export)
-- [ ] 5. 영향 기존기능 테스트(위 5종) + 실행 증거
+- [ ] 1. `iconv-lite` 추가 + `lib/sms.ts`(발송·바이트계산·성공판정) + **단위테스트**(EUC-KR 바이트수, 90byte SMS/LMS 경계, 파라미터 구성, 성공/실패 판정 모킹, 계정미설정 안전실패)
+- [ ] 2. `SmsLog` 스키마 + 마이그레이션(서버 끄고 generate)
+- [ ] 3. `app/actions/sms.ts`(sendInviteSms·sendTempPasswordSms — 회사격리·1회·로그·안전실패)
+- [ ] 4. UI: InviteLink 문자발송(번호입력+버튼), PendingResetRequests 문자발송
+- [ ] 5. 검증: 빌드·tsc·eslint / EUC-KR 바이트 실측 / HTTP 모킹 실행 / 실화면 버튼 렌더·1회제한 동작 + **사장님 실발송 안내서**
 - [ ] 6. code-reviewer 검수 + project-status.md 갱신
 
-## 6. 구현하지 않을 것 (범위 제외)
-- 근태데이터 기반 개근·80% 출근율 정밀계산(=간소 결정) → 추후 별도.
-- 연차촉진(사용독려)·소멸·이월 계산 → 범위 밖.
-- 회계연도 기준 정산 → 입사일 기준 결정으로 제외.
-- 1년 미만 "월 개근" 실판정(결근 반영) → 관리자 수동조정으로 대체.
+## 6. 구현하지 않을 것(범위 제외)
+- 관리자 자유 문자 발송(공지·안내) — LMS식, 파일럿 이후.
+- 이메일(SMTP/SES) — 이번 채널은 문자만.
+- 회사별 월 발송 한도·잔액조회 화면 — 지금은 버튼수동+1회로 통제, 한도는 향후(SmsLog가 근거 됨).
+- 알림톡·템플릿·MMS·예약발송.
 
-## 📌 사용자 메모 공간 (검토 후 여기에 적어주세요)
-- (예: hireDate 없을 때 15 대신 0으로? / 마이그레이션 때 기존값을 override로 복사할지 / 잔여 음수를 0으로 막을지)
+## ⚠️ 검증 한계(중요)
+- **이 환경에선 실제 문자를 못 보냅니다**(계정·실비용 필요). 개발 검증 = EUC-KR 바이트·파라미터·모킹·빌드·UI까지. **실제 1건 발송 최종확인은 사장님이 아이원24 계정 넣고** 직접(‑ 발송비 발생). 발신번호는 아이원24에 사전등록된 번호여야 함.
+
+## 📌 사용자 메모 공간
+- (예: SmsLog 대신 경량 플래그로? / 메시지 문구 수정 / 회사별 월 한도 지금 넣을지 / 발신번호·계정ID)
 -
