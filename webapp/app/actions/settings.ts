@@ -169,6 +169,22 @@ export async function saveWorkRules(
   // 근무요일(CSV) — 0~6만 허용. 정규화해서 저장(월요일부터 정렬).
   const workDays = daysToCsv(parseDays(String(formData.get("workDays") ?? "")));
 
+  // 주 52시간 초과근무 알림(B-3). 체크박스는 체크됐을 때만 값이 온다(안 오면 꺼짐).
+  const overtimeAlertOn = formData.get("overtimeAlertOn") !== null;
+  // 근접 경고선(주간 시간). 30~52시간. 52 법정 상한 이하여야 "근접" 구간이 의미 있음.
+  const warnRaw = String(formData.get("overtimeWarnHours") ?? "").trim();
+  let overtimeWarnHours = warnRaw === "" ? 48 : Number(warnRaw);
+  if (Number.isNaN(overtimeWarnHours)) overtimeWarnHours = 48;
+  if (overtimeAlertOn) {
+    // 켜져 있을 때만 엄격히 검증(사용자가 직접 보는 값).
+    if (overtimeWarnHours < 30 || overtimeWarnHours > 52) {
+      return { error: "주간 초과근무 경고선은 30~52시간 사이로 입력해주세요." };
+    }
+  } else {
+    // 꺼져 있으면 값 때문에 저장이 막히지 않게 안전 범위로 맞춰 저장(다시 켤 때 정상값 보장).
+    overtimeWarnHours = Math.min(52, Math.max(30, overtimeWarnHours));
+  }
+
   await prisma.company.update({
     where: { id: me.companyId },
     data: {
@@ -176,12 +192,15 @@ export async function saveWorkRules(
       workEndTime: end || null,
       lateGraceMin: Math.round(grace),
       standardWorkHours: std,
+      overtimeAlertOn,
+      overtimeWarnHours,
       workDays,
     },
   });
 
   await logAdminAction(me, "config", "work_rules"); // 감사로그(성공 시에만)
   revalidatePath("/settings");
+  revalidatePath("/dashboard"); // 알림 켜기·경고선이 바뀌면 대시보드 알림도 바뀐다
   return { ok: true };
 }
 

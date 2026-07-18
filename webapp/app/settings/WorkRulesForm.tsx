@@ -11,7 +11,7 @@ const labelStyle: React.CSSProperties = { display: "block", fontSize: 13, fontWe
 export function WorkRulesForm({
   initial,
 }: {
-  initial: { start: string; end: string; grace: number; workDays: string; standardHours: number };
+  initial: { start: string; end: string; grace: number; workDays: string; standardHours: number; overtimeAlertOn: boolean; overtimeWarnHours: number };
 }) {
   const [state, formAction, pending] = useActionState(saveWorkRules, {});
   const s = splitTime(initial.start);
@@ -22,6 +22,8 @@ export function WorkRulesForm({
   const [endM, setEndM] = useState(e.m);
   const [grace, setGrace] = useState(String(initial.grace));
   const [stdHours, setStdHours] = useState(String(initial.standardHours));
+  const [otOn, setOtOn] = useState(initial.overtimeAlertOn);
+  const [otWarn, setOtWarn] = useState(String(initial.overtimeWarnHours));
   const [days, setDays] = useState<Set<number>>(() => parseDays(initial.workDays));
 
   // 서버로는 기존과 똑같이 "HH:MM"(없으면 빈 값)으로 보낸다.
@@ -51,6 +53,7 @@ export function WorkRulesForm({
         <input type="hidden" name="workEndTime" value={endVal} />
         <input type="hidden" name="workDays" value={daysToCsv(days)} />
         <input type="hidden" name="standardWorkHours" value={stdHours} />
+        <input type="hidden" name="overtimeWarnHours" value={otWarn} />
 
         {/* 근무요일 — 이 요일에만 지각·결근을 판정한다 */}
         <div>
@@ -110,6 +113,32 @@ export function WorkRulesForm({
           </div>
           <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 8 }}>
             하루 실근무가 이 시간을 넘으면 <b>초과분을 초과근무(연장)</b>로 리포트에 집계합니다. (기본 8시간)
+          </div>
+        </div>
+
+        {/* 주 52시간 초과근무 알림 — 이번 주(월~현재) 실근무 합계가 위험선을 넘으면 대시보드에 표시 */}
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, fontWeight: 700 }}>
+            <input type="checkbox" name="overtimeAlertOn" checked={otOn} onChange={(ev) => setOtOn(ev.target.checked)} style={{ width: 18, height: 18 }} />
+            주 52시간 초과근무 알림 켜기
+          </label>
+          <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 8, marginBottom: 12, lineHeight: 1.6 }}>
+            이번 주(월요일~현재) 실근무 합계가 <b>법정 상한(주 52시간)</b>에 근접·초과한 직원을 <b>대시보드 오늘 알림</b>에 표시합니다.
+            <br />5인 미만 사업장·특례업종이면 꺼두세요. (문자·이메일 자동발송은 하지 않습니다 — 화면 알림만)
+          </div>
+          <div style={{ width: 200, opacity: otOn ? 1 : 0.5 }}>
+            <label style={labelStyle}>근접 경고선</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="number" min={30} max={52} step={1} value={otWarn} disabled={!otOn}
+                onChange={(ev) => setOtWarn(ev.target.value)}
+                style={{ height: 44, padding: "0 14px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 15, outline: "none", width: 100 }}
+              />
+              <span style={{ fontSize: 15, color: "var(--text-sub)", fontWeight: 700 }}>시간</span>
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 8, lineHeight: 1.5 }}>
+              이 시간 이상이면 <b>근접(노랑)</b>, 52시간 이상이면 <b>초과(빨강)</b>로 알립니다. (기본 48시간, 30~52)
+            </div>
           </div>
         </div>
 

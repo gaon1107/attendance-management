@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { workedMinutes, formatMinutes, isLate, isEarlyLeave } from "@/lib/worktime";
+import { weekStartMonday, weeklyLevel, cappedEnd } from "@/lib/overtime";
 import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
 import { leaveSuppressesLate, leaveSuppressesEarly } from "@/lib/leave";
@@ -39,6 +40,7 @@ export default async function DashboardPage() {
     where: { id: me.companyId },
     select: {
       workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true, holidayAutoOn: true,
+      overtimeAlertOn: true, overtimeWarnHours: true,
       securityCheckedAt: true,
       alertNightOn: true, alertNightStart: true, alertNightEnd: true, alertFailOn: true, alertFailCount: true,
     },
@@ -125,6 +127,41 @@ export default async function DashboardPage() {
   const lateNames = [...lateUserIds].map((id) => todays.find((r) => r.userId === id)?.user.name ?? "직원");
   // 조퇴 직원 이름(오늘 퇴근기록 기준)
   const earlyNames = [...earlyUserIds].map((id) => todays.find((r) => r.userId === id)?.user.name ?? "직원");
+
+  // ── 주 52시간 초과근무 알림(B-3) — 이번 주(월 00:00~현재) 실근무 합계가 위험선을 넘은 직원 ──
+  // 부가기능: 꺼져 있으면 조회 자체를 건너뛴다. 실패해도 대시보드 본체엔 영향 없게 try/catch(이상접속과 동일).
+  const overtimeOn = company?.overtimeAlertOn ?? true;
+  const overtimeWarnHours = company?.overtimeWarnHours ?? 48;
+  const otOverNames: string[] = []; // 52시간 이상(초과 — 법 위반 위험)
+  const otWarnNames: string[] = []; // 경고선~52시간(근접)
+  if (overtimeOn) {
+    try {
+      const weekStart = weekStartMonday(now);
+      const weekRecords = await prisma.attendance.findMany({
+        where: { companyId: me.companyId, clockIn: { gte: weekStart } },
+        include: { user: { select: { name: true, role: true, deactivatedAt: true } }, breaks: true },
+      });
+      // 직원별 이번 주 실근무 합계(분). 진행 중 기록은 workedMinutes가 now까지 계산.
+      const weekMinByUser = new Map<string, { name: string; minutes: number }>();
+      for (const r of weekRecords) {
+        if (r.user.deactivatedAt || r.user.role !== "employee") continue; // 퇴사자·관리자 제외(근로자 대상)
+        const cur = weekMinByUser.get(r.userId) ?? { name: r.user.name, minutes: 0 };
+        // 잊은 퇴근이 여러 날로 부풀어 허위 초과경보가 나지 않게 종료시각에 상한(출근일 자정)을 둔다.
+        cur.minutes += workedMinutes(r, cappedEnd(r.clockIn, r.clockOut, now));
+        weekMinByUser.set(r.userId, cur);
+      }
+      for (const { name, minutes } of weekMinByUser.values()) {
+        const lv = weeklyLevel(minutes, overtimeWarnHours);
+        if (lv === "over") otOverNames.push(name);
+        else if (lv === "warn") otWarnNames.push(name);
+      }
+      otOverNames.sort(); // 표시 순서 고정(DB 반환 순서 의존 제거)
+      otWarnNames.sort();
+    } catch (e) {
+      console.warn("[dashboard] 주52 초과근무 집계 실패(대시보드는 정상 표시):", e);
+    }
+  }
+  const otCount = otOverNames.length + otWarnNames.length;
 
   // 승인 대기 휴가 건수 + 비밀번호 재설정 요청 건수 + 최신 공지(오늘 알림 카드용)
   const pendingLeaveCount = await prisma.leaveRequest.count({ where: { companyId: me.companyId, status: "pending" } });
@@ -222,6 +259,23 @@ export default async function DashboardPage() {
                   <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}>🔒 이상 접속</span>
                   {/* 잘렸으면 "+"를 붙여 정직하게 — 조용히 적은 숫자를 말하면 관리자가 다 봤다고 믿는다. */}
                   <span style={{ fontSize: 14, fontWeight: 700, color: "var(--danger)" }}>{alertCount}건{alertCapped ? "+" : ""}</span>
+                </Link>
+              )}
+              {/* 주 52시간 초과근무(B-3) — 있을 때만. 법 위반 위험(초과)·근접을 함께 표시. 상세는 [리포트]에서. */}
+              {overtimeOn && otCount > 0 && (
+                <Link href="/reports" style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6", textDecoration: "none", color: "var(--text)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}>⏱ 주 52시간 초과근무</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: otOverNames.length > 0 ? "var(--danger)" : "var(--warning)" }}>
+                      {otOverNames.length > 0 ? `초과 ${otOverNames.length}명` : ""}
+                      {otOverNames.length > 0 && otWarnNames.length > 0 ? " · " : ""}
+                      {otWarnNames.length > 0 ? `근접 ${otWarnNames.length}명` : ""}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 4, lineHeight: 1.5 }}>
+                    {otOverNames.length > 0 && <div>초과(52시간↑): {otOverNames.join(", ")}</div>}
+                    {otWarnNames.length > 0 && <div>근접({overtimeWarnHours}시간↑): {otWarnNames.join(", ")}</div>}
+                  </div>
                 </Link>
               )}
               {/* 미출근 */}

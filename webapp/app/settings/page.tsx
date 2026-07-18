@@ -24,7 +24,8 @@ export default async function SettingsPage() {
       officeLat: true, officeLng: true, officeRadiusM: true, officeIps: true,
       officeAddress: true, officeAddressDetail: true,
       workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true,
-      standardWorkHours: true, faceMinPercent: true, faceMinBrightness: true, livenessPercent: true,
+      standardWorkHours: true, overtimeAlertOn: true, overtimeWarnHours: true,
+      faceMinPercent: true, faceMinBrightness: true, livenessPercent: true,
       alertNightOn: true, alertNightStart: true, alertNightEnd: true, alertFailOn: true, alertFailCount: true,
       holidayAutoOn: true,
     },
@@ -55,6 +56,8 @@ export default async function SettingsPage() {
             grace: company?.lateGraceMin ?? 0,
             workDays: company?.workDays ?? "1,2,3,4,5",
             standardHours: company?.standardWorkHours ?? 8,
+            overtimeAlertOn: company?.overtimeAlertOn ?? true,
+            overtimeWarnHours: company?.overtimeWarnHours ?? 48,
           }}
         />
         <OfficeNetworkForm initialIps={company?.officeIps ?? ""} currentIp={currentIp} />

@@ -37,6 +37,11 @@ model Company {
   lateGraceMin  Int      @default(0) // 지각 유예(분). 기준시각 + 유예 이후 출근이면 지각.
   // 기준 일 근무시간(소정근로시간, 시간 단위). 하루 실근무가 이 시간을 넘으면 초과분을 연장근무로 집계. 기본 8시간.
   standardWorkHours Float @default(8)
+  // ── 주 52시간 초과근무 알림(B-3). 이번 주(월~현재) 실근무 합계가 위험선을 넘으면 대시보드에 알림. ──
+  // 켜짐이면 판정·표시. 5인 미만 사업장·특례업종은 끈다. (법정 상한 52h는 코드 고정 — 낮추면 더 엄격할 뿐 무해)
+  overtimeAlertOn   Boolean @default(true)
+  // 근접 경고선(주간 시간). 이 시간 이상이면 "근접" 경고(노랑), 52h 이상이면 "초과"(빨강). 기본 48시간.
+  overtimeWarnHours Float   @default(48)
   // 회사 기본 근무요일(JS getDay 기준: 0=일 … 6=토) CSV. 기본 월~금. 이 요일에만 지각·결근 판정.
   workDays      String   @default("1,2,3,4,5")
   // 법정공휴일 자동 반영 스위치. 켜짐이면 전국 공휴일(Holiday 표)을 "쉬는 날"로 본다(지각·결근·연차 제외).
