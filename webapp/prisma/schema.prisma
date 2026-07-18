@@ -141,8 +141,10 @@ model User {
   lockedUntil      DateTime?
   // 퇴사(비활성화) 시각. null이면 재직중. 값이 있으면 로그인 불가·집계 제외(단, 과거 근태 기록은 보존).
   deactivatedAt    DateTime?
-  // 관리자가 부여한 올해 연차 총 일수. 잔여 = 이 값 − 승인된 연차·반차 사용합.
+  // [레거시] 예전 수동 부여 일수. B-2 자동발생 도입 후로는 직접 읽지 않는다(annualLeaveGranted 헬퍼가 대체).
   annualLeaveDays  Float     @default(15)
+  // B-2 연차 자동발생: 관리자 수동조정(override). null=입사일 기준 자동계산, 값=그 값 사용(특별부여/감액).
+  annualLeaveOverride Float?
   // 임시 비밀번호로 로그인한 경우 true → 로그인 직후 새 비밀번호를 정하도록 강제한다. 변경하면 false로 되돌린다.
   mustChangePassword Boolean @default(false)
   // 소속 부서(선택). null이면 부서 미배정. 부서가 삭제되면 소속 직원은 자동으로 null(미배정)이 된다.
