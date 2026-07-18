@@ -4,8 +4,9 @@
 import type { ReactNode } from "react";
 import { Sidebar, type NavKey } from "@/app/components/Sidebar";
 import { LogoutButton } from "@/app/components/LogoutButton";
+import { NotificationBell } from "@/app/components/NotificationBell";
 
-type ShellUser = { name: string; role: string; company: { name: string; logoName?: string | null } };
+type ShellUser = { name: string; role: string; companyId?: string; company: { name: string; logoName?: string | null } };
 
 export function AppShell({
   user,
@@ -37,6 +38,8 @@ export function AppShell({
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
             {right}
+            {/* 알림 종(관리자만) — 처리 필요 총건수 배지. 집계는 컴포넌트가 자체 수행(실패해도 헤더 정상). */}
+            {user.role === "admin" && user.companyId && <NotificationBell companyId={user.companyId} />}
             <LogoutButton />
           </div>
         </header>

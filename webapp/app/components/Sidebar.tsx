@@ -10,7 +10,7 @@ type NavUser = {
 
 // 사이드바에서 현재 화면을 표시하기 위한 키.
 export type NavKey =
-  | "dashboard" | "employees" | "records" | "reports" | "biometrics"
+  | "dashboard" | "notifications" | "employees" | "records" | "reports" | "biometrics"
   | "attendance" | "my-records" | "auth-method" | "settings" | "company"
   | "leave" | "leave-approvals" | "leave-summary" | "notice" | "corrections"
   | "security" // 보안로그(로그인 이력·접속 로그) — 관리자
@@ -23,6 +23,7 @@ type Item = { key: NavKey; href: string; label: string; icon: string };
 // lucide 스타일 아이콘(선). 목업과 동일한 모양.
 const ICON: Record<NavKey, string> = {
   dashboard: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+  notifications: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
   employees: '<circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1"/><path d="M16 3.5a3 3 0 0 1 0 6"/>',
   records: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
   reports: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
@@ -45,6 +46,7 @@ const ICON: Record<NavKey, string> = {
 
 const LABEL: Record<NavKey, string> = {
   dashboard: "대시보드",
+  notifications: "알림",
   employees: "직원관리",
   records: "근태현황",
   reports: "리포트",
@@ -84,7 +86,7 @@ function toItems(keys: NavKey[]): Item[] {
 function groupsFor(role: string): NavGroup[] {
   if (role === "admin") {
     return [
-      { caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(["dashboard", "live", "employees", "records", "schedule", "reports", "leave-approvals", "leave-summary", "biometrics", "security", "company", "settings"]) },
+      { caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(["dashboard", "notifications", "live", "employees", "records", "schedule", "reports", "leave-approvals", "leave-summary", "biometrics", "security", "company", "settings"]) },
       { caption: "내근태", tintBg: "#E3F5EA", tintText: "#15803D", items: toItems(["attendance", "auth-method"]) },
     ];
   }
