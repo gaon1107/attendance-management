@@ -4,6 +4,7 @@
 // (자동 메일 발송·문자 인증은 2차. 지금은 관리자가 직접 전달.)
 import { useState, useTransition } from "react";
 import { issueTempPassword } from "@/app/actions/password-reset";
+import { sendTempPasswordSms } from "@/app/actions/sms";
 
 type Req = { id: string; name: string; email: string; createdAtLabel: string };
 
@@ -16,6 +17,26 @@ export function PendingResetRequests({ requests }: { requests: Req[] }) {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  // 문자 발송 상태 { [reqId]: "sending"|"sent" } + 오류
+  const [smsState, setSmsState] = useState<Record<string, "sending" | "sent">>({});
+  const [smsErr, setSmsErr] = useState<Record<string, string>>({});
+
+  function handleSendSms(id: string, temp: string) {
+    setSmsState((s) => ({ ...s, [id]: "sending" }));
+    setSmsErr((e) => ({ ...e, [id]: "" }));
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.set("requestId", id);
+      fd.set("temp", temp);
+      const res = await sendTempPasswordSms({}, fd);
+      if (res.error) {
+        setSmsState((s) => { const n = { ...s }; delete n[id]; return n; });
+        setSmsErr((e) => ({ ...e, [id]: res.error! }));
+      } else {
+        setSmsState((s) => ({ ...s, [id]: "sent" }));
+      }
+    });
+  }
 
   function handleIssue(id: string) {
     setPendingId(id);
@@ -97,6 +118,20 @@ export function PendingResetRequests({ requests }: { requests: Req[] }) {
                     >
                       {copiedId === r.id ? "복사됨 ✓" : "복사"}
                     </button>
+                    {smsState[r.id] === "sent" ? (
+                      <span style={{ height: 36, display: "inline-flex", alignItems: "center", padding: "0 14px", border: "1px solid #BBF7D0", borderRadius: 8, background: "#F0FDF4", color: "#15803D", fontSize: 13, fontWeight: 700 }}>
+                        문자 발송됨 ✓
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleSendSms(r.id, tempPw)}
+                        disabled={smsState[r.id] === "sending"}
+                        style={{ height: 36, padding: "0 14px", border: "1px solid var(--primary)", borderRadius: 8, background: "#fff", color: "var(--primary)", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: smsState[r.id] === "sending" ? "default" : "pointer", opacity: smsState[r.id] === "sending" ? 0.6 : 1 }}
+                      >
+                        {smsState[r.id] === "sending" ? "발송 중..." : "문자로 보내기"}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => dismiss(r.id)}
@@ -105,8 +140,11 @@ export function PendingResetRequests({ requests }: { requests: Req[] }) {
                       확인(닫기)
                     </button>
                   </div>
+                  {smsErr[r.id] && (
+                    <div style={{ fontSize: 12, color: "var(--danger)", fontWeight: 700, marginTop: 8 }}>{smsErr[r.id]}</div>
+                  )}
                   <div style={{ fontSize: 12, color: "#166534", marginTop: 8, lineHeight: 1.6 }}>
-                    직원의 기존 로그인은 해제되었습니다. 임시 비밀번호로 로그인하면 새 비밀번호를 정하는 화면으로 이동합니다.
+                    직원의 기존 로그인은 해제되었습니다. 임시 비밀번호로 로그인하면 새 비밀번호를 정하는 화면으로 이동합니다. <b>문자로 보내기</b>는 직원 전화번호가 등록돼 있어야 하며 1회만 보낼 수 있습니다.
                   </div>
                 </div>
               )}

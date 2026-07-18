@@ -44,6 +44,12 @@ export default async function EmployeesPage() {
     where: { companyId: me.companyId, usedAt: null, expiresAt: { gt: new Date() } },
     orderBy: { createdAt: "desc" },
   });
+  // 문자로 이미 보낸 초대(중복발송 방지 표시). 성공 발송 이력이 있는 inviteId 집합.
+  const sentInviteLogs = await prisma.smsLog.findMany({
+    where: { companyId: me.companyId, kind: "invite", result: "success", refId: { in: invites.map((i) => i.id) } },
+    select: { refId: true },
+  });
+  const sentInviteIds = new Set(sentInviteLogs.map((s) => s.refId).filter((x): x is string => !!x));
 
   // 비밀번호 재설정 대기 요청(직원이 접수한 것) — 관리자가 임시 비밀번호를 발급한다.
   const resetRequests = await prisma.passwordResetRequest.findMany({
@@ -137,7 +143,7 @@ export default async function EmployeesPage() {
                     </button>
                   </form>
                 </div>
-                <InviteLink path={`/invite/${inv.token}`} />
+                <InviteLink path={`/invite/${inv.token}`} inviteId={inv.id} smsSent={sentInviteIds.has(inv.id)} />
               </div>
             ))}
           </div>
