@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { LeaveRequestForm } from "./LeaveRequestForm";
 import { cancelLeave } from "@/app/actions/leave";
-import { leaveTypeLabel, leaveStatusLabel, usedLeaveDays } from "@/lib/leave";
+import { leaveTypeLabel, leaveStatusLabel, usedLeaveDays, annualLeaveGranted } from "@/lib/leave";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
@@ -32,10 +32,11 @@ export default async function LeavePage() {
   });
 
   const used = usedLeaveDays(requests);
-  const remaining = me.annualLeaveDays - used;
+  const granted = annualLeaveGranted(me); // 입사일 기준 자동 발생(관리자 수동조정 우선)
+  const remaining = Math.round((granted - used) * 10) / 10;
 
   const kpis = [
-    { label: "부여 연차", value: me.annualLeaveDays, color: "var(--text)" },
+    { label: "부여 연차", value: granted, color: "var(--text)" },
     { label: "사용", value: used, color: "var(--text)" },
     { label: "잔여", value: remaining, color: remaining > 0 ? "var(--primary)" : "var(--danger)" },
   ];

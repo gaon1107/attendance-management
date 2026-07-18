@@ -2,7 +2,7 @@
 import ExcelJS from "exceljs";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
-import { usedLeaveDaysInYear } from "@/lib/leave";
+import { usedLeaveDaysInYear, annualLeaveGranted } from "@/lib/leave";
 import { toISODate } from "@/lib/period";
 import { queryTerms, matchesTerms } from "@/lib/search";
 
@@ -27,7 +27,7 @@ export async function GET(request: Request): Promise<Response> {
   // 화면(page.tsx)과 동일한 집계 — 회사 격리 + 재직 직원만.
   const employees = await prisma.user.findMany({
     where: { companyId: me.companyId, role: "employee", deactivatedAt: null },
-    select: { id: true, name: true, hireDate: true, annualLeaveDays: true, department: { select: { name: true } } },
+    select: { id: true, name: true, hireDate: true, annualLeaveOverride: true, department: { select: { name: true } } },
     orderBy: { createdAt: "asc" },
   });
   const yStart = new Date(year, 0, 1);
@@ -45,7 +45,7 @@ export async function GET(request: Request): Promise<Response> {
   const rows = employees.map((e) => {
     const used = usedLeaveDaysInYear(byUser.get(e.id) ?? [], year);
     // 화면과 동일: 과거 연도는 발생·잔여를 비운다(빈 셀). 발생은 소수 1자리로(화면=엑셀 일치).
-    const granted = isCurrentYear ? Math.round(e.annualLeaveDays * 10) / 10 : null;
+    const granted = isCurrentYear ? Math.round(annualLeaveGranted(e) * 10) / 10 : null;
     const remain = granted === null ? null : Math.round((granted - used) * 10) / 10;
     return {
       name: e.name,

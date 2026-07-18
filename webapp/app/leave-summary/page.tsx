@@ -1,5 +1,5 @@
 // 연차 정산 내역 — 관리자 전용(간소형). 전 직원의 발생·사용·잔여를 연도별로 한 표에.
-//  · 발생 = 관리자가 설정한 annualLeaveDays(연도 개념 없음 → "현재 설정값 기준" 안내 표기).
+//  · 발생 = 입사일 기준 자동계산(annualLeaveGranted, 관리자 수동조정 override 우선). 올해만 의미 있음.
 //  · 사용 = 그 연도에 시작하는 승인된 연차·반차 합계(usedLeaveDaysInYear).
 //  · 잔여 = 발생 − 사용. (소멸 예정·촉진 필요는 데이터 없어 이번 범위 제외)
 // ※ 회사 격리: 내 회사 소속 재직 직원만 집계.
@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
-import { usedLeaveDaysInYear } from "@/lib/leave";
+import { usedLeaveDaysInYear, annualLeaveGranted } from "@/lib/leave";
 import { toISODate } from "@/lib/period";
 import { LeaveSummaryClient, type LeaveSummaryRow } from "./LeaveSummaryClient";
 
@@ -35,7 +35,7 @@ export default async function LeaveSummaryPage({
 
   const employees = await prisma.user.findMany({
     where: { companyId: me.companyId, role: "employee", deactivatedAt: null },
-    select: { id: true, name: true, hireDate: true, annualLeaveDays: true, department: { select: { name: true } } },
+    select: { id: true, name: true, hireDate: true, annualLeaveOverride: true, department: { select: { name: true } } },
     orderBy: { createdAt: "asc" },
   });
 
@@ -56,7 +56,7 @@ export default async function LeaveSummaryPage({
   const rows: LeaveSummaryRow[] = employees.map((e) => {
     const used = usedLeaveDaysInYear(byUser.get(e.id) ?? [], year);
     // 과거 연도는 그 해 부여량(발생) 이력이 없다 → 발생·잔여를 null(화면 "—")로 두고 '사용'만 정확히 보여준다.
-    const granted = isCurrentYear ? e.annualLeaveDays : null;
+    const granted = isCurrentYear ? annualLeaveGranted(e) : null;
     const remain = granted === null ? null : Math.round((granted - used) * 10) / 10; // 부동소수 오차 방지
     return {
       id: e.id,

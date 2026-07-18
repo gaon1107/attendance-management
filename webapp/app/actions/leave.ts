@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { effectiveWorkDays } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
-import { REQUESTABLE_TYPES, isSingleDayLeave, leaveTypeDeducts, computeLeaveDays, parseYmd, usedLeaveDays } from "@/lib/leave";
+import { REQUESTABLE_TYPES, isSingleDayLeave, leaveTypeDeducts, computeLeaveDays, parseYmd, usedLeaveDays, annualLeaveGranted } from "@/lib/leave";
 
 // 직원: 휴가 신청. 종류·기간을 받아 근무요일 기준 사용일수를 계산하고 대기 상태로 만든다.
 export async function requestLeave(
@@ -45,7 +45,7 @@ export async function requestLeave(
       where: { userId: me.id, companyId: me.companyId },
       select: { type: true, days: true, status: true },
     });
-    const remaining = me.annualLeaveDays - usedLeaveDays(mine);
+    const remaining = annualLeaveGranted(me) - usedLeaveDays(mine);
     if (days > remaining) {
       return { error: `잔여 연차(${remaining}일)보다 많이 신청했습니다. (${days}일 신청)` };
     }
