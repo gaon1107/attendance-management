@@ -95,6 +95,39 @@ export function usedLeaveDaysInYear(requests: LeaveUseDated[], year: number): nu
     .reduce((s, r) => s + r.days, 0);
 }
 
+// ── B-2 연차 자동발생 (입사일 기준·간소) ──────────────────────────────
+// [내부] 입사일부터 기준일까지 "완전히 지난 개월 수". 기념일 당일은 그 달을 채운 것으로 본다.
+//   예) 1/15 입사 → 이듬해 1/15 = 12개월(=1년), 1/14 = 11개월. 입사일이 미래면 음수→0으로 막는다.
+function fullMonthsBetween(hire: Date, asOf: Date): number {
+  let months = (asOf.getFullYear() - hire.getFullYear()) * 12 + (asOf.getMonth() - hire.getMonth());
+  if (asOf.getDate() < hire.getDate()) months -= 1; // 기념일(일자) 전이면 그 달은 아직 안 채움
+  return months;
+}
+
+// [순수함수] 입사일 기준 자동 발생 연차(근로기준법 제60조·간소형).
+//  · 입사일 없음 → 15(안전 기본값, 화면에서 "입사일 입력 시 정확 계산" 안내).
+//  · 1년 미만 → 1개월당 1일(개근 가정), 최대 11.
+//  · 1년 이상 → 15일. 3년 이상이면 (근속연수−1)/2 내림만큼 가산, 상한 25.
+//  ※ 개근·80% 출근율은 "충족 가정"(간소 결정). 예외는 관리자 수동조정(override)으로 처리.
+export function grantedAnnualLeave(hireDate: Date | null | undefined, asOf: Date = new Date()): number {
+  if (!hireDate) return 15;
+  const months = fullMonthsBetween(hireDate, asOf);
+  if (months < 12) return Math.max(0, Math.min(months, 11));
+  const years = Math.floor(months / 12);
+  let base = 15;
+  if (years >= 3) base += Math.floor((years - 1) / 2);
+  return Math.min(base, 25);
+}
+
+// [헬퍼] "발생(부여) 연차"를 읽는 모든 화면이 공통으로 부른다(숫자 불일치 방지).
+//   override(관리자 수동값)가 있으면 그 값, 없으면(null) 입사일 기준 자동계산.
+export function annualLeaveGranted(
+  user: { hireDate: Date | null; annualLeaveOverride: number | null },
+  asOf: Date = new Date()
+): number {
+  return user.annualLeaveOverride ?? grantedAnnualLeave(user.hireDate, asOf);
+}
+
 // 승인된 휴가들을 "덮인 날짜(ISO)" 집합으로 펼친다. 결근/미출근 판정에서 이 날짜를 제외한다.
 type LeaveRange = { type?: string; startDate: Date; endDate: Date };
 export function leaveDateSet(approved: LeaveRange[]): Set<string> {
