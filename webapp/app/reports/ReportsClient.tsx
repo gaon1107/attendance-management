@@ -54,6 +54,9 @@ export function ReportsClient({
 
   // 엑셀 내보내기 링크 — 현재 검색어(q)를 그대로 서버에 전달해 "화면에 보이는 직원만" 내보낸다.
   const exportHref = q.trim() ? `${exportBase}&q=${encodeURIComponent(q)}` : exportBase;
+  // 법정기록 PDF(인쇄용 화면) 링크 — 엑셀과 같은 기간·검색어를 그대로 넘긴다.
+  const printBase = `/reports/print?from=${from}&to=${to}`;
+  const printHref = q.trim() ? `${printBase}&q=${encodeURIComponent(q)}` : printBase;
 
   // KPI는 걸러진 목록 기준으로 계산
   const totalMinutes = filtered.reduce((s, u) => s + u.minutes, 0);
@@ -74,9 +77,16 @@ export function ReportsClient({
         <RangeCalendar from={from} to={to} todayISO={todayISO} onApply={(f, t) => router.push(`/reports?from=${f}&to=${t}`)} />
         <SearchBox value={q} onChange={setQ} />
         <Link
+          href={printHref}
+          prefetch={false}
+          style={{ marginLeft: "auto", height: 38, padding: "0 16px", display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 8, background: "#fff", color: "var(--primary)", border: "1px solid var(--primary)", fontSize: 15, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}
+        >
+          🖨 법정기록 PDF
+        </Link>
+        <Link
           href={exportHref}
           prefetch={false}
-          style={{ marginLeft: "auto", height: 38, padding: "0 16px", display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 8, background: "var(--primary)", color: "#fff", fontSize: 15, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}
+          style={{ height: 38, padding: "0 16px", display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 8, background: "var(--primary)", color: "#fff", fontSize: 15, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}
         >
           ⬇ 법정기록 엑셀 내보내기
         </Link>
