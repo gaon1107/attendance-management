@@ -1,47 +1,57 @@
-# Research: 조퇴·반차 신청→승인→근태 자동반영 (2026-07-18)
+# Research: B-2 연차 자동발생 (2026-07-18)
 
-## 사장님 확정 모델
-```
-직원이 [휴가] 메뉴에서 신청(날짜 지정, 미래 예약 가능) → 관리자 승인
-→ 그 날짜에 직원이 출퇴근하면 자동으로 "반차/조퇴(승인)"로 처리(지각·조퇴 오탐 없이 이력 표기)
-```
-- 조퇴 = 연차 **차감 안 함** / 반차 = **오전·오후 구분**(오전=지각면제, 오후=조퇴면제) / 신청 = **기존 [휴가] 메뉴 통합**.
-
-## 핵심 발견 (좋은 소식)
-- **`LeaveRequest.type`은 자유 문자열**(schema.prisma:240) → 새 종류(`half_am`·`half_pm`·`early_leave`)를 **값만 추가**하면 됨. **스키마 변경/마이그레이션/서버끄기 전부 불필요.**
-- **신청·승인 인프라 이미 완비**: 직원 신청 `requestLeave`([actions/leave.ts](webapp/app/actions/leave.ts):11) / 관리자 승인 `approveLeave`(:74)·반려(:86). 승인 로직은 종류 무관 = 새 종류 그대로 승인됨.
-- **승인 휴가→날짜 펼치기**도 이미 있음: `leaveLabelByDate`(date→라벨), `leaveDateSet`(결근 제외용). ([lib/leave.ts](webapp/lib/leave.ts):72·87)
-- 종류 정의는 `LEAVE_TYPES`([lib/leave.ts](webapp/lib/leave.ts):6) 한 곳에서 label·deducts를 관리 → 신청폼·라벨·차감이 여기서 파생.
-
-## 지금 끊긴 지점 (이번에 이을 곳)
-1. **종류에 오전/오후 반차·조퇴가 없음** — `half`(반차 0.5) 하나뿐, 조퇴 없음.
-2. **승인된 반차/조퇴가 그날 출퇴근의 지각·조퇴 판정과 연결 안 됨** — `buildDayEntries`는 leaveByDate를 **결근 아닌 날 표시**에만 쓰고, **출근한 날의 지각/조퇴 판정엔 안 씀**. 그래서 오후 반차로 일찍 가도 "조퇴"로 오탐(내가 방금 만든 자동감지가 승인을 모름).
+## 배경
+현재 연차 "발생(부여)"은 관리자가 직원마다 숫자를 손으로 입력(`setAnnualLeave`)한다.
+입사일(`hireDate`)은 저장·표시만 될 뿐 계산에 안 쓰인다.
+→ 입사일 기준으로 근로기준법에 맞게 자동 부여로 바꾸는 것이 목표.
 
 ## 관련 파일과 역할
-- **lib/leave.ts** — `LEAVE_TYPES`(종류·차감), `computeLeaveDays`(반차=0.5), `leaveLabelByDate`. → 새 종류 3개 + `computeLeaveDays`에 조퇴=0 + `leaveTypeByDate`(date→종류key) 헬퍼 추가.
-- **app/actions/leave.ts `requestLeave`** — 종류 검증·단일일 처리(현재 half/sick만 단일일, :26)·`days<=0` 거부(:40). → 새 단일일 종류 추가, 조퇴(days=0) 거부 예외.
-- **app/leave/LeaveRequestForm.tsx** — 종류 드롭다운(LEAVE_TYPES 그대로 렌더)·`singleDay=half||sick`(:17). → 새 종류가 드롭다운에 자동 노출, singleDay 목록 확장.
-- **lib/dayentries.ts `buildDayEntries`** — 출근한 날 att엔트리에 late/early 계산(:57~). → 그날 **승인 반차/조퇴가 있으면 지각/조퇴를 면제(null)하고 승인 뱃지**를 붙임. `DayEntry.att`에 `approvedLeave` 추가. **호출부(my-records·records/[userId])에서 승인휴가 종류맵을 넘겨야 함.**
-- **표시**: DetailTable·MonthCalendar(공용경로) / records/page+RecordsClient(전체현황) / dashboard(오늘) — "지각/조퇴" 자리에 승인 반차/조퇴 뱃지, 자동 오탐 제거.
-- **승인 화면**(leave/approvals) — 종류 라벨만 새로 뜨면 됨(leaveTypeLabel이 처리). 로직 무수정.
+- `prisma/schema.prisma` User: `annualLeaveDays Float @default(15)`, `hireDate DateTime?`
+- `lib/leave.ts` — 휴가 계산 순수함수 모음(`usedLeaveDays`, `usedLeaveDaysInYear`, `computeLeaveDays` 등). **공통 모듈**.
+- `app/actions/leave.ts`:
+  - `requestLeave`:48 — 잔여 = `me.annualLeaveDays - usedLeaveDays(mine)` (신청 시 초과 검사)
+  - `setAnnualLeave`:98 — 관리자 수동 부여(직원상세 폼)
+- `app/leave/page.tsx`:35,38 — 직원 본인 [휴가] 화면 "부여 연차 / 잔여"
+- `app/employees/[id]/page.tsx`:60,178 — 직원 상세 "잔여" + `AnnualLeaveForm`(수동 부여 폼)
+- `app/employees/[id]/AnnualLeaveForm.tsx` — 수동 부여 입력 UI
+- `app/leave-summary/page.tsx`:59 — 연차정산 화면 "발생=annualLeaveDays(올해만), 과거연도는 '—'"
+- `app/leave-summary/export/route.ts`:48 — 정산 엑셀 "발생"
 
-## 🔴 영향 범위 / 공용 모듈 (safe-coding 대상)
-- **공용 모듈 수정**: `lib/leave.ts`(추가 위주), `lib/dayentries.ts`(late/early에 면제 로직·필드 추가). 기존 `isLate/isEarlyLeave/leaveDateSet/usedLeaveDays`는 무수정.
-- **`buildDayEntries` 호출부 2곳**(my-records·records/[userId])에 "승인 반차/조퇴 종류맵" 인자 전달 필요 → 안 넘기면 기본 빈 맵으로 기존 동작(회귀 안전).
-- **`computeLeaveDays`·`LEAVE_TYPES` 소비처 전수**: 신청폼·연차정산(leave-summary)·usedLeaveDays. 새 종류의 deducts를 정확히(오전/오후 반차=0.5 차감, 조퇴=0) 넣어야 연차정산이 안 틀어짐 → 검증 필수.
-- 자동감지(내가 만든 isEarlyLeave)는 **유지**하되, 승인이 있으면 그 위에서 면제 → "무단 조퇴 vs 승인 조퇴" 구분 완성.
+## 🔴 영향 범위 (annualLeaveDays를 읽는 모든 곳 = 5곳)
+1. `leave.ts:requestLeave` — 신청 초과검사 (잔여 계산)
+2. `leave/page.tsx` — 직원 본인 부여/잔여 표시
+3. `employees/[id]/page.tsx` — 관리자 직원상세 잔여 표시
+4. `leave-summary/page.tsx` — 연차정산 발생/잔여
+5. `leave-summary/export/route.ts` — 정산 엑셀 발생
+→ "발생(부여)"을 자동계산으로 바꾸면 **이 5곳이 모두 같은 계산을 써야** 숫자가 일치한다.
+   (지금은 전부 `user.annualLeaveDays` 한 필드를 읽으므로, 공용 함수 `grantedAnnualLeave(user)`를
+    만들어 5곳이 같이 부르게 하는 게 안전.)
+
+## 쓰는 곳 (hireDate) — 계산엔 미사용, 표시/저장만
+- `employees.ts`/`invites.ts`/`employee-profile.ts` — 저장(입력)
+- `employees/[id]/page.tsx`·`ProfileForm.tsx`·`invite/InviteForm.tsx` — 표시/입력
+- `leave-summary` page·export — 표시/엑셀
+→ **hireDate는 nullable**(미입력 직원 존재 가능). 자동계산의 유일한 입력값이라 **미입력 대비책 필수**.
+
+## 공통 모듈 여부 / 건드리면 안 되는 부분
+- `lib/leave.ts` = 공통 순수함수 모듈 → 발생계산 함수를 **추가(add-only)** 하면 기존 함수 무수정, 회귀위험 격리 가능.
+- `annualLeaveDays` 필드를 없애면 5곳 + 마이그레이션 + 기존 데이터 영향 큼 → **필드 유지**하고 의미만 재정의(자동값 or 수동 override)가 안전.
 
 ## DB·API 변경 여부, 위험 요소
-- **DB 스키마 변경 없음**(type 문자열 재사용) → 마이그레이션·서버끄기 없음.
-- **기존 `half` 데이터 호환**: 과거 "반차"(half) 신청은 그대로 라벨 표시. 신규는 오전/오후로 신청. `half`도 면제 로직에선 "지각·조퇴 둘 다 면제"로 처리(안전).
-- **연차 차감 정확성**(위험1): 오전/오후 반차=0.5 차감, 조퇴=0. 연차정산·잔여계산이 새 종류를 정확히 반영하는지 실검증 필요.
-- **여러 기록/중복 날**(위험2): 하루 여러 출퇴근·같은 날 여러 승인 → 종류맵 병합 규칙 명확화(승인 반차가 있으면 그날 전체 면제).
-- **자동감지 오탐 완전제거 여부**(위험3): 승인 없는 진짜 조퇴는 여전히 "조퇴"로 잡혀야 함(그게 기능). 승인 있는 것만 면제.
+- **스키마 변경 최소화 가능**: 발생을 "저장 안 하고 매번 계산"하면 마이그레이션 불필요(EPERM 서버끄기 회피).
+  - 관리자 수동 조정(특별부여)을 남기려면 override 저장 필요 → 기존 `annualLeaveDays`를 override 용도로 재활용(스키마 무변경) 가능.
+- **동시성/성능**: 발생계산은 순수함수(입사일+오늘) → DB 부하 없음, N+1 없음.
+- **정확도 위험(법적)**: 근로기준법 연차는 ①1년 미만 월차 ②80% 출근율 ③3년+ 가산 등 **조건부**. 근태 데이터까지 반영하면 정확하나 복잡. 간소화 수준을 사장님이 정해야 함(아래 결정사항).
 
-## 결론 (계획 시 고려사항)
-1. 스키마 무변경 — 새 type 값 3개 + LEAVE_TYPES 확장 + 조퇴 차감0.
-2. 신청·승인은 기존 흐름 재사용(폼 드롭다운·단일일 처리만 확장).
-3. 핵심 = `buildDayEntries` 등 판정부에 "승인 반차/조퇴면 지각·조퇴 면제 + 승인뱃지" 배선. 자동감지는 유지(무단 조퇴 잡기).
-4. 표시 4경로(DetailTable·MonthCalendar·records·dashboard) 대칭 반영.
-5. 연차정산 회귀 없는지(차감값) 실검증 필수.
-6. 규모 중간~큼(약 8~10파일) — 논리적 단위로 나눠 커밋.
+## 근로기준법 제60조 요약 (자동계산의 근거)
+- **1년 미만**: 1개월 개근 시 1일씩 발생 → 최대 11일.
+- **1년 이상 + 그 1년 80% 이상 출근**: 15일.
+- **3년 이상 계속근로**: 최초 1년 넘는 매 2년마다 1일 가산 → 3년차 16, 5년차 17 … **한도 25일**.
+- 발생 기준: **입사일 기준**이 원칙(회계연도 1/1 기준 갈음도 실무상 허용, 규칙 상이).
+
+## 결론 (계획 시 사장님 결정 필요 항목)
+1. **기준일**: 입사일 기준(법 원칙·단순) vs 회계연도(1/1) 기준(노무 편의).
+2. **정확도 수준**: 1년 미만 월차/80% 출근율/개근을 근태데이터로 정확히 vs 근속기간만으로 간소 근사.
+3. **수동 조정(override) 유지 여부**.
+4. **hireDate 미입력 직원 처리**: 기존값 유지 / 15 기본 / "입사일 입력 필요" 표시.
+5. **저장 vs 계산**: 스키마 무변경(계산 기반) 권장.
