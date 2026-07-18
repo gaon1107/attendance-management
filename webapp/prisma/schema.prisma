@@ -434,6 +434,9 @@ model SmsLog {
   detail    String?  // 실패 사유 등 (비밀 본문 저장 금지)
   createdAt DateTime @default(now())
 
-  @@index([companyId, kind, refId]) // 1회 제한 조회
-  @@index([companyId, createdAt])   // 회사별 발송량/기간 조회
+  // 1회 제한을 DB에서 원자적으로 보장(동시 클릭 이중발송·이중과금 차단).
+  //  · 발송 성공/진행중(pending)은 이 조합으로 1건만 존재 가능.
+  //  · 발송 실패 시엔 액션이 refId를 null로 바꿔 슬롯을 풀어 재시도를 허용한다(실패=과금 없음).
+  @@unique([companyId, kind, refId])
+  @@index([companyId, createdAt]) // 회사별 발송량/기간 조회
 }

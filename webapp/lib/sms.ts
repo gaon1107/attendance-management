@@ -95,6 +95,7 @@ export async function sendSms(opts: { to: string; text: string; subject?: string
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded; charset=euc-kr" },
       body: eucKrFormBody(params), // 이미 %인코딩된 ASCII 문자열
+      signal: AbortSignal.timeout(10000), // 아이원24 무응답 시 서버액션이 매달리지 않게 10초 제한
     });
     const buf = Buffer.from(await res.arrayBuffer());
     const respText = iconv.decode(buf, "euc-kr");
