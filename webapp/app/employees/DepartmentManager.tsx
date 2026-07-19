@@ -50,15 +50,24 @@ const empLabel = (e: Emp) => (e.employeeNo ? `${e.name} (${e.employeeNo})` : e.n
 // 부서별 결재설정 한 줄 — 부서장·상위부서·대결자 지정.
 function DeptApprovalRow({ dept, employees, departments }: { dept: Dept; employees: Emp[]; departments: Dept[] }) {
   const others = departments.filter((d) => d.id !== dept.id); // 자기 자신은 상위부서 후보에서 제외
+  // 현재 저장된 값(이름) — 저장 직후 select가 stale해도 여기서 진실을 보여준다.
+  const headName = employees.find((e) => e.id === dept.headUserId)?.name;
+  const parentName = departments.find((d) => d.id === dept.parentId)?.name;
+  const deputyName = employees.find((e) => e.id === dept.deputyUserId)?.name;
   return (
     <form
       action={saveDepartmentApproval}
       style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginTop: 8, paddingTop: 10, borderTop: "1px dashed var(--border)", width: "100%" }}
     >
       <input type="hidden" name="id" value={dept.id} />
+      <div style={{ width: "100%", fontSize: 12, color: "var(--text-sub)", marginBottom: 2 }}>
+        현재 저장: 부서장 <b style={{ color: headName ? "var(--text)" : undefined }}>{headName ?? "없음"}</b>
+        {" · "}상위부서 <b style={{ color: parentName ? "var(--text)" : undefined }}>{parentName ?? "없음"}</b>
+        {" · "}대결자 <b style={{ color: deputyName ? "var(--text)" : undefined }}>{deputyName ?? "없음"}</b>
+      </div>
       <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px" }}>
         <span style={{ fontSize: 11, color: "var(--text-sub)", fontWeight: 700 }}>부서장(1차 결재)</span>
-        <select name="headUserId" defaultValue={dept.headUserId ?? ""} style={selectStyle}>
+        <select key={`head-${dept.headUserId ?? ""}`} name="headUserId" defaultValue={dept.headUserId ?? ""} style={selectStyle}>
           <option value="">— 없음(관리자 폴백) —</option>
           {employees.map((e) => (
             <option key={e.id} value={e.id}>{empLabel(e)}</option>
@@ -67,7 +76,7 @@ function DeptApprovalRow({ dept, employees, departments }: { dept: Dept; employe
       </label>
       <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px" }}>
         <span style={{ fontSize: 11, color: "var(--text-sub)", fontWeight: 700 }}>상위부서(다음 결재)</span>
-        <select name="parentId" defaultValue={dept.parentId ?? ""} style={selectStyle}>
+        <select key={`parent-${dept.parentId ?? ""}`} name="parentId" defaultValue={dept.parentId ?? ""} style={selectStyle}>
           <option value="">— 없음(최상위) —</option>
           {others.map((d) => (
             <option key={d.id} value={d.id}>{d.name}</option>
@@ -76,7 +85,7 @@ function DeptApprovalRow({ dept, employees, departments }: { dept: Dept; employe
       </label>
       <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px" }}>
         <span style={{ fontSize: 11, color: "var(--text-sub)", fontWeight: 700 }}>대결자(부서장 부재 시)</span>
-        <select name="deputyUserId" defaultValue={dept.deputyUserId ?? ""} style={selectStyle}>
+        <select key={`deputy-${dept.deputyUserId ?? ""}`} name="deputyUserId" defaultValue={dept.deputyUserId ?? ""} style={selectStyle}>
           <option value="">— 없음 —</option>
           {employees.map((e) => (
             <option key={e.id} value={e.id}>{empLabel(e)}</option>
