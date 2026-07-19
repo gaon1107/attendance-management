@@ -88,13 +88,14 @@ export async function approveLeave(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
   const id = String(formData.get("id") ?? "");
+  const comment = String(formData.get("comment") ?? "").trim().slice(0, 500) || undefined;
   const lv = await prisma.leaveRequest.findFirst({ where: { id, companyId: me.companyId, status: "pending" } });
   if (!lv) return;
-  const result = await advanceApproval(me, "leave", lv.id, "approve");
+  const result = await advanceApproval(me, "leave", lv.id, "approve", comment);
   if (result === "denied") return;
   if (result === "approved") {
-    // status:"pending" 가드 → 동시/재시도에도 한 번만 확정(멱등).
-    await prisma.leaveRequest.updateMany({ where: { id: lv.id, companyId: me.companyId, status: "pending" }, data: { status: "approved", decidedAt: new Date() } });
+    // status:"pending" 가드 → 동시/재시도에도 한 번만 확정(멱등). 최종 결정사유·처리자를 원본에 미러(신청자 표시용).
+    await prisma.leaveRequest.updateMany({ where: { id: lv.id, companyId: me.companyId, status: "pending" }, data: { status: "approved", decidedAt: new Date(), decisionComment: comment ?? null, decidedById: me.id } });
   }
   // "advanced" → 다음 결재자 대기, 원본은 pending 유지
   revalidatePath("/leave/approvals");
@@ -107,11 +108,12 @@ export async function rejectLeave(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
   const id = String(formData.get("id") ?? "");
+  const comment = String(formData.get("comment") ?? "").trim().slice(0, 500) || undefined;
   const lv = await prisma.leaveRequest.findFirst({ where: { id, companyId: me.companyId, status: "pending" } });
   if (!lv) return;
-  const result = await advanceApproval(me, "leave", lv.id, "reject");
+  const result = await advanceApproval(me, "leave", lv.id, "reject", comment);
   if (result === "denied") return;
-  await prisma.leaveRequest.updateMany({ where: { id: lv.id, companyId: me.companyId, status: "pending" }, data: { status: "rejected", decidedAt: new Date() } });
+  await prisma.leaveRequest.updateMany({ where: { id: lv.id, companyId: me.companyId, status: "pending" }, data: { status: "rejected", decidedAt: new Date(), decisionComment: comment ?? null, decidedById: me.id } });
   revalidatePath("/leave/approvals");
   revalidatePath("/leave");
   revalidatePath("/approvals");

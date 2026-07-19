@@ -66,10 +66,11 @@ export async function approveCorrection(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
   const id = String(formData.get("id") ?? "");
+  const comment = String(formData.get("comment") ?? "").trim().slice(0, 500) || undefined;
   const c = await prisma.attendanceCorrection.findFirst({ where: { id, companyId: me.companyId, status: "pending" } });
   if (!c) return;
 
-  const result = await advanceApproval(me, "correction", c.id, "approve");
+  const result = await advanceApproval(me, "correction", c.id, "approve", comment);
   if (result === "denied") return;
   if (result !== "approved") {
     // "advanced" → 다음 결재자 대기. 기록 반영·상태 변경 없음.
@@ -92,7 +93,7 @@ export async function approveCorrection(formData: FormData): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const claim = await tx.attendanceCorrection.updateMany({
       where: { id: c.id, companyId: me.companyId, status: "pending" },
-      data: { status: "approved", decidedAt: new Date() },
+      data: { status: "approved", decidedAt: new Date(), decisionComment: comment ?? null, decidedById: me.id },
     });
     if (claim.count !== 1) return; // 이미 다른 결재자가 확정 → 기록 반영 생략
 
@@ -126,11 +127,12 @@ export async function rejectCorrection(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
   const id = String(formData.get("id") ?? "");
+  const comment = String(formData.get("comment") ?? "").trim().slice(0, 500) || undefined;
   const c = await prisma.attendanceCorrection.findFirst({ where: { id, companyId: me.companyId, status: "pending" } });
   if (!c) return;
-  const result = await advanceApproval(me, "correction", c.id, "reject");
+  const result = await advanceApproval(me, "correction", c.id, "reject", comment);
   if (result === "denied") return;
-  await prisma.attendanceCorrection.updateMany({ where: { id: c.id, companyId: me.companyId, status: "pending" }, data: { status: "rejected", decidedAt: new Date() } });
+  await prisma.attendanceCorrection.updateMany({ where: { id: c.id, companyId: me.companyId, status: "pending" }, data: { status: "rejected", decidedAt: new Date(), decisionComment: comment ?? null, decidedById: me.id } });
   revalidatePath("/corrections/approvals");
   revalidatePath("/corrections");
   revalidatePath("/approvals");

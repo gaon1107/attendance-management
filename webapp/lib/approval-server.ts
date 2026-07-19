@@ -55,12 +55,15 @@ export async function createApprovalStepsIfNeeded(
 export type AdvanceResult = "approved" | "rejected" | "advanced" | "denied";
 
 // 한 신청에 대해 현재 사용자가 승인/반려를 시도한다. 회사격리·권한(현재 단계 결재자 또는 관리자)을 강제한다.
+//  · comment: 결재자 결정 사유(선택). 이번에 처리하는 단계(들)에 저장한다. 미전달이면 기존과 동일(무영향).
 export async function advanceApproval(
   me: Me,
   requestType: RequestType,
   requestId: string,
   action: "approve" | "reject",
+  comment?: string,
 ): Promise<AdvanceResult> {
+  const note = comment && comment.trim() ? comment.trim() : null;
   const steps = await prisma.approvalStep.findMany({
     where: { companyId: me.companyId, requestType, requestId },
     orderBy: { stepOrder: "asc" },
@@ -91,21 +94,22 @@ export async function advanceApproval(
   const now = new Date();
 
   if (action === "reject") {
-    await prisma.approvalStep.update({ where: { id: cur.id }, data: { status: "rejected", decidedAt: now } });
+    await prisma.approvalStep.update({ where: { id: cur.id }, data: { status: "rejected", decidedAt: now, comment: note } });
     return "rejected";
   }
 
-  // 관리자 오버라이드: 남은 대기 단계 전부 승인 → 즉시 완료.
+  // 관리자 오버라이드: 남은 대기 단계 전부 승인 → 즉시 완료. 사유는 현재 단계에만 기록(나머지는 자동 일괄 승인 표시).
   if (me.role === "admin") {
     await prisma.approvalStep.updateMany({
       where: { companyId: me.companyId, requestType, requestId, status: "pending" },
       data: { status: "approved", decidedAt: now },
     });
+    if (note) await prisma.approvalStep.update({ where: { id: cur.id }, data: { comment: note } });
     return "approved";
   }
 
   // 부서장: 현재 단계만 승인 → 완료 여부 판정.
-  await prisma.approvalStep.update({ where: { id: cur.id }, data: { status: "approved", decidedAt: now } });
+  await prisma.approvalStep.update({ where: { id: cur.id }, data: { status: "approved", decidedAt: now, comment: note } });
   const updated = steps.map((s) => (s.id === cur.id ? { ...s, status: "approved" } : s));
   return isChainComplete(updated) ? "approved" : "advanced";
 }
@@ -262,4 +266,41 @@ export async function getApprovalProgressMap(
     });
   }
   return map;
+}
+
+// 한 신청의 결재 단계별 이력(신청자 화면 타임라인용). deptline 회사에서만 단계가 존재.
+//  · single 회사는 단계가 없어 빈 배열 → 화면은 원본 decisionComment만 표시(폴백).
+export type ApprovalHistoryStep = {
+  stepOrder: number;
+  approverName: string;       // 결재자 이름(못 찾으면 "결재자")
+  status: string;             // pending | approved | rejected | skipped
+  decidedAt: Date | null;
+  comment: string | null;     // 이 단계 결재자의 사유
+};
+
+export async function getApprovalHistory(
+  companyId: string,
+  requestType: RequestType,
+  requestId: string,
+): Promise<ApprovalHistoryStep[]> {
+  const steps = await prisma.approvalStep.findMany({
+    where: { companyId, requestType, requestId },
+    orderBy: { stepOrder: "asc" },
+    select: { stepOrder: true, approverUserId: true, status: true, decidedAt: true, comment: true },
+  });
+  if (steps.length === 0) return [];
+
+  const names = await prisma.user.findMany({
+    where: { companyId, id: { in: [...new Set(steps.map((s) => s.approverUserId))] } },
+    select: { id: true, name: true },
+  });
+  const nameOf = new Map(names.map((u) => [u.id, u.name]));
+
+  return steps.map((s) => ({
+    stepOrder: s.stepOrder,
+    approverName: nameOf.get(s.approverUserId) ?? "결재자",
+    status: s.status,
+    decidedAt: s.decidedAt,
+    comment: s.comment,
+  }));
 }
