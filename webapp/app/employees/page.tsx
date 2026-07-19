@@ -37,7 +37,18 @@ export default async function EmployeesPage() {
     id: d.id,
     name: d.name,
     memberCount: employees.filter((e) => e.departmentId === d.id).length,
+    headUserId: d.headUserId,
+    parentId: d.parentId,
+    deputyUserId: d.deputyUserId,
   }));
+
+  // 회사 결재방식(결재선 설정용). 없으면 기본 single.
+  const approvalCompany = await prisma.company.findUnique({
+    where: { id: me.companyId },
+    select: { approvalMode: true, approvalStepCount: true },
+  });
+  // 결재자 후보(부서장·대결자) = 재직 직원 목록.
+  const empOptions = employees.map((e) => ({ id: e.id, name: e.name, employeeNo: e.employeeNo }));
 
   // 아직 안 쓴(미만료) 초대 링크
   const invites = await prisma.invite.findMany({
@@ -111,7 +122,12 @@ export default async function EmployeesPage() {
       <PendingResetRequests requests={resetReqData} />
 
       {/* 부서 관리 */}
-      <DepartmentManager departments={deptData} />
+      <DepartmentManager
+        departments={deptData}
+        employees={empOptions}
+        approvalMode={approvalCompany?.approvalMode ?? "single"}
+        approvalStepCount={approvalCompany?.approvalStepCount ?? 1}
+      />
 
       {/* 직원 초대 (링크 방식 — 직원이 스스로 가입) */}
       <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 16 }}>
