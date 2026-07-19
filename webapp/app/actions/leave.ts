@@ -93,7 +93,8 @@ export async function approveLeave(formData: FormData): Promise<void> {
   const result = await advanceApproval(me, "leave", lv.id, "approve");
   if (result === "denied") return;
   if (result === "approved") {
-    await prisma.leaveRequest.update({ where: { id: lv.id }, data: { status: "approved", decidedAt: new Date() } });
+    // status:"pending" 가드 → 동시/재시도에도 한 번만 확정(멱등).
+    await prisma.leaveRequest.updateMany({ where: { id: lv.id, companyId: me.companyId, status: "pending" }, data: { status: "approved", decidedAt: new Date() } });
   }
   // "advanced" → 다음 결재자 대기, 원본은 pending 유지
   revalidatePath("/leave/approvals");
@@ -110,7 +111,7 @@ export async function rejectLeave(formData: FormData): Promise<void> {
   if (!lv) return;
   const result = await advanceApproval(me, "leave", lv.id, "reject");
   if (result === "denied") return;
-  await prisma.leaveRequest.update({ where: { id: lv.id }, data: { status: "rejected", decidedAt: new Date() } });
+  await prisma.leaveRequest.updateMany({ where: { id: lv.id, companyId: me.companyId, status: "pending" }, data: { status: "rejected", decidedAt: new Date() } });
   revalidatePath("/leave/approvals");
   revalidatePath("/leave");
   revalidatePath("/approvals");

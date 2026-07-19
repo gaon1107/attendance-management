@@ -83,40 +83,38 @@ export async function approveCorrection(formData: FormData): Promise<void> {
   // 그 날짜 범위 [자정, 다음날 자정)
   const dayStart = c.targetDate;
   const dayEnd = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate() + 1);
-
-  // 그 날 출근 기록(가장 이른 것) 찾기
-  const existing = await prisma.attendance.findFirst({
-    where: { userId: c.userId, companyId: c.companyId, clockIn: { gte: dayStart, lt: dayEnd } },
-    orderBy: { clockIn: "asc" },
-  });
-
   const newIn = c.requestedIn ? hmToDate(dayStart, c.requestedIn) : null;
   const newOut = c.requestedOut ? hmToDate(dayStart, c.requestedOut) : null;
 
-  if (existing) {
-    // 기존 기록 수정: 입력된 값만 반영(안 준 값은 그대로).
-    await prisma.attendance.update({
-      where: { id: existing.id },
-      data: {
-        ...(newIn ? { clockIn: newIn } : {}),
-        ...(newOut ? { clockOut: newOut } : {}),
-      },
+  // 상태 선점 + 기록 반영을 한 트랜잭션으로 원자화 →
+  //  ① 동시 최종승인/재시도에도 status:"pending" 가드로 정확히 1회만 반영(출근레코드 이중 생성 방지)
+  //  ② 반영 도중 실패 시 전체 롤백(status는 pending으로 남아 재시도 가능)
+  await prisma.$transaction(async (tx) => {
+    const claim = await tx.attendanceCorrection.updateMany({
+      where: { id: c.id, companyId: me.companyId, status: "pending" },
+      data: { status: "approved", decidedAt: new Date() },
     });
-  } else if (newIn) {
-    // 기록이 없던 날 = 새로 만든다(출근 시각이 있어야 만들 수 있음).
-    await prisma.attendance.create({
-      data: {
-        userId: c.userId,
-        companyId: c.companyId,
-        clockIn: newIn,
-        clockOut: newOut,
-        workMode: "office",
-      },
-    });
-  }
-  // (기록도 없고 출근 시각도 안 준 경우는 반영할 대상이 없어 상태만 승인 처리)
+    if (claim.count !== 1) return; // 이미 다른 결재자가 확정 → 기록 반영 생략
 
-  await prisma.attendanceCorrection.update({ where: { id: c.id }, data: { status: "approved", decidedAt: new Date() } });
+    const existing = await tx.attendance.findFirst({
+      where: { userId: c.userId, companyId: c.companyId, clockIn: { gte: dayStart, lt: dayEnd } },
+      orderBy: { clockIn: "asc" },
+    });
+    if (existing) {
+      // 기존 기록 수정: 입력된 값만 반영(안 준 값은 그대로).
+      await tx.attendance.update({
+        where: { id: existing.id },
+        data: { ...(newIn ? { clockIn: newIn } : {}), ...(newOut ? { clockOut: newOut } : {}) },
+      });
+    } else if (newIn) {
+      // 기록이 없던 날 = 새로 만든다(출근 시각이 있어야 만들 수 있음).
+      await tx.attendance.create({
+        data: { userId: c.userId, companyId: c.companyId, clockIn: newIn, clockOut: newOut, workMode: "office" },
+      });
+    }
+    // (기록도 없고 출근 시각도 안 준 경우는 반영할 대상이 없어 상태만 승인 처리)
+  });
+
   revalidatePath("/corrections/approvals");
   revalidatePath("/corrections");
   revalidatePath("/records");
@@ -132,7 +130,7 @@ export async function rejectCorrection(formData: FormData): Promise<void> {
   if (!c) return;
   const result = await advanceApproval(me, "correction", c.id, "reject");
   if (result === "denied") return;
-  await prisma.attendanceCorrection.update({ where: { id: c.id }, data: { status: "rejected", decidedAt: new Date() } });
+  await prisma.attendanceCorrection.updateMany({ where: { id: c.id, companyId: me.companyId, status: "pending" }, data: { status: "rejected", decidedAt: new Date() } });
   revalidatePath("/corrections/approvals");
   revalidatePath("/corrections");
   revalidatePath("/approvals");

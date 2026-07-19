@@ -2,7 +2,7 @@
 //  · 순수 계산은 lib/approval.ts, 여기선 DB 접근(회사격리 필수).
 //  · 설계: docs/04_architecture/결재선_설계.md
 import { prisma } from "@/lib/db";
-import { buildApprovalChain, nextPendingStep, isChainComplete, type DeptNode } from "@/lib/approval";
+import { buildApprovalChain, nextPendingStep, isChainComplete, isChainRejected, type DeptNode } from "@/lib/approval";
 
 export type RequestType = "leave" | "correction";
 
@@ -71,8 +71,17 @@ export async function advanceApproval(
     return action === "approve" ? "approved" : "rejected";
   }
 
+  // 이미 반려된 단계가 있으면 결과는 '반려'로 확정됨. 뒷 단계가 pending이어도(반려는 현재 단계만 마킹)
+  // 결과는 바뀌지 않으므로, 부분 실패 후 재시도 시 원본을 반려 확정하도록 그대로 반환한다(멱등 복구).
+  if (isChainRejected(steps)) return "rejected";
+
   const cur = nextPendingStep(steps);
-  if (!cur) return "denied"; // 이미 완료/반려된 체인
+  if (!cur) {
+    // 대기 단계 없음 + 반려 없음 = 전 단계 승인 완료. 부분 실패(원본 status 반영 실패) 후
+    // 재시도 시 원본을 승인 확정할 수 있도록 그대로 돌려준다(멱등 복구).
+    if (isChainComplete(steps)) return "approved";
+    return "denied";
+  }
 
   // 권한: 현재 단계 결재자 본인 또는 관리자(오버라이드).
   const canAct = me.role === "admin" || cur.approverUserId === me.id;
