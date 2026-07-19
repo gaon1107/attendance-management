@@ -35,7 +35,7 @@ export default async function LeaveSummaryPage({
 
   const employees = await prisma.user.findMany({
     where: { companyId: me.companyId, role: "employee", deactivatedAt: null },
-    select: { id: true, name: true, hireDate: true, annualLeaveOverride: true, department: { select: { name: true } } },
+    select: { id: true, name: true, employeeNo: true, hireDate: true, annualLeaveOverride: true, department: { select: { name: true } } },
     orderBy: { createdAt: "asc" },
   });
 
@@ -61,6 +61,7 @@ export default async function LeaveSummaryPage({
     return {
       id: e.id,
       name: e.name,
+      employeeNo: e.employeeNo,
       dept: e.department?.name ?? "미배정",
       hireDate: e.hireDate ? toISODate(e.hireDate) : "",
       granted,

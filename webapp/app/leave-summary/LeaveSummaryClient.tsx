@@ -9,6 +9,7 @@ import { queryTerms, matchesTerms } from "@/lib/search";
 export type LeaveSummaryRow = {
   id: string;
   name: string;
+  employeeNo: string | null;
   dept: string;
   hireDate: string;
   granted: number | null; // 과거 연도는 발생 이력이 없어 null("—")
@@ -41,7 +42,7 @@ export function LeaveSummaryClient({
   const shown = useMemo(() => {
     const terms = queryTerms(q);
     if (!terms.length) return rows;
-    return rows.filter((r) => matchesTerms(`${r.name} ${r.dept}`.toLowerCase(), terms));
+    return rows.filter((r) => matchesTerms(`${r.name} ${r.employeeNo ?? ""} ${r.dept}`.toLowerCase(), terms));
   }, [rows, q]);
 
   // KPI는 "화면에 보이는 직원" 기준(검색 반영). 과거 연도는 발생·잔여가 "—"(사용만 의미).
@@ -116,6 +117,7 @@ export function LeaveSummaryClient({
             <thead>
               <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                 <th style={th}>이름</th>
+                <th style={th}>사번</th>
                 <th style={th}>부서</th>
                 <th style={th}>입사일</th>
                 <th style={{ ...th, textAlign: "right" }}>발생</th>
@@ -126,7 +128,7 @@ export function LeaveSummaryClient({
             <tbody>
               {shown.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: "28px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={7} style={{ padding: "28px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {rows.length === 0 ? "재직 중인 직원이 없습니다." : "검색 결과가 없습니다."}
                   </td>
                 </tr>
@@ -134,6 +136,7 @@ export function LeaveSummaryClient({
                 shown.map((r) => (
                   <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                     <td style={{ ...td, fontWeight: 700 }}>{r.name}</td>
+                    <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.employeeNo || "—"}</td>
                     <td style={{ ...td, color: "var(--text-sub)" }}>{r.dept}</td>
                     <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.hireDate || "—"}</td>
                     <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{cell(r.granted)}</td>
