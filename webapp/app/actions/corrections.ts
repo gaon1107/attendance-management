@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { parseYmd } from "@/lib/leave";
 import { isValidHm, hmToDate } from "@/lib/corrections";
+import { createApprovalStepsIfNeeded, advanceApproval, deleteApprovalSteps } from "@/lib/approval-server";
 
 // 직원: 근태 정정 요청. 날짜 + (출근/퇴근 중 하나 이상) + 사유.
 export async function requestCorrection(
@@ -28,7 +29,7 @@ export async function requestCorrection(
   if (inRaw && outRaw && outRaw <= inRaw) return { error: "퇴근 시각이 출근 시각보다 빠르거나 같습니다." };
   if (!reason) return { error: "정정 사유를 입력해주세요." };
 
-  await prisma.attendanceCorrection.create({
+  const created = await prisma.attendanceCorrection.create({
     data: {
       companyId: me.companyId,
       userId: me.id,
@@ -38,6 +39,9 @@ export async function requestCorrection(
       reason,
     },
   });
+  // 부서장 결재선을 켠 회사면 결재 단계 생성(아니면 관리자 단일 승인).
+  const company = await prisma.company.findUnique({ where: { id: me.companyId }, select: { approvalMode: true, approvalStepCount: true } });
+  await createApprovalStepsIfNeeded(company, me.companyId, me.id, me.departmentId, "correction", created.id);
 
   revalidatePath("/corrections");
   return { ok: true };
@@ -50,18 +54,32 @@ export async function cancelCorrection(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   const c = await prisma.attendanceCorrection.findFirst({ where: { id, userId: me.id, status: "pending" } });
   if (!c) return;
+  await deleteApprovalSteps(me.companyId, "correction", c.id); // 결재 단계도 함께 정리
   await prisma.attendanceCorrection.delete({ where: { id: c.id } });
   revalidatePath("/corrections");
+  revalidatePath("/approvals");
 }
 
-// 관리자: 정정 승인 → 그 날짜의 출퇴근 기록에 반영. 회사 격리.
+// 정정 승인 → 체인 완료 시 그 날짜의 출퇴근 기록에 반영. 회사 격리.
+//  · 단일 승인=관리자만, 부서장 결재선=현재 단계 결재자(또는 관리자). 기록 반영은 최종 승인 1회만.
 export async function approveCorrection(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
-  if (!me || me.role !== "admin") return;
+  if (!me) return;
   const id = String(formData.get("id") ?? "");
   const c = await prisma.attendanceCorrection.findFirst({ where: { id, companyId: me.companyId, status: "pending" } });
   if (!c) return;
 
+  const result = await advanceApproval(me, "correction", c.id, "approve");
+  if (result === "denied") return;
+  if (result !== "approved") {
+    // "advanced" → 다음 결재자 대기. 기록 반영·상태 변경 없음.
+    revalidatePath("/corrections/approvals");
+    revalidatePath("/corrections");
+    revalidatePath("/approvals");
+    return;
+  }
+
+  // 여기부터는 체인 완료(최종 승인) → 실제 기록 반영.
   // 그 날짜 범위 [자정, 다음날 자정)
   const dayStart = c.targetDate;
   const dayEnd = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate() + 1);
@@ -102,16 +120,20 @@ export async function approveCorrection(formData: FormData): Promise<void> {
   revalidatePath("/corrections/approvals");
   revalidatePath("/corrections");
   revalidatePath("/records");
+  revalidatePath("/approvals");
 }
 
-// 관리자: 정정 반려.
+// 정정 반려 — 어느 단계든 반려하면 반려 확정. 회사 격리.
 export async function rejectCorrection(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
-  if (!me || me.role !== "admin") return;
+  if (!me) return;
   const id = String(formData.get("id") ?? "");
   const c = await prisma.attendanceCorrection.findFirst({ where: { id, companyId: me.companyId, status: "pending" } });
   if (!c) return;
+  const result = await advanceApproval(me, "correction", c.id, "reject");
+  if (result === "denied") return;
   await prisma.attendanceCorrection.update({ where: { id: c.id }, data: { status: "rejected", decidedAt: new Date() } });
   revalidatePath("/corrections/approvals");
   revalidatePath("/corrections");
+  revalidatePath("/approvals");
 }

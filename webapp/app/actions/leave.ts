@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { effectiveWorkDays } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
 import { REQUESTABLE_TYPES, isSingleDayLeave, leaveTypeDeducts, computeLeaveDays, parseYmd, usedLeaveDays, annualLeaveGranted } from "@/lib/leave";
+import { createApprovalStepsIfNeeded, advanceApproval, deleteApprovalSteps } from "@/lib/approval-server";
 
 // 직원: 휴가 신청. 종류·기간을 받아 근무요일 기준 사용일수를 계산하고 대기 상태로 만든다.
 export async function requestLeave(
@@ -29,8 +30,8 @@ export async function requestLeave(
 
   const reason = String(formData.get("reason") ?? "").trim() || null;
 
-  // 내 근무요일(회사 기본 또는 개인 예외)
-  const company = await prisma.company.findUnique({ where: { id: me.companyId }, select: { workDays: true, holidayAutoOn: true } });
+  // 내 근무요일(회사 기본 또는 개인 예외) + 결재방식
+  const company = await prisma.company.findUnique({ where: { id: me.companyId }, select: { workDays: true, holidayAutoOn: true, approvalMode: true, approvalStepCount: true } });
   const wd = effectiveWorkDays(me.workDays, company?.workDays);
   // 신청 기간의 쉬는 날(공휴일·회사휴무일)은 연차 차감에서 제외한다.
   const offDays = await loadOffDays(me.companyId, company?.holidayAutoOn ?? true, start, end);
@@ -58,9 +59,11 @@ export async function requestLeave(
     }
   }
 
-  await prisma.leaveRequest.create({
+  const created = await prisma.leaveRequest.create({
     data: { companyId: me.companyId, userId: me.id, type, startDate: start, endDate: end, days, reason },
   });
+  // 부서장 결재선을 켠 회사면 결재 단계를 생성(비결재선/결재자 없음이면 만들지 않음=관리자 단일 승인).
+  await createApprovalStepsIfNeeded(company, me.companyId, me.id, me.departmentId, "leave", created.id);
 
   revalidatePath("/leave");
   return { ok: true };
@@ -73,32 +76,44 @@ export async function cancelLeave(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   const lv = await prisma.leaveRequest.findFirst({ where: { id, userId: me.id, status: "pending" } });
   if (!lv) return;
+  await deleteApprovalSteps(me.companyId, "leave", lv.id); // 결재 단계도 함께 정리(고아 방지)
   await prisma.leaveRequest.delete({ where: { id: lv.id } });
   revalidatePath("/leave");
+  revalidatePath("/approvals");
 }
 
-// 관리자: 휴가 승인. 반드시 내 회사 신청만(회사 격리).
+// 휴가 승인 — 회사 격리. 단일 승인이면 관리자만, 부서장 결재선이면 현재 단계 결재자(또는 관리자 오버라이드).
+//  · 전 단계가 끝나 체인이 완료될 때만 원본 status를 approved로 바꾼다(그전엔 pending 유지 → 소비처 회귀 0).
 export async function approveLeave(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
-  if (!me || me.role !== "admin") return;
+  if (!me) return;
   const id = String(formData.get("id") ?? "");
   const lv = await prisma.leaveRequest.findFirst({ where: { id, companyId: me.companyId, status: "pending" } });
   if (!lv) return;
-  await prisma.leaveRequest.update({ where: { id: lv.id }, data: { status: "approved", decidedAt: new Date() } });
+  const result = await advanceApproval(me, "leave", lv.id, "approve");
+  if (result === "denied") return;
+  if (result === "approved") {
+    await prisma.leaveRequest.update({ where: { id: lv.id }, data: { status: "approved", decidedAt: new Date() } });
+  }
+  // "advanced" → 다음 결재자 대기, 원본은 pending 유지
   revalidatePath("/leave/approvals");
   revalidatePath("/leave");
+  revalidatePath("/approvals");
 }
 
-// 관리자: 휴가 반려.
+// 휴가 반려 — 회사 격리. 어느 단계든 반려하면 원본을 반려 확정한다.
 export async function rejectLeave(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
-  if (!me || me.role !== "admin") return;
+  if (!me) return;
   const id = String(formData.get("id") ?? "");
   const lv = await prisma.leaveRequest.findFirst({ where: { id, companyId: me.companyId, status: "pending" } });
   if (!lv) return;
+  const result = await advanceApproval(me, "leave", lv.id, "reject");
+  if (result === "denied") return;
   await prisma.leaveRequest.update({ where: { id: lv.id }, data: { status: "rejected", decidedAt: new Date() } });
   revalidatePath("/leave/approvals");
   revalidatePath("/leave");
+  revalidatePath("/approvals");
 }
 
 // 관리자: 직원 연차 수동조정(override) 설정/해제(직원 상세). 회사 격리.

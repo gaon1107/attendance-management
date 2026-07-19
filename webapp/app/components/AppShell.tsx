@@ -6,7 +6,7 @@ import { Sidebar, type NavKey } from "@/app/components/Sidebar";
 import { LogoutButton } from "@/app/components/LogoutButton";
 import { NotificationBell } from "@/app/components/NotificationBell";
 
-type ShellUser = { name: string; role: string; companyId?: string; company: { name: string; logoName?: string | null } };
+type ShellUser = { name: string; role: string; companyId?: string; company: { name: string; logoName?: string | null; approvalMode?: string | null } };
 
 export function AppShell({
   user,

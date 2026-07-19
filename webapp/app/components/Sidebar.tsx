@@ -5,7 +5,7 @@ import Link from "next/link";
 type NavUser = {
   name: string;
   role: string;
-  company: { name: string; logoName?: string | null };
+  company: { name: string; logoName?: string | null; approvalMode?: string | null };
 };
 
 // 사이드바에서 현재 화면을 표시하기 위한 키.
@@ -17,6 +17,7 @@ export type NavKey =
   | "live" // 실시간 현황판(사무실 지도·근무 중·접속) — 관리자
   | "schedule" // 일정 캘린더(공휴일·휴무일·회사 일정) — 관리자
   | "shifts" // 근무표(교대 배정) — 관리자
+  | "approvals" // 결재함(내 차례 결재) — 부서장 결재선 켠 회사만
   | "account"; // 계정 설정 — 사이드바 메뉴엔 없고(프로필 아바타로 진입) 하이라이트용 키
 
 type Item = { key: NavKey; href: string; label: string; icon: string };
@@ -44,6 +45,7 @@ const ICON: Record<NavKey, string> = {
   live: '<path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>',
   schedule: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><rect x="7" y="13" width="4" height="4" rx="0.5"/>',
   shifts: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 4v16M15 4v16"/>',
+  approvals: '<path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/>',
 };
 
 const LABEL: Record<NavKey, string> = {
@@ -68,6 +70,7 @@ const LABEL: Record<NavKey, string> = {
   live: "현황판",
   schedule: "일정",
   shifts: "근무표",
+  approvals: "결재함",
 };
 
 // 화면 키 → 실제 경로(키와 경로가 다른 항목만 지정, 없으면 "/키")
@@ -86,17 +89,19 @@ function toItems(keys: NavKey[]): Item[] {
 
 // 관리자 메뉴는 "회사관리"(직원들 것) 한 묶음. 관리자는 본인 출퇴근을 하지 않으므로 "내근태"(출퇴근·인증방식) 묶음은 제공하지 않는다.
 // 직원 메뉴는 전부 본인 것이라 한 묶음(제목 없음).
-function groupsFor(role: string): NavGroup[] {
+function groupsFor(role: string, deptline: boolean): NavGroup[] {
   if (role === "admin") {
-    return [
-      { caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(["dashboard", "notifications", "live", "employees", "records", "shifts", "schedule", "reports", "leave-approvals", "leave-summary", "biometrics", "security", "company", "settings"]) },
-    ];
+    // 결재선 켠 회사만 [결재함](관리자 오버라이드용)을 휴가승인 옆에 추가.
+    const adminKeys: NavKey[] = ["dashboard", "notifications", "live", "employees", "records", "shifts", "schedule", "reports", "leave-approvals", ...(deptline ? (["approvals"] as NavKey[]) : []), "leave-summary", "biometrics", "security", "company", "settings"];
+    return [{ caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(adminKeys) }];
   }
-  return [{ caption: "", items: toItems(["attendance", "my-records", "schedule", "leave", "corrections", "auth-method"]) }];
+  // 직원: 결재선 켠 회사면 [결재함](부서장이 자기 차례 승인)을 추가.
+  const empKeys: NavKey[] = ["attendance", "my-records", "schedule", "leave", "corrections", ...(deptline ? (["approvals"] as NavKey[]) : []), "auth-method"];
+  return [{ caption: "", items: toItems(empKeys) }];
 }
 
 export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
-  const groups = groupsFor(user.role);
+  const groups = groupsFor(user.role, user.company.approvalMode === "deptline");
   const initial = user.name.slice(0, 1);
 
   return (
