@@ -1,6 +1,7 @@
 // 결재선(부서장 자동 결재선) DB 로직 — 결재자 해석·단계 진행·결재함 조회.
 //  · 순수 계산은 lib/approval.ts, 여기선 DB 접근(회사격리 필수).
 //  · 설계: docs/04_architecture/결재선_설계.md
+import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { buildApprovalChain, nextPendingStep, isChainComplete, isChainRejected, type DeptNode } from "@/lib/approval";
 
@@ -184,4 +185,81 @@ export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
     }
   }
   return items;
+}
+
+// 내가 지금 결재할 차례인 대기 건수(사이드바 배지·알림용). 배지용이라 원본 레코드·user join 없이
+// 단계만으로 경량 집계(건수 K와 무관하게 최대 ~4쿼리). 결재자 아니면 첫 쿼리 빈 결과로 즉시 0.
+// React cache() → 한 요청 내(사이드바가 여러 번 읽어도) 실제 집계 1회.
+export const countMyPendingApprovals = cache(async (companyId: string, userId: string): Promise<number> => {
+  const mySteps = await prisma.approvalStep.findMany({
+    where: { companyId, approverUserId: userId, status: "pending" },
+    select: { requestType: true, requestId: true, stepOrder: true },
+  });
+  if (mySteps.length === 0) return 0;
+
+  const reqIds = [...new Set(mySteps.map((s) => s.requestId))];
+  const siblings = await prisma.approvalStep.findMany({
+    where: { companyId, requestId: { in: reqIds } },
+    select: { requestType: true, requestId: true, stepOrder: true, status: true, approverUserId: true },
+  });
+  // 원본이 아직 pending인 신청만(반려·완료된 건 제외). 타입별 id 분리.
+  const leaveIds = mySteps.filter((s) => s.requestType === "leave").map((s) => s.requestId);
+  const corrIds = mySteps.filter((s) => s.requestType === "correction").map((s) => s.requestId);
+  const [pendLeaves, pendCorrs] = await Promise.all([
+    leaveIds.length ? prisma.leaveRequest.findMany({ where: { id: { in: leaveIds }, companyId, status: "pending" }, select: { id: true } }) : Promise.resolve([]),
+    corrIds.length ? prisma.attendanceCorrection.findMany({ where: { id: { in: corrIds }, companyId, status: "pending" }, select: { id: true } }) : Promise.resolve([]),
+  ]);
+  const pendingReqIds = new Set([...pendLeaves.map((x) => x.id), ...pendCorrs.map((x) => x.id)]);
+
+  let n = 0;
+  for (const my of mySteps) {
+    if (!pendingReqIds.has(my.requestId)) continue;
+    const sib = siblings.filter((s) => s.requestType === my.requestType && s.requestId === my.requestId);
+    const cur = nextPendingStep(sib);
+    if (cur && cur.stepOrder === my.stepOrder && cur.approverUserId === userId) n++;
+  }
+  return n;
+});
+
+// 신청들의 결재 진행상황(진행표시용). requestId → {단계수·승인수·다음 결재자·반려 여부}.
+export type ApprovalProgress = { total: number; approvedCount: number; nextApproverName: string | null; rejected: boolean };
+
+export async function getApprovalProgressMap(
+  companyId: string,
+  requestType: RequestType,
+  requestIds: string[],
+): Promise<Map<string, ApprovalProgress>> {
+  const map = new Map<string, ApprovalProgress>();
+  if (requestIds.length === 0) return map;
+
+  const steps = await prisma.approvalStep.findMany({
+    where: { companyId, requestType, requestId: { in: requestIds } },
+    orderBy: { stepOrder: "asc" },
+    select: { requestId: true, stepOrder: true, status: true, approverUserId: true },
+  });
+  if (steps.length === 0) return map;
+
+  // 다음 결재자 이름 해석(한 번에)
+  const names = await prisma.user.findMany({
+    where: { companyId, id: { in: [...new Set(steps.map((s) => s.approverUserId))] } },
+    select: { id: true, name: true },
+  });
+  const nameOf = new Map(names.map((u) => [u.id, u.name]));
+
+  const byReq = new Map<string, typeof steps>();
+  for (const s of steps) {
+    const arr = byReq.get(s.requestId) ?? [];
+    arr.push(s);
+    byReq.set(s.requestId, arr);
+  }
+  for (const [rid, ss] of byReq) {
+    const next = ss.find((s) => s.status === "pending");
+    map.set(rid, {
+      total: ss.length,
+      approvedCount: ss.filter((s) => s.status === "approved").length,
+      nextApproverName: next ? (nameOf.get(next.approverUserId) ?? null) : null,
+      rejected: ss.some((s) => s.status === "rejected"),
+    });
+  }
+  return map;
 }

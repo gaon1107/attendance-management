@@ -19,6 +19,7 @@ export type LeaveRow = {
   reason: string;
   status: string;
   statusLabel: string;
+  progress?: string; // 부서장 결재선 진행상황(대기 건에만). 예: "부서장 결재 1/2 · 다음 홍길동"
   search: string;
 };
 
@@ -101,7 +102,10 @@ export function LeaveApprovalsClient({
                     <td style={{ ...td, fontWeight: 700 }}>{r.typeLabel}</td>
                     <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.rangeLabel}</td>
                     <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{r.days}일</td>
-                    <td style={{ ...td, color: "var(--text-sub)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.reason || "—"}</td>
+                    <td style={{ ...td, color: "var(--text-sub)", maxWidth: 220 }}>
+                      <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.reason || "—"}</div>
+                      {r.progress && <div style={{ fontSize: 12, color: "var(--warning)", marginTop: 3, fontWeight: 700 }}>{r.progress}</div>}
+                    </td>
                     <td style={{ ...td, textAlign: "right" }}>
                       <div style={{ display: "inline-flex", gap: 8 }}>
                         <form action={approveLeave}>

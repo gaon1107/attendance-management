@@ -6,6 +6,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { LeaveApprovalsClient, type LeaveRow } from "./LeaveApprovalsClient";
 import { leaveTypeLabel, leaveStatusLabel } from "@/lib/leave";
 import { parseAnchor, toISODate } from "@/lib/period";
+import { getApprovalProgressMap } from "@/lib/approval-server";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
@@ -66,6 +67,18 @@ export default async function LeaveApprovalsPage({
     orderBy: { decidedAt: "desc" },
   });
 
+  // 부서장 결재선을 켠 회사면, 대기 건의 결재 진행상황을 함께 보여 관리자가 조기 승인하지 않도록 안내.
+  const progressMap =
+    me.company.approvalMode === "deptline"
+      ? await getApprovalProgressMap(me.companyId, "leave", pendingReqs.map((r) => r.id))
+      : new Map();
+  const progressLabel = (id: string): string | undefined => {
+    const p = progressMap.get(id);
+    if (!p) return undefined;
+    if (p.rejected) return "부서장 반려됨";
+    return `부서장 결재 ${p.approvedCount}/${p.total}${p.nextApproverName ? ` · 다음 ${p.nextApproverName}` : ""}`;
+  };
+
   const toRow = (r: (typeof pendingReqs)[number]): LeaveRow => {
     const typeLabel = leaveTypeLabel(r.type);
     const rl = rangeLabel(r.startDate, r.endDate);
@@ -82,6 +95,7 @@ export default async function LeaveApprovalsPage({
       reason,
       status: r.status,
       statusLabel,
+      progress: progressLabel(r.id),
       search: [r.user.name, r.user.employeeNo ?? "", typeLabel, rl, reason, statusLabel].join(" ").toLowerCase(),
     };
   };

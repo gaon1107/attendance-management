@@ -1,8 +1,11 @@
 // 공통 왼쪽 아이콘 사이드바 — 리뉴얼 디자인의 세로 네비게이션.
 // 링크 구성은 역할별(관리자/직원)로 나뉜다. 아이콘 레일 형태의 세로 네비게이션.
 import Link from "next/link";
+import { countMyPendingApprovals } from "@/lib/approval-server";
 
 type NavUser = {
+  id?: string;
+  companyId?: string;
   name: string;
   role: string;
   company: { name: string; logoName?: string | null; approvalMode?: string | null };
@@ -100,9 +103,12 @@ function groupsFor(role: string, deptline: boolean): NavGroup[] {
   return [{ caption: "", items: toItems(empKeys) }];
 }
 
-export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
-  const groups = groupsFor(user.role, user.company.approvalMode === "deptline");
+export async function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
+  const deptline = user.company.approvalMode === "deptline";
+  const groups = groupsFor(user.role, deptline);
   const initial = user.name.slice(0, 1);
+  // 결재선 켠 회사에서만 내 결재 대기 수를 배지로. 결재자 아니면 첫 쿼리에서 0(값싸다). single이면 조회 없음.
+  const approvalWaiting = deptline && user.companyId && user.id ? await countMyPendingApprovals(user.companyId, user.id) : 0;
 
   return (
     <aside
@@ -187,6 +193,7 @@ export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
                   key={it.key}
                   href={it.href}
                   style={{
+                    position: "relative",
                     width: 56,
                     height: 50,
                     borderRadius: 11,
@@ -207,6 +214,14 @@ export function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
                     }}
                   />
                   <span style={{ fontSize: 11, fontWeight: 700 }}>{it.label}</span>
+                  {/* 결재함: 내 결재 대기 건수 배지 */}
+                  {it.key === "approvals" && approvalWaiting > 0 && (
+                    <span
+                      style={{ position: "absolute", top: 4, right: 8, minWidth: 16, height: 16, padding: "0 4px", borderRadius: 8, background: "var(--danger)", color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}
+                    >
+                      {approvalWaiting}
+                    </span>
+                  )}
                 </Link>
               );
             })}

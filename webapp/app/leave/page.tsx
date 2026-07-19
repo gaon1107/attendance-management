@@ -6,6 +6,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { LeaveRequestForm } from "./LeaveRequestForm";
 import { cancelLeave } from "@/app/actions/leave";
 import { leaveTypeLabel, leaveStatusLabel, usedLeaveDays, annualLeaveGranted } from "@/lib/leave";
+import { getApprovalProgressMap, type ApprovalProgress } from "@/lib/approval-server";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
@@ -30,6 +31,12 @@ export default async function LeavePage() {
     where: { userId: me.id, companyId: me.companyId },
     orderBy: { createdAt: "desc" },
   });
+
+  // 부서장 결재선을 켠 회사면, 대기 중인 신청의 결재 진행상황을 함께 표시.
+  const progressMap: Map<string, ApprovalProgress> =
+    me.company.approvalMode === "deptline"
+      ? await getApprovalProgressMap(me.companyId, "leave", requests.filter((r) => r.status === "pending").map((r) => r.id))
+      : new Map();
 
   const used = usedLeaveDays(requests);
   const granted = annualLeaveGranted(me); // 입사일 기준 자동 발생(관리자 수동조정 우선)
@@ -103,6 +110,17 @@ export default async function LeavePage() {
                           <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.dot }} />
                           <span style={{ fontSize: 13, fontWeight: 700, color: s.color }}>{leaveStatusLabel(r.status)}</span>
                         </span>
+                        {(() => {
+                          const p = progressMap.get(r.id);
+                          if (!p) return null;
+                          if (p.rejected) return <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 4, fontWeight: 700 }}>부서장 반려 처리 중</div>;
+                          return (
+                            <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 4 }}>
+                              결재 {p.approvedCount}/{p.total} 승인
+                              {p.nextApproverName && <span> · 다음: <b>{p.nextApproverName}</b></span>}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td style={{ ...td, textAlign: "right" }}>
                         {r.status === "pending" && (

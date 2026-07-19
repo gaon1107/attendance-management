@@ -8,6 +8,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { CorrectionApprovalsClient, type CorrectionRow } from "./CorrectionApprovalsClient";
 import { correctionStatusLabel } from "@/lib/corrections";
 import { parseAnchor, toISODate } from "@/lib/period";
+import { getApprovalProgressMap } from "@/lib/approval-server";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" });
@@ -68,6 +69,17 @@ export default async function CorrectionApprovalsPage({
     orderBy: { decidedAt: "desc" },
   });
 
+  const progressMap =
+    me.company.approvalMode === "deptline"
+      ? await getApprovalProgressMap(me.companyId, "correction", pendingReqs.map((r) => r.id))
+      : new Map();
+  const progressLabel = (id: string): string | undefined => {
+    const p = progressMap.get(id);
+    if (!p) return undefined;
+    if (p.rejected) return "부서장 반려됨";
+    return `부서장 결재 ${p.approvedCount}/${p.total}${p.nextApproverName ? ` · 다음 ${p.nextApproverName}` : ""}`;
+  };
+
   const toRow = (r: (typeof pendingReqs)[number]): CorrectionRow => {
     const dateText = ymd(r.targetDate);
     const timeText = timeReq(r.requestedIn, r.requestedOut);
@@ -82,6 +94,7 @@ export default async function CorrectionApprovalsPage({
       reason: r.reason,
       status: r.status,
       statusLabel,
+      progress: progressLabel(r.id),
       search: [r.user.name, r.user.employeeNo ?? "", dateText, timeText, r.reason, statusLabel].join(" ").toLowerCase(),
     };
   };
