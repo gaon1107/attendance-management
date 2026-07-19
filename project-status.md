@@ -6,7 +6,7 @@
 
 ## ▶▶ 다음 세션 시작점 (여기부터 읽기) — 2026-07-19
 
-### 🚧 진행 중(대기업무): 교대근무(시프트) 지원 — Phase 3b까지 완료, 다음 = Phase 4(판정 연결·핵심)
+### 🚧 진행 중(대기업무): 교대근무(시프트) 지원 — Phase 4까지 완료(검수·수정 반영), 다음 = Phase 5(셀프수정)
 > 사무직 주간근무 MVP를 넘어 **교대근무 업체(공장·병원 등)** 지원을 추가하는 큰 신규 기능. 단계별로 진행 중.
 > **문서 먼저 읽기**: 기획서 [docs/02_prd/교대근무_기획서.md](docs/02_prd/교대근무_기획서.md) · 설계 [docs/04_architecture/교대근무_설계.md](docs/04_architecture/교대근무_설계.md)
 
@@ -19,8 +19,15 @@
 - **Phase 3a**(근무표 고정) `9d9cef7`: 신규 **[근무표] 화면 `/shifts`**(사이드바 메뉴 추가) — 고정 요일패턴 그리드(직원×요일→조), `actions/shift.ts` `saveFixedPattern`(트랜잭션 upsert). 미설정/순환은 안내문.
 - **Phase 3b**(근무표 순환) `3325b3e`: `/shifts` 순환 분기 = 실제 **[RotationClient]** 화면 — ①순환규칙(단위 매일/매주/매월·시작 기준일) ②미리보기 표(각 조가 이번/다음/다다음 단위에 몇 교대 — 순수함수 rotationShiftOrder/elapsedUnits 재사용) ③직원 조 배정(A/B/C·미배정). 순환 순서는 **표준 고정**(1→2→3, 대표님 결정) — 저장값 아닌 **shiftMode 기준**으로 계산(교대수 바꿔도 미리보기 정확). `saveRotation`(조 upsert로 id유지·교대수 축소시 초과조 FK안전 정리·직원배정·규칙 upsert, 단일 트랜잭션·회사격리·관리자검증). 검증: **순수함수·저장로직 15종 + isRealDate 8종 PASS**(임시회사, 실계정 무오염), tsc·eslint 0, code-reviewer **치명0**(중간3·경미2 반영: 미리보기 shiftMode기준·배정카운트 유효범위·anchorDate 실날짜검증·직원필터 role/재직·트랜잭션 try/catch).
 
-**🔜 다음 = Phase 4(핵심) → 5**
-- **Phase 4(핵심)**: **판정 연결** — `lib/shift-server.ts`(회사 컨텍스트 로더 + resolveShift[예외→고정/순환→휴무]) 신설 후, 근태현황·리포트·대시보드·결근·내근태(DetailTable)에서 **그날 조 기준 + 자정 넘김**으로 지각/조퇴/실근무/결근 계산. `lib/shift.ts` 순수함수 재사용. 비교대는 기존 `worktime.ts` 유지(하위호환).
+- **Phase 4**(판정 연결·핵심) `07b8a3f·821cfbb·ec2116a`: 교대제면 지각/조퇴/결근을 **그날 조 기준(자정 넘김)**으로 판정, 비교대면 기존 그대로(회귀 0).
+  - **4a**(토대) `07b8a3f`: `lib/shift.ts` 순수함수 `resolveShift`(예외→fixed/rotation→휴무)·`judgeByShift`·`dowOfISO` + `lib/shift-server.ts` `loadShiftContext`(교대제면 컨텍스트 Map 1회 로드, 비교대면 null). 화면 미연결.
+  - **4b**(중앙 허브) `821cfbb`: `buildDayEntries`에 선택적 `shiftResolver` → 직원상세·내근태 연결. 표시 컴포넌트 무수정.
+  - **4c**(인라인 3화면) `ec2116a`: 근태현황목록·리포트(결근)·대시보드(오늘 지각/조퇴/미출근).
+  - **검수 반영** `8fb2898`(code-reviewer 치명0, 중간2 수정): 교대 근무예정일 = 조배정(≠휴무) AND 근무요일 AND 쉬는날(공휴일·회사휴무일) 아님. 대표님 결정=근무요일+공휴일 결합. 이전엔 교대제가 offDays 무시(공휴일 결근 오판)·rotation 주말 결근 부풀음 → 해결.
+  - 검증: 4a 19종 + 4b 17종 + 수정 6종 실코드 임시라우트(검증후 삭제) + 실DB(뉴가온 rotation/하늘테크 비교대) 통합 + 5개 라우트 307. tsc·eslint 0.
+  - ⚠️ 알려진 한계: ①24h 공장은 [설정→근무요일]을 월~일로 둬야 주말도 근무로 잡힘. ②야간조는 근무시작 전에도 대시보드 "오늘 미출근"에 뜰 수 있음(기존 이른아침과 동일 성격). ③야간조가 자정 넘겨 지각출근하면 날짜귀속(출근일)이 익일로 잡혀 오판 가능(설계 A 한계, 드묾).
+
+**🔜 다음 = Phase 5**
 - **Phase 5**: 직원 셀프수정(미래만) + ShiftChangeLog 이력 + 알림센터(`lib/notifications.ts`)·되돌리기.
 - **별도(범위밖·백그라운드 등록)**: [설정]에서 교대 수 3→2 축소 시 잔존 ShiftGroup·RotationRule.orderCsv·직원 shiftGroupId 정리 = `saveWorkRules`(settings.ts) 소관. Phase 3b 미리보기 측은 이미 방어됨(shiftMode 기준).
 
