@@ -77,3 +77,72 @@ export function isEarlyLeaveByShift(clockOut: Date, dateISO: string, s: ShiftLit
     : atDate(dateISO, s.endTime).getTime();
   return clockOut.getTime() < plannedOut;
 }
+
+// ── 그날 그 직원의 조 해석(resolveShift) — 판정·결근의 단일 기준 ──
+//  · 순수함수: DB 접근 없음. 컨텍스트(ShiftContext)는 lib/shift-server.ts의 loadShiftContext가 DB로 만든다.
+//  · 우선순위: 예외(ShiftAssignment) → 기본배정(fixed 요일패턴 / rotation 순환) → 휴무(null).
+//  · 설계: docs/04_architecture/교대근무_설계.md 3장.
+export type ResolvedShift = { order: number; name: string | null; startTime: string; endTime: string };
+
+export type ShiftContext = {
+  scheduleType: "fixed" | "rotation";
+  shiftById: Map<string, ResolvedShift>;
+  shiftByOrder: Map<number, ResolvedShift>;
+  // [fixed] `userId|dow`(0=일..6=토) → shiftId | null(휴무 명시). 키 없음 = 패턴 미설정 = 휴무.
+  patternByUserDow: Map<string, string | null>;
+  // [rotation]
+  groupOrderById: Map<string, number>;
+  rule: { orderArr: number[]; unit: RotationUnit; anchorDate: string } | null;
+  // 공통 예외: `userId|YYYY-MM-DD` → shiftId | null(휴무 명시). 키 있으면 기본배정을 덮는다.
+  assignmentByUserDate: Map<string, string | null>;
+};
+
+// "YYYY-MM-DD"의 요일(0=일..6=토). 로컬 달력 기준(ShiftPattern.dayOfWeek가 저장된 방식과 동일).
+export function dowOfISO(dateISO: string): number {
+  const [y, mo, d] = dateISO.split("-").map(Number);
+  return new Date(y, mo - 1, d).getDay();
+}
+
+// 그날 그 직원이 어느 조인지(휴무면 null). shiftGroupId는 rotation일 때만 사용.
+export function resolveShift(
+  ctx: ShiftContext,
+  userId: string,
+  shiftGroupId: string | null,
+  dateISO: string
+): ResolvedShift | null {
+  // 1) 예외 우선(있으면 기본배정 무시). shiftId=null이면 그날 '휴무'로 명시 덮어쓰기.
+  const exKey = `${userId}|${dateISO}`;
+  if (ctx.assignmentByUserDate.has(exKey)) {
+    const sid = ctx.assignmentByUserDate.get(exKey);
+    return sid ? ctx.shiftById.get(sid) ?? null : null;
+  }
+  // 2) 기본배정
+  if (ctx.scheduleType === "fixed") {
+    const key = `${userId}|${dowOfISO(dateISO)}`;
+    if (!ctx.patternByUserDow.has(key)) return null; // 패턴 미설정 = 휴무
+    const sid = ctx.patternByUserDow.get(key);
+    return sid ? ctx.shiftById.get(sid) ?? null : null;
+  }
+  // rotation
+  if (!shiftGroupId) return null; // 미배정 = 휴무
+  const gorder = ctx.groupOrderById.get(shiftGroupId);
+  if (gorder === undefined || !ctx.rule || ctx.rule.orderArr.length === 0) return null;
+  const steps = elapsedUnits(ctx.rule.anchorDate, dateISO, ctx.rule.unit);
+  const order = rotationShiftOrder(gorder, steps, ctx.rule.orderArr);
+  return ctx.shiftByOrder.get(order) ?? null;
+}
+
+// 그날 조 기준 지각·조퇴 판정(자정 넘김 포함). 근무일 귀속 dateISO = 출근일(toISODate(clockIn)).
+//  · 반환 late/early는 worktime.ts의 isLate/isEarlyLeave와 같은 의미(면제·표시는 호출부가 처리).
+export function judgeByShift(
+  clockIn: Date,
+  clockOut: Date | null,
+  dateISO: string,
+  shift: ShiftLite,
+  graceMin: number
+): { late: boolean; early: boolean | null } {
+  return {
+    late: isLateByShift(clockIn, dateISO, shift, graceMin),
+    early: clockOut ? isEarlyLeaveByShift(clockOut, dateISO, shift) : null,
+  };
+}
