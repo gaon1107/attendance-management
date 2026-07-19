@@ -29,16 +29,13 @@ const STATUS_STYLE: Record<string, { bg: string; dot: string; color: string }> =
 const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 20px", whiteSpace: "nowrap" };
 const td: React.CSSProperties = { padding: "13px 20px", fontSize: 15, verticalAlign: "middle" };
 
-function NameCell({ name, initial, employeeNo }: { name: string; initial: string; employeeNo: string | null }) {
+function NameCell({ name, initial }: { name: string; initial: string }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
       <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#EEF2F7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>
         {initial}
       </div>
-      <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <span style={{ fontWeight: 700 }}>{name}</span>
-        {employeeNo && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}>사번 {employeeNo}</span>}
-      </div>
+      <span style={{ fontWeight: 700 }}>{name}</span>
     </div>
   );
 }
@@ -80,6 +77,7 @@ export function CorrectionApprovalsClient({
             <thead>
               <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                 <th style={th}>신청자</th>
+                <th style={th}>사번</th>
                 <th style={th}>대상 날짜</th>
                 <th style={th}>요청 시각</th>
                 <th style={th}>사유</th>
@@ -89,14 +87,15 @@ export function CorrectionApprovalsClient({
             <tbody>
               {p.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={6} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {q.trim() ? "검색 결과가 없습니다." : "승인 대기 중인 정정 요청이 없습니다."}
                   </td>
                 </tr>
               ) : (
                 p.map((r) => (
                   <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                    <td style={td}><NameCell name={r.name} initial={r.initial} employeeNo={r.employeeNo} /></td>
+                    <td style={td}><NameCell name={r.name} initial={r.initial} /></td>
+                    <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.employeeNo || "—"}</td>
                     <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{r.dateText}</td>
                     <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.timeText}</td>
                     <td style={{ ...td, color: "var(--text-sub)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.reason}</td>
@@ -128,6 +127,7 @@ export function CorrectionApprovalsClient({
             <thead>
               <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                 <th style={th}>신청자</th>
+                <th style={th}>사번</th>
                 <th style={th}>대상 날짜</th>
                 <th style={th}>요청 시각</th>
                 <th style={th}>상태</th>
@@ -136,7 +136,7 @@ export function CorrectionApprovalsClient({
             <tbody>
               {d.length === 0 ? (
                 <tr>
-                  <td colSpan={4} style={{ padding: "24px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={5} style={{ padding: "24px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {q.trim() ? "검색 결과가 없습니다." : "이 기간에 처리한 정정 요청이 없습니다."}
                   </td>
                 </tr>
@@ -145,7 +145,8 @@ export function CorrectionApprovalsClient({
                   const s = STATUS_STYLE[r.status] ?? STATUS_STYLE.approved;
                   return (
                     <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                      <td style={td}><NameCell name={r.name} initial={r.initial} employeeNo={r.employeeNo} /></td>
+                      <td style={td}><NameCell name={r.name} initial={r.initial} /></td>
+                    <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.employeeNo || "—"}</td>
                       <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{r.dateText}</td>
                       <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.timeText}</td>
                       <td style={td}>

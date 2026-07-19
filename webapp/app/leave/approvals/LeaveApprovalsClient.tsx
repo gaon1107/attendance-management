@@ -30,16 +30,13 @@ const STATUS_STYLE: Record<string, { bg: string; dot: string; color: string }> =
 const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 20px", whiteSpace: "nowrap" };
 const td: React.CSSProperties = { padding: "13px 20px", fontSize: 15, verticalAlign: "middle" };
 
-function NameCell({ name, initial, employeeNo }: { name: string; initial: string; employeeNo: string | null }) {
+function NameCell({ name, initial }: { name: string; initial: string }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
       <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#EEF2F7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>
         {initial}
       </div>
-      <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <span style={{ fontWeight: 700 }}>{name}</span>
-        {employeeNo && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}>사번 {employeeNo}</span>}
-      </div>
+      <span style={{ fontWeight: 700 }}>{name}</span>
     </div>
   );
 }
@@ -81,6 +78,7 @@ export function LeaveApprovalsClient({
             <thead>
               <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                 <th style={th}>신청자</th>
+                <th style={th}>사번</th>
                 <th style={th}>종류</th>
                 <th style={th}>기간</th>
                 <th style={{ ...th, textAlign: "right" }}>일수</th>
@@ -91,14 +89,15 @@ export function LeaveApprovalsClient({
             <tbody>
               {p.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={7} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {q.trim() ? "검색 결과가 없습니다." : "승인 대기 중인 휴가 신청이 없습니다."}
                   </td>
                 </tr>
               ) : (
                 p.map((r) => (
                   <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                    <td style={td}><NameCell name={r.name} initial={r.initial} employeeNo={r.employeeNo} /></td>
+                    <td style={td}><NameCell name={r.name} initial={r.initial} /></td>
+                    <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.employeeNo || "—"}</td>
                     <td style={{ ...td, fontWeight: 700 }}>{r.typeLabel}</td>
                     <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.rangeLabel}</td>
                     <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{r.days}일</td>
@@ -131,6 +130,7 @@ export function LeaveApprovalsClient({
             <thead>
               <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                 <th style={th}>신청자</th>
+                <th style={th}>사번</th>
                 <th style={th}>종류</th>
                 <th style={th}>기간</th>
                 <th style={{ ...th, textAlign: "right" }}>일수</th>
@@ -140,7 +140,7 @@ export function LeaveApprovalsClient({
             <tbody>
               {d.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ padding: "24px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={6} style={{ padding: "24px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {q.trim() ? "검색 결과가 없습니다." : "이 기간에 처리한 휴가가 없습니다."}
                   </td>
                 </tr>
@@ -149,7 +149,8 @@ export function LeaveApprovalsClient({
                   const s = STATUS_STYLE[r.status] ?? STATUS_STYLE.approved;
                   return (
                     <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                      <td style={td}><NameCell name={r.name} initial={r.initial} employeeNo={r.employeeNo} /></td>
+                      <td style={td}><NameCell name={r.name} initial={r.initial} /></td>
+                    <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.employeeNo || "—"}</td>
                       <td style={{ ...td, fontWeight: 700 }}>{r.typeLabel}</td>
                       <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.rangeLabel}</td>
                       <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{r.days}일</td>

@@ -109,6 +109,7 @@ export function RecordsClient({
               <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                 <th style={th}>날짜</th>
                 <th style={th}>이름</th>
+                <th style={th}>사번</th>
                 <th style={th}>근무형태</th>
                 <th style={th}>위치</th>
                 <th style={th}>출근</th>
@@ -120,7 +121,7 @@ export function RecordsClient({
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={9} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {q.trim() ? "검색 결과가 없습니다." : "이 기간에 출퇴근 기록이 없습니다."}
                   </td>
                 </tr>
@@ -133,19 +134,15 @@ export function RecordsClient({
                         <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#EEF2F7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>
                           {r.initial}
                         </div>
-                        <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ fontWeight: 700 }}>{r.userName}</span>
-                            {r.suspect ? (
-                              <span style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "#B91C1C", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" }}>⚠ 위조 의심</span>
-                            ) : r.review ? (
-                              <span style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "#D97706", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" }}>❓ 확인 필요</span>
-                            ) : null}
-                          </span>
-                          {r.employeeNo && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}>사번 {r.employeeNo}</span>}
-                        </span>
+                        <span style={{ fontWeight: 700 }}>{r.userName}</span>
+                        {r.suspect ? (
+                          <span style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "#B91C1C", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" }}>⚠ 위조 의심</span>
+                        ) : r.review ? (
+                          <span style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "#D97706", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" }}>❓ 확인 필요</span>
+                        ) : null}
                       </Link>
                     </td>
+                    <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.employeeNo || "—"}</td>
                     <td style={{ ...td, color: "var(--text-sub)" }}>{r.workMode}</td>
                     <td style={{ ...td, color: "var(--text-sub)" }}>{r.location}</td>
                     <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{r.inText}</td>

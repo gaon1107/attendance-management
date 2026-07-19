@@ -25,6 +25,7 @@ export function BiometricsList({ users }: { users: BioRow[] }) {
             <thead>
               <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                 <th style={th}>이름</th>
+                <th style={th}>사번</th>
                 <th style={th}>인증방식</th>
                 <th style={th}>생체정보 동의</th>
                 <th style={{ ...th, textAlign: "right" }}>관리</th>
@@ -33,7 +34,7 @@ export function BiometricsList({ users }: { users: BioRow[] }) {
             <tbody>
               {list.length === 0 ? (
                 <tr>
-                  <td colSpan={4} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={5} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {q.trim() ? "검색 결과가 없습니다." : "표시할 사용자가 없습니다."}
                   </td>
                 </tr>
@@ -43,15 +44,13 @@ export function BiometricsList({ users }: { users: BioRow[] }) {
                     <td style={td}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#EEF2F7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>{u.initial}</div>
-                        <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                          <span style={{ fontWeight: 700 }}>
-                            {u.name}
-                            {u.isAdmin && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}> (관리자)</span>}
-                          </span>
-                          {u.employeeNo && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}>사번 {u.employeeNo}</span>}
-                        </div>
+                        <span style={{ fontWeight: 700 }}>
+                          {u.name}
+                          {u.isAdmin && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}> (관리자)</span>}
+                        </span>
                       </div>
                     </td>
+                    <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{u.employeeNo || "—"}</td>
                     <td style={{ ...td, color: u.hasAuth ? "var(--text)" : "#9CA3AF" }}>{u.authLabel}</td>
                     <td style={td}>
                       {u.consented ? (

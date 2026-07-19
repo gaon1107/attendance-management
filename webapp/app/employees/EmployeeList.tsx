@@ -29,6 +29,7 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
             <thead>
               <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                 <th style={th}>이름</th>
+                <th style={th}>사번</th>
                 <th style={th}>부서</th>
                 <th style={th}>이메일</th>
                 <th style={th}>인증방식</th>
@@ -40,7 +41,7 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
             <tbody>
               {a.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={8} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {q.trim() ? "검색 결과가 없습니다." : "아직 등록된 직원이 없습니다. 위에서 첫 직원을 추가해보세요."}
                   </td>
                 </tr>
@@ -50,12 +51,10 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
                     <td style={td}>
                       <Link href={`/employees/${emp.id}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "var(--text)" }}>
                         <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#EEF2F7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>{emp.initial}</div>
-                        <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                          <span style={{ fontWeight: 700 }}>{emp.name}</span>
-                          {emp.employeeNo && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}>사번 {emp.employeeNo}</span>}
-                        </div>
+                        <span style={{ fontWeight: 700 }}>{emp.name}</span>
                       </Link>
                     </td>
+                    <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{emp.employeeNo || "—"}</td>
                     <td style={{ ...td, color: emp.deptSet ? "var(--text)" : "#9CA3AF" }}>{emp.dept}</td>
                     <td style={{ ...td, color: "var(--text-sub)" }}>{emp.email}</td>
                     <td style={{ ...td, color: emp.hasAuth ? "var(--text)" : "#9CA3AF" }}>{emp.authLabel}</td>
@@ -86,6 +85,7 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
               <thead>
                 <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                   <th style={th}>이름</th>
+                <th style={th}>사번</th>
                   <th style={th}>이메일</th>
                   <th style={th}>퇴사일</th>
                   <th style={th}>상태</th>
@@ -94,7 +94,7 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
               <tbody>
                 {r.length === 0 ? (
                   <tr>
-                    <td colSpan={4} style={{ padding: "24px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>검색 결과가 없습니다.</td>
+                    <td colSpan={5} style={{ padding: "24px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>검색 결과가 없습니다.</td>
                   </tr>
                 ) : (
                   r.map((emp) => (
@@ -102,12 +102,10 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
                       <td style={td}>
                         <Link href={`/employees/${emp.id}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "var(--text-sub)" }}>
                           <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#F3F4F6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#9CA3AF", flexShrink: 0 }}>{emp.initial}</div>
-                          <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                            <span style={{ fontWeight: 700 }}>{emp.name}</span>
-                            {emp.employeeNo && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}>사번 {emp.employeeNo}</span>}
-                          </div>
+                          <span style={{ fontWeight: 700 }}>{emp.name}</span>
                         </Link>
                       </td>
+                      <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{emp.employeeNo || "—"}</td>
                       <td style={{ ...td, color: "var(--text-sub)" }}>{emp.email}</td>
                       <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{emp.retireLabel}</td>
                       <td style={td}>
