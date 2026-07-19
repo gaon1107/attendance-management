@@ -3,6 +3,7 @@ import { workedMinutes, isLate, isEarlyLeave } from "@/lib/worktime";
 import { toISODate } from "@/lib/period";
 import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
 import { leaveTypeLabel, leaveSuppressesLate, leaveSuppressesEarly } from "@/lib/leave";
+import { judgeByShift, type ResolvedShift } from "@/lib/shift";
 
 type BreakLike = { startAt: Date; endAt: Date | null; reason: string };
 // 출퇴근 촬영 사진·판독 기록(관리자 근태 상세 전용). 조회하지 않은 화면(내근태 등)에서는 undefined — 기존 동작 무변경.
@@ -54,19 +55,38 @@ export function buildDayEntries(
   leaveByDate: Map<string, string> = new Map(),
   offDays: Set<string> = new Set(),
   // 승인된 반차/조퇴 종류맵(날짜 ISO → 종류 key). 출근한 날 지각·조퇴를 면제하는 데 쓴다. 안 넘기면 면제 없음(기존 동작).
-  leaveTypeByDate: Map<string, string> = new Map()
+  leaveTypeByDate: Map<string, string> = new Map(),
+  // [교대제] 그날 그 직원의 조를 돌려주는 해석기(휴무=null). 넘기면 지각/조퇴/결근을 조 기준으로 판정한다.
+  //  안 넘기면(비교대) 아래 로직 전부 기존 그대로 = 회귀 0. (호출부가 loadShiftContext+resolveShift로 만든다)
+  shiftResolver?: (dateISO: string) => ResolvedShift | null
 ): DayDetail {
   const wd = effectiveWorkDays(userWorkDays, company?.workDays);
-  const hasRule = !!company?.workStartTime;
-  const hasEndRule = !!company?.workEndTime;
+  // 교대제면 조가 시각을 정하므로 지각·조퇴 판정이 항상 가능. 비교대면 회사 기준시각 유무.
+  const hasRule = shiftResolver ? true : !!company?.workStartTime;
+  const hasEndRule = shiftResolver ? true : !!company?.workEndTime;
+  // 그날 근무예정일인가 — 교대제면 조 배정(≠휴무), 비교대면 근무요일(+쉬는날 제외). 결근·게이팅 공통 기준.
+  const isWorkDay = (d: Date, iso: string): boolean =>
+    shiftResolver ? shiftResolver(iso) !== null : isEffectiveWorkDay(d, wd, offDays);
 
   const attEntries: DayEntry[] = rows.map((r) => {
-    const onWorkDay = isEffectiveWorkDay(r.clockIn, wd, offDays);
-    let late = onWorkDay ? isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0) : null;
-    // 조퇴도 지각과 동일 게이팅: 근무일에만. 퇴근기록 없음(근무중)·기준시각 미설정은 isEarlyLeave가 null 반환.
-    let early = onWorkDay ? isEarlyLeave(r.clockOut, company?.workEndTime ?? null) : null;
+    const iso = toISODate(r.clockIn);
+    const shift = shiftResolver ? shiftResolver(iso) : undefined; // undefined=비교대, null=교대제 휴무
+    const onWorkDay = shiftResolver ? shift !== null : isEffectiveWorkDay(r.clockIn, wd, offDays);
+    let late: boolean | null;
+    let early: boolean | null;
+    if (shiftResolver) {
+      // 교대제: 그날 조 있으면 자정 넘김까지 정확 판정, 휴무(조 없음)면 판정 안 함(=휴일근무).
+      if (shift) {
+        const j = judgeByShift(r.clockIn, r.clockOut, iso, shift, company?.lateGraceMin ?? 0);
+        late = j.late; early = j.early;
+      } else { late = null; early = null; }
+    } else {
+      late = onWorkDay ? isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0) : null;
+      // 조퇴도 지각과 동일 게이팅: 근무일에만. 퇴근기록 없음(근무중)·기준시각 미설정은 isEarlyLeave가 null 반환.
+      early = onWorkDay ? isEarlyLeave(r.clockOut, company?.workEndTime ?? null) : null;
+    }
     // 승인된 반차/조퇴가 있으면 해당 자동판정을 면제(null)하고, 승인 뱃지 라벨을 남긴다.
-    const lt = leaveTypeByDate.get(toISODate(r.clockIn));
+    const lt = leaveTypeByDate.get(iso);
     if (lt && leaveSuppressesLate(lt)) late = null;
     if (lt && leaveSuppressesEarly(lt)) early = null;
     const approvedLeave = lt ? leaveTypeLabel(lt) : null;
@@ -85,10 +105,10 @@ export function buildDayEntries(
   for (let cur = new Date(start); cur < limit; cur = new Date(cur.getTime() + 86400000)) {
     const iso = toISODate(cur);
     if (attendedISO.has(iso)) continue; // 출근한 날은 위 attEntries에 있음
-    if (leaveByDate.has(iso) && isEffectiveWorkDay(cur, wd, offDays)) {
+    if (leaveByDate.has(iso) && isWorkDay(cur, iso)) {
       extraEntries.push({ type: "leave", date: new Date(cur), label: leaveByDate.get(iso)! });
       leaveDaysCount++;
-    } else if (isEffectiveWorkDay(cur, wd, offDays)) {
+    } else if (isWorkDay(cur, iso)) {
       extraEntries.push({ type: "absent", date: new Date(cur) });
       absentCount++;
     }

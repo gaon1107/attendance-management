@@ -13,6 +13,8 @@ import { buildDayEntries } from "@/lib/dayentries";
 import { leaveLabelByDate, leaveTypeByDate } from "@/lib/leave";
 import { loadOffDays } from "@/lib/holiday-server";
 import { parseAnchor, rangeFor, shiftAnchor, toISODate } from "@/lib/period";
+import { loadShiftContext } from "@/lib/shift-server";
+import { resolveShift } from "@/lib/shift";
 
 const tabStyle = (on: boolean): React.CSSProperties => ({
   height: 34, padding: "0 16px", display: "inline-flex", alignItems: "center", borderRadius: 6,
@@ -60,7 +62,10 @@ export default async function MyRecordsPage({
       where: { userId: me!.id, companyId: me!.companyId, status: "approved", startDate: { lt: end }, endDate: { gte: start } },
       select: { type: true, startDate: true, endDate: true },
     });
-    return buildDayEntries(rows, me!.workDays, company, start, end, leaveLabelByDate(leaves), offDays, leaveTypeByDate(leaves));
+    // 교대제면 그날 조 기준으로 지각/조퇴/결근 판정(비교대면 ctx=null → 기존 로직 그대로).
+    const shiftCtx = await loadShiftContext(me!.companyId, toISODate(start), toISODate(end));
+    const shiftResolver = shiftCtx ? (iso: string) => resolveShift(shiftCtx, me!.id, me!.shiftGroupId, iso) : undefined;
+    return buildDayEntries(rows, me!.workDays, company, start, end, leaveLabelByDate(leaves), offDays, leaveTypeByDate(leaves), shiftResolver);
   }
 
   // ── 달력 보기 (월 단위) ──────────────────────────────
