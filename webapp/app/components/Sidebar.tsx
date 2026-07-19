@@ -84,13 +84,12 @@ function toItems(keys: NavKey[]): Item[] {
   return keys.map((key) => ({ key, href: HREF[key] ?? `/${key}`, label: LABEL[key], icon: ICON[key] }));
 }
 
-// 관리자 메뉴는 "회사관리"(직원들 것)와 "내근태"(관리자 본인 출퇴근) 두 묶음으로 나눠 섞임을 없앤다.
+// 관리자 메뉴는 "회사관리"(직원들 것) 한 묶음. 관리자는 본인 출퇴근을 하지 않으므로 "내근태"(출퇴근·인증방식) 묶음은 제공하지 않는다.
 // 직원 메뉴는 전부 본인 것이라 한 묶음(제목 없음).
 function groupsFor(role: string): NavGroup[] {
   if (role === "admin") {
     return [
       { caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(["dashboard", "notifications", "live", "employees", "records", "shifts", "schedule", "reports", "leave-approvals", "leave-summary", "biometrics", "security", "company", "settings"]) },
-      { caption: "내근태", tintBg: "#E3F5EA", tintText: "#15803D", items: toItems(["attendance", "auth-method"]) },
     ];
   }
   return [{ caption: "", items: toItems(["attendance", "my-records", "schedule", "leave", "corrections", "auth-method"]) }];
