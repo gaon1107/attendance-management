@@ -88,7 +88,8 @@ export async function approveLeave(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
   const id = String(formData.get("id") ?? "");
-  const comment = String(formData.get("comment") ?? "").trim().slice(0, 500) || undefined;
+  const raw = String(formData.get("comment") ?? "").trim();
+  const comment = raw ? Array.from(raw).slice(0, 500).join("") : undefined; // 승인 사유는 선택, 코드포인트 기준 상한
   const lv = await prisma.leaveRequest.findFirst({ where: { id, companyId: me.companyId, status: "pending" } });
   if (!lv) return;
   const result = await advanceApproval(me, "leave", lv.id, "approve", comment);
@@ -108,12 +109,14 @@ export async function rejectLeave(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
   const id = String(formData.get("id") ?? "");
-  const comment = String(formData.get("comment") ?? "").trim().slice(0, 500) || undefined;
+  const raw = String(formData.get("comment") ?? "").trim();
+  if (!raw) return; // 반려 사유 필수 — 서버에서도 강제(클라이언트 우회·JS-off 폼 위조 방어)
+  const comment = Array.from(raw).slice(0, 500).join(""); // 코드포인트 기준 상한(이모지 깨짐 방지)
   const lv = await prisma.leaveRequest.findFirst({ where: { id, companyId: me.companyId, status: "pending" } });
   if (!lv) return;
   const result = await advanceApproval(me, "leave", lv.id, "reject", comment);
   if (result === "denied") return;
-  await prisma.leaveRequest.updateMany({ where: { id: lv.id, companyId: me.companyId, status: "pending" }, data: { status: "rejected", decidedAt: new Date(), decisionComment: comment ?? null, decidedById: me.id } });
+  await prisma.leaveRequest.updateMany({ where: { id: lv.id, companyId: me.companyId, status: "pending" }, data: { status: "rejected", decidedAt: new Date(), decisionComment: comment, decidedById: me.id } });
   revalidatePath("/leave/approvals");
   revalidatePath("/leave");
   revalidatePath("/approvals");

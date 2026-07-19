@@ -98,13 +98,14 @@ export async function advanceApproval(
     return "rejected";
   }
 
-  // 관리자 오버라이드: 남은 대기 단계 전부 승인 → 즉시 완료. 사유는 현재 단계에만 기록(나머지는 자동 일괄 승인 표시).
+  // 관리자 오버라이드: 남은 대기 단계 전부 승인 → 즉시 완료(단일 원자 쓰기).
+  //  · 관리자 사유는 호출 액션이 원본 decisionComment에 미러한다(신청자 표시의 원천). 단계 comment엔 별도 기록하지 않음
+  //    — 타 부서장 소유 단계에 관리자 글을 귀속시키지 않고, 비원자적 2차 쓰기도 없앤다.
   if (me.role === "admin") {
     await prisma.approvalStep.updateMany({
       where: { companyId: me.companyId, requestType, requestId, status: "pending" },
       data: { status: "approved", decidedAt: now },
     });
-    if (note) await prisma.approvalStep.update({ where: { id: cur.id }, data: { comment: note } });
     return "approved";
   }
 
