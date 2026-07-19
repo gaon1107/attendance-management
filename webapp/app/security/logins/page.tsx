@@ -69,8 +69,17 @@ export default async function LoginHistoryPage({
     take: 2000, // 안전 상한(초과분은 기간을 좁혀 보게 안내)
   });
 
+  // 접속기록엔 사번이 없다(이벤트 시점 이름만 스냅샷) → 행위자 userId로 현재 직원의 사번을 찾아 붙인다.
+  //   (로그인 실패 등 userId 없는 기록·삭제/미상 계정은 사번 없음 → 화면 "—")
+  const eventUserIds = [...new Set(events.map((e) => e.userId).filter((x): x is string => !!x))];
+  const empNoUsers = eventUserIds.length
+    ? await prisma.user.findMany({ where: { companyId: me.companyId, id: { in: eventUserIds } }, select: { id: true, employeeNo: true } })
+    : [];
+  const empNoById = new Map(empNoUsers.map((u) => [u.id, u.employeeNo]));
+
   const rows: LoginRow[] = events.map((e) => {
     const name = e.actorName ?? e.emailTried ?? "알 수 없음";
+    const employeeNo = e.userId ? empNoById.get(e.userId) ?? null : null;
     const kindLabel = accessKindLabel(e.kind);
     const resultLabel = accessResultLabel(e.result);
     const metaLabel = accessMetaLabel(e.meta);
@@ -79,6 +88,7 @@ export default async function LoginHistoryPage({
       id: e.id,
       timeText,
       name,
+      employeeNo,
       email: e.emailTried ?? "",
       kind: e.kind,
       kindLabel,
@@ -87,7 +97,7 @@ export default async function LoginHistoryPage({
       result: e.result,
       resultLabel,
       metaLabel,
-      search: [name, e.emailTried ?? "", kindLabel, e.device ?? "", e.ip ?? "", resultLabel, metaLabel].join(" ").toLowerCase(),
+      search: [name, employeeNo ?? "", e.emailTried ?? "", kindLabel, e.device ?? "", e.ip ?? "", resultLabel, metaLabel].join(" ").toLowerCase(),
     };
   });
 

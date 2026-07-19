@@ -10,6 +10,7 @@ export type AccessRow = {
   id: string;
   timeText: string;
   name: string;
+  employeeNo: string | null;
   email: string;
   kind: string; // login | login_fail | logout | clock_in | clock_out | config | purge
   kindLabel: string;
@@ -176,6 +177,7 @@ export function AccessLogClient({
               <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                 <th style={th}>시각</th>
                 <th style={th}>이름</th>
+                <th style={th}>사번</th>
                 <th style={th}>동작</th>
                 <th style={th}>기기</th>
                 <th style={th}>IP</th>
@@ -186,7 +188,7 @@ export function AccessLogClient({
             <tbody>
               {shown.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: "28px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={8} style={{ padding: "28px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {rows.length === 0 ? "이 기간에 접속 기록이 없습니다." : "검색 결과가 없습니다."}
                   </td>
                 </tr>
@@ -201,6 +203,7 @@ export function AccessLogClient({
                         <div style={{ fontWeight: 700 }}>{r.name}</div>
                         {r.email && <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{r.email}</div>}
                       </td>
+                      <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.employeeNo || "—"}</td>
                       {/* 동작 + 상세(비고)를 아랫줄에. 라벨 자체에 괄호가 들어갈 수 있어 괄호로 감싸지 않는다. */}
                       <td style={td}>
                         <div>{r.kindLabel}</div>

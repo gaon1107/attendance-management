@@ -10,6 +10,7 @@ export type LoginRow = {
   id: string;
   timeText: string;
   name: string;
+  employeeNo: string | null;
   email: string;
   kind: string; // login | login_fail | logout
   kindLabel: string;
@@ -111,6 +112,7 @@ export function LoginHistoryClient({
               <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                 <th style={th}>시각</th>
                 <th style={th}>이름</th>
+                <th style={th}>사번</th>
                 <th style={th}>동작</th>
                 <th style={th}>기기</th>
                 <th style={th}>IP</th>
@@ -120,7 +122,7 @@ export function LoginHistoryClient({
             <tbody>
               {shown.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: "28px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={7} style={{ padding: "28px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {rows.length === 0 ? "이 기간에 접속 기록이 없습니다." : "검색 결과가 없습니다."}
                   </td>
                 </tr>
@@ -134,6 +136,7 @@ export function LoginHistoryClient({
                         <div style={{ fontWeight: 700 }}>{r.name}</div>
                         {r.email && <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{r.email}</div>}
                       </td>
+                      <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.employeeNo || "—"}</td>
                       <td style={td}>
                         {r.kindLabel}
                         {r.metaLabel && <span style={{ fontSize: 12, color: "var(--text-sub)", marginLeft: 6 }}>({r.metaLabel})</span>}
