@@ -269,6 +269,10 @@ model LeaveRequest {
   // 상태: "pending"(대기) | "approved"(승인) | "rejected"(반려)
   status     String    @default("pending")
   decidedAt  DateTime? // 승인/반려 처리 시각
+  // 결재선 2차: 결재자 결정 사유·처리자. add-only(nullable) — 기존 행·판정 로직 무영향.
+  // single 모드는 여기 직접 저장, deptline 모드는 단계별 ApprovalStep.comment + 최종 결정을 여기 미러.
+  decisionComment String? // 승인/반려 사유(선택 저장). 신청자에게 표시.
+  decidedById     String? // 처리한 결재자/관리자 userId(표시용, 관계 없이 id만 보관)
   createdAt  DateTime  @default(now())
 }
 
@@ -301,6 +305,9 @@ model AttendanceCorrection {
   // 상태: "pending"(대기) | "approved"(승인·반영됨) | "rejected"(반려)
   status       String    @default("pending")
   decidedAt    DateTime?
+  // 결재선 2차: 결재자 결정 사유·처리자. add-only(nullable) — 기존 행·반영 로직 무영향.
+  decisionComment String? // 승인/반려 사유(선택 저장). 신청자에게 표시.
+  decidedById     String? // 처리한 결재자/관리자 userId(표시용, 관계 없이 id만 보관)
   createdAt    DateTime  @default(now())
 }
 

@@ -1,40 +1,49 @@
-# Research: A-2 문자(아이원24) 발송 연동 — 초대·임시비번 (2026-07-18)
+# Research: 결재선 2차 — 반려사유 + 결재이력 피드백 (2026-07-19)
 
-## 사장님 결정(확정)
-- 채널 = **문자(아이원24 iOne24)** / 범위 = **초대·임시비번만** / 계정 = **시스템 공용(뉴가온, .env)** / 방식 = **버튼 수동 발송 + 1회 제한**(비용 통제).
+> 범위(사장님 확정): 결재선 2차 4후보 중 **①번(반려사유 입력 + 신청자에게 결재 이력/사유 피드백)**.
+> 전결·조건별·자동에스컬레이션은 이번 범위 제외(별도 조각).
 
-## 재사용 원천
-- `C:\Users\주인님\Desktop\newgaon-LMS\SMS_연동_이식_가이드.md` — 아이원24 API 규격 완비(원본 GFKids/가온출결, Java·Spring).
-- ⚠️ **원본은 Java/스프링/MySQL, 우리는 TS/Next.js/SQLite → 코드 복붙 불가. "API 규격만 재사용"해 TS로 재구현.**
+## 관련 파일과 역할
 
-## 아이원24 API 규격(가이드에서 확정)
-- 발송: `POST http://smsmsgr.ione24.com/slma_action_gaon.ashx`, `Content-Type: application/x-www-form-urlencoded; charset=euc-kr`, **본문 EUC-KR 인코딩**.
-- 파라미터: `pslma`(0=SMS/1=LMS), `pid`(계정ID), `ppwd`(비번), `pdestphone`(수신, ; 구분), `psendphone`(발신), `psubject`(LMS 제목), `pmsg`(본문), 나머지 빈값 가능.
-- SMS/LMS 자동구분: 본문 **90바이트 이하=SMS, 초과=LMS**(한글 EUC-KR 2바이트).
-- **성공판정: 응답 body가 비어있으면 성공**, 내용 있으면 오류메시지(EUC-KR).
-- (선택) 잔액조회: GET, `pid`+`ppwd(MD5)`+`pkind=curramt` → `Y:금액`.
+- `webapp/lib/approval.ts` — 순수함수(체인 계산·단계 판정). 이번 작업에서 **수정 없음**(로직 불변).
+- `webapp/lib/approval-server.ts` — DB 로직. `advanceApproval`(승인/반려 단계진행)·`getApprovalProgressMap`(진행표시). **여기에 comment 저장·이력 조회 추가**.
+- `webapp/app/actions/leave.ts` — `approveLeave`/`rejectLeave` (서버액션). **comment 수신·저장 추가**.
+- `webapp/app/actions/corrections.ts` — `approveCorrection`/`rejectCorrection`. **동일 패턴 추가**.
+- `webapp/app/approvals/page.tsx` — 부서장 결재함(서버 컴포넌트). 반려 폼에 사유 입력.
+- `webapp/app/leave/approvals/LeaveApprovalsClient.tsx` — 관리자 휴가 승인(클라이언트, 테이블 행 폼). 반려 사유.
+- `webapp/app/corrections/approvals/CorrectionApprovalsClient.tsx` — 관리자 근태정정 승인. 동일.
+- `webapp/app/leave/page.tsx` / `webapp/app/corrections/page.tsx` — 신청자 본인 목록. **반려/승인 결과·사유 표시 추가**.
+- `webapp/prisma/schema.prisma` — `ApprovalStep.comment`(이미 존재), `LeaveRequest`·`AttendanceCorrection`(결정사유 컬럼 없음 → 추가).
 
-## 현재 코드 구조(영향/연결 지점)
-- **초대**: `app/actions/invites.ts` `createInvite()` — 익명 토큰 링크만 생성(**수신 전화번호 없음** — 직원이 가입 때 본인정보 입력). UI=`app/employees/InviteLink.tsx`(링크+복사).
-  → 문자 발송하려면 **관리자가 보낼 번호를 입력**해야 함. "1회"=**초대 링크 1건당 1회**.
-- **임시비번**: `app/actions/password-reset.ts` `issueTempPassword()` — 대상 직원 정해짐, `req.user`에 `phone`(nullable) 있음. 반환 `tempPassword`+`name`. UI=`app/employees/PendingResetRequests.tsx`.
-  → **그 직원 phone으로 발송**. phone 없으면 발송 불가(안내). "1회"=**요청 1건당 1회**.
-- `User.phone String?`(nullable), `Invite`(token·expiresAt·usedAt), `PasswordResetRequest`(status·resolvedAt).
+## 🔴 영향 범위 (수정 대상을 사용하는 모든 곳 — 전수 grep 결과)
 
-## 환경/의존성
-- `.env` 키(대문자): 추가 예정 `IONE_SMS_ID`, `IONE_SMS_PW`, `IONE_SMS_SENDER`(발신번호), (선택)`IONE_SMS_SEND_URL`. **비밀값=git 제외, 하드코딩 금지**. 실제 계정값은 사장님이 채움.
-- **`iconv-lite` 미설치** → EUC-KR 인코딩 위해 추가 필요(순수 JS, 표준). 없으면 한글 깨짐.
-- 발송 인프라 0(기존 문자/메일 패키지 없음).
+**승인/반려 액션 호출처 = 3곳** (`approveLeave/rejectLeave`·`approveCorrection/rejectCorrection`):
+1. `app/approvals/page.tsx` (부서장 결재함, 서버 컴포넌트, 카드형 폼)
+2. `app/leave/approvals/LeaveApprovalsClient.tsx` (관리자, 클라이언트, 테이블 행 폼)
+3. `app/corrections/approvals/CorrectionApprovalsClient.tsx` (관리자, 클라이언트, 테이블 행 폼)
+→ **반려 사유 입력 UI를 3곳에 넣어야 함** → 재사용 클라이언트 컴포넌트 1개(`RejectButton`)로 통일.
 
-## 🔴 위험/제약
-- **실발송 검증 불가(이 환경)**: 실제 문자 발송은 사장님의 아이원24 계정 필요 + **실비용 발생**. 개발 검증은 ①EUC-KR 바이트 정확성 ②파라미터 구성 ③HTTP 호출 모킹 ④빌드·UI까지. **실제 1건 발송 최종확인은 사장님 몫**.
-- **비용**: 시스템 공용 계정이라 발송분은 뉴가온 부담 → 버튼 수동 + 1회 제한으로 통제. 발송 로그로 가시화 권장.
-- **HTTP(비암호화) 엔드포인트**: 아이원24가 http라 전송구간 평문. 규격상 불가피(외부 API 사양).
-- **발신번호 사전등록**: 통신사 정책상 발신번호는 사전 등록된 번호만 허용(아이원24 계정에 등록). 사장님 확인 필요.
+**진행표시(`getApprovalProgressMap`) 소비처 = 4곳**: `leave/page.tsx`·`corrections/page.tsx`(신청자)·`leave/approvals/page.tsx`·`corrections/approvals/page.tsx`(관리자). 시그니처는 **바꾸지 않음**(반환 타입 확장만, 기존 필드 유지 → 회귀 0).
 
-## 결론(계획 고려사항)
-1. `lib/sms.ts` 신설 — 아이원24 발송 순수/서버 함수(EUC-KR·90바이트 구분·성공판정). 공용 모듈.
-2. 발송 이력/1회 제한: `SmsLog` 테이블(비용 가시화+감사+중복차단) 또는 경량 플래그(`smsSentAt`). → 계획에서 선택 제시.
-3. 초대: `InviteLink` 옆 "문자로 보내기"(번호 입력+버튼), 링크 1건당 1회.
-4. 임시비번: `PendingResetRequests`에서 발급 후 "문자로 보내기"(직원 phone), 요청 1건당 1회.
-5. .env 설정 + iconv-lite 추가. 실발송은 사장님 계정으로 최종확인.
+**`advanceApproval` 호출처 = 4곳**(위 leave/corrections 액션 4개). 시그니처에 **선택 파라미터 `comment` 추가**(기존 호출 무영향).
+
+## 공통 모듈 여부 / 건드리면 안 되는 부분
+
+- `advanceApproval`·`getApprovalProgressMap`은 **공통 함수**(여러 액션·화면이 의존) → safe-coding 절차: 파라미터는 **선택(optional) 추가만**, 반환 타입은 **필드 추가만**(기존 필드·동작 불변).
+- `lib/approval.ts` 순수함수(단계 판정)는 **건드리지 않음** — 승인/반려 판정 규칙 자체는 그대로. comment는 판정과 무관한 부가정보.
+- **원칙 A(회귀 0의 핵심)**: 원본 status는 여전히 "마지막 단계 승인 시에만 approved". comment 저장은 status 전환과 독립 → 소비처 9곳 회귀 0 유지.
+
+## DB·API 변경 여부, 위험 요소
+
+- **DB 변경**: add-only. `LeaveRequest`·`AttendanceCorrection`에 `decisionComment String?`·`decidedById String?` 추가(둘 다 nullable → 기존 행 무영향). `ApprovalStep.comment`는 이미 존재(마이그레이션 불필요).
+  - 마이그레이션 시 **dev 서버 종료 필요**(EPERM DLL 잠금 함정).
+- **동시성**: 반려/승인은 이미 `status:"pending"` 가드로 멱등. comment 저장을 같은 `updateMany` 데이터에 합치면 원자성 유지.
+- **보안/격리**: comment는 회사격리 쿼리 안에서만 저장·조회. XSS — 표시는 React 기본 이스케이프(dangerouslySetInnerHTML 미사용). 입력 길이 상한(예 500자) 검증.
+- **single 모드**: ApprovalStep 없음 → 결정사유는 원본의 `decisionComment`에 저장(uniform). deptline은 단계별 `ApprovalStep.comment` + 최종 결정사유 원본에도 미러(신청자 표시 간결화).
+
+## 결론 (계획 시 고려사항)
+
+1. 저장 이원화: deptline=단계별 comment(ApprovalStep) + 최종 결정사유 원본 미러 / single=원본 decisionComment 직접.
+2. 반려 사유 입력 UI는 **재사용 컴포넌트 1개**로 3곳 통일(테이블/카드 모두 수용).
+3. 진행표시·판정 순수함수는 불변 — 회귀 0 유지가 최우선.
+4. 미결정 사항(계획서 메모로 확인): ①반려사유 **필수 vs 선택** ②승인사유도 입력 받을지 ③다단계 이력 타임라인을 신청자 화면에 노출할지.
