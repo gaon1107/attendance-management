@@ -1,10 +1,33 @@
-# 프로젝트 현황판 (최종: 2026-07-17)
+# 프로젝트 현황판 (최종: 2026-07-19)
 
 > 세부 이력은 PROGRESS.md가 원본. 이 파일은 "지금 하는 작업"의 현황판.
 
 ---
 
 ## ▶▶ 다음 세션 시작점 (여기부터 읽기) — 2026-07-19
+
+### 🚧 진행 중(대기업무): 교대근무(시프트) 지원 — Phase 3a까지 완료, 다음 = Phase 3b
+> 사무직 주간근무 MVP를 넘어 **교대근무 업체(공장·병원 등)** 지원을 추가하는 큰 신규 기능. 단계별로 진행 중.
+> **문서 먼저 읽기**: 기획서 [docs/02_prd/교대근무_기획서.md](docs/02_prd/교대근무_기획서.md) · 설계 [docs/04_architecture/교대근무_설계.md](docs/04_architecture/교대근무_설계.md)
+
+**확정 결정(사장님)**: ①로테이션(날짜별) ②야간조(자정 넘김) 지원 ③지각유예·기준시간 8h는 회사 공통 ④근무표=기본배정(자동)+날짜예외(덮어쓰기) ⑤직원 셀프수정 허용(미래만·즉시반영·이력·알림·관리자 되돌리기) ⑥기본배정 2방식 지원(회사별 선택: 고정 요일패턴 / 순환 규칙) ⑦순환=조 A/B/C 단위. 추천확정: A=야간 출근일 귀속·C=배정일 미출근=결근·D=주52 현행·G=오늘포함 과거잠금·H=주경계 월00시·I=이번엔 조수=교대수(4조3교대 차기).
+
+**완료 단계(커밋)**
+- **Phase 0**(기획·설계): PRD `4323698·2efd4d4·735122e`, 설계 `a4ae39c`.
+- **Phase 1**(토대) `657dd8d`: schema 6모델(Shift·ShiftPattern·ShiftGroup·RotationRule·ShiftAssignment·ShiftChangeLog)+Company/User 필드, **마이그레이션 적용**, `lib/shift.ts` 순수함수(crossesMidnight·atDate·nextDayISO·elapsedUnits(주=월00시)·rotationShiftOrder·isLateByShift·isEarlyLeaveByShift) — **25종 경계테스트 PASS**. add-only라 기존 무영향.
+- **Phase 2**(설정 교대정의) `be73102`: [설정→근무제]에 교대근무 드롭박스(안함/2/3교대)→조별(이름·출근·퇴근) 입력·🌙야간표시 + 근무표방식(고정/순환). `saveWorkRules` 확장(shiftMode·scheduleType·조 order upsert). onboarding 기본값(off) 전달.
+- **Phase 3a**(근무표 고정) `9d9cef7`: 신규 **[근무표] 화면 `/shifts`**(사이드바 메뉴 추가) — 고정 요일패턴 그리드(직원×요일→조), `actions/shift.ts` `saveFixedPattern`(트랜잭션 upsert). 미설정/순환은 안내문.
+
+**🔜 다음 = Phase 3b → 4 → 5**
+- **Phase 3b**: 순환 배정 화면(직원→조 A/B/C 배정 + RotationRule 규칙[순서·단위·시작일] 설정). `/shifts`의 rotation 분기에 구현.
+- **Phase 4(핵심)**: **판정 연결** — `lib/shift-server.ts`(회사 컨텍스트 로더 + resolveShift[예외→고정/순환→휴무]) 신설 후, 근태현황·리포트·대시보드·결근·내근태(DetailTable)에서 **그날 조 기준 + 자정 넘김**으로 지각/조퇴/실근무/결근 계산. `lib/shift.ts` 순수함수 재사용. 비교대는 기존 `worktime.ts` 유지(하위호환).
+- **Phase 5**: 직원 셀프수정(미래만) + ShiftChangeLog 이력 + 알림센터(`lib/notifications.ts`)·되돌리기.
+
+**주의/메모**
+- **prisma generate 함정**: dev서버가 켜져 있으면 `migrate/generate`가 엔진 DLL 잠금(EPERM)으로 실패. 스키마 바꿨으면 **서버 껐다 켜기**(배치파일이 자동 generate). Phase 1 migrate는 적용됨, 클라이언트도 재생성 확인됨.
+- **아직 판정 미연결**: Phase 4 전까지 shiftMode를 켜도 기존 지각/실근무 계산은 그대로(=기존 화면 100% 무영향). 안전.
+- 검증DB(뉴가온)로 저장경로 시험 시 **반드시 원상복구**(이번 세션 그렇게 함) — 실계정 상태 오염 금지.
+- **미푸시 32커밋**(master, origin/main 대비). 깃허브 푸시는 사장님 결정 대기.
 
 ### 📌 이번 세션(2026-07-19) 요약 — 다음 세션은 여기부터
 - **완료 5건(전부 로컬 커밋, 아직 깃허브 미푸시)**: B-3 주52초과알림(`8bc69ee`) · B-4 법정기록PDF(`9d99b73`) · B-5 휴가유형확장(`3f2e343`) · C-2 알림센터통합(`6c7a8a2`) — (직전 세션 A-2 문자·B-2 연차자동발생 포함 시 origin/main 대비 **미푸시 16커밋**).
