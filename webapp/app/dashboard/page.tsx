@@ -9,6 +9,9 @@ import { weekStartMonday, weeklyLevel, cappedEnd } from "@/lib/overtime";
 import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
 import { leaveSuppressesLate, leaveSuppressesEarly } from "@/lib/leave";
+import { loadShiftContext } from "@/lib/shift-server";
+import { resolveShift, isLateByShift, isEarlyLeaveByShift } from "@/lib/shift";
+import { toISODate } from "@/lib/period";
 import { countUncheckedAnomalies } from "@/lib/anomaly";
 import { DashboardCalendar } from "./DashboardCalendar";
 import { LatestNoticeModal } from "./LatestNoticeModal";
@@ -31,7 +34,7 @@ export default async function DashboardPage() {
   // 직원 목록(근무요일·미출근 계산용) — 재직중(퇴사 안 한) 직원만
   const employees = await prisma.user.findMany({
     where: { companyId: me.companyId, role: "employee", deactivatedAt: null },
-    select: { id: true, name: true, workDays: true },
+    select: { id: true, name: true, workDays: true, shiftGroupId: true },
   });
   const employeeCount = employees.length;
 
@@ -45,8 +48,12 @@ export default async function DashboardPage() {
       alertNightOn: true, alertNightStart: true, alertNightEnd: true, alertFailOn: true, alertFailCount: true,
     },
   });
-  const hasRule = !!company?.workStartTime;
-  const hasEndRule = !!company?.workEndTime;
+  // 교대제면 오늘 각 직원 조 기준으로 지각/조퇴/미출근 판정(비교대면 ctx=null → 기존).
+  const todayISO = toISODate(startOfToday);
+  const tomorrowISO = toISODate(new Date(startOfToday.getTime() + 86400000));
+  const shiftCtx = await loadShiftContext(me.companyId, todayISO, tomorrowISO);
+  const hasRule = shiftCtx ? true : !!company?.workStartTime;
+  const hasEndRule = shiftCtx ? true : !!company?.workEndTime;
 
   // 오늘의 쉬는 날(공휴일·회사휴무일) 집합 — 지각·미출근·휴일근무 판정에서 제외한다.
   const offDays = await loadOffDays(me.companyId, company?.holidayAutoOn ?? true, startOfToday, startOfToday);
@@ -80,9 +87,16 @@ export default async function DashboardPage() {
   const lateUserIds = new Set(
     todays
       .filter((r) => {
-        const wd = effectiveWorkDays(r.user.workDays, company?.workDays);
-        if (!isEffectiveWorkDay(r.clockIn, wd, offDays)) return false;
-        if (!isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0)) return false;
+        if (shiftCtx) {
+          // 교대제: 그날 조 기준(휴무면 판정 안 함), 자정 넘김 정확.
+          const shift = resolveShift(shiftCtx, r.userId, r.user.shiftGroupId, toISODate(r.clockIn));
+          if (!shift) return false;
+          if (!isLateByShift(r.clockIn, toISODate(r.clockIn), shift, company?.lateGraceMin ?? 0)) return false;
+        } else {
+          const wd = effectiveWorkDays(r.user.workDays, company?.workDays);
+          if (!isEffectiveWorkDay(r.clockIn, wd, offDays)) return false;
+          if (!isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0)) return false;
+        }
         const lt = leaveTypeTodayByUser.get(r.userId);
         return !(lt && leaveSuppressesLate(lt));
       })
@@ -95,9 +109,15 @@ export default async function DashboardPage() {
   const earlyUserIds = new Set(
     todays
       .filter((r) => {
-        const wd = effectiveWorkDays(r.user.workDays, company?.workDays);
-        if (!isEffectiveWorkDay(r.clockIn, wd, offDays)) return false;
-        if (!isEarlyLeave(r.clockOut, company?.workEndTime ?? null)) return false;
+        if (shiftCtx) {
+          const shift = resolveShift(shiftCtx, r.userId, r.user.shiftGroupId, toISODate(r.clockIn));
+          if (!shift) return false;
+          if (!r.clockOut || !isEarlyLeaveByShift(r.clockOut, toISODate(r.clockIn), shift)) return false;
+        } else {
+          const wd = effectiveWorkDays(r.user.workDays, company?.workDays);
+          if (!isEffectiveWorkDay(r.clockIn, wd, offDays)) return false;
+          if (!isEarlyLeave(r.clockOut, company?.workEndTime ?? null)) return false;
+        }
         const lt = leaveTypeTodayByUser.get(r.userId);
         return !(lt && leaveSuppressesEarly(lt));
       })
@@ -117,8 +137,11 @@ export default async function DashboardPage() {
   const clockedInIds = new Set(todays.map((r) => r.userId));
   const absentNames = employees
     .filter((e) => {
-      const wd = effectiveWorkDays(e.workDays, company?.workDays);
-      return isEffectiveWorkDay(now, wd, offDays) && !clockedInIds.has(e.id) && !onLeaveTodayIds.has(e.id);
+      // 교대제: 오늘 조 배정(≠휴무)이면 근무예정. 비교대: 근무요일 + 쉬는날 제외(기존).
+      const workingToday = shiftCtx
+        ? resolveShift(shiftCtx, e.id, e.shiftGroupId, todayISO) !== null
+        : isEffectiveWorkDay(now, effectiveWorkDays(e.workDays, company?.workDays), offDays);
+      return workingToday && !clockedInIds.has(e.id) && !onLeaveTodayIds.has(e.id);
     })
     .map((e) => e.name);
   const absentCount = absentNames.length;

@@ -10,6 +10,8 @@ import { parseAnchor, toISODate } from "@/lib/period";
 import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
 import { leaveDateSet } from "@/lib/leave";
+import { loadShiftContext } from "@/lib/shift-server";
+import { resolveShift } from "@/lib/shift";
 
 export default async function ReportsPage({
   searchParams,
@@ -69,10 +71,13 @@ export default async function ReportsPage({
     orderBy: { clockIn: "asc" },
   });
 
+  // 교대제면 결근을 조 배정 기준으로(비교대면 ctx=null → 근무요일 기준 기존 로직).
+  const shiftCtx = await loadShiftContext(me.companyId, toISODate(start), toISODate(end));
+
   // 직원별 집계 (+ 초과근무를 위해 날짜별 실근무 분도 모은다)
-  const byUser = new Map<string, { id: string; name: string; employeeNo: string | null; role: string; minutes: number; breaks: number; days: Set<string>; workDays: string | null; dayMinutes: Map<string, number> }>();
+  const byUser = new Map<string, { id: string; name: string; employeeNo: string | null; role: string; minutes: number; breaks: number; days: Set<string>; workDays: string | null; shiftGroupId: string | null; dayMinutes: Map<string, number> }>();
   for (const r of records) {
-    const cur = byUser.get(r.userId) ?? { id: r.userId, name: r.user.name, employeeNo: r.user.employeeNo, role: r.user.role, minutes: 0, breaks: 0, days: new Set<string>(), workDays: r.user.workDays, dayMinutes: new Map<string, number>() };
+    const cur = byUser.get(r.userId) ?? { id: r.userId, name: r.user.name, employeeNo: r.user.employeeNo, role: r.user.role, minutes: 0, breaks: 0, days: new Set<string>(), workDays: r.user.workDays, shiftGroupId: r.user.shiftGroupId, dayMinutes: new Map<string, number>() };
     const wm = workedMinutes(r);
     const iso = toISODate(r.clockIn);
     cur.minutes += wm;
@@ -108,12 +113,14 @@ export default async function ReportsPage({
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const absLimit = end < startOfToday ? end : startOfToday;
-  function absentCountFor(userWorkDays: string | null, attended: Set<string>, leaveDays: Set<string>): number {
+  function absentCountFor(userId: string, userWorkDays: string | null, shiftGroupId: string | null, attended: Set<string>, leaveDays: Set<string>): number {
     const wd = effectiveWorkDays(userWorkDays, company?.workDays);
     let n = 0;
     for (let cur = new Date(start); cur < absLimit; cur = new Date(cur.getTime() + 86400000)) {
       const iso = toISODate(cur);
-      if (isEffectiveWorkDay(cur, wd, offDays) && !attended.has(iso) && !leaveDays.has(iso)) n++;
+      // 교대제: 그날 조 배정(≠휴무)이면 근무예정일. 비교대: 근무요일 + 쉬는날 제외(기존).
+      const isWork = shiftCtx ? resolveShift(shiftCtx, userId, shiftGroupId, iso) !== null : isEffectiveWorkDay(cur, wd, offDays);
+      if (isWork && !attended.has(iso) && !leaveDays.has(iso)) n++;
     }
     return n;
   }
@@ -129,7 +136,7 @@ export default async function ReportsPage({
       days: u.days.size,
       minutes: u.minutes,
       overtime: overtimeMinutesOf(u.dayMinutes),
-      absent: absentCountFor(u.workDays, u.days, leaveByUser.get(u.id) ?? new Set()),
+      absent: absentCountFor(u.id, u.workDays, u.shiftGroupId, u.days, leaveByUser.get(u.id) ?? new Set()),
       breaks: u.breaks,
       search: [u.name, u.employeeNo ?? "", u.role === "admin" ? "관리자" : "직원"].join(" ").toLowerCase(),
     }))
