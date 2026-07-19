@@ -16,6 +16,7 @@ export type NavKey =
   | "security" // 보안로그(로그인 이력·접속 로그) — 관리자
   | "live" // 실시간 현황판(사무실 지도·근무 중·접속) — 관리자
   | "schedule" // 일정 캘린더(공휴일·휴무일·회사 일정) — 관리자
+  | "shifts" // 근무표(교대 배정) — 관리자
   | "account"; // 계정 설정 — 사이드바 메뉴엔 없고(프로필 아바타로 진입) 하이라이트용 키
 
 type Item = { key: NavKey; href: string; label: string; icon: string };
@@ -42,6 +43,7 @@ const ICON: Record<NavKey, string> = {
   security: '<rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/><path d="M12 15v2"/>',
   live: '<path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>',
   schedule: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><rect x="7" y="13" width="4" height="4" rx="0.5"/>',
+  shifts: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 4v16M15 4v16"/>',
 };
 
 const LABEL: Record<NavKey, string> = {
@@ -65,6 +67,7 @@ const LABEL: Record<NavKey, string> = {
   security: "보안로그",
   live: "현황판",
   schedule: "일정",
+  shifts: "근무표",
 };
 
 // 화면 키 → 실제 경로(키와 경로가 다른 항목만 지정, 없으면 "/키")
@@ -86,7 +89,7 @@ function toItems(keys: NavKey[]): Item[] {
 function groupsFor(role: string): NavGroup[] {
   if (role === "admin") {
     return [
-      { caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(["dashboard", "notifications", "live", "employees", "records", "schedule", "reports", "leave-approvals", "leave-summary", "biometrics", "security", "company", "settings"]) },
+      { caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(["dashboard", "notifications", "live", "employees", "records", "shifts", "schedule", "reports", "leave-approvals", "leave-summary", "biometrics", "security", "company", "settings"]) },
       { caption: "내근태", tintBg: "#E3F5EA", tintText: "#15803D", items: toItems(["attendance", "auth-method"]) },
     ];
   }
