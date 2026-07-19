@@ -200,32 +200,67 @@ export async function saveWorkRules(
     }
   }
 
-  await prisma.company.update({
-    where: { id: me.companyId },
-    data: {
-      workStartTime: start || null,
-      workEndTime: end || null,
-      lateGraceMin: Math.round(grace),
-      standardWorkHours: std,
-      overtimeAlertOn,
-      overtimeWarnHours,
-      workDays,
-      shiftMode,
-      scheduleType,
-    },
-  });
-
-  // 조 정의 반영 — order 기준 upsert로 id를 유지(삭제·재생성 아님 → 이후 배정·예외가 안 끊긴다).
-  if (shiftMode) {
-    for (const sh of parsedShifts) {
-      await prisma.shift.upsert({
-        where: { companyId_order: { companyId: me.companyId, order: sh.order } },
-        update: { name: sh.name, startTime: sh.startTime, endTime: sh.endTime },
-        create: { companyId: me.companyId, ...sh },
+  // 근무제 저장 + 교대 정의 + 순환 그룹 재조정을 "한 트랜잭션"으로 원자화한다.
+  //  이렇게 묶지 않으면, shiftMode만 먼저 커밋되고 뒤 정리가 실패할 때 그룹·orderCsv가 옛 상태로 남아
+  //  (loadShiftContext가 옛 순환주기를 읽어) 근무일이 조용히 휴무로 뒤집히는 불일치가 생긴다.
+  //  ShiftGroup.order는 0-based(0,1,2=A,B,C)라 유효 조는 0..shiftMode-1 → 초과 = order>=shiftMode.
+  //  (A안: 방식과 무관하게 shiftMode 기준. 순환→고정으로만 바꾸고 교대수가 같으면 조·배정은 보존.)
+  const keepGroups = shiftMode ?? 0; // 유지할 순환 조 개수(교대 끄면 0=전부 정리)
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.company.update({
+        where: { id: me.companyId },
+        data: {
+          workStartTime: start || null,
+          workEndTime: end || null,
+          lateGraceMin: Math.round(grace),
+          standardWorkHours: std,
+          overtimeAlertOn,
+          overtimeWarnHours,
+          workDays,
+          shiftMode,
+          scheduleType,
+        },
       });
-    }
-    // 교대 수가 줄었으면(3→2) 초과 조 정리
-    await prisma.shift.deleteMany({ where: { companyId: me.companyId, order: { gt: shiftMode } } });
+
+      // 조 정의 반영 — order 기준 upsert로 id를 유지(삭제·재생성 아님 → 이후 배정·예외가 안 끊긴다).
+      if (shiftMode) {
+        for (const sh of parsedShifts) {
+          await tx.shift.upsert({
+            where: { companyId_order: { companyId: me.companyId, order: sh.order } },
+            update: { name: sh.name, startTime: sh.startTime, endTime: sh.endTime },
+            create: { companyId: me.companyId, ...sh },
+          });
+        }
+        // 교대 수가 줄었으면(3→2) 초과 조 정리.
+        //  ※ 완전 OFF(shiftMode=null) 시 Shift 행은 의도적으로 남긴다 — loadShiftContext가 shiftMode=null이면
+        //    조기 반환해 읽지 않으므로 무해하고, 재활성화 시 위 upsert/deleteMany가 다시 정돈한다.
+        await tx.shift.deleteMany({ where: { companyId: me.companyId, order: { gt: shiftMode } } });
+      }
+
+      // ── 순환용 조(ShiftGroup)·순환규칙(orderCsv) 재조정 ──
+      //  교대 수가 줄거나(3→2) 교대를 완전히 끄면(shiftMode=null), 순환 조·배정·orderCsv가 어긋난다.
+      //  → shift.ts saveRotation과 동일 패턴: 참조 직원 해제(FK 안전) → 조 삭제 → orderCsv 갱신.
+      const excess = await tx.shiftGroup.findMany({
+        where: { companyId: me.companyId, order: { gte: keepGroups } },
+        select: { id: true },
+      });
+      if (excess.length) {
+        const ids = excess.map((e) => e.id);
+        await tx.user.updateMany({ where: { companyId: me.companyId, shiftGroupId: { in: ids } }, data: { shiftGroupId: null } });
+        await tx.shiftGroup.deleteMany({ where: { id: { in: ids } } });
+      }
+      // 순환규칙이 있으면 orderCsv를 현재 교대수에 맞춘다(행 없으면 no-op — 생성은 saveRotation 몫).
+      //  shiftMode 없을 때는 갱신하지 않음: OFF 상태에선 loadShiftContext가 orderCsv를 읽지 않고(휴면),
+      //  재활성화 시 saveRotation이 다시 기록한다.
+      if (shiftMode) {
+        const orderCsv = Array.from({ length: shiftMode }, (_, i) => i + 1).join(","); // "1,2[,3]"
+        await tx.rotationRule.updateMany({ where: { companyId: me.companyId }, data: { orderCsv } });
+      }
+    });
+  } catch (e) {
+    console.error("saveWorkRules 저장 실패:", e); // 단일 트랜잭션이라 부분커밋 없음 — 원인 추적용 로깅
+    return { error: "근무제 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요." };
   }
 
   await logAdminAction(me, "config", "work_rules"); // 감사로그(성공 시에만)
