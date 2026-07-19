@@ -43,6 +43,9 @@ export default async function OnboardingPage() {
               standardHours: company?.standardWorkHours ?? 8,
               overtimeAlertOn: company?.overtimeAlertOn ?? true,
               overtimeWarnHours: company?.overtimeWarnHours ?? 48,
+              shiftMode: 0,
+              scheduleType: "fixed",
+              shifts: [],
             }}
           />
         </div>

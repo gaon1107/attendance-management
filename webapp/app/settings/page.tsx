@@ -28,7 +28,15 @@ export default async function SettingsPage() {
       faceMinPercent: true, faceMinBrightness: true, livenessPercent: true,
       alertNightOn: true, alertNightStart: true, alertNightEnd: true, alertFailOn: true, alertFailCount: true,
       holidayAutoOn: true,
+      shiftMode: true, scheduleType: true,
     },
+  });
+
+  // 교대조 정의(있으면) — 근무제 폼에서 조별 시각을 보여준다.
+  const shifts = await prisma.shift.findMany({
+    where: { companyId: me.companyId },
+    orderBy: { order: "asc" },
+    select: { order: true, name: true, startTime: true, endTime: true },
   });
 
   const currentIp = getClientIp(await headers());
@@ -58,6 +66,9 @@ export default async function SettingsPage() {
             standardHours: company?.standardWorkHours ?? 8,
             overtimeAlertOn: company?.overtimeAlertOn ?? true,
             overtimeWarnHours: company?.overtimeWarnHours ?? 48,
+            shiftMode: company?.shiftMode ?? 0,
+            scheduleType: company?.scheduleType ?? "fixed",
+            shifts,
           }}
         />
         <OfficeNetworkForm initialIps={company?.officeIps ?? ""} currentIp={currentIp} />

@@ -185,6 +185,21 @@ export async function saveWorkRules(
     overtimeWarnHours = Math.min(52, Math.max(30, overtimeWarnHours));
   }
 
+  // ── 교대근무(시프트) 정의 ── shiftMode=null이면 교대 안 함(= 현행 동작). 값이 있으면 조별 시각 검증.
+  const shiftModeRaw = String(formData.get("shiftMode") ?? "").trim();
+  const shiftMode = shiftModeRaw === "2" ? 2 : shiftModeRaw === "3" ? 3 : null;
+  const scheduleType = shiftMode ? (String(formData.get("scheduleType") ?? "") === "rotation" ? "rotation" : "fixed") : null;
+  const parsedShifts: { order: number; name: string | null; startTime: string; endTime: string }[] = [];
+  if (shiftMode) {
+    for (let i = 1; i <= shiftMode; i++) {
+      const s = String(formData.get(`shift${i}Start`) ?? "").trim();
+      const e = String(formData.get(`shift${i}End`) ?? "").trim();
+      const nm = String(formData.get(`shift${i}Name`) ?? "").trim();
+      if (!TIME_RE.test(s) || !TIME_RE.test(e)) return { error: `${i}교대 출근·퇴근 시각을 HH:MM 형식으로 모두 입력해주세요.` };
+      parsedShifts.push({ order: i, name: nm || null, startTime: s, endTime: e });
+    }
+  }
+
   await prisma.company.update({
     where: { id: me.companyId },
     data: {
@@ -195,8 +210,23 @@ export async function saveWorkRules(
       overtimeAlertOn,
       overtimeWarnHours,
       workDays,
+      shiftMode,
+      scheduleType,
     },
   });
+
+  // 조 정의 반영 — order 기준 upsert로 id를 유지(삭제·재생성 아님 → 이후 배정·예외가 안 끊긴다).
+  if (shiftMode) {
+    for (const sh of parsedShifts) {
+      await prisma.shift.upsert({
+        where: { companyId_order: { companyId: me.companyId, order: sh.order } },
+        update: { name: sh.name, startTime: sh.startTime, endTime: sh.endTime },
+        create: { companyId: me.companyId, ...sh },
+      });
+    }
+    // 교대 수가 줄었으면(3→2) 초과 조 정리
+    await prisma.shift.deleteMany({ where: { companyId: me.companyId, order: { gt: shiftMode } } });
+  }
 
   await logAdminAction(me, "config", "work_rules"); // 감사로그(성공 시에만)
   revalidatePath("/settings");
