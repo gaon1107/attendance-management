@@ -198,6 +198,18 @@ export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
   return items;
 }
 
+// 결재 라인 구성원인지(사이드바 [결재함] 메뉴 표시용). 실제 결재자 산정(buildApprovalChain:
+// candidate = headUserId ?? deputyUserId)과 일치시킨다 → 부서장(headUserId)이거나,
+// **부서장이 없는 부서의** 대결자(deputyUserId)면 true. 전결권자도 부서장이라 포함.
+//  · 부서장+대결자가 둘 다 있으면 대결자는 실제 결재를 받지 못하므로(빈 결재함 방지) 제외.
+//  · 회사격리 필수. React cache() → 한 요청 내 실제 조회 1회.
+export const isApprovalLineMember = cache(async (companyId: string, userId: string): Promise<boolean> => {
+  const n = await prisma.department.count({
+    where: { companyId, OR: [{ headUserId: userId }, { headUserId: null, deputyUserId: userId }] },
+  });
+  return n > 0;
+});
+
 // 내가 지금 결재할 차례인 대기 건수(사이드바 배지·알림용). 배지용이라 원본 레코드·user join 없이
 // 단계만으로 경량 집계(건수 K와 무관하게 최대 ~4쿼리). 결재자 아니면 첫 쿼리 빈 결과로 즉시 0.
 // React cache() → 한 요청 내(사이드바가 여러 번 읽어도) 실제 집계 1회.

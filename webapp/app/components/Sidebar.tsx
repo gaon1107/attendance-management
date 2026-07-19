@@ -1,7 +1,7 @@
 // 공통 왼쪽 아이콘 사이드바 — 리뉴얼 디자인의 세로 네비게이션.
 // 링크 구성은 역할별(관리자/직원)로 나뉜다. 아이콘 레일 형태의 세로 네비게이션.
 import Link from "next/link";
-import { countMyPendingApprovals } from "@/lib/approval-server";
+import { countMyPendingApprovals, isApprovalLineMember } from "@/lib/approval-server";
 
 type NavUser = {
   id?: string;
@@ -92,23 +92,26 @@ function toItems(keys: NavKey[]): Item[] {
 
 // 관리자 메뉴는 "회사관리"(직원들 것) 한 묶음. 관리자는 본인 출퇴근을 하지 않으므로 "내근태"(출퇴근·인증방식) 묶음은 제공하지 않는다.
 // 직원 메뉴는 전부 본인 것이라 한 묶음(제목 없음).
-function groupsFor(role: string, deptline: boolean): NavGroup[] {
+// showApprovals: [결재함] 메뉴 표시 여부. 결재 라인 구성원(부서장·대결자) 또는 지금 결재 대기가 있는 사람만 true.
+//  → 결재선 켠 회사여도 일반 직원/미지정 관리자에겐 안 보인다(빈 결재함 노출 방지). 판정은 Sidebar에서.
+function groupsFor(role: string, showApprovals: boolean): NavGroup[] {
   if (role === "admin") {
-    // 결재선 켠 회사만 [결재함](관리자 오버라이드용)을 휴가승인 옆에 추가.
-    const adminKeys: NavKey[] = ["dashboard", "notifications", "live", "employees", "records", "shifts", "schedule", "reports", "leave-approvals", ...(deptline ? (["approvals"] as NavKey[]) : []), "leave-summary", "biometrics", "security", "company", "settings"];
+    const adminKeys: NavKey[] = ["dashboard", "notifications", "live", "employees", "records", "shifts", "schedule", "reports", "leave-approvals", ...(showApprovals ? (["approvals"] as NavKey[]) : []), "leave-summary", "biometrics", "security", "company", "settings"];
     return [{ caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(adminKeys) }];
   }
-  // 직원: 결재선 켠 회사면 [결재함](부서장이 자기 차례 승인)을 추가.
-  const empKeys: NavKey[] = ["attendance", "my-records", "schedule", "leave", "corrections", ...(deptline ? (["approvals"] as NavKey[]) : []), "auth-method"];
+  // 직원: 결재 라인에 있는 사람(부서장 등)에게만 [결재함](자기 차례 승인)을 추가.
+  const empKeys: NavKey[] = ["attendance", "my-records", "schedule", "leave", "corrections", ...(showApprovals ? (["approvals"] as NavKey[]) : []), "auth-method"];
   return [{ caption: "", items: toItems(empKeys) }];
 }
 
 export async function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
   const deptline = user.company.approvalMode === "deptline";
-  const groups = groupsFor(user.role, deptline);
   const initial = user.name.slice(0, 1);
   // 결재선 켠 회사에서만 내 결재 대기 수를 배지로. 결재자 아니면 첫 쿼리에서 0(값싸다). single이면 조회 없음.
   const approvalWaiting = deptline && user.companyId && user.id ? await countMyPendingApprovals(user.companyId, user.id) : 0;
+  // [결재함] 메뉴는 결재 라인 구성원(부서장·대결자) 또는 지금 결재 대기가 있는 사람에게만. single/일반 직원은 숨김.
+  const showApprovals = deptline && !!user.companyId && !!user.id && (approvalWaiting > 0 || (await isApprovalLineMember(user.companyId, user.id)));
+  const groups = groupsFor(user.role, showApprovals);
 
   return (
     <aside
