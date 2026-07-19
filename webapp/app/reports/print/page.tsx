@@ -144,9 +144,12 @@ export default async function ReportPrintPage({
         .rp-emp { margin-top: 26px; }
         .rp-emp:first-of-type { margin-top: 0; }
         @media print {
-          .rp-root { background: #fff; padding: 0; }
+          /* min-height 초기화 — 100vh가 남아 빈 페이지가 딸려 나오는 것 방지 */
+          .rp-root { background: #fff; padding: 0; min-height: auto; }
           .rp-toolbar { display: none; }
-          .rp-sheet { max-width: none; margin: 0; padding: 0; box-shadow: none; }
+          /* 좌우 안전 여백(8mm) — 인쇄창에서 '여백 없음'을 골라도 표가 종이 끝에 붙어 잘리지 않게 한다.
+             (상하 여백은 페이지마다 적용되는 @page 여백이 담당 → '기본값' 권장) */
+          .rp-sheet { max-width: none; margin: 0; padding: 0 8mm; box-shadow: none; }
           .rp-emp + .rp-emp { break-before: page; }
           thead { display: table-header-group; }
           tr { break-inside: avoid; }
