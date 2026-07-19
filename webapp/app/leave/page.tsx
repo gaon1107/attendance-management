@@ -38,6 +38,14 @@ export default async function LeavePage() {
       ? await getApprovalProgressMap(me.companyId, "leave", requests.filter((r) => r.status === "pending").map((r) => r.id))
       : new Map();
 
+  // 처리(승인/반려)된 신청의 처리자 이름 — 결정사유와 함께 "누가" 표시. (한 번에 조회)
+  const deciderIds = [...new Set(requests.map((r) => r.decidedById).filter((v): v is string => !!v))];
+  const deciderName = new Map<string, string>(
+    deciderIds.length
+      ? (await prisma.user.findMany({ where: { companyId: me.companyId, id: { in: deciderIds } }, select: { id: true, name: true } })).map((u) => [u.id, u.name])
+      : []
+  );
+
   const used = usedLeaveDays(requests);
   const granted = annualLeaveGranted(me); // 입사일 기준 자동 발생(관리자 수동조정 우선)
   const remaining = Math.round((granted - used) * 10) / 10;
@@ -121,6 +129,13 @@ export default async function LeavePage() {
                             </div>
                           );
                         })()}
+                        {r.status !== "pending" && r.decisionComment && (
+                          <div style={{ fontSize: 12, color: r.status === "rejected" ? "var(--danger)" : "var(--text-sub)", marginTop: 4, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                            {r.status === "rejected" ? "반려 사유" : "승인 메모"}: {r.decisionComment}
+                            {r.decidedById && deciderName.get(r.decidedById) && <span style={{ color: "var(--text-sub)" }}> · {deciderName.get(r.decidedById)}</span>}
+                            {r.decidedAt && <span style={{ color: "var(--text-sub)" }}> · {ymd(r.decidedAt)}</span>}
+                          </div>
+                        )}
                       </td>
                       <td style={{ ...td, textAlign: "right" }}>
                         {r.status === "pending" && (
