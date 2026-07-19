@@ -5,6 +5,7 @@ import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { buildApprovalChain, nextPendingStep, isChainComplete, isChainRejected, type DeptNode, type ChainApprover } from "@/lib/approval";
 import { outingKindLabel } from "@/lib/outing";
+import { remoteRangeLabel } from "@/lib/remote";
 
 export type RequestType = "leave" | "correction" | "outing" | "remote";
 
@@ -220,8 +221,6 @@ export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
         include: { user: { select: { name: true, employeeNo: true } } },
       });
       if (!rw) continue;
-      const s = rw.startDate.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
-      const e = rw.endDate.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
       items.push({
         type: "remote",
         requestId: rw.id,
@@ -231,7 +230,7 @@ export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
         totalSteps: siblings.length,
         isFinal: step.isFinal === true,
         createdAt: rw.createdAt,
-        summary: `재택근무 신청 (${s === e ? s : `${s}~${e}`})`,
+        summary: `재택근무 신청 (${remoteRangeLabel(rw.startDate, rw.endDate)})`,
         detail: rw.reason ?? "",
       });
     }

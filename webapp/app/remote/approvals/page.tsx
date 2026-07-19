@@ -4,18 +4,9 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { RemoteApprovalsClient, type RemoteRow } from "./RemoteApprovalsClient";
-import { remoteStatusLabel } from "@/lib/remote";
+import { remoteStatusLabel, remoteRangeLabel } from "@/lib/remote";
 import { parseAnchor, toISODate } from "@/lib/period";
 import { getApprovalProgressMap } from "@/lib/approval-server";
-
-function ymd(d: Date): string {
-  return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
-}
-function rangeLabel(start: Date, end: Date): string {
-  const s = ymd(start);
-  const e = ymd(end);
-  return s === e ? s : `${s} ~ ${e}`;
-}
 
 export default async function RemoteApprovalsPage({
   searchParams,
@@ -76,7 +67,7 @@ export default async function RemoteApprovalsPage({
   };
 
   const toRow = (r: (typeof pendingReqs)[number]): RemoteRow => {
-    const rl = rangeLabel(r.startDate, r.endDate);
+    const rl = remoteRangeLabel(r.startDate, r.endDate);
     const statusLabel = remoteStatusLabel(r.status);
     const reason = r.reason || "";
     return {

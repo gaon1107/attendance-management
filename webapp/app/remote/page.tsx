@@ -5,16 +5,11 @@ import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { RemoteRequestForm } from "./RemoteRequestForm";
 import { cancelRemote } from "@/app/actions/remote";
-import { remoteStatusLabel } from "@/lib/remote";
+import { remoteStatusLabel, remoteRangeLabel } from "@/lib/remote";
 import { getApprovalProgressMap, type ApprovalProgress } from "@/lib/approval-server";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
-}
-function rangeLabel(start: Date, end: Date): string {
-  const s = ymd(start);
-  const e = ymd(end);
-  return s === e ? s : `${s} ~ ${e}`;
 }
 
 const STATUS_STYLE: Record<string, { bg: string; dot: string; color: string }> = {
@@ -84,7 +79,7 @@ export default async function RemotePage() {
                   const s = STATUS_STYLE[r.status] ?? STATUS_STYLE.pending;
                   return (
                     <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                      <td style={{ ...td, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{rangeLabel(r.startDate, r.endDate)}</td>
+                      <td style={{ ...td, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{remoteRangeLabel(r.startDate, r.endDate)}</td>
                       <td style={{ ...td, color: "var(--text-sub)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.reason || "—"}</td>
                       <td style={td}>
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 24, padding: "0 9px", borderRadius: 6, background: s.bg }}>

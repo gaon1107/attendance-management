@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { parseYmd } from "@/lib/leave";
+import { MAX_REMOTE_DAYS } from "@/lib/remote";
 import { createApprovalStepsIfNeeded, advanceApproval, deleteApprovalSteps } from "@/lib/approval-server";
 
 // 직원: 재택근무 신청. 기간(시작~종료)·사유를 받아 대기 상태로 만든다.
@@ -16,11 +17,13 @@ export async function requestRemote(
   if (!me) return { error: "로그인이 필요합니다." };
 
   const start = parseYmd(String(formData.get("startDate") ?? ""));
-  const endRaw = String(formData.get("endDate") ?? "");
-  if (!parseYmd(endRaw)) return { error: "종료일을 선택해주세요." };
-  const end = parseYmd(endRaw);
-  if (!start || !end) return { error: "날짜를 올바르게 선택해주세요." };
+  const end = parseYmd(String(formData.get("endDate") ?? ""));
+  if (!end) return { error: "종료일을 선택해주세요." };
+  if (!start) return { error: "시작일을 선택해주세요." };
   if (end < start) return { error: "종료일이 시작일보다 빠릅니다." };
+  // 무제한 장기신청 방지(잔량 개념이 없어 상한을 둔다). 시작·종료 포함 일수로 계산.
+  const spanDays = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+  if (spanDays > MAX_REMOTE_DAYS) return { error: `한 번에 신청할 수 있는 기간(${MAX_REMOTE_DAYS}일)을 넘었습니다. 기간을 나눠 신청해주세요.` };
 
   const reasonRaw = String(formData.get("reason") ?? "").trim();
   const reason = reasonRaw ? Array.from(reasonRaw).slice(0, 500).join("") : null;
@@ -45,7 +48,7 @@ export async function cancelRemote(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
   const id = String(formData.get("id") ?? "");
-  const r = await prisma.remoteWorkRequest.findFirst({ where: { id, userId: me.id, status: "pending" } });
+  const r = await prisma.remoteWorkRequest.findFirst({ where: { id, userId: me.id, companyId: me.companyId, status: "pending" } });
   if (!r) return;
   await deleteApprovalSteps(me.companyId, "remote", r.id); // 결재 단계도 함께 정리(고아 방지)
   await prisma.remoteWorkRequest.delete({ where: { id: r.id } });
