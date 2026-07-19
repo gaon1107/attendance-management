@@ -8,7 +8,15 @@
 
 ### 🎯 진행 중(사장님 지시): 전자결재 확장 — "근태 결재 세트" (5개 순차 개발, 각 구현+검수+커밋)
 > 사장님이 전자결재 필수기능 리스트를 주심. **기존 결재선 엔진(ApprovalStep·advanceApproval·결재함·진행표시·반려사유·전결) 재활용**해 새 신청유형을 붙이는 방향으로 합의. 순서: ①외출/외근 ②재택 ③초과근무 사전신청 ④출장 ⑤첨부파일.
-> **진행률: 1/5 완료.** 각 유형은 leave/corrections 패턴 + createApprovalStepsIfNeeded 훅 복제 + 공통 3곳(listMyApprovals·countMyPendingApprovals·approvals/page.tsx TYPE_META) add-only 확장.
+> **진행률: 2/5 완료.** 각 유형은 leave/corrections 패턴 + createApprovalStepsIfNeeded 훅 복제 + 공통 3곳(listMyApprovals·countMyPendingApprovals·approvals/page.tsx TYPE_META) add-only 확장. **알림센터·대시보드 대기카드도 유형마다 확장(single 대칭).**
+
+#### ✅ ②재택근무 신청 — 완료(2026-07-20, 커밋 00d86fd·a4e6e23, 미푸시)
+> 직원 [재택] 메뉴에서 **기간(시작~종료)**·사유 신청 → 관리자/부서장 결재선 승인. 승인=허가 기록만. 새 표 `RemoteWorkRequest`(add-only).
+- ①외출/외근과 동형 클론. RequestType += remote. 알림센터·대시보드 대기카드 처음부터 반영(single 대칭).
+- **검증**: tsc·eslint 0 / **임시라우트 12/12 PASS**(deptline 라운드트립·single 폴백·반려·**휴가+외출/외근+재택 3종 결재함 공존 회귀0**·취소정리, 잔존0).
+- **code-reviewer 치명0·중간2 반영**: ①기간 라벨이 연도 생략해 다년/크로스이어가 '하루'로 보이던 오판 → `remoteRangeLabel`(연도 다르면 표시) 단일출처화 ②신청 기간 무제한 → 366일 상한. 경미(cancel companyId·parseYmd중복) 반영.
+- ⚠️ **실화면 육안검증 남음(사장님 세션)**: 직원 [재택] 기간 신청 → 관리자 대시보드 "🏠 재택근무 신청" 카드/[재택승인] 승인 → 직원 "승인" 표시.
+- 🔜 다음: **③초과근무 사전신청** — ⚠️ **결정 필요**(승인분을 초과근무로 '인정' vs '기록만').
 
 #### ✅ ①외출/외근 신청 — 완료(2026-07-20, 커밋 0af42fe·0fc25a9·cf78a35·1828683, 미푸시)
 > 직원이 [외출외근] 메뉴에서 종류(외출/외근)·날짜·시각·행선지·사유 신청 → 관리자/부서장 결재선 승인. **승인=허가 기록만**(근태·실근무 판정 무접촉=회귀0). 새 표 `OutingRequest`(add-only).
