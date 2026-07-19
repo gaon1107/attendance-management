@@ -73,7 +73,7 @@ export function LoginHistoryClient({
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <RangeCalendarNav from={from} to={to} todayISO={todayISO} basePath="/security/logins" />
-          <div style={{ minWidth: 220, flex: "0 1 300px" }}>
+          <div style={{ minWidth: 220, flex: "0 1 auto" }}>
             <SearchBox value={q} onChange={setQ} placeholder="이름·이메일·IP·기기 검색" />
           </div>
         </div>
