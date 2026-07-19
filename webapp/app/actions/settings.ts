@@ -232,10 +232,29 @@ export async function saveWorkRules(
             create: { companyId: me.companyId, ...sh },
           });
         }
-        // 교대 수가 줄었으면(3→2) 초과 조 정리.
+        // 교대 수가 줄었으면(3→2) 초과 조(Shift) 정리.
         //  ※ 완전 OFF(shiftMode=null) 시 Shift 행은 의도적으로 남긴다 — loadShiftContext가 shiftMode=null이면
         //    조기 반환해 읽지 않으므로 무해하고, 재활성화 시 위 upsert/deleteMany가 다시 정돈한다.
-        await tx.shift.deleteMany({ where: { companyId: me.companyId, order: { gt: shiftMode } } });
+        //  ── fixed 측 dangling 정리(순환 ShiftGroup 정리와 동일 철학) ──
+        //  ShiftPattern.shiftId(고정 요일패턴)·ShiftAssignment.shiftId(날짜 예외)는 schema상 Shift로의 FK가 없어
+        //  삭제된 Shift id를 가리키는 참조가 남는다(크래시는 없지만 정합성이 비대칭). 참조를 먼저 휴무(null)로
+        //  끊은 뒤 삭제한다 — order를 저장하지 않으므로 삭제 대상 id를 먼저 조회해야 한다. companyId 스코프 유지.
+        const staleShifts = await tx.shift.findMany({
+          where: { companyId: me.companyId, order: { gt: shiftMode } },
+          select: { id: true },
+        });
+        if (staleShifts.length) {
+          const staleIds = staleShifts.map((s) => s.id);
+          await tx.shiftPattern.updateMany({
+            where: { companyId: me.companyId, shiftId: { in: staleIds } },
+            data: { shiftId: null },
+          });
+          await tx.shiftAssignment.updateMany({
+            where: { companyId: me.companyId, shiftId: { in: staleIds } },
+            data: { shiftId: null },
+          });
+          await tx.shift.deleteMany({ where: { id: { in: staleIds } } });
+        }
       }
 
       // ── 순환용 조(ShiftGroup)·순환규칙(orderCsv) 재조정 ──

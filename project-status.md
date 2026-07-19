@@ -6,6 +6,16 @@
 
 ## ▶▶ 다음 세션 시작점 (여기부터 읽기) — 2026-07-20
 
+### ✅ 완료(신규): 교대 축소 시 fixed 측(ShiftPattern·ShiftAssignment) dangling 정리 (2026-07-20)
+> 커밋 `a9c2e8a`가 교대 수 축소 시 **순환 측**(ShiftGroup·배정·orderCsv)만 정리해 **fixed 측이 비대칭**으로 남아 있던 선재결함 보완. 교대 3→2 축소로 Shift를 삭제하면 `ShiftPattern.shiftId`(고정 요일패턴)·`ShiftAssignment.shiftId`(날짜 예외)가 schema상 Shift로의 FK가 없어 삭제된 id를 가리키는 dangling 참조로 남던 문제를 정리. 크래시는 원래 없었고(resolveShift가 없는 id를 휴무 처리) 정합성만 개선.
+> **문서**: [research.md]·[plan.md]는 이후 작업이 덮어쓰므로 이 커밋 이력에 보존.
+
+**변경 1곳**: `webapp/app/actions/settings.ts` `saveWorkRules` — 기존 트랜잭션 안 `if(shiftMode)` 블록에서 `shift.deleteMany` 한 줄을 "삭제 대상 id 조회 → `shiftPattern`·`shiftAssignment`의 그 shiftId를 null(휴무)로 정리 → 삭제"로 교체. **순환 ShiftGroup 정리와 동일 철학(참조 해제→삭제), companyId 스코프 유지, 스키마·마이그레이션 변경 없음.**
+
+**설계 판단**: 완전 OFF(shiftMode=null)는 블록 미진입 — Shift 행을 의도적으로 남기는(휴면) 현행 설계라 dangling 자체가 안 생김 → 정리 불필요(요청의 "OFF 시" 가설 검토 결과).
+
+**검증**: tsc·eslint **0** / **실DB 롤백검증(무커밋) 11/11 PASS**(고정3→2축소·동일수2→2·OFF·테넌트격리 4시나리오) → 임시데이터 잔존 **0** / code-reviewer **치명·중간 0**(경미 3건 모두 동작 불변·수정 불필요). 실화면 E2E는 로그인+교대데이터 필요라 임시검증으로 대체 — 다음에 브라우저 열면 "3교대 배정→2로 축소→근무표/기록 화면" 육안확인 권장.
+
 ### ✅ 완료(신규): 결재선 2차 — 반려사유 + 결재이력 피드백 (2026-07-20)
 > 결재자가 반려/승인 시 **사유를 남기고**, 신청자가 결과 화면에서 **"누가·왜·언제"**를 본다. 지금까진 신청자가 "부서장 반려 처리 중"만 보고 이유를 몰랐음. **single·deptline 모두 적용, 기존 승인/반려 흐름 회귀 0.**
 > **문서**: [research.md]·[plan.md]는 이후 다른 작업이 덮어써서 git 이력(커밋 aa로 시작 블록)에 보존.

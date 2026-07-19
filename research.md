@@ -1,49 +1,36 @@
-# Research: 결재선 2차 — 반려사유 + 결재이력 피드백 (2026-07-19)
-
-> 범위(사장님 확정): 결재선 2차 4후보 중 **①번(반려사유 입력 + 신청자에게 결재 이력/사유 피드백)**.
-> 전결·조건별·자동에스컬레이션은 이번 범위 제외(별도 조각).
+# Research: Shift 삭제 시 fixed 측(ShiftPattern·ShiftAssignment) dangling 참조 정리 (2026-07-20)
 
 ## 관련 파일과 역할
+- `webapp/app/actions/settings.ts` — `saveWorkRules`: 근무제 저장. **작업 대상.**
+  - master 기준 이미 단일 `$transaction`으로 원자화됨(커밋 a9c2e8a).
+  - 교대 수 축소(3→2) 시 `tx.shift.deleteMany({ order: { gt: shiftMode } })`로 초과 Shift 행 삭제.
+  - 완전 OFF(shiftMode=null) 시엔 `if(shiftMode)` 블록을 건너뛰어 **Shift 행을 의도적으로 남긴다**(휴면).
+- `webapp/prisma/schema.prisma`
+  - `Shift`(501): `@@unique([companyId, order])`, order는 1-based(1,2,3).
+  - `ShiftPattern`(513): `shiftId String?` — **Shift로의 @relation(FK) 없음.** fixed 요일패턴.
+  - `ShiftAssignment`(543): `shiftId String?` — **FK 없음.** 날짜 예외(fixed·rotation 공통 덮어쓰기 층).
+  - `ShiftGroup`(524): 순환 조. a9c2e8a에서 이미 정리됨.
+- `webapp/lib/shift.ts` — `resolveShift`: `sid ? ctx.shiftById.get(sid) ?? null : null` → dangling id는 조회 실패 → null(휴무). **크래시 없음.**
+- `webapp/lib/shift-server.ts` — `loadShiftContext`: ShiftPattern·ShiftAssignment를 읽어 `patternByUserDow`/`assignmentByUserDate` 맵 구성(shiftId 그대로 보관).
+- `webapp/app/shifts/page.tsx`(93) — `if (p.shiftId) patMap[...] = p.shiftId`: 고정 패턴 그리드가 shiftId를 셀 선택값으로 표시. dangling이면 없는 조를 가리켜 드롭다운이 빈칸으로 보임.
 
-- `webapp/lib/approval.ts` — 순수함수(체인 계산·단계 판정). 이번 작업에서 **수정 없음**(로직 불변).
-- `webapp/lib/approval-server.ts` — DB 로직. `advanceApproval`(승인/반려 단계진행)·`getApprovalProgressMap`(진행표시). **여기에 comment 저장·이력 조회 추가**.
-- `webapp/app/actions/leave.ts` — `approveLeave`/`rejectLeave` (서버액션). **comment 수신·저장 추가**.
-- `webapp/app/actions/corrections.ts` — `approveCorrection`/`rejectCorrection`. **동일 패턴 추가**.
-- `webapp/app/approvals/page.tsx` — 부서장 결재함(서버 컴포넌트). 반려 폼에 사유 입력.
-- `webapp/app/leave/approvals/LeaveApprovalsClient.tsx` — 관리자 휴가 승인(클라이언트, 테이블 행 폼). 반려 사유.
-- `webapp/app/corrections/approvals/CorrectionApprovalsClient.tsx` — 관리자 근태정정 승인. 동일.
-- `webapp/app/leave/page.tsx` / `webapp/app/corrections/page.tsx` — 신청자 본인 목록. **반려/승인 결과·사유 표시 추가**.
-- `webapp/prisma/schema.prisma` — `ApprovalStep.comment`(이미 존재), `LeaveRequest`·`AttendanceCorrection`(결정사유 컬럼 없음 → 추가).
-
-## 🔴 영향 범위 (수정 대상을 사용하는 모든 곳 — 전수 grep 결과)
-
-**승인/반려 액션 호출처 = 3곳** (`approveLeave/rejectLeave`·`approveCorrection/rejectCorrection`):
-1. `app/approvals/page.tsx` (부서장 결재함, 서버 컴포넌트, 카드형 폼)
-2. `app/leave/approvals/LeaveApprovalsClient.tsx` (관리자, 클라이언트, 테이블 행 폼)
-3. `app/corrections/approvals/CorrectionApprovalsClient.tsx` (관리자, 클라이언트, 테이블 행 폼)
-→ **반려 사유 입력 UI를 3곳에 넣어야 함** → 재사용 클라이언트 컴포넌트 1개(`RejectButton`)로 통일.
-
-**진행표시(`getApprovalProgressMap`) 소비처 = 4곳**: `leave/page.tsx`·`corrections/page.tsx`(신청자)·`leave/approvals/page.tsx`·`corrections/approvals/page.tsx`(관리자). 시그니처는 **바꾸지 않음**(반환 타입 확장만, 기존 필드 유지 → 회귀 0).
-
-**`advanceApproval` 호출처 = 4곳**(위 leave/corrections 액션 4개). 시그니처에 **선택 파라미터 `comment` 추가**(기존 호출 무영향).
+## 🔴 영향 범위 (수정 대상을 사용하는 모든 곳)
+- `ShiftPattern.shiftId` 읽는 곳: `shift-server.ts`(loadShiftContext), `shifts/page.tsx`(패턴 그리드). 쓰는 곳: `shift.ts` `saveFixedPattern`(유효 shiftId만 저장, 무효면 null).
+- `ShiftAssignment.shiftId` 읽는 곳: `shift-server.ts`(loadShiftContext)만. **쓰는 곳(upsert/create) 없음** — 날짜 예외 저장 기능은 아직 미구현(스키마·읽기만 존재). 향후 대비·방어 목적.
+- `worktime.ts`: shiftId 참조 없음. 무관.
 
 ## 공통 모듈 여부 / 건드리면 안 되는 부분
-
-- `advanceApproval`·`getApprovalProgressMap`은 **공통 함수**(여러 액션·화면이 의존) → safe-coding 절차: 파라미터는 **선택(optional) 추가만**, 반환 타입은 **필드 추가만**(기존 필드·동작 불변).
-- `lib/approval.ts` 순수함수(단계 판정)는 **건드리지 않음** — 승인/반려 판정 규칙 자체는 그대로. comment는 판정과 무관한 부가정보.
-- **원칙 A(회귀 0의 핵심)**: 원본 status는 여전히 "마지막 단계 승인 시에만 approved". comment 저장은 status 전환과 독립 → 소비처 9곳 회귀 0 유지.
+- 수정 지점은 `saveWorkRules` 내부 트랜잭션 한 곳(개별 함수). 다른 곳에서 호출되는 공통 함수 아님.
+- `resolveShift`의 null-안전 로직은 그대로 둔다(방어선 유지).
 
 ## DB·API 변경 여부, 위험 요소
-
-- **DB 변경**: add-only. `LeaveRequest`·`AttendanceCorrection`에 `decisionComment String?`·`decidedById String?` 추가(둘 다 nullable → 기존 행 무영향). `ApprovalStep.comment`는 이미 존재(마이그레이션 불필요).
-  - 마이그레이션 시 **dev 서버 종료 필요**(EPERM DLL 잠금 함정).
-- **동시성**: 반려/승인은 이미 `status:"pending"` 가드로 멱등. comment 저장을 같은 `updateMany` 데이터에 합치면 원자성 유지.
-- **보안/격리**: comment는 회사격리 쿼리 안에서만 저장·조회. XSS — 표시는 React 기본 이스케이프(dangerouslySetInnerHTML 미사용). 입력 길이 상한(예 500자) 검증.
-- **single 모드**: ApprovalStep 없음 → 결정사유는 원본의 `decisionComment`에 저장(uniform). deptline은 단계별 `ApprovalStep.comment` + 최종 결정사유 원본에도 미러(신청자 표시 간결화).
+- **DB 스키마 변경 없음**(FK 추가 아님 — 마이그레이션 불필요). 데이터 정리만.
+- 트랜잭션: 이미 있는 단일 `$transaction` 안에 정리 구문을 추가 → 원자성 유지, 부분커밋 없음.
+- companyId 스코프 필수(테넌트 격리). `updateMany`/`findMany` 모두 companyId 조건 포함.
+- 동시성: 트랜잭션 내 순차 실행이라 안전. N+1 없음(id 목록 1회 조회 후 IN 절 일괄 처리).
 
 ## 결론 (계획 시 고려사항)
-
-1. 저장 이원화: deptline=단계별 comment(ApprovalStep) + 최종 결정사유 원본 미러 / single=원본 decisionComment 직접.
-2. 반려 사유 입력 UI는 **재사용 컴포넌트 1개**로 3곳 통일(테이블/카드 모두 수용).
-3. 진행표시·판정 순수함수는 불변 — 회귀 0 유지가 최우선.
-4. 미결정 사항(계획서 메모로 확인): ①반려사유 **필수 vs 선택** ②승인사유도 입력 받을지 ③다단계 이력 타임라인을 신청자 화면에 노출할지.
+1. dangling은 **교대 수 축소(3→2)로 Shift가 실제 삭제될 때만** 발생. OFF(null) 시엔 Shift를 남기므로 dangling 없음 → 정리 불필요(요청의 "OFF 시" 가설에 대한 답).
+2. 따라서 정리는 `if(shiftMode)` 블록 안, `shift.deleteMany` 지점에만 추가한다.
+3. ShiftPattern/ShiftAssignment는 order를 저장하지 않고 shiftId만 저장 → **삭제 대상 Shift의 id를 먼저 조회**한 뒤 그 id로 참조를 null 처리해야 함(ShiftGroup 정리와 동일 패턴: 참조 해제 → 삭제).
+4. 비교대 회사(shiftMode=null)는 블록 미진입 → 무영향(회귀 0).
