@@ -35,6 +35,10 @@ echo.
 timeout /t 4 /nobreak >nul
 start "" http://localhost:3000
 
+echo [4.5] 이전 화면 찌꺼기(캐시) 정리 중... (404 예방)
+rd /s /q ".next" 2>nul
+echo.
+
 call npm run dev
 
 echo.
