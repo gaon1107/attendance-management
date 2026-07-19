@@ -4,6 +4,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { buildApprovalChain, nextPendingStep, isChainComplete, isChainRejected, type DeptNode, type ChainApprover } from "@/lib/approval";
+import { outingKindLabel } from "@/lib/outing";
 
 export type RequestType = "leave" | "correction" | "outing";
 
@@ -200,7 +201,7 @@ export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
       });
       if (!o) continue;
       const d = o.targetDate.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
-      const kindLabel = o.kind === "field" ? "외근" : "외출";
+      const kindLabel = outingKindLabel(o.kind);
       items.push({
         type: "outing",
         requestId: o.id,
