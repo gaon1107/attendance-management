@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { FixedPatternClient } from "./FixedPatternClient";
+import { RotationClient } from "./RotationClient";
 
 const Notice = ({ children }: { children: React.ReactNode }) => (
   <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 12, padding: "20px 22px", fontSize: 14, color: "#1E40AF", lineHeight: 1.7, maxWidth: 640 }}>
@@ -41,13 +42,38 @@ export default async function ShiftsPage() {
       </Notice>
     );
   }
-  // 순환(Phase 3b 예정)
+  // 순환(rotation): 조(A/B/C) 배정 + 순환 규칙
   if (company.scheduleType === "rotation") {
+    const [employees, groups, rule] = await Promise.all([
+      prisma.user.findMany({
+        where: { companyId: me.companyId, role: "employee", deactivatedAt: null },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, name: true, employeeNo: true, shiftGroupId: true },
+      }),
+      prisma.shiftGroup.findMany({
+        where: { companyId: me.companyId },
+        select: { id: true, order: true },
+      }),
+      prisma.rotationRule.findUnique({
+        where: { companyId: me.companyId },
+        select: { orderCsv: true, unit: true, anchorDate: true },
+      }),
+    ]);
+    const orderById = new Map(groups.map((g) => [g.id, g.order]));
+    const initialAssign: Record<string, string> = {};
+    for (const e of employees) {
+      if (e.shiftGroupId != null && orderById.has(e.shiftGroupId)) {
+        initialAssign[e.id] = String(orderById.get(e.shiftGroupId));
+      }
+    }
     return shell(
-      <Notice>
-        현재 <b>순환(조가 규칙대로 이동)</b> 방식입니다. 순환 배정 화면(조 A·B·C 배정 + 순환 규칙)은 <b>다음 단계에서 추가</b>됩니다.
-        <br />먼저 <b>고정 요일패턴</b>으로 쓰시려면 [설정]에서 근무표 방식을 <b>고정</b>으로 바꿔 주세요.
-      </Notice>
+      <RotationClient
+        shiftMode={company.shiftMode}
+        employees={employees.map((e) => ({ id: e.id, name: e.name, employeeNo: e.employeeNo }))}
+        shifts={shifts}
+        initialAssign={initialAssign}
+        initialRule={rule}
+      />
     );
   }
 
