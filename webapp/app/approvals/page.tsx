@@ -3,10 +3,18 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { AppShell } from "@/app/components/AppShell";
-import { listMyApprovals } from "@/lib/approval-server";
+import { listMyApprovals, type RequestType } from "@/lib/approval-server";
 import { approveLeave, rejectLeave } from "@/app/actions/leave";
 import { approveCorrection, rejectCorrection } from "@/app/actions/corrections";
+import { approveOuting, rejectOuting } from "@/app/actions/outing";
 import { RejectButton } from "@/app/components/RejectButton";
+
+// 신청유형별 결재함 표시·액션 매핑(유형 추가 시 여기에만 한 줄 추가).
+const TYPE_META: Record<RequestType, { label: string; badgeBg: string; badgeColor: string; approve: (fd: FormData) => Promise<void>; reject: (fd: FormData) => Promise<void> }> = {
+  leave: { label: "휴가", badgeBg: "#E4EDFF", badgeColor: "#2563EB", approve: approveLeave, reject: rejectLeave },
+  correction: { label: "근태정정", badgeBg: "#FEF3C7", badgeColor: "#B45309", approve: approveCorrection, reject: rejectCorrection },
+  outing: { label: "외출/외근", badgeBg: "#DCFCE7", badgeColor: "#15803D", approve: approveOuting, reject: rejectOuting },
+};
 
 export default async function ApprovalsPage() {
   const me = await getCurrentUser();
@@ -37,9 +45,9 @@ export default async function ApprovalsPage() {
                 <div style={{ flex: "1 1 260px", minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
                     <span
-                      style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: it.type === "leave" ? "#E4EDFF" : "#FEF3C7", color: it.type === "leave" ? "#2563EB" : "#B45309" }}
+                      style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: TYPE_META[it.type].badgeBg, color: TYPE_META[it.type].badgeColor }}
                     >
-                      {it.type === "leave" ? "휴가" : "근태정정"}
+                      {TYPE_META[it.type].label}
                     </span>
                     <span style={{ fontSize: 15, fontWeight: 700 }}>{it.applicantName}</span>
                     {it.applicantNo && <span style={{ fontSize: 12, color: "var(--text-sub)" }}>{it.applicantNo}</span>}
@@ -57,7 +65,7 @@ export default async function ApprovalsPage() {
                   {it.detail && <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 2 }}>사유: {it.detail}</div>}
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <form action={it.type === "leave" ? approveLeave : approveCorrection}>
+                  <form action={TYPE_META[it.type].approve}>
                     <input type="hidden" name="id" value={it.requestId} />
                     <button
                       type="submit"
@@ -66,7 +74,7 @@ export default async function ApprovalsPage() {
                       승인
                     </button>
                   </form>
-                  <RejectButton action={it.type === "leave" ? rejectLeave : rejectCorrection} requestId={it.requestId} />
+                  <RejectButton action={TYPE_META[it.type].reject} requestId={it.requestId} />
                 </div>
               </div>
             ))}
