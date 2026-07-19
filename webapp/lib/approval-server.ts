@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { buildApprovalChain, nextPendingStep, isChainComplete, isChainRejected, type DeptNode, type ChainApprover } from "@/lib/approval";
 import { outingKindLabel } from "@/lib/outing";
 
-export type RequestType = "leave" | "correction" | "outing";
+export type RequestType = "leave" | "correction" | "outing" | "remote";
 
 type Me = { id: string; role: string; companyId: string };
 
@@ -214,6 +214,26 @@ export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
         summary: `${kindLabel} 신청 (${d} ${o.startTime}~${o.endTime})${o.place ? ` · ${o.place}` : ""}`,
         detail: o.reason ?? "",
       });
+    } else if (step.requestType === "remote") {
+      const rw = await prisma.remoteWorkRequest.findFirst({
+        where: { id: step.requestId, companyId: me.companyId, status: "pending" },
+        include: { user: { select: { name: true, employeeNo: true } } },
+      });
+      if (!rw) continue;
+      const s = rw.startDate.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
+      const e = rw.endDate.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
+      items.push({
+        type: "remote",
+        requestId: rw.id,
+        applicantName: rw.user.name,
+        applicantNo: rw.user.employeeNo,
+        stepOrder: step.stepOrder,
+        totalSteps: siblings.length,
+        isFinal: step.isFinal === true,
+        createdAt: rw.createdAt,
+        summary: `재택근무 신청 (${s === e ? s : `${s}~${e}`})`,
+        detail: rw.reason ?? "",
+      });
     }
   }
   return items;
@@ -250,12 +270,14 @@ export const countMyPendingApprovals = cache(async (companyId: string, userId: s
   const leaveIds = mySteps.filter((s) => s.requestType === "leave").map((s) => s.requestId);
   const corrIds = mySteps.filter((s) => s.requestType === "correction").map((s) => s.requestId);
   const outingIds = mySteps.filter((s) => s.requestType === "outing").map((s) => s.requestId);
-  const [pendLeaves, pendCorrs, pendOutings] = await Promise.all([
+  const remoteIds = mySteps.filter((s) => s.requestType === "remote").map((s) => s.requestId);
+  const [pendLeaves, pendCorrs, pendOutings, pendRemotes] = await Promise.all([
     leaveIds.length ? prisma.leaveRequest.findMany({ where: { id: { in: leaveIds }, companyId, status: "pending" }, select: { id: true } }) : Promise.resolve([]),
     corrIds.length ? prisma.attendanceCorrection.findMany({ where: { id: { in: corrIds }, companyId, status: "pending" }, select: { id: true } }) : Promise.resolve([]),
     outingIds.length ? prisma.outingRequest.findMany({ where: { id: { in: outingIds }, companyId, status: "pending" }, select: { id: true } }) : Promise.resolve([]),
+    remoteIds.length ? prisma.remoteWorkRequest.findMany({ where: { id: { in: remoteIds }, companyId, status: "pending" }, select: { id: true } }) : Promise.resolve([]),
   ]);
-  const pendingReqIds = new Set([...pendLeaves.map((x) => x.id), ...pendCorrs.map((x) => x.id), ...pendOutings.map((x) => x.id)]);
+  const pendingReqIds = new Set([...pendLeaves.map((x) => x.id), ...pendCorrs.map((x) => x.id), ...pendOutings.map((x) => x.id), ...pendRemotes.map((x) => x.id)]);
 
   let n = 0;
   for (const my of mySteps) {

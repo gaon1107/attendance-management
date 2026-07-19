@@ -22,10 +22,11 @@ export type AdminNotification = {
 //  (요청 단위 메모이즈일 뿐 TTL 캐시가 아니므로 "실시간 카운트"는 그대로 유지 — 처리하면 다음 요청에서 즉시 반영)
 export const listAdminNotifications = cache(async (companyId: string): Promise<{ items: AdminNotification[]; total: number }> => {
   // 결재/요청 대기 건수(단순 count — 처리하면 줄어든다)
-  const [pendingLeave, pendingCorrection, pendingOuting, pendingReset] = await Promise.all([
+  const [pendingLeave, pendingCorrection, pendingOuting, pendingRemote, pendingReset] = await Promise.all([
     prisma.leaveRequest.count({ where: { companyId, status: "pending" } }),
     prisma.attendanceCorrection.count({ where: { companyId, status: "pending" } }),
     prisma.outingRequest.count({ where: { companyId, status: "pending" } }),
+    prisma.remoteWorkRequest.count({ where: { companyId, status: "pending" } }),
     prisma.passwordResetRequest.count({ where: { companyId, status: "pending" } }),
   ]);
 
@@ -81,6 +82,12 @@ export const listAdminNotifications = cache(async (companyId: string): Promise<{
     items.push({
       key: "outing", title: "외출/외근 신청 대기", detail: "승인/반려를 기다리는 외출/외근 신청이 있습니다.",
       count: pendingOuting, countLabel: `${pendingOuting}건`, href: "/outing/approvals", cta: "검토", severity: "primary",
+    });
+  }
+  if (pendingRemote > 0) {
+    items.push({
+      key: "remote", title: "재택근무 신청 대기", detail: "승인/반려를 기다리는 재택근무 신청이 있습니다.",
+      count: pendingRemote, countLabel: `${pendingRemote}건`, href: "/remote/approvals", cta: "검토", severity: "primary",
     });
   }
 
