@@ -49,7 +49,7 @@
 
 **🔜 남은 후보(교대근무 외)**
 - **깃허브 푸시**: 그동안 로컬 커밋분(교대 Phase1~4 포함) 한 번에 `gaon1107/attendance-management`.
-- **별도(백그라운드 등록)**: [설정]에서 교대 수 3→2 축소 시 잔존 ShiftGroup·RotationRule.orderCsv·직원 shiftGroupId 정리 = `saveWorkRules`(settings.ts) 소관. Phase 3b 미리보기 측은 이미 방어됨(shiftMode 기준).
+- ~~**별도(백그라운드 등록)**: [설정]에서 교대 수 3→2 축소 시 잔존 ShiftGroup·RotationRule.orderCsv·직원 shiftGroupId 정리 = `saveWorkRules`(settings.ts) 소관.~~ → **✅ 완료(2026-07-20 `a9c2e8a`)**. saveWorkRules에 순환 그룹 재조정 블록 추가(shift.ts saveRotation과 동일 패턴): 초과 조(order>=shiftMode) 참조 직원 해제→삭제 + orderCsv 갱신. company.update+shift정리+그룹정리를 단일 트랜잭션 원자화(부분커밋 방지). A안=shiftMode 기준(순환→고정 동일 교대수면 배정 보존). 검증 tsc·eslint 0 + 롤백검증 12체크 PASS + code-reviewer 재검수 치명·중간0. **⚠️ 실화면 육안검증 남음**(설정에서 3→2 바꾼 뒤 /shifts 순환화면 빈칸 없는지 대표님 확인 권장).
 
 **주의/메모**
 - **prisma generate 함정**: dev서버가 켜져 있으면 `migrate/generate`가 엔진 DLL 잠금(EPERM)으로 실패. 스키마 바꿨으면 **서버 껐다 켜기**(배치파일이 자동 generate). Phase 1 migrate는 적용됨, 클라이언트도 재생성 확인됨.
