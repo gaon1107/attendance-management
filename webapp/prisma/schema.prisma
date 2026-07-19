@@ -96,6 +96,11 @@ model Company {
   // 회사 로고 — 사이드바 상단에 표시(없으면 "근" 글자). 실제 이미지는 storage/company-docs/{id}/ 에 저장, 파일명만 보관.
   logoName      String?
   documents     CompanyDocument[]
+  // ── 교대근무(시프트). shiftMode=null이면 교대 안 함(현행 동작). scheduleType: fixed(요일패턴)|rotation(순환). ──
+  shiftMode     Int?      // null=안 함, 2=2교대, 3=3교대
+  scheduleType  String?   // "fixed" | "rotation"
+  shifts        Shift[]
+  rotationRule  RotationRule?
 }
 
 // 회사 첨부문서 — 사업자등록증·통장사본 등. 종류(kind)별 최신 1건만 유지(재업로드 시 이전 파일 교체·삭제).
@@ -141,6 +146,10 @@ model User {
   faceEnrollCount Int @default(0)
   // 직원별 근무요일 예외(CSV). null이면 회사 기본(Company.workDays)을 따른다.
   workDays       String?
+  // ── 교대근무: 순환(rotation) 방식일 때 소속 조. fixed·비교대면 미사용(null). ──
+  shiftGroupId   String?
+  shiftGroup     ShiftGroup?    @relation(fields: [shiftGroupId], references: [id])
+  shiftPatterns  ShiftPattern[]
   // 로그인 무차별 대입(비번 찍기) 방어: 연속 실패 횟수 + 잠금 해제 시각.
   failedLoginCount Int      @default(0)
   lockedUntil      DateTime?
@@ -446,4 +455,74 @@ model SmsLog {
   //  · 발송 실패 시엔 액션이 refId를 null로 바꿔 슬롯을 풀어 재시도를 허용한다(실패=과금 없음).
   @@unique([companyId, kind, refId])
   @@index([companyId, createdAt]) // 회사별 발송량/기간 조회
+}
+
+// ── 교대근무(시프트) — 상세는 docs/04_architecture/교대근무_설계.md ──
+// 조별 근무시간 정의(회사당 shiftMode개). endTime<=startTime 이면 익일(야간조).
+model Shift {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+  order     Int     // 1,2,3 (표시·순환 순서 기준)
+  name      String? // "오전조" 등(선택)
+  startTime String  // "HH:MM"
+  endTime   String  // "HH:MM"
+  @@unique([companyId, order])
+}
+
+// [fixed] 요일 패턴(직원×요일→조). shiftId=null=휴무.
+model ShiftPattern {
+  id        String  @id @default(cuid())
+  companyId String
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+  dayOfWeek Int     // 0=일 … 6=토
+  shiftId   String?
+  @@unique([userId, dayOfWeek])
+}
+
+// [rotation] 조(A/B/C). order=0,1,2 = 시작단계 offset.
+model ShiftGroup {
+  id        String  @id @default(cuid())
+  companyId String
+  order     Int
+  name      String?
+  users     User[]
+  @@unique([companyId, order])
+}
+
+// [rotation] 순환 규칙(회사당 1).
+model RotationRule {
+  companyId  String  @id
+  company    Company @relation(fields: [companyId], references: [id])
+  orderCsv   String  // 순환 순서(shift.order들), 예 "1,2,3"
+  unit       String  // "day" | "week" | "month"
+  anchorDate String  // "YYYY-MM-DD"
+}
+
+// 예외(덮어쓰기) — 관리자/직원 수정. 그날만 기본배정을 덮는다.
+model ShiftAssignment {
+  id        String   @id @default(cuid())
+  companyId String
+  userId    String
+  date      String   // "YYYY-MM-DD"
+  shiftId   String?  // null=휴무
+  editedBy  String   // "admin" | "self"
+  createdAt DateTime @default(now())
+  @@unique([userId, date])
+  @@index([companyId, date])
+}
+
+// 근무표 변경 이력(감사) — 셀프수정 추적·되돌리기 근거.
+model ShiftChangeLog {
+  id        String   @id @default(cuid())
+  companyId String
+  userId    String   // 대상 직원
+  date      String
+  fromLabel String?  // 변경 전 조 라벨
+  toLabel   String?  // 변경 후 조 라벨
+  actor     String   // "admin" | "self"
+  actorId   String   // 수정 실행자 userId
+  createdAt DateTime @default(now())
+  @@index([companyId, createdAt])
 }
