@@ -5,7 +5,7 @@ import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { buildApprovalChain, nextPendingStep, isChainComplete, isChainRejected, type DeptNode, type ChainApprover } from "@/lib/approval";
 
-export type RequestType = "leave" | "correction";
+export type RequestType = "leave" | "correction" | "outing";
 
 type Me = { id: string; role: string; companyId: string };
 
@@ -173,7 +173,7 @@ export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
         summary: `휴가 신청 (${s === e ? s : `${s}~${e}`})`,
         detail: lv.reason ?? "",
       });
-    } else {
+    } else if (step.requestType === "correction") {
       const c = await prisma.attendanceCorrection.findFirst({
         where: { id: step.requestId, companyId: me.companyId, status: "pending" },
         include: { user: { select: { name: true, employeeNo: true } } },
@@ -192,6 +192,26 @@ export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
         createdAt: c.createdAt,
         summary: `근태정정 (${d}) ${parts}`,
         detail: c.reason,
+      });
+    } else if (step.requestType === "outing") {
+      const o = await prisma.outingRequest.findFirst({
+        where: { id: step.requestId, companyId: me.companyId, status: "pending" },
+        include: { user: { select: { name: true, employeeNo: true } } },
+      });
+      if (!o) continue;
+      const d = o.targetDate.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
+      const kindLabel = o.kind === "field" ? "외근" : "외출";
+      items.push({
+        type: "outing",
+        requestId: o.id,
+        applicantName: o.user.name,
+        applicantNo: o.user.employeeNo,
+        stepOrder: step.stepOrder,
+        totalSteps: siblings.length,
+        isFinal: step.isFinal === true,
+        createdAt: o.createdAt,
+        summary: `${kindLabel} 신청 (${d} ${o.startTime}~${o.endTime})${o.place ? ` · ${o.place}` : ""}`,
+        detail: o.reason ?? "",
       });
     }
   }
@@ -228,11 +248,13 @@ export const countMyPendingApprovals = cache(async (companyId: string, userId: s
   // 원본이 아직 pending인 신청만(반려·완료된 건 제외). 타입별 id 분리.
   const leaveIds = mySteps.filter((s) => s.requestType === "leave").map((s) => s.requestId);
   const corrIds = mySteps.filter((s) => s.requestType === "correction").map((s) => s.requestId);
-  const [pendLeaves, pendCorrs] = await Promise.all([
+  const outingIds = mySteps.filter((s) => s.requestType === "outing").map((s) => s.requestId);
+  const [pendLeaves, pendCorrs, pendOutings] = await Promise.all([
     leaveIds.length ? prisma.leaveRequest.findMany({ where: { id: { in: leaveIds }, companyId, status: "pending" }, select: { id: true } }) : Promise.resolve([]),
     corrIds.length ? prisma.attendanceCorrection.findMany({ where: { id: { in: corrIds }, companyId, status: "pending" }, select: { id: true } }) : Promise.resolve([]),
+    outingIds.length ? prisma.outingRequest.findMany({ where: { id: { in: outingIds }, companyId, status: "pending" }, select: { id: true } }) : Promise.resolve([]),
   ]);
-  const pendingReqIds = new Set([...pendLeaves.map((x) => x.id), ...pendCorrs.map((x) => x.id)]);
+  const pendingReqIds = new Set([...pendLeaves.map((x) => x.id), ...pendCorrs.map((x) => x.id), ...pendOutings.map((x) => x.id)]);
 
   let n = 0;
   for (const my of mySteps) {
