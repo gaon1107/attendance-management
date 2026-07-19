@@ -34,7 +34,7 @@ export default async function LivePage() {
   // 오늘 출근 기록(근무 중 판단용) — 재직 직원 이름은 user에서.
   const todays = await prisma.attendance.findMany({
     where: { companyId: me.companyId, clockIn: { gte: startOfToday } },
-    include: { user: { select: { name: true, authMethod: true } } },
+    include: { user: { select: { name: true, employeeNo: true, authMethod: true } } },
     orderBy: { clockIn: "asc" },
   });
 
@@ -45,6 +45,7 @@ export default async function LivePage() {
     const mode = (r.workMode === "home" || r.workMode === "field" ? r.workMode : "office") as "office" | "home" | "field";
     buckets[mode].push({
       name: r.user.name,
+      employeeNo: r.user.employeeNo,
       since: hhmm(r.clockIn),
       // 사무실 근무자만 위치확인 상태를 함께 보여준다(재택·외근은 위치확인 안 함).
       locationLabel: mode === "office" && r.locationStatus ? locationStatusLabel(r.locationStatus) : null,

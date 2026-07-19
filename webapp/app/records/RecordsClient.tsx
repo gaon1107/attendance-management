@@ -15,6 +15,7 @@ export type RecordRow = {
   id: string;
   userId: string;
   userName: string;
+  employeeNo: string | null;
   initial: string;
   dateText: string;
   dateISO: string;
@@ -132,12 +133,17 @@ export function RecordsClient({
                         <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#EEF2F7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>
                           {r.initial}
                         </div>
-                        <span style={{ fontWeight: 700 }}>{r.userName}</span>
-                        {r.suspect ? (
-                          <span style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "#B91C1C", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" }}>⚠ 위조 의심</span>
-                        ) : r.review ? (
-                          <span style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "#D97706", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" }}>❓ 확인 필요</span>
-                        ) : null}
+                        <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontWeight: 700 }}>{r.userName}</span>
+                            {r.suspect ? (
+                              <span style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "#B91C1C", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" }}>⚠ 위조 의심</span>
+                            ) : r.review ? (
+                              <span style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "#D97706", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" }}>❓ 확인 필요</span>
+                            ) : null}
+                          </span>
+                          {r.employeeNo && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}>사번 {r.employeeNo}</span>}
+                        </span>
                       </Link>
                     </td>
                     <td style={{ ...td, color: "var(--text-sub)" }}>{r.workMode}</td>

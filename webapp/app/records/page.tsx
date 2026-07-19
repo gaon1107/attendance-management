@@ -128,11 +128,12 @@ export default async function RecordsPage({
       id: r.id,
       userId: r.userId,
       userName: r.user.name,
+      employeeNo: r.user.employeeNo,
       initial: r.user.name.slice(0, 1),
       dateText, dateISO, workMode, location, inText, outText,
       hasClockOut: !!r.clockOut,
       holiday, late, early, approvedLeave, worked, suspect, review, isWorkingNow,
-      search: [dateText, r.user.name, workMode, location, inText, outText, lateText, worked, badge].join(" ").toLowerCase(),
+      search: [dateText, r.user.name, r.user.employeeNo ?? "", workMode, location, inText, outText, lateText, worked, badge].join(" ").toLowerCase(),
     };
   });
 

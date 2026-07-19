@@ -11,6 +11,7 @@ import { approveCorrection, rejectCorrection } from "@/app/actions/corrections";
 export type CorrectionRow = {
   id: string;
   name: string;
+  employeeNo: string | null;
   initial: string;
   dateText: string;
   timeText: string;
@@ -28,13 +29,16 @@ const STATUS_STYLE: Record<string, { bg: string; dot: string; color: string }> =
 const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 20px", whiteSpace: "nowrap" };
 const td: React.CSSProperties = { padding: "13px 20px", fontSize: 15, verticalAlign: "middle" };
 
-function NameCell({ name, initial }: { name: string; initial: string }) {
+function NameCell({ name, initial, employeeNo }: { name: string; initial: string; employeeNo: string | null }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
       <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#EEF2F7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>
         {initial}
       </div>
-      <span style={{ fontWeight: 700 }}>{name}</span>
+      <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <span style={{ fontWeight: 700 }}>{name}</span>
+        {employeeNo && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}>사번 {employeeNo}</span>}
+      </div>
     </div>
   );
 }
@@ -92,7 +96,7 @@ export function CorrectionApprovalsClient({
               ) : (
                 p.map((r) => (
                   <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                    <td style={td}><NameCell name={r.name} initial={r.initial} /></td>
+                    <td style={td}><NameCell name={r.name} initial={r.initial} employeeNo={r.employeeNo} /></td>
                     <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{r.dateText}</td>
                     <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.timeText}</td>
                     <td style={{ ...td, color: "var(--text-sub)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.reason}</td>
@@ -141,7 +145,7 @@ export function CorrectionApprovalsClient({
                   const s = STATUS_STYLE[r.status] ?? STATUS_STYLE.approved;
                   return (
                     <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                      <td style={td}><NameCell name={r.name} initial={r.initial} /></td>
+                      <td style={td}><NameCell name={r.name} initial={r.initial} employeeNo={r.employeeNo} /></td>
                       <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{r.dateText}</td>
                       <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.timeText}</td>
                       <td style={td}>

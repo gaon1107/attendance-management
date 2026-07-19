@@ -74,6 +74,7 @@ export default async function LeaveApprovalsPage({
     return {
       id: r.id,
       name: r.user.name,
+      employeeNo: r.user.employeeNo,
       initial: r.user.name.slice(0, 1),
       typeLabel,
       rangeLabel: rl,
@@ -81,7 +82,7 @@ export default async function LeaveApprovalsPage({
       reason,
       status: r.status,
       statusLabel,
-      search: [r.user.name, typeLabel, rl, reason, statusLabel].join(" ").toLowerCase(),
+      search: [r.user.name, r.user.employeeNo ?? "", typeLabel, rl, reason, statusLabel].join(" ").toLowerCase(),
     };
   };
 

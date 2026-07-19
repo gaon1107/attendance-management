@@ -36,9 +36,9 @@ export default async function BiometricsPage() {
     const authLabel = u.authMethod === "face" ? "얼굴인증" : u.authMethod === "gps" ? "GPS" : "미설정";
     const consented = !!u.faceConsentAt;
     return {
-      id: u.id, name: u.name, initial: u.name.slice(0, 1), isAdmin: u.role === "admin",
+      id: u.id, name: u.name, employeeNo: u.employeeNo, initial: u.name.slice(0, 1), isAdmin: u.role === "admin",
       authLabel, hasAuth: !!u.authMethod, consented, consentDateLabel: u.faceConsentAt ? ymd(u.faceConsentAt) : "",
-      search: [u.name, authLabel, consented ? "동의함" : "동의 안 함"].join(" ").toLowerCase(),
+      search: [u.name, u.employeeNo ?? "", authLabel, consented ? "동의함" : "동의 안 함"].join(" ").toLowerCase(),
     };
   });
 

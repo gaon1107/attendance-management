@@ -81,15 +81,15 @@ export default async function EmployeesPage() {
     const authLabel = emp.authMethod === "face" ? "얼굴인증" : emp.authMethod === "gps" ? "GPS" : "미설정";
     const dept = emp.department?.name ?? "미배정";
     return {
-      id: emp.id, name: emp.name, initial: emp.name.slice(0, 1), dept, deptSet: !!emp.department,
+      id: emp.id, name: emp.name, employeeNo: emp.employeeNo, initial: emp.name.slice(0, 1), dept, deptSet: !!emp.department,
       email: emp.email, authLabel, hasAuth: !!emp.authMethod, consented: !!emp.faceConsentAt,
-      joinLabel: ymd(emp.createdAt), search: [emp.name, emp.email, dept, authLabel].join(" ").toLowerCase(),
+      joinLabel: ymd(emp.createdAt), search: [emp.name, emp.employeeNo ?? "", emp.email, dept, authLabel].join(" ").toLowerCase(),
     };
   });
   const retiredRows: RetiredRow[] = retired.map((emp) => ({
-    id: emp.id, name: emp.name, initial: emp.name.slice(0, 1), email: emp.email,
+    id: emp.id, name: emp.name, employeeNo: emp.employeeNo, initial: emp.name.slice(0, 1), email: emp.email,
     retireLabel: emp.deactivatedAt ? ymd(emp.deactivatedAt) : "—",
-    search: [emp.name, emp.email].join(" ").toLowerCase(),
+    search: [emp.name, emp.employeeNo ?? "", emp.email].join(" ").toLowerCase(),
   }));
 
   return (

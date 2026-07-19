@@ -75,13 +75,14 @@ export default async function CorrectionApprovalsPage({
     return {
       id: r.id,
       name: r.user.name,
+      employeeNo: r.user.employeeNo,
       initial: r.user.name.slice(0, 1),
       dateText,
       timeText,
       reason: r.reason,
       status: r.status,
       statusLabel,
-      search: [r.user.name, dateText, timeText, r.reason, statusLabel].join(" ").toLowerCase(),
+      search: [r.user.name, r.user.employeeNo ?? "", dateText, timeText, r.reason, statusLabel].join(" ").toLowerCase(),
     };
   };
 

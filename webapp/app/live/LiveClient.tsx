@@ -18,6 +18,7 @@ const StatusMap = dynamic(() => import("./StatusMap").then((m) => m.StatusMap), 
 
 export type WorkingPerson = {
   name: string;
+  employeeNo: string | null;
   since: string; // 출근 시각 HH:MM
   locationLabel: string | null; // 사무실 근무자 위치확인 상태(재택·외근은 null)
   locationOk: boolean;
@@ -185,7 +186,7 @@ export function LiveClient({ data }: { data: LiveData }) {
                           </div>
                           <div style={{ minWidth: 0 }}>
                             <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: "nowrap" }}>{p.name}</div>
-                            <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{p.since} 출근 · {p.authLabel}</div>
+                            <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{p.employeeNo ? `사번 ${p.employeeNo} · ` : ""}{p.since} 출근 · {p.authLabel}</div>
                           </div>
                         </div>
                         {p.locationLabel && (

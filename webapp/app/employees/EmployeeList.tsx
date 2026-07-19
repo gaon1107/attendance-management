@@ -5,8 +5,8 @@ import Link from "next/link";
 import { SearchBox } from "@/app/components/SearchBox";
 import { queryTerms, matchesTerms } from "@/lib/search";
 
-export type EmpRow = { id: string; name: string; initial: string; dept: string; deptSet: boolean; email: string; authLabel: string; hasAuth: boolean; consented: boolean; joinLabel: string; search: string };
-export type RetiredRow = { id: string; name: string; initial: string; email: string; retireLabel: string; search: string };
+export type EmpRow = { id: string; name: string; employeeNo: string | null; initial: string; dept: string; deptSet: boolean; email: string; authLabel: string; hasAuth: boolean; consented: boolean; joinLabel: string; search: string };
+export type RetiredRow = { id: string; name: string; employeeNo: string | null; initial: string; email: string; retireLabel: string; search: string };
 
 const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 20px" };
 const td: React.CSSProperties = { padding: "12px 20px", fontSize: 15, verticalAlign: "middle" };
@@ -50,7 +50,10 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
                     <td style={td}>
                       <Link href={`/employees/${emp.id}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "var(--text)" }}>
                         <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#EEF2F7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>{emp.initial}</div>
-                        <span style={{ fontWeight: 700 }}>{emp.name}</span>
+                        <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                          <span style={{ fontWeight: 700 }}>{emp.name}</span>
+                          {emp.employeeNo && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}>사번 {emp.employeeNo}</span>}
+                        </div>
                       </Link>
                     </td>
                     <td style={{ ...td, color: emp.deptSet ? "var(--text)" : "#9CA3AF" }}>{emp.dept}</td>
@@ -99,7 +102,10 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
                       <td style={td}>
                         <Link href={`/employees/${emp.id}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "var(--text-sub)" }}>
                           <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#F3F4F6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#9CA3AF", flexShrink: 0 }}>{emp.initial}</div>
-                          <span style={{ fontWeight: 700 }}>{emp.name}</span>
+                          <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                            <span style={{ fontWeight: 700 }}>{emp.name}</span>
+                            {emp.employeeNo && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}>사번 {emp.employeeNo}</span>}
+                          </div>
                         </Link>
                       </td>
                       <td style={{ ...td, color: "var(--text-sub)" }}>{emp.email}</td>

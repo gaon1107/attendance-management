@@ -5,7 +5,7 @@ import { SearchBox } from "@/app/components/SearchBox";
 import { queryTerms, matchesTerms } from "@/lib/search";
 import { adminRevokeBiometric } from "@/app/actions/authmethod";
 
-export type BioRow = { id: string; name: string; initial: string; isAdmin: boolean; authLabel: string; hasAuth: boolean; consented: boolean; consentDateLabel: string; search: string };
+export type BioRow = { id: string; name: string; employeeNo: string | null; initial: string; isAdmin: boolean; authLabel: string; hasAuth: boolean; consented: boolean; consentDateLabel: string; search: string };
 
 const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 20px", whiteSpace: "nowrap" };
 const td: React.CSSProperties = { padding: "12px 20px", fontSize: 15, verticalAlign: "middle", whiteSpace: "nowrap" };
@@ -43,10 +43,13 @@ export function BiometricsList({ users }: { users: BioRow[] }) {
                     <td style={td}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#EEF2F7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>{u.initial}</div>
-                        <span style={{ fontWeight: 700 }}>
-                          {u.name}
-                          {u.isAdmin && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}> (관리자)</span>}
-                        </span>
+                        <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                          <span style={{ fontWeight: 700 }}>
+                            {u.name}
+                            {u.isAdmin && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}> (관리자)</span>}
+                          </span>
+                          {u.employeeNo && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}>사번 {u.employeeNo}</span>}
+                        </div>
                       </div>
                     </td>
                     <td style={{ ...td, color: u.hasAuth ? "var(--text)" : "#9CA3AF" }}>{u.authLabel}</td>
