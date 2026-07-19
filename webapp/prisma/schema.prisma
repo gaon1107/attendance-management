@@ -101,6 +101,12 @@ model Company {
   scheduleType  String?   // "fixed" | "rotation"
   shifts        Shift[]
   rotationRule  RotationRule?
+  // ── 결재선(다단계 승인). approvalMode=single이면 기존 단일 관리자 승인(현행 동작). ──
+  // deptline이면 부서장 자동 결재선: 신청이 소속 부서장→상위 부서장 순으로 approvalStepCount 단계만큼 타고 올라간다.
+  // 부서장 미지정 부서는 관리자 폴백. 원본 신청 status는 전 단계 승인 시에만 approved로 바뀐다(그전엔 pending=미승인).
+  approvalMode      String  @default("single") // "single"(기존) | "deptline"(결재선)
+  approvalStepCount Int     @default(1)         // 결재 단계 수(1~2 권장, 최대 3 방어)
+  approvalSteps     ApprovalStep[]
 }
 
 // 회사 첨부문서 — 사업자등록증·통장사본 등. 종류(kind)별 최신 1건만 유지(재업로드 시 이전 파일 교체·삭제).
@@ -298,6 +304,27 @@ model AttendanceCorrection {
   createdAt    DateTime  @default(now())
 }
 
+// 결재 단계 — 다단계 승인(부서장 결재선)의 각 단계·진행상태.
+// 원본 신청(LeaveRequest/AttendanceCorrection)은 스키마 무변경 — 다형 참조(requestType+requestId)로 연결한다.
+// approvalMode=deptline 회사만 생성한다. single 회사는 이 표를 쓰지 않고 기존 단일 승인 경로 그대로.
+model ApprovalStep {
+  id             String    @id @default(cuid())
+  companyId      String
+  company        Company   @relation(fields: [companyId], references: [id])
+  requestType    String    // "leave"(휴가) | "correction"(근태정정)
+  requestId      String    // LeaveRequest.id 또는 AttendanceCorrection.id
+  stepOrder      Int       // 1,2,3… 순서
+  approverUserId String    // 이 단계 결재자(부서장/대결자/관리자)
+  // 상태: "pending"(대기) | "approved"(승인) | "rejected"(반려) | "skipped"(건너뜀=본인 결재 등)
+  status         String    @default("pending")
+  decidedAt      DateTime?
+  comment        String?   // 승인/반려 사유(선택)
+  createdAt      DateTime  @default(now())
+
+  @@index([companyId, requestType, requestId]) // 한 신청의 단계들 조회
+  @@index([approverUserId, status])            // 결재함(내 차례) 조회
+}
+
 // 부서 — 회사 안의 조직 단위. 관리자가 만들고, 직원을 부서에 배정한다.
 model Department {
   id        String   @id @default(cuid())
@@ -306,6 +333,11 @@ model Department {
   name      String
   createdAt DateTime @default(now())
   users     User[]
+  // ── 결재선(부서장 자동 결재선)용. 전부 선택 — 안 정하면 이 부서는 결재선에서 관리자 폴백. ──
+  // 관계 없이 id만 보관(add-only, User·자기참조 무변경). 결재자 해석은 lib/approval.ts + 조회로 처리.
+  headUserId   String?  // 부서장(직원 1명). 이 부서 소속 신청의 1차 결재자.
+  parentId     String?  // 상위부서 id(부서 계층). null=최상위. 결재선이 위로 타고 올라갈 대상.
+  deputyUserId String?  // 대결자(부서장 부재 시 대리결재). 선택.
 }
 
 // 비밀번호 재설정 요청 — 직원이 로그인 화면에서 "비밀번호 찾기"로 접수한다.
