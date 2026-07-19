@@ -326,6 +326,7 @@ model ApprovalStep {
   status         String    @default("pending")
   decidedAt      DateTime?
   comment        String?   // 승인/반려 사유(선택)
+  isFinal        Boolean   @default(false) // 전결 종결 단계 여부(전결권자 단계). 표시·감사용. 기존 행=false=무영향.
   createdAt      DateTime  @default(now())
 
   @@index([companyId, requestType, requestId]) // 한 신청의 단계들 조회
@@ -345,6 +346,7 @@ model Department {
   headUserId   String?  // 부서장(직원 1명). 이 부서 소속 신청의 1차 결재자.
   parentId     String?  // 상위부서 id(부서 계층). null=최상위. 결재선이 위로 타고 올라갈 대상.
   deputyUserId String?  // 대결자(부서장 부재 시 대리결재). 선택.
+  finalApproval Boolean @default(false) // 전결권자 지정. true면 이 부서장 승인에서 결재선 종결(상위로 안 올라감). 기존=false=무영향.
 }
 
 // 비밀번호 재설정 요청 — 직원이 로그인 화면에서 "비밀번호 찾기"로 접수한다.

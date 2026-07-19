@@ -3,28 +3,30 @@
 //  · 설계: docs/04_architecture/결재선_설계.md
 import { cache } from "react";
 import { prisma } from "@/lib/db";
-import { buildApprovalChain, nextPendingStep, isChainComplete, isChainRejected, type DeptNode } from "@/lib/approval";
+import { buildApprovalChain, nextPendingStep, isChainComplete, isChainRejected, type DeptNode, type ChainApprover } from "@/lib/approval";
 
 export type RequestType = "leave" | "correction";
 
 type Me = { id: string; role: string; companyId: string };
 
-// 신청자의 결재선(결재자 userId 배열)을 계산. 빈 배열이면 결재선 없음(관리자 단일 승인 폴백).
+// 신청자의 결재선(결재자 목록)을 계산. 빈 배열이면 결재선 없음(관리자 단일 승인 폴백).
+//  · 반환 각 원소 isFinal=true면 전결권자(그 단계에서 종결). 전결권자를 만나면 배열이 그 사람에서 끝난다.
 export async function resolveApproverChain(
   companyId: string,
   applicantUserId: string,
   applicantDeptId: string | null,
   stepCount: number,
-): Promise<string[]> {
+): Promise<ChainApprover[]> {
   const depts = await prisma.department.findMany({
     where: { companyId },
-    select: { id: true, headUserId: true, parentId: true, deputyUserId: true },
+    select: { id: true, headUserId: true, parentId: true, deputyUserId: true, finalApproval: true },
   });
   const map = new Map<string, DeptNode>(depts.map((d) => [d.id, d]));
-  return buildApprovalChain(applicantUserId, applicantDeptId, map, stepCount).approverUserIds;
+  return buildApprovalChain(applicantUserId, applicantDeptId, map, stepCount).approvers;
 }
 
 // 신청 생성 직후 결재선(ApprovalStep들)을 만든다. deptline이 아니거나 결재자가 없으면 만들지 않는다(=단일 승인).
+//  · 전결권자 단계엔 isFinal=true를 저장(표시·감사용). 동작은 "그 단계가 마지막"이라 기존 완료 판정으로 자연 종결.
 export async function createApprovalStepsIfNeeded(
   company: { approvalMode: string; approvalStepCount: number } | null,
   companyId: string,
@@ -37,12 +39,13 @@ export async function createApprovalStepsIfNeeded(
   const approvers = await resolveApproverChain(companyId, applicantUserId, applicantDeptId, company.approvalStepCount);
   if (approvers.length === 0) return; // 결재자 없음 → 관리자 단일 승인
   await prisma.approvalStep.createMany({
-    data: approvers.map((uid, i) => ({
+    data: approvers.map((a, i) => ({
       companyId,
       requestType,
       requestId,
       stepOrder: i + 1,
-      approverUserId: uid,
+      approverUserId: a.userId,
+      isFinal: a.isFinal,
     })),
   });
 }
@@ -226,8 +229,8 @@ export const countMyPendingApprovals = cache(async (companyId: string, userId: s
   return n;
 });
 
-// 신청들의 결재 진행상황(진행표시용). requestId → {단계수·승인수·다음 결재자·반려 여부}.
-export type ApprovalProgress = { total: number; approvedCount: number; nextApproverName: string | null; rejected: boolean };
+// 신청들의 결재 진행상황(진행표시용). requestId → {단계수·승인수·다음 결재자·반려 여부·다음이 전결권자인지}.
+export type ApprovalProgress = { total: number; approvedCount: number; nextApproverName: string | null; rejected: boolean; nextIsFinal: boolean };
 
 export async function getApprovalProgressMap(
   companyId: string,
@@ -240,7 +243,7 @@ export async function getApprovalProgressMap(
   const steps = await prisma.approvalStep.findMany({
     where: { companyId, requestType, requestId: { in: requestIds } },
     orderBy: { stepOrder: "asc" },
-    select: { requestId: true, stepOrder: true, status: true, approverUserId: true },
+    select: { requestId: true, stepOrder: true, status: true, approverUserId: true, isFinal: true },
   });
   if (steps.length === 0) return map;
 
@@ -264,6 +267,7 @@ export async function getApprovalProgressMap(
       approvedCount: ss.filter((s) => s.status === "approved").length,
       nextApproverName: next ? (nameOf.get(next.approverUserId) ?? null) : null,
       rejected: ss.some((s) => s.status === "rejected"),
+      nextIsFinal: next ? next.isFinal === true : false, // 다음 결재자가 전결권자면 그 승인이 최종
     });
   }
   return map;

@@ -117,7 +117,10 @@ export async function saveDepartmentApproval(formData: FormData): Promise<void> 
     parentId = rawParent;
   }
 
-  await prisma.department.update({ where: { id: dept.id }, data: { headUserId, parentId, deputyUserId } });
+  // 전결권자 지정(체크박스). 켜면 이 부서장 승인에서 결재선이 종결(상위로 안 올라감).
+  const finalApproval = formData.get("finalApproval") !== null;
+
+  await prisma.department.update({ where: { id: dept.id }, data: { headUserId, parentId, deputyUserId, finalApproval } });
   revalidatePath("/employees");
 }
 

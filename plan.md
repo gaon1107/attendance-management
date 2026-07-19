@@ -1,64 +1,79 @@
-# Plan: Shift 삭제 시 fixed 측(ShiftPattern·ShiftAssignment) dangling 참조 정리 (2026-07-20) — 상태: 검토 대기
+# Plan: 결재선 2차 — 전결(전결권자 지정) (2026-07-20) — 상태: 검토 대기
+
+> 확정: **B. 전결권자 지정** + **휴가·근태정정 둘 다**. 작업 위치 = 메인 저장소 master.
 
 ## 1. 접근 방식 (+이유)
-- 커밋 a9c2e8a가 **순환 측**(ShiftGroup·배정·orderCsv)만 정리해 비대칭이 남았다. 같은 철학을 **fixed 측**에 대칭 적용한다:
-  **참조 해제(null) → 삭제** (ShiftGroup에서 "user.shiftGroupId=null → group 삭제"와 동일 순서).
-- 위치: `saveWorkRules`의 **기존 단일 `$transaction` 안**, `if(shiftMode)` 블록의 `shift.deleteMany` 지점.
-  → 이미 원자화된 트랜잭션에 얹으므로 부분커밋 위험 없음, companyId 스코프 유지.
-- **OFF(shiftMode=null) 시엔 추가 정리 안 함**: 그 경우 Shift 행을 의도적으로 남기므로(휴면) dangling이 생기지 않는다.
-  요청의 "OFF 시" 가설을 검토한 결과 = 불필요. (근거: research.md 결론 1)
+- **핵심 = 체인 조기 종결(truncation)**. 관리자가 부서에 "전결권자"를 지정하면, `buildApprovalChain`이 그 부서장을 결재자로 추가하는 순간 **상위 탐색을 멈춘다**. 그 사람이 마지막 단계가 되어, 기존 `isChainComplete`가 그의 승인을 자동으로 "완료"로 판정한다.
+  → **`advanceApproval`(승인/반려/멱등복구) 골격을 전혀 손대지 않는다** = 가장 안전. 전결은 "체인이 더 짧게 생성된다"로 환원된다.
+- 왜 이 방식: 관리자 오버라이드처럼 "남은 단계 skip" 특수분기를 추가하면 advanceApproval이 복잡해지고 회귀면이 넓어진다. 조기 종결은 **생성 시점에 체인을 확정**(기존 철학)하고 진행 로직은 불변으로 둔다.
+- 전결권자가 신청자 본인이면 자기결재 방지로 추가 안 됨 → 종결 안 하고 상위로 계속(엣지 자연 처리).
 
 ## 2. 수정/생성 파일 목록
-- 수정: `webapp/app/actions/settings.ts` (메인 저장소 master, `saveWorkRules` 1곳)
-- 생성: 없음 (스키마·마이그레이션 변경 없음)
+1. `webapp/prisma/schema.prisma` — `Department.finalApproval`, `ApprovalStep.isFinal` (둘 다 Boolean @default(false), add-only) + 마이그레이션 1건.
+2. `webapp/lib/approval.ts` — `DeptNode`에 finalApproval, `buildApprovalChain` 조기종결 + 반환 타입(`approvers: {userId, isFinal}[]`).
+3. `webapp/lib/approval-server.ts` — `resolveApproverChain` 반환 반영, `createApprovalStepsIfNeeded`에서 isFinal 저장, `getApprovalProgressMap`에 전결 여부 노출(표시용).
+4. `webapp/app/actions/departments.ts` — `saveDepartmentApproval`에 finalApproval 저장(체크박스).
+5. `webapp/app/employees/DepartmentManager.tsx` — `DeptApprovalRow`에 전결권자 체크박스 + "현재 저장" 전결 표시. `Dept` 타입에 finalApproval.
+6. `webapp/app/employees/page.tsx` — `deptData` map에 finalApproval 추가.
+7. (표시·경량) 진행표시에 "전결" 배지: `getApprovalProgressMap` 결과에 `finalApplied` 추가 → 소비처 표시. **최소 범위로.**
 
 ## 3. 🛡️ 사이드 이펙트 방어
 - **영향받을 수 있는 기능 + 대응**
-  - 고정(fixed) 회사 요일패턴: 삭제된 조를 가리키던 셀이 null(휴무)로 바뀜 → 원래 그 조가 사라졌으니 **정상·의도된 결과**. `shifts/page.tsx` 그리드도 빈칸 대신 명시적 휴무로 깔끔해짐.
-  - 순환(rotation) 회사: ShiftGroup은 a9c2e8a가 이미 처리. 추가되는 ShiftAssignment(날짜 예외) 정리는 삭제된 조를 가리키던 예외만 null → 정상.
-  - 비교대 회사(shiftMode=null): `if(shiftMode)` 미진입 → 새 코드 실행 안 됨 → **완전 무영향**.
+  - single 회사(결재선 미사용): approvalMode!=="deptline" → createApprovalStepsIfNeeded 조기반환. 전결 코드 미진입 → **완전 무영향**.
+  - 기존 deptline 회사(전결권자 미지정): finalApproval 전부 false → 조기종결 안 함 → **체인·동작 동일 = 회귀 0**.
+  - advanceApproval/원본 status 소비처 9곳: 전결로 체인이 짧아져도 "완료 시 approved" 원칙 그대로 → **무영향**.
+  - 반환 타입 변경: 호출처 `resolveApproverChain`·`createApprovalStepsIfNeeded`(내부 2곳)만 동시 수정 → 컴파일러가 누락 잡음.
 - **구현 후 반드시 테스트할 기존 기능 목록**
-  1. 비교대 회사 근무제 저장(교대 미사용) — 오류·회귀 없는지
-  2. 고정 3교대 → 2교대 축소 저장 후 3조 참조 패턴이 null 되는지 / 1·2조 패턴 보존되는지
-  3. 고정 2교대 → 2교대(동일 수) 저장 시 패턴 보존(불필요 삭제 없음)
-  4. 교대 완전 OFF 저장 시 Shift·패턴 그대로 남는지(휴면, 파괴 없음)
-  5. `tsc`·`eslint` 0
+  1. single 회사 휴가·근태정정 승인/반려(기존 경로)
+  2. deptline·전결권자 미지정 2단계 결재선(신청→1차→2차 승인) 정상 완료
+  3. 전결권자 지정 시 체인이 그 단계에서 종결(승인=최종 approved)
+  4. 전결권자=신청자 본인일 때 상위로 계속(자기결재 방지)
+  5. 전결 단계 반려 → 원본 반려 확정
+  6. `tsc`·`eslint` 0
 
 ## 4. 작업분해 TODO
-- [ ] 1단계: `saveWorkRules` 트랜잭션 내 `shift.deleteMany`를 "삭제 대상 id 조회 → ShiftPattern/ShiftAssignment.shiftId null 처리 → 해당 id 삭제"로 교체 — 파일: `webapp/app/actions/settings.ts`
-- [ ] 2단계: `tsc` + `eslint` 통과 확인
-- [ ] 3단계: 저장 로직 롤백 검증(실DB 무커밋) — 위 3.테스트 1~4 시나리오
-- [ ] 4단계: 영향받는 기존 기능 회귀 테스트(비교대·고정)
-- [ ] 5단계: 검수(code-reviewer 서브에이전트) + project-status.md 갱신 + git 커밋
+- [ ] 1단계: schema에 `Department.finalApproval`·`ApprovalStep.isFinal` 추가 + `prisma migrate dev --name approval_final` — 파일: `schema.prisma`
+- [ ] 2단계: `lib/approval.ts` — DeptNode.finalApproval, buildApprovalChain 조기종결, 반환 `approvers:{userId,isFinal}[]`
+- [ ] 3단계: `lib/approval-server.ts` — resolveApproverChain 반영, createApprovalStepsIfNeeded에서 isFinal 저장
+- [ ] 4단계: `departments.ts` saveDepartmentApproval에 finalApproval 저장 + `employees/page.tsx` deptData·`DepartmentManager.tsx` 체크박스/표시
+- [ ] 5단계: (경량) getApprovalProgressMap 전결 표시 + 소비처 배지 최소 반영
+- [ ] 6단계: tsc·eslint 0
+- [ ] 7단계: 실DB 롤백검증(무커밋) — 위 3.테스트 1~5 시나리오(체인 산출·조기종결·자기결재·반려)
+- [ ] 8단계: 영향받는 기존 기능 회귀 테스트(single·deptline 미지정)
+- [ ] 9단계: 검수(code-reviewer) + project-status.md 갱신 + git 커밋
 
 ## 5. 핵심 로직 샘플 (계획용 스니펫, 실제 구현 아님)
 ```ts
-// 기존:
-//   await tx.shift.deleteMany({ where: { companyId: me.companyId, order: { gt: shiftMode } } });
-// 교체:
-const staleShifts = await tx.shift.findMany({
-  where: { companyId: me.companyId, order: { gt: shiftMode } },
-  select: { id: true },
-});
-if (staleShifts.length) {
-  const staleIds = staleShifts.map((s) => s.id);
-  // FK 없는 참조(fixed 요일패턴·날짜 예외)를 휴무(null)로 먼저 끊는다 — 순환 ShiftGroup 정리와 동일 철학.
-  await tx.shiftPattern.updateMany({
-    where: { companyId: me.companyId, shiftId: { in: staleIds } },
-    data: { shiftId: null },
-  });
-  await tx.shiftAssignment.updateMany({
-    where: { companyId: me.companyId, shiftId: { in: staleIds } },
-    data: { shiftId: null },
-  });
-  await tx.shift.deleteMany({ where: { id: { in: staleIds } } });
+// approval.ts
+export type DeptNode = { id: string; headUserId: string | null; parentId: string | null; deputyUserId: string | null; finalApproval: boolean };
+export type ChainApprover = { userId: string; isFinal: boolean };
+export type ApprovalChain = { approvers: ChainApprover[]; adminFallback: boolean };
+
+// buildApprovalChain 내부 while 루프:
+const candidate = node.headUserId ?? node.deputyUserId ?? null;
+if (candidate && !seen.has(candidate)) {
+  const isFinal = node.finalApproval === true;
+  approvers.push({ userId: candidate, isFinal });
+  seen.add(candidate);
+  if (isFinal) break; // 전결권자 → 상위로 안 올라가고 종결
 }
+deptId = node.parentId;
+// return { approvers, adminFallback: approvers.length === 0 };
+```
+```ts
+// approval-server.ts createApprovalStepsIfNeeded
+const chain = await resolveApproverChain(...); // ChainApprover[]
+if (chain.length === 0) return;
+await prisma.approvalStep.createMany({
+  data: chain.map((a, i) => ({ companyId, requestType, requestId, stepOrder: i + 1, approverUserId: a.userId, isFinal: a.isFinal })),
+});
 ```
 
 ## 6. 구현하지 않을 것 (범위 제외 + 이유)
-- schema.prisma에 FK(@relation) 추가 / 마이그레이션 — 요청 범위 밖(데이터 정리만). 구조 변경은 별도 검토 조각.
-- OFF 시 Shift 행 삭제 — 현행 설계(휴면 후 재활성화)를 바꾸지 않는다.
-- `resolveShift` 등 읽기 측 로직 — null-안전 방어선은 그대로 둔다.
+- 조건별 결재선(금액/일수 규칙)·자동 에스컬레이션 — 별도 조각(이번 범위 아님).
+- 전결권 다단계(여러 전결권자 중 특정 조합) — MVP는 "가장 낮은 전결권자에서 종결" 단순 규칙.
+- advanceApproval에 전결 특수분기 추가 — 조기종결로 환원되어 불필요(안전).
+- 화려한 전결 이력 타임라인 — 표시는 최소 배지로.
 
 ## 📌 사용자 메모 공간 (검토 후 여기에 적어주세요)
 -

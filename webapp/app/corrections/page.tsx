@@ -104,7 +104,7 @@ export default async function CorrectionsPage() {
                           return (
                             <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 4 }}>
                               결재 {p.approvedCount}/{p.total} 승인
-                              {p.nextApproverName && <span> · 다음: <b>{p.nextApproverName}</b></span>}
+                              {p.nextApproverName && <span> · 다음: <b>{p.nextApproverName}</b>{p.nextIsFinal && <span style={{ color: "var(--primary)", fontWeight: 700 }}> (전결)</span>}</span>}
                             </div>
                           );
                         })()}

@@ -40,6 +40,7 @@ export default async function EmployeesPage() {
     headUserId: d.headUserId,
     parentId: d.parentId,
     deputyUserId: d.deputyUserId,
+    finalApproval: d.finalApproval,
   }));
 
   // 회사 결재방식(결재선 설정용). 없으면 기본 single.

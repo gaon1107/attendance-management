@@ -18,6 +18,7 @@ type Dept = {
   headUserId: string | null;
   parentId: string | null;
   deputyUserId: string | null;
+  finalApproval: boolean;
 };
 type Emp = { id: string; name: string; employeeNo: string | null };
 
@@ -64,6 +65,7 @@ function DeptApprovalRow({ dept, employees, departments }: { dept: Dept; employe
         현재 저장: 부서장 <b style={{ color: headName ? "var(--text)" : undefined }}>{headName ?? "없음"}</b>
         {" · "}상위부서 <b style={{ color: parentName ? "var(--text)" : undefined }}>{parentName ?? "없음"}</b>
         {" · "}대결자 <b style={{ color: deputyName ? "var(--text)" : undefined }}>{deputyName ?? "없음"}</b>
+        {" · "}전결권자 <b style={{ color: dept.finalApproval ? "var(--primary)" : undefined }}>{dept.finalApproval ? "예(이 선에서 종결)" : "아니오"}</b>
       </div>
       <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px" }}>
         <span style={{ fontSize: 11, color: "var(--text-sub)", fontWeight: 700 }}>부서장(1차 결재)</span>
@@ -91,6 +93,13 @@ function DeptApprovalRow({ dept, employees, departments }: { dept: Dept; employe
             <option key={e.id} value={e.id}>{empLabel(e)}</option>
           ))}
         </select>
+      </label>
+      <label key={`final-${dept.finalApproval}`} style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px" }}>
+        <span style={{ fontSize: 11, color: "var(--text-sub)", fontWeight: 700 }}>전결권자</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 6, height: 40, fontSize: 13 }}>
+          <input type="checkbox" name="finalApproval" defaultChecked={dept.finalApproval} style={{ width: 16, height: 16, cursor: "pointer" }} />
+          이 부서장 선에서 종결
+        </span>
       </label>
       <button type="submit" style={{ ...smallBtn, height: 40, background: "var(--primary)", color: "#fff", border: "none" }}>
         결재설정 저장

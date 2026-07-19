@@ -6,6 +6,21 @@
 
 ## ▶▶ 다음 세션 시작점 (여기부터 읽기) — 2026-07-20
 
+### ✅ 완료(신규): 결재선 2차 — 전결(전결권자 지정) (2026-07-20)
+> 결재선 2차 나머지 3후보(전결·조건별·자동에스컬레이션) 중 **①전결**만 이번 조각(사장님 확정: B.전결권자 지정 방식 + 휴가·근태정정 둘 다). 조건별·에스컬레이션은 별도.
+> 관리자가 부서에 **"전결권자"**를 지정하면, 결재선이 그 부서장 승인에서 **종결**(상위로 안 올라감). 실제 전결규정과 동일.
+> **문서**: [research.md]·[plan.md]는 이후 작업이 덮어쓰므로 이 커밋 이력에 보존.
+
+**설계 핵심 = 체인 조기 종결(truncation)**: `buildApprovalChain`이 전결권자 결재자를 추가하면 그 지점에서 상위 탐색을 멈춘다 → 그 사람이 마지막 단계가 되어 기존 완료판정(isChainComplete)이 자연 처리. **`advanceApproval`(승인/반려/멱등복구) 무수정** = 가장 안전.
+
+**변경 8파일**: schema add-only 2필드(`Department.finalApproval`·`ApprovalStep.isFinal`, 둘 다 기본 false=기존 무영향)+마이그레이션 `20260719155517_approval_final` / `lib/approval.ts`(DeptNode·조기종결·반환 `approvers:{userId,isFinal}[]`) / `lib/approval-server.ts`(resolveApproverChain·createApprovalStepsIfNeeded isFinal 저장·getApprovalProgressMap nextIsFinal) / `departments.ts`(전결권자 저장) / `employees/page.tsx`·`DepartmentManager.tsx`(전결권자 체크박스+표시) / `leave/page.tsx`·`corrections/page.tsx`(신청자 진행표시 "(전결)" 배지).
+
+**검수(code-reviewer 2회)**: 1차 치명0·중간1(**겸임 시 전결 무효화** 수정) → 재검토 해소·배포이의없음. 추가 경미(비인접 겸임 배지 오해)도 "전결 마커를 남은 마지막 단계에 표시"로 수정. **경미 잔여(보고만)**: ①부서장 없이 전결만 켜면 무효(안전방향) ②대결자 결재 시도 전결발동(라벨 "부서장") ③결재함(승인자 화면)엔 전결 표시 없음(신청자 화면엔 있음).
+
+**검증**: tsc·eslint 0 / **실제 컴파일한 buildApprovalChain + 실prisma 롤백검증(무커밋)**: 최초 15/15 → 겸임수정 8/8 → 최종 9/9 PASS(회귀 미지정·single·전결1단계·전결권자=본인 / 겸임 인접·비인접·겸임+본인·겸임 non-final). 임시데이터 잔존 0.
+- ⚠️ **실화면 육안검증 남음(사장님 세션)**: deptline+2인(신청자·부서장) 로그인 필요라 임시검증 대체. 다음에 브라우저 열면 [직원관리]에서 부서에 전결권자 체크→휴가 신청→전결권자 승인에서 바로 최종승인되는지, 신청자 화면 "(전결)" 배지 육안확인 권장.
+- 🔜 **후속 후보**: 결재선 2차 나머지(조건별 결재선·자동에스컬레이션) · 위 경미 3건 · 결재함 전결 표시.
+
 ### ✅ 완료(신규): 교대 축소 시 fixed 측(ShiftPattern·ShiftAssignment) dangling 정리 (2026-07-20)
 > 커밋 `a9c2e8a`가 교대 수 축소 시 **순환 측**(ShiftGroup·배정·orderCsv)만 정리해 **fixed 측이 비대칭**으로 남아 있던 선재결함 보완. 교대 3→2 축소로 Shift를 삭제하면 `ShiftPattern.shiftId`(고정 요일패턴)·`ShiftAssignment.shiftId`(날짜 예외)가 schema상 Shift로의 FK가 없어 삭제된 id를 가리키는 dangling 참조로 남던 문제를 정리. 크래시는 원래 없었고(resolveShift가 없는 id를 휴무 처리) 정합성만 개선.
 > **문서**: [research.md]·[plan.md]는 이후 작업이 덮어쓰므로 이 커밋 이력에 보존.
