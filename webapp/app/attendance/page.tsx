@@ -6,6 +6,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { clockOut, startBreak, endBreak } from "@/app/actions/attendance";
 import { workedMinutes, formatMinutes } from "@/lib/worktime";
 import { workModeLabel, locationStatusLabel } from "@/lib/location";
+import { clockOutText } from "@/lib/labels";
 import { PHOTO_CONSENT_SINCE } from "@/lib/clock-photo";
 import { ClockInPanel } from "./ClockInPanel";
 import { FaceClockPanel } from "./FaceClockPanel";
@@ -72,7 +73,7 @@ export default async function AttendancePage() {
   // 출근/퇴근 요약(가장 최근 기록 기준) — 실제 데이터만
   const latest = open ?? (todays.length > 0 ? todays[todays.length - 1] : null);
   const inLabel = latest ? hhmm(latest.clockIn) : "—";
-  const outLabel = latest?.clockOut ? hhmm(latest.clockOut) : "—";
+  const outLabel = latest?.clockOut ? clockOutText(latest.clockIn, latest.clockOut) : "—";
 
   const todayLabel = new Date().toLocaleDateString("ko-KR", {
     year: "numeric",
@@ -219,7 +220,7 @@ export default async function AttendancePage() {
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ fontVariantNumeric: "tabular-nums" }}>출근 {hhmm(rec.clockIn)}</span>
                   <span style={{ color: done ? "var(--text)" : "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>
-                    {done ? `퇴근 ${hhmm(rec.clockOut!)}` : "근무 중"}
+                    {done ? `퇴근 ${clockOutText(rec.clockIn, rec.clockOut!)}` : "근무 중"}
                   </span>
                 </div>
                 <div style={{ marginTop: 8, display: "flex", gap: 6 }}>

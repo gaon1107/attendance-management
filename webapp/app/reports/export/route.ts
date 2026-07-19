@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { workedMinutes } from "@/lib/worktime";
 import { workModeLabel, locationStatusLabel } from "@/lib/location";
+import { clockOutText } from "@/lib/labels";
 import { parseAnchor, toISODate } from "@/lib/period";
 import { queryTerms, matchesTerms } from "@/lib/search";
 
@@ -60,11 +61,12 @@ export async function GET(request: Request): Promise<Response> {
     orderBy: [{ clockIn: "asc" }],
   });
 
-  // 통합검색어(q)가 있으면 화면(ReportsClient)과 동일한 OR 규칙으로 직원(이름·역할)을 거른다.
+  // 통합검색어(q)가 있으면 화면(ReportsClient)·PDF와 동일한 OR 규칙으로 직원(이름·사번·역할)을 거른다.
   // → "화면에 보이는 직원만" 엑셀에 담긴다. q가 없으면 기간 전체.
+  //   ※ 사번(employeeNo)을 반드시 포함해야 화면·PDF·엑셀 세 산출물이 같은 검색 결과를 낸다(동명이인 구분).
   const terms = queryTerms(url.searchParams.get("q") ?? "");
   const rows = terms.length
-    ? all.filter((r) => matchesTerms([r.user.name, r.user.role === "admin" ? "관리자" : "직원"].join(" ").toLowerCase(), terms))
+    ? all.filter((r) => matchesTerms([r.user.name, r.user.employeeNo ?? "", r.user.role === "admin" ? "관리자" : "직원"].join(" ").toLowerCase(), terms))
     : all;
 
   // ── 엑셀 워크북 만들기 ────────────────────────────────────────────────
@@ -102,7 +104,7 @@ export async function GET(request: Request): Promise<Response> {
       workMode: workModeLabel(r.workMode),
       location: r.workMode === "office" ? locationStatusLabel(r.locationStatus) : "-",
       in: hhmm(r.clockIn),
-      out: hhmm(r.clockOut),
+      out: r.clockOut ? clockOutText(r.clockIn, r.clockOut) : "",
       worked: workedMinutes(r), // 숫자 셀(엑셀에서 합계 가능)
       breaks: r.breaks.length, // 숫자 셀
     });

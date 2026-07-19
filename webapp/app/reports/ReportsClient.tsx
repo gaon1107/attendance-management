@@ -15,6 +15,7 @@ import { formatMinutes } from "@/lib/worktime";
 export type ReportRow = {
   id: string;
   name: string;
+  employeeNo: string | null; // 사번(동명이인 구분·검색용)
   initial: string;
   isAdmin: boolean;
   days: number; // 근무일수
@@ -112,6 +113,7 @@ export function ReportsClient({
             <thead>
               <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                 <th style={th}>이름</th>
+                <th style={th}>사번</th>
                 <th style={{ ...th, textAlign: "right" }}>근무일수</th>
                 <th style={{ ...th, textAlign: "right" }}>실근무 합계</th>
                 <th style={{ ...th, textAlign: "right" }}>초과근무</th>
@@ -122,7 +124,7 @@ export function ReportsClient({
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={7} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {q.trim() ? "검색 결과가 없습니다." : "이 기간에 출퇴근 기록이 없습니다."}
                   </td>
                 </tr>
@@ -140,6 +142,7 @@ export function ReportsClient({
                         </span>
                       </div>
                     </td>
+                    <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{s.employeeNo || "—"}</td>
                     <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{s.days}일</td>
                     <td style={{ ...td, textAlign: "right", fontWeight: 700, color: "var(--primary)", fontVariantNumeric: "tabular-nums" }}>{formatMinutes(s.minutes)}</td>
                     <td style={{ ...td, textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: s.overtime > 0 ? "var(--warning)" : "var(--text-sub)" }}>{s.overtime > 0 ? formatMinutes(s.overtime) : "—"}</td>

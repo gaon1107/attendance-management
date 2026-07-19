@@ -2,7 +2,7 @@
 // showLiveness(기본 꺼짐): 관리자 화면에서만 켜는 "본인 확인" 열 — 출퇴근 사진 판독 결과·사진 열람.
 //   직원 본인 화면(내근태)에는 절대 켜지 않는다(조용한 표시 원칙 — 직원에게 판독 사실을 노출하지 않음).
 import { formatMinutes } from "@/lib/worktime";
-import { workModeLabel, locationLabel, hhmm, monthDayDow } from "@/lib/labels";
+import { workModeLabel, locationLabel, hhmm, clockOutText, monthDayDow } from "@/lib/labels";
 import type { DayDetail, ClockPhotoLite } from "@/lib/dayentries";
 
 const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 20px", whiteSpace: "nowrap" };
@@ -156,7 +156,7 @@ export function DetailTable({ detail, showLiveness = false }: { detail: DayDetai
                       <td style={{ ...td, color: "var(--text-sub)" }}>{locationLabel(r.locationStatus)}</td>
                       <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{hhmm(r.clockIn)}</td>
                       <td style={{ ...td, fontVariantNumeric: "tabular-nums", color: r.clockOut ? "var(--text)" : "var(--text-sub)" }}>
-                        {r.clockOut ? hhmm(r.clockOut) : "근무 중"}
+                        {r.clockOut ? clockOutText(r.clockIn, r.clockOut) : "근무 중"}
                       </td>
                       <td style={td}>
                         {e.holiday ? (

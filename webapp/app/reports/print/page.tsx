@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { workedMinutes, formatMinutes } from "@/lib/worktime";
 import { workModeLabel, locationStatusLabel } from "@/lib/location";
+import { clockOutText } from "@/lib/labels";
 import { parseAnchor, toISODate } from "@/lib/period";
 import { queryTerms, matchesTerms } from "@/lib/search";
 import { DAY_LABELS } from "@/lib/workdays";
@@ -87,7 +88,7 @@ export default async function ReportPrintPage({
   // 통합검색어(q) — 엑셀·화면과 동일한 OR 규칙으로 직원(이름·역할)을 거른다. 없으면 기간 전체.
   const terms = queryTerms(qParam);
   const rows = terms.length
-    ? all.filter((r) => matchesTerms([r.user.name, r.user.role === "admin" ? "관리자" : "직원"].join(" ").toLowerCase(), terms))
+    ? all.filter((r) => matchesTerms([r.user.name, r.user.employeeNo ?? "", r.user.role === "admin" ? "관리자" : "직원"].join(" ").toLowerCase(), terms))
     : all;
 
   // 직원별로 묶기(출근 시각 오름차순 유지)
@@ -105,7 +106,7 @@ export default async function ReportPrintPage({
       workMode: workModeLabel(r.workMode),
       location: r.workMode === "office" ? locationStatusLabel(r.locationStatus) : "-",
       in: hhmm(r.clockIn),
-      out: hhmm(r.clockOut),
+      out: r.clockOut ? clockOutText(r.clockIn, r.clockOut) : "",
       breaks: r.breaks.length,
       worked: wm,
       open: !r.clockOut, // 미퇴근(근무 중) — 확정되지 않은 기록임을 표시

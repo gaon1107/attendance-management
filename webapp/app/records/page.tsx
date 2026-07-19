@@ -8,7 +8,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { RecordsClient, type RecordRow } from "./RecordsClient";
 import { workedMinutes, formatMinutes, isLate, isEarlyLeave } from "@/lib/worktime";
 import { parseAnchor, toISODate } from "@/lib/period";
-import { workModeLabel, locationLabel, hhmm, monthDayDow } from "@/lib/labels";
+import { workModeLabel, locationLabel, hhmm, clockOutText, monthDayDow } from "@/lib/labels";
 import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
 import { leaveTypeLabel, leaveSuppressesLate, leaveSuppressesEarly } from "@/lib/leave";
@@ -111,7 +111,7 @@ export default async function RecordsPage({
     const workMode = workModeLabel(r.workMode);
     const location = locationLabel(r.locationStatus);
     const inText = hhmm(r.clockIn);
-    const outText = r.clockOut ? hhmm(r.clockOut) : "근무 중";
+    const outText = r.clockOut ? clockOutText(r.clockIn, r.clockOut) : "근무 중";
     // 검색·표시용 텍스트: 휴일근무 우선, 승인 반차/조퇴 라벨 + 자동 지각/조퇴, 아무 문제 없으면 정상.
     const lateText = holiday
       ? "휴일근무"

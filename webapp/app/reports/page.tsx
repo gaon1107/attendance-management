@@ -70,9 +70,9 @@ export default async function ReportsPage({
   });
 
   // 직원별 집계 (+ 초과근무를 위해 날짜별 실근무 분도 모은다)
-  const byUser = new Map<string, { id: string; name: string; role: string; minutes: number; breaks: number; days: Set<string>; workDays: string | null; dayMinutes: Map<string, number> }>();
+  const byUser = new Map<string, { id: string; name: string; employeeNo: string | null; role: string; minutes: number; breaks: number; days: Set<string>; workDays: string | null; dayMinutes: Map<string, number> }>();
   for (const r of records) {
-    const cur = byUser.get(r.userId) ?? { id: r.userId, name: r.user.name, role: r.user.role, minutes: 0, breaks: 0, days: new Set<string>(), workDays: r.user.workDays, dayMinutes: new Map<string, number>() };
+    const cur = byUser.get(r.userId) ?? { id: r.userId, name: r.user.name, employeeNo: r.user.employeeNo, role: r.user.role, minutes: 0, breaks: 0, days: new Set<string>(), workDays: r.user.workDays, dayMinutes: new Map<string, number>() };
     const wm = workedMinutes(r);
     const iso = toISODate(r.clockIn);
     cur.minutes += wm;
@@ -123,6 +123,7 @@ export default async function ReportsPage({
     .map((u) => ({
       id: u.id,
       name: u.name,
+      employeeNo: u.employeeNo,
       initial: u.name.slice(0, 1),
       isAdmin: u.role === "admin",
       days: u.days.size,
@@ -130,7 +131,7 @@ export default async function ReportsPage({
       overtime: overtimeMinutesOf(u.dayMinutes),
       absent: absentCountFor(u.workDays, u.days, leaveByUser.get(u.id) ?? new Set()),
       breaks: u.breaks,
-      search: [u.name, u.role === "admin" ? "관리자" : "직원"].join(" ").toLowerCase(),
+      search: [u.name, u.employeeNo ?? "", u.role === "admin" ? "관리자" : "직원"].join(" ").toLowerCase(),
     }))
     .sort((a, b) => b.minutes - a.minutes);
 
