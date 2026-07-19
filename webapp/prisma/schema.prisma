@@ -22,6 +22,7 @@ model Company {
   passwordResetRequests PasswordResetRequest[]
   departments   Department[]
   attendanceCorrections AttendanceCorrection[]
+  outingRequests OutingRequest[]
   // 사업장 위치(사무실 출근 GPS 확인용). 안 정하면 위치 확인은 건너뜀.
   officeLat     Float?
   officeLng     Float?
@@ -176,6 +177,7 @@ model User {
   employeeNo     String?   // 사번(사원번호) — 회사 내부 고유번호. 현재 중복검사 없음(단순 저장).
   hireDate       DateTime? // 입사일 (자동 기록되는 가입일 createdAt과는 별개)
   attendanceCorrections AttendanceCorrection[]
+  outingRequests OutingRequest[]
   // 공지(알림)를 마지막으로 확인한 시각. 이 시각 이후 올라온 공지는 "새 알림(NEW)"으로 본다.
   noticesSeenAt  DateTime?
   // 첫 사용 안내(온보딩 투어)를 본 시각. 값이 있으면 다시 띄우지 않는다.
@@ -311,6 +313,34 @@ model AttendanceCorrection {
   createdAt    DateTime  @default(now())
 }
 
+// 외출/외근 신청 — 직원이 사전 신청하고 결재자(관리자 또는 부서장 결재선)가 승인/반려한다.
+// ※ 사전 허가 워크플로다: 승인은 "허가 기록"만 남긴다 — 근태/실근무/지각·결근 판정 로직에는 영향을 주지 않는다.
+//    (실시간 외출 버튼 Break·출근시 외근 선택 workMode와 독립. 사장님 결정 2026-07-20.)
+model OutingRequest {
+  id           String    @id @default(cuid())
+  companyId    String
+  company      Company   @relation(fields: [companyId], references: [id])
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  // 종류: "outing"(외출·개인용무 성격) | "field"(외근·업무 성격). 라벨·정의는 lib/outing.ts가 단일 출처.
+  kind         String
+  targetDate   DateTime  // 대상 날짜(자정 기준)
+  startTime    String    // 시작 시각 "HH:MM"
+  endTime      String    // 종료 시각 "HH:MM" (startTime보다 뒤여야 함)
+  place        String?   // 행선지/외근지(선택)
+  reason       String?   // 사유(선택)
+  // 상태: "pending"(대기) | "approved"(승인·허가됨) | "rejected"(반려)
+  status       String    @default("pending")
+  decidedAt    DateTime?
+  // 결재선 2차와 동일: 결재자 결정 사유·처리자. add-only(nullable).
+  //  single 모드는 여기 직접 저장, deptline 모드는 단계별 ApprovalStep.comment + 최종 결정을 여기 미러.
+  decisionComment String? // 승인/반려 사유(선택 저장). 신청자에게 표시.
+  decidedById     String? // 처리한 결재자/관리자 userId(표시용, 관계 없이 id만 보관)
+  createdAt    DateTime  @default(now())
+
+  @@index([companyId, status])
+}
+
 // 결재 단계 — 다단계 승인(부서장 결재선)의 각 단계·진행상태.
 // 원본 신청(LeaveRequest/AttendanceCorrection)은 스키마 무변경 — 다형 참조(requestType+requestId)로 연결한다.
 // approvalMode=deptline 회사만 생성한다. single 회사는 이 표를 쓰지 않고 기존 단일 승인 경로 그대로.
@@ -318,8 +348,8 @@ model ApprovalStep {
   id             String    @id @default(cuid())
   companyId      String
   company        Company   @relation(fields: [companyId], references: [id])
-  requestType    String    // "leave"(휴가) | "correction"(근태정정)
-  requestId      String    // LeaveRequest.id 또는 AttendanceCorrection.id
+  requestType    String    // "leave"(휴가) | "correction"(근태정정) | "outing"(외출/외근)
+  requestId      String    // LeaveRequest.id / AttendanceCorrection.id / OutingRequest.id
   stepOrder      Int       // 1,2,3… 순서
   approverUserId String    // 이 단계 결재자(부서장/대결자/관리자)
   // 상태: "pending"(대기) | "approved"(승인) | "rejected"(반려) | "skipped"(건너뜀=본인 결재 등)
