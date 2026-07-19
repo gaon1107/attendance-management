@@ -131,6 +131,7 @@ export type ApprovalInboxItem = {
   applicantNo: string | null;
   stepOrder: number;
   totalSteps: number;
+  isFinal: boolean; // 내 현재 단계가 전결 종결 단계인지(전결권자) → 결재함에 "전결" 표시. 승인 시 바로 최종 확정.
   createdAt: Date;
   // 표시용 요약(휴가/근태정정)
   summary: string;
@@ -167,6 +168,7 @@ export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
         applicantNo: lv.user.employeeNo,
         stepOrder: step.stepOrder,
         totalSteps: siblings.length,
+        isFinal: step.isFinal === true,
         createdAt: lv.createdAt,
         summary: `휴가 신청 (${s === e ? s : `${s}~${e}`})`,
         detail: lv.reason ?? "",
@@ -186,6 +188,7 @@ export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
         applicantNo: c.user.employeeNo,
         stepOrder: step.stepOrder,
         totalSteps: siblings.length,
+        isFinal: step.isFinal === true,
         createdAt: c.createdAt,
         summary: `근태정정 (${d}) ${parts}`,
         detail: c.reason,

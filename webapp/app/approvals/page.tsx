@@ -20,7 +20,7 @@ export default async function ApprovalsPage() {
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>내가 결재할 차례</div>
         <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
           아래 신청들은 <b>지금 내 결재를 기다리는</b> 항목입니다. 승인하면 다음 결재자에게 넘어가고, 마지막 단계에서 최종 확정됩니다.
-          반려하면 그 자리에서 신청이 종료됩니다.
+          <b style={{ color: "var(--primary)" }}>전결</b> 표시가 있으면 상위로 올라가지 않고 <b>내 승인에서 바로 최종 확정</b>됩니다. 반려하면 그 자리에서 신청이 종료됩니다.
         </p>
 
         {items.length === 0 ? (
@@ -44,6 +44,14 @@ export default async function ApprovalsPage() {
                     <span style={{ fontSize: 15, fontWeight: 700 }}>{it.applicantName}</span>
                     {it.applicantNo && <span style={{ fontSize: 12, color: "var(--text-sub)" }}>{it.applicantNo}</span>}
                     <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 700 }}>· {it.stepOrder}/{it.totalSteps}단계</span>
+                    {it.isFinal && (
+                      <span
+                        title="전결권자 단계 — 내가 승인하면 상위로 올라가지 않고 바로 최종 확정됩니다."
+                        style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: "#EAF2FF", color: "var(--primary)" }}
+                      >
+                        전결
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: 14, color: "var(--text)" }}>{it.summary}</div>
                   {it.detail && <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 2 }}>사유: {it.detail}</div>}
