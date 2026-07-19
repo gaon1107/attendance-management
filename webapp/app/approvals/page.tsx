@@ -6,6 +6,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { listMyApprovals } from "@/lib/approval-server";
 import { approveLeave, rejectLeave } from "@/app/actions/leave";
 import { approveCorrection, rejectCorrection } from "@/app/actions/corrections";
+import { RejectButton } from "@/app/components/RejectButton";
 
 export default async function ApprovalsPage() {
   const me = await getCurrentUser();
@@ -57,18 +58,7 @@ export default async function ApprovalsPage() {
                       승인
                     </button>
                   </form>
-                  <form
-                    action={it.type === "leave" ? rejectLeave : rejectCorrection}
-                    style={{ display: "flex" }}
-                  >
-                    <input type="hidden" name="id" value={it.requestId} />
-                    <button
-                      type="submit"
-                      style={{ height: 38, padding: "0 16px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--danger)", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
-                    >
-                      반려
-                    </button>
-                  </form>
+                  <RejectButton action={it.type === "leave" ? rejectLeave : rejectCorrection} requestId={it.requestId} />
                 </div>
               </div>
             ))}

@@ -7,6 +7,7 @@ import { RangeCalendarNav } from "@/app/components/RangeCalendarNav";
 import { SearchBox } from "@/app/components/SearchBox";
 import { queryTerms, matchesTerms } from "@/lib/search";
 import { approveCorrection, rejectCorrection } from "@/app/actions/corrections";
+import { RejectButton } from "@/app/components/RejectButton";
 
 export type CorrectionRow = {
   id: string;
@@ -109,10 +110,7 @@ export function CorrectionApprovalsClient({
                           <input type="hidden" name="id" value={r.id} />
                           <button type="submit" style={{ height: 34, padding: "0 14px", border: "none", borderRadius: 8, background: "var(--primary)", color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>승인</button>
                         </form>
-                        <form action={rejectCorrection}>
-                          <input type="hidden" name="id" value={r.id} />
-                          <button type="submit" style={{ height: 34, padding: "0 14px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--danger)", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>반려</button>
-                        </form>
+                        <RejectButton action={rejectCorrection} requestId={r.id} compact />
                       </div>
                     </td>
                   </tr>
