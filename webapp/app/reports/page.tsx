@@ -118,8 +118,8 @@ export default async function ReportsPage({
     let n = 0;
     for (let cur = new Date(start); cur < absLimit; cur = new Date(cur.getTime() + 86400000)) {
       const iso = toISODate(cur);
-      // 교대제: 그날 조 배정(≠휴무)이면 근무예정일. 비교대: 근무요일 + 쉬는날 제외(기존).
-      const isWork = shiftCtx ? resolveShift(shiftCtx, userId, shiftGroupId, iso) !== null : isEffectiveWorkDay(cur, wd, offDays);
+      // 근무요일 + 쉬는날(공휴일·회사휴무일) 제외는 공통. 교대제는 추가로 그날 조 배정(≠휴무)까지 있어야 근무예정.
+      const isWork = isEffectiveWorkDay(cur, wd, offDays) && (!shiftCtx || resolveShift(shiftCtx, userId, shiftGroupId, iso) !== null);
       if (isWork && !attended.has(iso) && !leaveDays.has(iso)) n++;
     }
     return n;

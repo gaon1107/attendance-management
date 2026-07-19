@@ -100,15 +100,16 @@ export default async function RecordsPage({
   // 각 기록을 화면 표시값(직렬화 가능한 순수 객체)으로 미리 계산 → 통합검색은 "화면에 보이는 모든 컬럼"의 글자로 판단.
   const rows: RecordRow[] = records.map((r) => {
     const iso = toISODate(r.clockIn);
-    // 교대제: 그날 조(휴무=null) 기준. 비교대: 근무요일 + 회사 시:분 기준(기존).
+    // 근무요일 + 쉬는날(공휴일·회사휴무일) 제외는 공통. 교대제는 추가로 그날 조(휴무=null) 배정까지 있어야 근무일.
+    const workday = isEffectiveWorkDay(r.clockIn, effectiveWorkDays(r.user.workDays, company?.workDays), offDays);
     const shift = shiftCtx ? resolveShift(shiftCtx, r.userId, r.user.shiftGroupId, iso) : undefined;
-    const onWorkDay = shiftCtx ? shift !== null : isEffectiveWorkDay(r.clockIn, effectiveWorkDays(r.user.workDays, company?.workDays), offDays);
+    const onWorkDay = shiftCtx ? workday && shift !== null : workday;
     const holiday = !onWorkDay;
     let late: boolean | null;
     let early: boolean | null;
     if (shiftCtx) {
-      if (shift) { const j = judgeByShift(r.clockIn, r.clockOut, iso, shift, company?.lateGraceMin ?? 0); late = j.late; early = j.early; }
-      else { late = null; early = null; } // 휴무(조 없음) = 휴일근무, 판정 안 함
+      if (workday && shift) { const j = judgeByShift(r.clockIn, r.clockOut, iso, shift, company?.lateGraceMin ?? 0); late = j.late; early = j.early; }
+      else { late = null; early = null; } // 휴무·공휴일·주말 = 휴일근무, 판정 안 함
     } else {
       late = onWorkDay ? isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0) : null;
       early = onWorkDay ? isEarlyLeave(r.clockOut, company?.workEndTime ?? null) : null;

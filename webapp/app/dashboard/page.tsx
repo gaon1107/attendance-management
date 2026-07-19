@@ -87,14 +87,15 @@ export default async function DashboardPage() {
   const lateUserIds = new Set(
     todays
       .filter((r) => {
+        // 근무요일 + 쉬는날(공휴일·회사휴무일) 제외는 공통 게이트.
+        const wd = effectiveWorkDays(r.user.workDays, company?.workDays);
+        if (!isEffectiveWorkDay(r.clockIn, wd, offDays)) return false;
         if (shiftCtx) {
           // 교대제: 그날 조 기준(휴무면 판정 안 함), 자정 넘김 정확.
           const shift = resolveShift(shiftCtx, r.userId, r.user.shiftGroupId, toISODate(r.clockIn));
           if (!shift) return false;
           if (!isLateByShift(r.clockIn, toISODate(r.clockIn), shift, company?.lateGraceMin ?? 0)) return false;
         } else {
-          const wd = effectiveWorkDays(r.user.workDays, company?.workDays);
-          if (!isEffectiveWorkDay(r.clockIn, wd, offDays)) return false;
           if (!isLate(r.clockIn, company?.workStartTime ?? null, company?.lateGraceMin ?? 0)) return false;
         }
         const lt = leaveTypeTodayByUser.get(r.userId);
@@ -109,13 +110,13 @@ export default async function DashboardPage() {
   const earlyUserIds = new Set(
     todays
       .filter((r) => {
+        const wd = effectiveWorkDays(r.user.workDays, company?.workDays);
+        if (!isEffectiveWorkDay(r.clockIn, wd, offDays)) return false;
         if (shiftCtx) {
           const shift = resolveShift(shiftCtx, r.userId, r.user.shiftGroupId, toISODate(r.clockIn));
           if (!shift) return false;
           if (!r.clockOut || !isEarlyLeaveByShift(r.clockOut, toISODate(r.clockIn), shift)) return false;
         } else {
-          const wd = effectiveWorkDays(r.user.workDays, company?.workDays);
-          if (!isEffectiveWorkDay(r.clockIn, wd, offDays)) return false;
           if (!isEarlyLeave(r.clockOut, company?.workEndTime ?? null)) return false;
         }
         const lt = leaveTypeTodayByUser.get(r.userId);
@@ -137,10 +138,9 @@ export default async function DashboardPage() {
   const clockedInIds = new Set(todays.map((r) => r.userId));
   const absentNames = employees
     .filter((e) => {
-      // 교대제: 오늘 조 배정(≠휴무)이면 근무예정. 비교대: 근무요일 + 쉬는날 제외(기존).
-      const workingToday = shiftCtx
-        ? resolveShift(shiftCtx, e.id, e.shiftGroupId, todayISO) !== null
-        : isEffectiveWorkDay(now, effectiveWorkDays(e.workDays, company?.workDays), offDays);
+      // 근무요일 + 쉬는날(공휴일·회사휴무일) 제외는 공통. 교대제는 추가로 오늘 조 배정(≠휴무)까지 있어야 근무예정.
+      const workday = isEffectiveWorkDay(now, effectiveWorkDays(e.workDays, company?.workDays), offDays);
+      const workingToday = shiftCtx ? workday && resolveShift(shiftCtx, e.id, e.shiftGroupId, todayISO) !== null : workday;
       return workingToday && !clockedInIds.has(e.id) && !onLeaveTodayIds.has(e.id);
     })
     .map((e) => e.name);

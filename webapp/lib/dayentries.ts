@@ -64,19 +64,21 @@ export function buildDayEntries(
   // 교대제면 조가 시각을 정하므로 지각·조퇴 판정이 항상 가능. 비교대면 회사 기준시각 유무.
   const hasRule = shiftResolver ? true : !!company?.workStartTime;
   const hasEndRule = shiftResolver ? true : !!company?.workEndTime;
-  // 그날 근무예정일인가 — 교대제면 조 배정(≠휴무), 비교대면 근무요일(+쉬는날 제외). 결근·게이팅 공통 기준.
+  // 그날 근무예정일인가 — 근무요일 + 쉬는날(공휴일·회사휴무일) 제외는 교대·비교대 공통.
+  //  교대제는 추가로 그날 조 배정(≠휴무)까지 있어야 근무예정(주말·공휴일 결근 오판 방지). 결근·게이팅 공통 기준.
   const isWorkDay = (d: Date, iso: string): boolean =>
-    shiftResolver ? shiftResolver(iso) !== null : isEffectiveWorkDay(d, wd, offDays);
+    isEffectiveWorkDay(d, wd, offDays) && (!shiftResolver || shiftResolver(iso) !== null);
 
   const attEntries: DayEntry[] = rows.map((r) => {
     const iso = toISODate(r.clockIn);
     const shift = shiftResolver ? shiftResolver(iso) : undefined; // undefined=비교대, null=교대제 휴무
-    const onWorkDay = shiftResolver ? shift !== null : isEffectiveWorkDay(r.clockIn, wd, offDays);
+    const workday = isEffectiveWorkDay(r.clockIn, wd, offDays); // 근무요일 + 쉬는날 제외
+    const onWorkDay = shiftResolver ? workday && shift !== null : workday;
     let late: boolean | null;
     let early: boolean | null;
     if (shiftResolver) {
-      // 교대제: 그날 조 있으면 자정 넘김까지 정확 판정, 휴무(조 없음)면 판정 안 함(=휴일근무).
-      if (shift) {
+      // 교대제: 근무일 + 그날 조 있으면 자정 넘김까지 정확 판정. 휴무·공휴일·주말이면 판정 안 함(=휴일근무).
+      if (workday && shift) {
         const j = judgeByShift(r.clockIn, r.clockOut, iso, shift, company?.lateGraceMin ?? 0);
         late = j.late; early = j.early;
       } else { late = null; early = null; }
