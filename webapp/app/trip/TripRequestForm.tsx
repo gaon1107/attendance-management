@@ -2,7 +2,7 @@
 // 출장 신청 폼(직원) — 기간(시작~종료)·출장지·사유. (재택 폼 패턴 + 출장지)
 import { useActionState } from "react";
 import { requestTrip } from "@/app/actions/trip";
-import { DatePicker } from "@/app/components/DatePicker";
+import { RangeDatePicker } from "@/app/components/RangeDatePicker";
 import { AttachmentField } from "@/app/components/AttachmentField";
 
 const inputStyle: React.CSSProperties = {
@@ -16,15 +16,9 @@ export function TripRequestForm() {
 
   return (
     <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 140 }}>
-          <label style={labelStyle}>시작일</label>
-          <DatePicker name="startDate" allowClear={false} />
-        </div>
-        <div style={{ flex: 1, minWidth: 140 }}>
-          <label style={labelStyle}>종료일</label>
-          <DatePicker name="endDate" allowClear={false} />
-        </div>
+      <div>
+        <label style={labelStyle}>출장 기간</label>
+        <RangeDatePicker startName="startDate" endName="endDate" placeholder="출장 기간 선택" />
       </div>
 
       <div>
