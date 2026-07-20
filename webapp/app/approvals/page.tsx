@@ -8,6 +8,7 @@ import { approveLeave, rejectLeave } from "@/app/actions/leave";
 import { approveCorrection, rejectCorrection } from "@/app/actions/corrections";
 import { approveOuting, rejectOuting } from "@/app/actions/outing";
 import { approveRemote, rejectRemote } from "@/app/actions/remote";
+import { approveOvertime, rejectOvertime } from "@/app/actions/overtime";
 import { RejectButton } from "@/app/components/RejectButton";
 
 // 신청유형별 결재함 표시·액션 매핑(유형 추가 시 여기에만 한 줄 추가).
@@ -16,6 +17,7 @@ const TYPE_META: Record<RequestType, { label: string; badgeBg: string; badgeColo
   correction: { label: "근태정정", badgeBg: "#FEF3C7", badgeColor: "#B45309", approve: approveCorrection, reject: rejectCorrection },
   outing: { label: "외출/외근", badgeBg: "#DCFCE7", badgeColor: "#15803D", approve: approveOuting, reject: rejectOuting },
   remote: { label: "재택근무", badgeBg: "#EDE9FE", badgeColor: "#7C3AED", approve: approveRemote, reject: rejectRemote },
+  overtime: { label: "초과근무", badgeBg: "#FFE4E6", badgeColor: "#BE123C", approve: approveOvertime, reject: rejectOvertime },
 };
 
 export default async function ApprovalsPage() {
