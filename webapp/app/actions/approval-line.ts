@@ -32,7 +32,7 @@ export async function saveApprovalLine(
   if (company?.approvalMode !== "custom") return { error: "이 회사의 결재방식이 아닙니다." };
 
   const raw = String(formData.get("approverIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  // 유효 결재자만(같은 부서·재직·본인 제외·중복 제거·최대 5명).
+  // 유효 결재자만(나보다 직급 높은 상급자·재직·본인 제외·중복 제거·상한).
   const ids = await filterActiveApprovers(me.companyId, me.id, raw);
 
   if (ids.length === 0) {
@@ -42,8 +42,8 @@ export async function saveApprovalLine(
       revalidatePath(PATH[requestType]);
       return { ok: true };
     }
-    // 골랐는데 전부 무효(같은 부서 아님·퇴사 등) → 실수/위조. 조용히 지우지 않고 알린다.
-    return { error: "같은 부서 직원만 결재자로 지정할 수 있습니다. 화면을 새로고침해 다시 선택해주세요." };
+    // 골랐는데 전부 무효(상급자 아님·퇴사·직급하락 등) → 실수/위조. 조용히 지우지 않고 알린다.
+    return { error: "지정할 수 없는 결재자(상급자 아님 등)가 포함되어 있습니다. 화면을 새로고침해 다시 선택해주세요." };
   }
 
   const csv = ids.join(",");

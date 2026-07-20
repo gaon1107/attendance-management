@@ -1,12 +1,13 @@
 "use client";
 // 개인 결재선 편집(custom 모드) — 신청 종류별로 결재자를 순서대로 골라 저장.
-//  · 저장하면 그 종류의 신청은 이 순서대로 자동 결재된다. 최대 5명.
+//  · 저장하면 그 종류의 신청은 이 순서대로 자동 결재된다. 최대 8명(대리~대표까지 담기게).
 import { useActionState, useState } from "react";
 import { saveApprovalLine } from "@/app/actions/approval-line";
 
 export type LineCandidate = { id: string; name: string; employeeNo: string | null; deptName: string | null; gradeName: string | null };
 
-const MAX = 5;
+// ⚠️ 서버 상한(lib/approval-server.ts MAX_APPROVERS)과 반드시 일치시킬 것. 다르면 UI에서 막혀 서버 상한이 무의미해진다.
+const MAX = 8;
 
 const btn: React.CSSProperties = { border: "1px solid var(--border)", borderRadius: 6, background: "#fff", color: "var(--text-sub)", fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer", height: 26, width: 26, display: "inline-flex", alignItems: "center", justifyContent: "center" };
 
@@ -46,14 +47,14 @@ export function ApprovalLineEditor({
     <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 20, marginBottom: 16 }}>
       <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>내 {typeLabel} 결재선</div>
       <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 14, lineHeight: 1.6 }}>
-        <b>부서 안</b> 결재자를 순서대로 정해 저장하면, 이후 {typeLabel} 신청은 이 순서대로 결재됩니다. (최대 {MAX}명, 언제든 수정 가능)
-        <br />※ 같은 부서에서 <b>나보다 상급자(직급 높은 사람)</b>만 고를 수 있습니다. 부서장 위(→대표)는 <b>조직도대로 자동 결재</b>됩니다.
+        결재자를 순서대로 정해 저장하면, 이후 {typeLabel} 신청은 이 순서대로 결재됩니다. (최대 {MAX}명, 언제든 수정 가능)
+        <br />※ <b>나보다 직급이 높은 상급자</b>만 고를 수 있습니다(같은 부서 팀 상급자 + 그 위 임원). 순서대로 <b>대리→과장→부장→…→대표</b>까지 직접 지정하세요.
       </p>
 
       {/* 현재 결재선 */}
       {ids.length === 0 ? (
         <div style={{ fontSize: 13, color: "var(--text-sub)", padding: "10px 12px", background: "var(--bg)", borderRadius: 8, marginBottom: 12 }}>
-          부서 안 결재자를 아직 안 골랐습니다. 안 고르면 <b>부서장 위 조직도대로만</b> 결재됩니다.
+          아직 결재자를 안 골랐습니다. 안 고르면 신청은 <b>관리자 승인</b>으로 처리됩니다.
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
@@ -73,10 +74,10 @@ export function ApprovalLineEditor({
         </div>
       )}
 
-      {/* 부서 안에 고를 상급자가 없을 때(부서장·1인 부서·직급 미지정 등) */}
+      {/* 고를 상급자가 없을 때(최상위 직급이거나 직급 미지정) */}
       {candidates.length === 0 && (
         <div style={{ fontSize: 13, color: "var(--text-sub)", padding: "10px 12px", background: "var(--bg)", borderRadius: 8, marginBottom: 12 }}>
-          부서 안에 고를 상급자가 없습니다. 신청은 <b>부서장 위 조직도대로 자동 결재</b>됩니다(상급자가 아예 없으면 관리자 승인).
+          고를 상급자가 없습니다(최상위 직급이거나 직급 미지정). 이 경우 신청은 <b>관리자 승인</b>으로 처리됩니다.
         </div>
       )}
 

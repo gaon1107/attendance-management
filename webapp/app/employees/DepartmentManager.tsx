@@ -122,9 +122,9 @@ export function DepartmentManager({
   const [state, formAction, pending] = useActionState(createDepartment, {} as { error?: string; ok?: boolean });
   // 라디오 선택에 따라 단계수 표시를 즉시 바꾸기 위한 로컬 상태(저장 전 미리보기).
   const [modePreview, setModePreview] = useState(approvalMode === "deptline" ? "deptline" : approvalMode === "custom" ? "custom" : "single");
-  // 부서장·상위부서(조직도) 설정은 부서장 결재선(deptline)뿐 아니라 상신자 지정(custom·혼용)에서도 필요하다.
-  //  custom은 부서 안은 직원이 고르고, 부서장 위(→대표)는 이 조직도로 자동 연결하기 때문.
-  const showOrgSetup = approvalMode === "deptline" || approvalMode === "custom";
+  // 부서장·상위부서(조직도)는 "부서장 결재선(deptline)"에서만 쓴다.
+  //  상신자 지정(custom)은 직급 기준으로 직원이 직접 결재선을 고르므로 조직도 설정이 필요 없다.
+  const showOrgSetup = approvalMode === "deptline";
 
   return (
     <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 16 }}>
