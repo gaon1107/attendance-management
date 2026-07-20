@@ -5,6 +5,8 @@
 import { useMemo, useState } from "react";
 import { RangeCalendarNav } from "@/app/components/RangeCalendarNav";
 import { SearchBox } from "@/app/components/SearchBox";
+import { TablePagination } from "@/app/components/TablePagination";
+import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
 import { approveCorrection, rejectCorrection } from "@/app/actions/corrections";
 import { RejectButton } from "@/app/components/RejectButton";
@@ -58,6 +60,8 @@ export function CorrectionApprovalsClient({
   const [q, setQ] = useState("");
   const p = useMemo(() => { const t = queryTerms(q); return pending.filter((r) => matchesTerms(r.search, t)); }, [q, pending]);
   const d = useMemo(() => { const t = queryTerms(q); return decided.filter((r) => matchesTerms(r.search, t)); }, [q, decided]);
+  const pgP = usePagination(p, { initialSize: 100, resetKey: q });
+  const pgD = usePagination(d, { initialSize: 100, resetKey: `${q}|${from}|${to}` });
 
   return (
     <>
@@ -87,14 +91,14 @@ export function CorrectionApprovalsClient({
               </tr>
             </thead>
             <tbody>
-              {p.length === 0 ? (
+              {pgP.view.length === 0 ? (
                 <tr>
                   <td colSpan={6} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {q.trim() ? "검색 결과가 없습니다." : "승인 대기 중인 정정 요청이 없습니다."}
                   </td>
                 </tr>
               ) : (
-                p.map((r) => (
+                pgP.view.map((r) => (
                   <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                     <td style={td}><NameCell name={r.name} initial={r.initial} /></td>
                     <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.employeeNo || "—"}</td>
@@ -119,6 +123,7 @@ export function CorrectionApprovalsClient({
             </tbody>
           </table>
         </div>
+        <TablePagination pg={pgP} />
       </section>
 
       {/* 처리 내역 */}
@@ -136,14 +141,14 @@ export function CorrectionApprovalsClient({
               </tr>
             </thead>
             <tbody>
-              {d.length === 0 ? (
+              {pgD.view.length === 0 ? (
                 <tr>
                   <td colSpan={5} style={{ padding: "24px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {q.trim() ? "검색 결과가 없습니다." : "이 기간에 처리한 정정 요청이 없습니다."}
                   </td>
                 </tr>
               ) : (
-                d.map((r) => {
+                pgD.view.map((r) => {
                   const s = STATUS_STYLE[r.status] ?? STATUS_STYLE.approved;
                   return (
                     <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
@@ -164,6 +169,7 @@ export function CorrectionApprovalsClient({
             </tbody>
           </table>
         </div>
+        <TablePagination pg={pgD} />
       </section>
     </>
   );

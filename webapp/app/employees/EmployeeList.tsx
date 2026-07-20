@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { SearchBox } from "@/app/components/SearchBox";
+import { TablePagination } from "@/app/components/TablePagination";
+import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
 
 export type EmpRow = { id: string; name: string; employeeNo: string | null; initial: string; dept: string; deptSet: boolean; email: string; authLabel: string; hasAuth: boolean; consented: boolean; joinLabel: string; search: string };
@@ -15,6 +17,9 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
   const [q, setQ] = useState("");
   const a = useMemo(() => { const t = queryTerms(q); return active.filter((r) => matchesTerms(r.search, t)); }, [q, active]);
   const r = useMemo(() => { const t = queryTerms(q); return retired.filter((x) => matchesTerms(x.search, t)); }, [q, retired]);
+  // 재직·퇴사 표 각각 독립 페이징. 검색어 바뀌면 1페이지로.
+  const pgA = usePagination(a, { initialSize: 100, resetKey: q });
+  const pgR = usePagination(r, { initialSize: 100, resetKey: q });
 
   return (
     <>
@@ -39,14 +44,14 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
               </tr>
             </thead>
             <tbody>
-              {a.length === 0 ? (
+              {pgA.view.length === 0 ? (
                 <tr>
                   <td colSpan={8} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {q.trim() ? "검색 결과가 없습니다." : "아직 등록된 직원이 없습니다. 위에서 첫 직원을 추가해보세요."}
                   </td>
                 </tr>
               ) : (
-                a.map((emp) => (
+                pgA.view.map((emp) => (
                   <tr key={emp.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                     <td style={td}>
                       <Link href={`/employees/${emp.id}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "var(--text)" }}>
@@ -72,6 +77,7 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
             </tbody>
           </table>
         </div>
+        <TablePagination pg={pgA} />
       </section>
 
       {/* 퇴사한 직원 */}
@@ -92,12 +98,12 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
                 </tr>
               </thead>
               <tbody>
-                {r.length === 0 ? (
+                {pgR.view.length === 0 ? (
                   <tr>
                     <td colSpan={5} style={{ padding: "24px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>검색 결과가 없습니다.</td>
                   </tr>
                 ) : (
-                  r.map((emp) => (
+                  pgR.view.map((emp) => (
                     <tr key={emp.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                       <td style={td}>
                         <Link href={`/employees/${emp.id}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "var(--text-sub)" }}>
@@ -120,6 +126,7 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
               </tbody>
             </table>
           </div>
+          <TablePagination pg={pgR} />
         </section>
       )}
     </>
