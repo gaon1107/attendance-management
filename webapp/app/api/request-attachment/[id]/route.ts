@@ -24,11 +24,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   try {
     const buf = await readAttachmentFile(att.companyId, att.storedName);
     const encoded = encodeURIComponent(att.originalName);
+    // ASCII 폴백(비ASCII·따옴표·제어문자 제거) — 구형 브라우저 호환.
+    const ascii = att.originalName.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_") || "attachment";
+    // 직원이 올린 파일이라 inline 렌더링(특히 PDF 뷰어) 대신 강제 다운로드(attachment)로 노출면을 줄인다.
     return new NextResponse(new Uint8Array(buf), {
       status: 200,
       headers: {
         "Content-Type": att.mimeType,
-        "Content-Disposition": `inline; filename*=UTF-8''${encoded}`,
+        "Content-Disposition": `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`,
         "Cache-Control": "no-store, private",
         "X-Content-Type-Options": "nosniff",
       },

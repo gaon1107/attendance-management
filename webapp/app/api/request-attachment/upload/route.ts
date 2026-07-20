@@ -7,9 +7,18 @@ import { detectMime, MAX_SIZE } from "@/lib/company-doc";
 import { isAttachableType, MAX_FILES, saveAttachmentFile, deleteAttachmentFile } from "@/lib/request-attachment";
 import { canAttachToRequest } from "@/lib/request-attachment-server";
 
+// 요청 본문 상한(메모리 DoS 방어) — 파일 최대개수×개당한도 + 멀티파트 오버헤드 여유.
+const MAX_BODY = MAX_FILES * MAX_SIZE + 2 * 1024 * 1024;
+
 export async function POST(req: Request) {
   const me = await getCurrentUser();
   if (!me) return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+
+  // 본문을 메모리로 버퍼링(formData)하기 전에 Content-Length로 조기 거부한다(초대형 업로드 OOM 방지).
+  const lenHeader = req.headers.get("content-length");
+  if (lenHeader && Number(lenHeader) > MAX_BODY) {
+    return NextResponse.json({ message: "업로드 용량이 너무 큽니다." }, { status: 413 });
+  }
 
   let form: FormData;
   try {
@@ -56,22 +65,32 @@ export async function POST(req: Request) {
   }
 
   try {
-    await prisma.requestAttachment.createMany({
-      data: saved.map((s) => ({
-        companyId: me.companyId,
-        requestType,
-        requestId,
-        originalName: s.originalName,
-        storedName: s.storedName,
-        mimeType: s.mime,
-        size: s.size,
-        uploadedBy: me.name,
-      })),
+    // 개수 상한을 원자적으로 강제 — 트랜잭션 안에서 재조회 후 삽입(동시 업로드가 5개를 넘기지 못하게).
+    // (SQLite는 쓰기를 직렬화하므로 트랜잭션이 경합을 순서화한다.)
+    await prisma.$transaction(async (tx) => {
+      const now = await tx.requestAttachment.count({ where: { companyId: me.companyId, requestType, requestId } });
+      if (now + saved.length > MAX_FILES) throw new Error("ATTACH_LIMIT");
+      await tx.requestAttachment.createMany({
+        data: saved.map((s) => ({
+          companyId: me.companyId,
+          requestType,
+          requestId,
+          originalName: s.originalName,
+          storedName: s.storedName,
+          mimeType: s.mime,
+          size: s.size,
+          uploadedBy: me.name,
+        })),
+      });
     });
     return NextResponse.json({ ok: true, count: saved.length });
   } catch (e) {
-    console.error("[request-attachment] 기록 저장 실패:", e);
+    // 삽입 실패(경합으로 상한 초과 포함) → 방금 저장한 파일 정리(고아 방지).
     await Promise.all(saved.map((s) => deleteAttachmentFile(me.companyId, s.storedName)));
+    if (e instanceof Error && e.message === "ATTACH_LIMIT") {
+      return NextResponse.json({ message: `첨부는 신청당 최대 ${MAX_FILES}개까지 가능합니다.` }, { status: 400 });
+    }
+    console.error("[request-attachment] 기록 저장 실패:", e);
     return NextResponse.json({ message: "첨부 정보를 저장하지 못했습니다." }, { status: 500 });
   }
 }
