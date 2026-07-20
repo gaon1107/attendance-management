@@ -45,15 +45,9 @@ export function InviteForm({ token }: { token: string }) {
           <label style={labelStyle}>전화번호</label>
           <input name="phone" type="tel" autoComplete="tel" placeholder="010-1234-5678" style={inputStyle} />
         </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <div style={{ flex: 1 }}>
-            <label style={labelStyle}>직급/직책</label>
-            <input name="position" type="text" placeholder="예: 대리" style={inputStyle} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <label style={labelStyle}>사번</label>
-            <input name="employeeNo" type="text" placeholder="예: 2024-017" style={inputStyle} />
-          </div>
+        <div>
+          <label style={labelStyle}>사번</label>
+          <input name="employeeNo" type="text" placeholder="예: 2024-017" style={inputStyle} />
         </div>
         <div>
           <label style={labelStyle}>입사일</label>

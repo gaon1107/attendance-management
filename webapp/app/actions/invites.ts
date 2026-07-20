@@ -79,7 +79,6 @@ export async function acceptInvite(
       passwordHash: hashPassword(password),
       role: "employee",
       phone: profile.phone,
-      position: profile.position,
       employeeNo: profile.employeeNo,
       hireDate: profile.hireDate,
     },

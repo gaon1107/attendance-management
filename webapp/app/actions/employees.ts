@@ -108,7 +108,6 @@ export async function updateEmployeeProfile(
     where: { id: target.id },
     data: {
       phone: parsed.profile.phone,
-      position: parsed.profile.position,
       employeeNo: parsed.profile.employeeNo,
       hireDate: parsed.profile.hireDate,
       jobGradeId,

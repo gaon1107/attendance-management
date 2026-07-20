@@ -1,4 +1,5 @@
-// [직원 인적정보 파싱·검증] 선택 항목(전화번호·직급·사번·입사일) 폼값 → 저장값 정규화.
+// [직원 인적정보 파싱·검증] 선택 항목(전화번호·사번·입사일) 폼값 → 저장값 정규화.
+//  ※ 직급은 서열(User.jobGradeId, [직원관리 → 직급 관리])로 관리 — 여기서 다루지 않는다.
 // 초대 가입(acceptInvite)과 관리자 수정(updateEmployeeProfile)에서 공용으로 쓴다.
 // 전부 선택 항목이라 비어 있으면 null로 저장한다(빈 칸으로 저장 = 값 삭제).
 // 잘못된 입력은 조용히 자르거나 굴리지 않고(무결성 우선) 안내 에러로 되돌린다.
@@ -7,7 +8,6 @@ import { prisma } from "@/lib/db";
 
 export type ProfileInput = {
   phone: string | null;
-  position: string | null;
   employeeNo: string | null;
   hireDate: Date | null;
 };
@@ -45,8 +45,6 @@ function date(v: FormDataEntryValue | null): { value: Date | null } | { error: s
 export function parseProfile(fd: FormData): ProfileParse {
   const phone = text(fd.get("phone"), "전화번호");
   if ("error" in phone) return { ok: false, error: phone.error };
-  const position = text(fd.get("position"), "직급/직책");
-  if ("error" in position) return { ok: false, error: position.error };
   const employeeNo = text(fd.get("employeeNo"), "사번");
   if ("error" in employeeNo) return { ok: false, error: employeeNo.error };
   const hireDate = date(fd.get("hireDate"));
@@ -56,7 +54,6 @@ export function parseProfile(fd: FormData): ProfileParse {
     ok: true,
     profile: {
       phone: phone.value,
-      position: position.value,
       employeeNo: employeeNo.value,
       hireDate: hireDate.value,
     },

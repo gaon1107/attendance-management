@@ -76,8 +76,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
     { label: "이메일", value: emp.email },
     { label: "전화번호", value: <span style={{ color: emp.phone ? "var(--text)" : "#9CA3AF" }}>{emp.phone ?? "미입력"}</span> },
     { label: "부서", value: <span style={{ color: emp.department ? "var(--text)" : "#9CA3AF" }}>{emp.department?.name ?? "미배정"}</span> },
-    { label: "직급/직책", value: <span style={{ color: emp.position ? "var(--text)" : "#9CA3AF" }}>{emp.position ?? "미입력"}</span> },
-    { label: "직급 서열", value: <span style={{ color: emp.jobGrade ? "var(--text)" : "#9CA3AF" }}>{emp.jobGrade?.name ?? "미지정"}</span> },
+    { label: "직급", value: <span style={{ color: emp.jobGrade ? "var(--text)" : "#9CA3AF" }}>{emp.jobGrade?.name ?? "미지정"}</span> },
     { label: "사번", value: <span style={{ color: emp.employeeNo ? "var(--text)" : "#9CA3AF" }}>{emp.employeeNo ?? "미입력"}</span> },
     { label: "역할", value: emp.role === "admin" ? "관리자" : "직원" },
     {
@@ -153,7 +152,6 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         <ProfileForm
           id={emp.id}
           initialPhone={emp.phone ?? ""}
-          initialPosition={emp.position ?? ""}
           initialEmployeeNo={emp.employeeNo ?? ""}
           initialHireDate={ymdInput(emp.hireDate)}
           grades={jobGrades}

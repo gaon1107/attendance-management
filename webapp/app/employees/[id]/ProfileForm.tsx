@@ -20,7 +20,6 @@ const labelStyle: React.CSSProperties = { display: "block", fontSize: 13, fontWe
 export function ProfileForm({
   id,
   initialPhone,
-  initialPosition,
   initialEmployeeNo,
   initialHireDate,
   grades,
@@ -28,7 +27,6 @@ export function ProfileForm({
 }: {
   id: string;
   initialPhone: string;
-  initialPosition: string;
   initialEmployeeNo: string;
   initialHireDate: string; // "YYYY-MM-DD" 또는 빈 문자열
   grades: { id: string; name: string }[]; // 회사 직급(상급이 위)
@@ -48,24 +46,20 @@ export function ProfileForm({
       </div>
       <div style={{ display: "flex", gap: 12 }}>
         <div style={{ flex: 1 }}>
-          <label style={labelStyle}>직급/직책 (표시용)</label>
-          <input name="position" type="text" defaultValue={initialPosition} placeholder="예: 대리" style={inputStyle} />
+          <label style={labelStyle}>직급 (결재선용)</label>
+          <select name="jobGradeId" value={gradeValue} onChange={(e) => setGradeValue(e.target.value)} style={inputStyle}>
+            <option value="">미지정</option>
+            {grades.map((g) => (<option key={g.id} value={g.id}>{g.name}</option>))}
+          </select>
         </div>
         <div style={{ flex: 1 }}>
           <label style={labelStyle}>사번</label>
           <input name="employeeNo" type="text" defaultValue={initialEmployeeNo} placeholder="예: 2024-017" style={inputStyle} />
         </div>
       </div>
-      <div>
-        <label style={labelStyle}>직급 서열 (결재선용)</label>
-        <select name="jobGradeId" value={gradeValue} onChange={(e) => setGradeValue(e.target.value)} style={inputStyle}>
-          <option value="">미지정</option>
-          {grades.map((g) => (<option key={g.id} value={g.id}>{g.name}</option>))}
-        </select>
-        <p style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 6, lineHeight: 1.5 }}>
-          결재선에서 &ldquo;상급자&rdquo;를 판별하는 서열입니다. 직급 목록은 <b>[직원관리 → 직급 관리]</b>에서 등록합니다.
-        </p>
-      </div>
+      <p style={{ fontSize: 12, color: "var(--text-sub)", marginTop: -4, lineHeight: 1.5 }}>
+        직급은 결재선에서 &ldquo;상급자&rdquo;를 판별하는 서열입니다. 직급 목록은 <b>[직원관리 → 직급 관리]</b>에서 등록합니다.
+      </p>
       <div>
         <label style={labelStyle}>입사일</label>
         <DatePicker name="hireDate" defaultValue={initialHireDate} placeholder="입사일 선택 (선택)" />
