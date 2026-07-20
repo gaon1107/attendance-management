@@ -28,7 +28,7 @@ export function TripRequestForm() {
 
       <div>
         <label style={labelStyle}>출장지</label>
-        <input name="destination" type="text" placeholder="예: 부산 지사, 대전 고객사 등" style={inputStyle} />
+        <input name="destination" type="text" required maxLength={200} placeholder="예: 부산 지사, 대전 고객사 등" style={inputStyle} />
       </div>
 
       <div>
