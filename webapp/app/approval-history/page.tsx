@@ -1,5 +1,5 @@
 // 결재 이력(관리자 전용) — 회사 전체 신청(6종)의 신청·승인·반려 이력을 한 표로 조회한다. 읽기 전용.
-//  · 필터: 유형·상태·직원·기간(신청일). GET 폼으로 서버에서 필터링(회사격리는 lib/approval-history).
+//  · 필터: 유형·상태·직원·기간(신청일). 필터 UI는 공통 컴포넌트(RangeCalendar 등)로 서버 조회(회사격리는 lib/approval-history).
 //  · 내부통제 감시용: custom 결재선의 상호승인 등도 사후에 관리자가 발견할 수 있게 한다.
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
@@ -7,6 +7,8 @@ import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { listApprovalHistory, HISTORY_LIMIT, type HistoryFilter, type HistoryStatus } from "@/lib/approval-history";
 import type { RequestType } from "@/lib/approval-server";
+import { toISODate } from "@/lib/period";
+import { ApprovalHistoryFilters, type EmpOption } from "./ApprovalHistoryFilters";
 
 const TYPES: RequestType[] = ["leave", "correction", "outing", "remote", "overtime", "trip"];
 const TYPE_LABEL: Record<RequestType, string> = { leave: "휴가", correction: "근태정정", outing: "외출/외근", remote: "재택근무", overtime: "초과근무", trip: "출장" };
@@ -49,9 +51,14 @@ export default async function ApprovalHistoryPage({
     const back = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     return back === s ? s : "";
   };
-  const fromISO = normISO(sp.from);
-  let toISO = normISO(sp.to);
-  if (fromISO && toISO && toISO < fromISO) toISO = fromISO; // 종료<시작이면 보정
+  // 공통 기간 달력(RangeCalendar)은 값이 항상 "시작~종료"라, 미지정이면 기본=이번 달(외출승인 등과 동일).
+  const now = new Date();
+  const todayISO = toISODate(now);
+  const defFrom = toISODate(new Date(now.getFullYear(), now.getMonth(), 1));
+  const defTo = toISODate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  const fromISO = normISO(sp.from) || defFrom;
+  let toISO = normISO(sp.to) || defTo;
+  if (toISO < fromISO) toISO = fromISO; // 종료<시작이면 보정
 
   // 직원 드롭다운 — 감사 대상엔 퇴사자도 포함(퇴사자 이력 필터·URL 재접속 시 조용히 '전체'로 풀리는 것 방지).
   //  퇴사자는 "(퇴사)"로 표기. userId 필터 검증도 이 전체 목록 기준.
@@ -70,52 +77,18 @@ export default async function ApprovalHistoryPage({
     to: toISO ? new Date(toISO + "T23:59:59.999") : null,
   };
   const rows = await listApprovalHistory(me.companyId, filter);
+  const empOpts: EmpOption[] = emps.map((e) => ({ id: e.id, name: e.name, employeeNo: e.employeeNo, retired: !!e.deactivatedAt }));
 
   const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 14px", whiteSpace: "nowrap" };
   const td: React.CSSProperties = { padding: "12px 14px", fontSize: 14, verticalAlign: "top" };
-  const selectStyle: React.CSSProperties = { height: 38, padding: "0 10px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 14, background: "#fff", color: "var(--text)" };
   const badge = (bg: string, color: string, text: string): React.ReactElement => (
     <span style={{ display: "inline-block", fontSize: 12, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: bg, color, whiteSpace: "nowrap" }}>{text}</span>
   );
 
   return (
     <AppShell user={me} active="approval-history" title="결재 이력" subtitle={`${me.company.name} · 전체 신청·승인·반려 조회`}>
-      {/* 필터 바 (GET 폼) */}
-      <form method="get" action="/approval-history" style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginBottom: 16, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 700, color: "var(--text-sub)" }}>
-          유형
-          <select name="type" defaultValue={typeF} style={selectStyle}>
-            <option value="all">전체</option>
-            {TYPES.map((t) => (<option key={t} value={t}>{TYPE_LABEL[t]}</option>))}
-          </select>
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 700, color: "var(--text-sub)" }}>
-          상태
-          <select name="status" defaultValue={statusF} style={selectStyle}>
-            <option value="all">전체</option>
-            <option value="pending">대기</option>
-            <option value="approved">승인</option>
-            <option value="rejected">반려</option>
-          </select>
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 700, color: "var(--text-sub)" }}>
-          직원
-          <select name="userId" defaultValue={userF} style={{ ...selectStyle, maxWidth: 200 }}>
-            <option value="all">전체</option>
-            {emps.map((e) => (<option key={e.id} value={e.id}>{e.name}{e.employeeNo ? ` (${e.employeeNo})` : ""}{e.deactivatedAt ? " · 퇴사" : ""}</option>))}
-          </select>
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 700, color: "var(--text-sub)" }}>
-          신청일(부터)
-          <input type="date" name="from" defaultValue={fromISO} style={selectStyle} />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 700, color: "var(--text-sub)" }}>
-          신청일(까지)
-          <input type="date" name="to" defaultValue={toISO} style={selectStyle} />
-        </label>
-        <button type="submit" style={{ height: 38, padding: "0 18px", border: "none", borderRadius: 8, background: "var(--primary)", color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>적용</button>
-        <a href="/approval-history" style={{ height: 38, padding: "0 14px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--text-sub)", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", textDecoration: "none" }}>초기화</a>
-      </form>
+      {/* 필터 바 — 공통 기간 달력(RangeCalendar) 사용(브라우저 기본 달력 금지, 디자인 규칙 §5.6) */}
+      <ApprovalHistoryFilters type={typeF} status={statusF} userId={userF} from={fromISO} to={toISO} todayISO={todayISO} emps={empOpts} />
 
       {/* 결과 표 */}
       <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
