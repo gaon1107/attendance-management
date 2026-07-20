@@ -8,6 +8,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { RangeCalendar } from "@/app/components/RangeCalendar";
 import { SearchBox } from "@/app/components/SearchBox";
+import { TablePagination } from "@/app/components/TablePagination";
+import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
 import { formatMinutes } from "@/lib/worktime";
 
@@ -52,6 +54,8 @@ export function ReportsClient({
     const terms = queryTerms(q);
     return rows.filter((r) => matchesTerms(r.search, terms));
   }, [q, rows]);
+  // 표만 페이징(KPI는 filtered 전체 기준 유지). 검색어·기간 바뀌면 1페이지로.
+  const pg = usePagination(filtered, { initialSize: 100, resetKey: `${q}|${from}|${to}` });
 
   // 엑셀 내보내기 링크 — 현재 검색어(q)를 그대로 서버에 전달해 "화면에 보이는 직원만" 내보낸다.
   const exportHref = q.trim() ? `${exportBase}&q=${encodeURIComponent(q)}` : exportBase;
@@ -122,14 +126,14 @@ export function ReportsClient({
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {pg.view.length === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {q.trim() ? "검색 결과가 없습니다." : "이 기간에 출퇴근 기록이 없습니다."}
                   </td>
                 </tr>
               ) : (
-                filtered.map((s) => (
+                pg.view.map((s) => (
                   <tr key={s.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                     <td style={td}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -154,6 +158,7 @@ export function ReportsClient({
             </tbody>
           </table>
         </div>
+        <TablePagination pg={pg} />
       </section>
     </>
   );

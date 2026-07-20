@@ -4,6 +4,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SearchBox } from "@/app/components/SearchBox";
+import { TablePagination } from "@/app/components/TablePagination";
+import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
 
 export type LeaveSummaryRow = {
@@ -44,6 +46,8 @@ export function LeaveSummaryClient({
     if (!terms.length) return rows;
     return rows.filter((r) => matchesTerms(`${r.name} ${r.employeeNo ?? ""} ${r.dept}`.toLowerCase(), terms));
   }, [rows, q]);
+  // 표만 페이징(KPI 합계는 검색 반영된 shown 전체 기준 유지). 검색어·연도 바뀌면 1페이지로.
+  const pg = usePagination(shown, { initialSize: 100, resetKey: `${q}|${year}` });
 
   // KPI는 "화면에 보이는 직원" 기준(검색 반영). 과거 연도는 발생·잔여가 "—"(사용만 의미).
   const grantedSum = shown.reduce((s, r) => s + (r.granted ?? 0), 0);
@@ -126,14 +130,14 @@ export function LeaveSummaryClient({
               </tr>
             </thead>
             <tbody>
-              {shown.length === 0 ? (
+              {pg.view.length === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ padding: "28px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {rows.length === 0 ? "재직 중인 직원이 없습니다." : "검색 결과가 없습니다."}
                   </td>
                 </tr>
               ) : (
-                shown.map((r) => (
+                pg.view.map((r) => (
                   <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                     <td style={{ ...td, fontWeight: 700 }}>{r.name}</td>
                     <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.employeeNo || "—"}</td>
@@ -148,6 +152,7 @@ export function LeaveSummaryClient({
             </tbody>
           </table>
         </div>
+        <TablePagination pg={pg} />
       </section>
     </div>
   );

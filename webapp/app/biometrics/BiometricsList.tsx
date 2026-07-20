@@ -2,6 +2,8 @@
 // 생체정보(동의 현황) 목록 + 통합검색 — 이름·인증방식·동의여부로 즉시 필터. 파기 서버액션 유지.
 import { useMemo, useState } from "react";
 import { SearchBox } from "@/app/components/SearchBox";
+import { TablePagination } from "@/app/components/TablePagination";
+import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
 import { adminRevokeBiometric } from "@/app/actions/authmethod";
 
@@ -13,6 +15,7 @@ const td: React.CSSProperties = { padding: "12px 20px", fontSize: 15, verticalAl
 export function BiometricsList({ users }: { users: BioRow[] }) {
   const [q, setQ] = useState("");
   const list = useMemo(() => { const t = queryTerms(q); return users.filter((u) => matchesTerms(u.search, t)); }, [q, users]);
+  const pg = usePagination(list, { initialSize: 100, resetKey: q });
 
   return (
     <>
@@ -32,14 +35,14 @@ export function BiometricsList({ users }: { users: BioRow[] }) {
               </tr>
             </thead>
             <tbody>
-              {list.length === 0 ? (
+              {pg.view.length === 0 ? (
                 <tr>
                   <td colSpan={5} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {q.trim() ? "검색 결과가 없습니다." : "표시할 사용자가 없습니다."}
                   </td>
                 </tr>
               ) : (
-                list.map((u) => (
+                pg.view.map((u) => (
                   <tr key={u.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                     <td style={td}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -77,6 +80,7 @@ export function BiometricsList({ users }: { users: BioRow[] }) {
             </tbody>
           </table>
         </div>
+        <TablePagination pg={pg} />
       </section>
     </>
   );

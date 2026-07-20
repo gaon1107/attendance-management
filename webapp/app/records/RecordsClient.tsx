@@ -8,6 +8,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { RangeCalendar } from "@/app/components/RangeCalendar";
 import { SearchBox } from "@/app/components/SearchBox";
+import { TablePagination } from "@/app/components/TablePagination";
+import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
 
 // 서버(page.tsx)에서 미리 계산해 넘겨주는 한 줄의 표시값(직렬화 가능한 순수 객체)
@@ -61,6 +63,8 @@ export function RecordsClient({
     const terms = queryTerms(q);
     return rows.filter((r) => matchesTerms(r.search, terms));
   }, [q, rows]);
+  // 표만 페이징(KPI·배너는 filtered 전체 기준 유지). 검색어·기간 바뀌면 1페이지로.
+  const pg = usePagination(filtered, { initialSize: 100, resetKey: `${q}|${from}|${to}` });
 
   const total = filtered.length;
   const working = filtered.filter((r) => r.isWorkingNow).length;
@@ -119,14 +123,14 @@ export function RecordsClient({
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {pg.view.length === 0 ? (
                 <tr>
                   <td colSpan={9} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {q.trim() ? "검색 결과가 없습니다." : "이 기간에 출퇴근 기록이 없습니다."}
                   </td>
                 </tr>
               ) : (
-                filtered.map((r) => (
+                pg.view.map((r) => (
                   <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                     <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.dateText}</td>
                     <td style={td}>
@@ -185,6 +189,7 @@ export function RecordsClient({
             </tbody>
           </table>
         </div>
+        <TablePagination pg={pg} />
       </section>
 
       <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 12, lineHeight: 1.6 }}>
