@@ -7,12 +7,14 @@ import { revalidatePath } from "next/cache";
 import { parseYmd } from "@/lib/leave";
 import { OUTING_KIND_KEYS, isValidHm } from "@/lib/outing";
 import { createApprovalStepsIfNeeded, advanceApproval, deleteApprovalSteps } from "@/lib/approval-server";
+import { deleteAttachmentsForRequest } from "@/lib/request-attachment-server";
 
 // 직원: 외출/외근 신청. 종류·날짜·시각·장소·사유를 받아 대기 상태로 만든다.
+//  · 성공 시 생성된 신청 id를 함께 반환한다(클라이언트가 이어서 첨부파일을 업로드하는 데 사용).
 export async function requestOuting(
-  _prev: { error?: string; ok?: boolean },
+  _prev: { error?: string; ok?: boolean; id?: string },
   formData: FormData
-): Promise<{ error?: string; ok?: boolean }> {
+): Promise<{ error?: string; ok?: boolean; id?: string }> {
   const me = await getCurrentUser();
   if (!me) return { error: "로그인이 필요합니다." };
 
@@ -45,7 +47,7 @@ export async function requestOuting(
   await createApprovalStepsIfNeeded(company, me.companyId, me.id, me.departmentId, "outing", created.id);
 
   revalidatePath("/outing");
-  return { ok: true };
+  return { ok: true, id: created.id };
 }
 
 // 직원: 대기 중인 내 신청 취소(삭제). 이미 승인/반려된 건 취소 불가.
@@ -56,6 +58,7 @@ export async function cancelOuting(formData: FormData): Promise<void> {
   const o = await prisma.outingRequest.findFirst({ where: { id, userId: me.id, status: "pending" } });
   if (!o) return;
   await deleteApprovalSteps(me.companyId, "outing", o.id); // 결재 단계도 함께 정리(고아 방지)
+  await deleteAttachmentsForRequest(me.companyId, "outing", o.id); // 첨부파일·파일 정리
   await prisma.outingRequest.delete({ where: { id: o.id } });
   revalidatePath("/outing");
   revalidatePath("/approvals");

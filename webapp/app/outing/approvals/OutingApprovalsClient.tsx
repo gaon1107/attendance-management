@@ -6,6 +6,7 @@ import { SearchBox } from "@/app/components/SearchBox";
 import { queryTerms, matchesTerms } from "@/lib/search";
 import { approveOuting, rejectOuting } from "@/app/actions/outing";
 import { RejectButton } from "@/app/components/RejectButton";
+import { AttachmentLinks, type AttachmentInfo } from "@/app/components/AttachmentLinks";
 
 export type OutingRow = {
   id: string;
@@ -20,6 +21,7 @@ export type OutingRow = {
   status: string;
   statusLabel: string;
   progress?: string; // 부서장 결재선 진행상황(대기 건에만).
+  attachments: AttachmentInfo[];
   search: string;
 };
 
@@ -107,6 +109,7 @@ export function OutingApprovalsClient({
                         {r.place ? <b style={{ color: "var(--text)" }}>{r.place}</b> : null}{r.place && r.reason ? " · " : ""}{r.reason || (r.place ? "" : "—")}
                       </div>
                       {r.progress && <div style={{ fontSize: 12, color: "var(--warning)", marginTop: 3, fontWeight: 700 }}>{r.progress}</div>}
+                      <AttachmentLinks items={r.attachments} />
                     </td>
                     <td style={{ ...td, textAlign: "right" }}>
                       <div style={{ display: "inline-flex", gap: 8 }}>

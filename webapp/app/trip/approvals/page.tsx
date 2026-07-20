@@ -7,6 +7,7 @@ import { TripApprovalsClient, type TripRow } from "./TripApprovalsClient";
 import { tripStatusLabel, tripRangeLabel } from "@/lib/trip";
 import { parseAnchor, toISODate } from "@/lib/period";
 import { getApprovalProgressMap } from "@/lib/approval-server";
+import { getAttachmentsMap } from "@/lib/request-attachment-server";
 
 export default async function TripApprovalsPage({
   searchParams,
@@ -66,6 +67,8 @@ export default async function TripApprovalsPage({
     return `부서장 결재 ${p.approvedCount}/${p.total}${p.nextApproverName ? ` · 다음 ${p.nextApproverName}` : ""}`;
   };
 
+  const attMap = await getAttachmentsMap(me.companyId, "trip", pendingReqs.map((r) => r.id));
+
   const toRow = (r: (typeof pendingReqs)[number]): TripRow => {
     const rl = tripRangeLabel(r.startDate, r.endDate);
     const statusLabel = tripStatusLabel(r.status);
@@ -81,6 +84,7 @@ export default async function TripApprovalsPage({
       status: r.status,
       statusLabel,
       progress: progressLabel(r.id),
+      attachments: attMap.get(r.id) ?? [],
       search: [r.user.name, r.user.employeeNo ?? "", rl, r.destination, reason, statusLabel].join(" ").toLowerCase(),
     };
   };

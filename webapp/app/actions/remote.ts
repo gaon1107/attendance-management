@@ -7,12 +7,14 @@ import { revalidatePath } from "next/cache";
 import { parseYmd } from "@/lib/leave";
 import { MAX_REMOTE_DAYS } from "@/lib/remote";
 import { createApprovalStepsIfNeeded, advanceApproval, deleteApprovalSteps } from "@/lib/approval-server";
+import { deleteAttachmentsForRequest } from "@/lib/request-attachment-server";
 
 // 직원: 재택근무 신청. 기간(시작~종료)·사유를 받아 대기 상태로 만든다.
+//  · 성공 시 생성된 신청 id를 함께 반환한다(클라이언트 첨부 업로드용).
 export async function requestRemote(
-  _prev: { error?: string; ok?: boolean },
+  _prev: { error?: string; ok?: boolean; id?: string },
   formData: FormData
-): Promise<{ error?: string; ok?: boolean }> {
+): Promise<{ error?: string; ok?: boolean; id?: string }> {
   const me = await getCurrentUser();
   if (!me) return { error: "로그인이 필요합니다." };
 
@@ -40,7 +42,7 @@ export async function requestRemote(
   await createApprovalStepsIfNeeded(company, me.companyId, me.id, me.departmentId, "remote", created.id);
 
   revalidatePath("/remote");
-  return { ok: true };
+  return { ok: true, id: created.id };
 }
 
 // 직원: 대기 중인 내 신청 취소(삭제). 이미 승인/반려된 건 취소 불가.
@@ -51,6 +53,7 @@ export async function cancelRemote(formData: FormData): Promise<void> {
   const r = await prisma.remoteWorkRequest.findFirst({ where: { id, userId: me.id, companyId: me.companyId, status: "pending" } });
   if (!r) return;
   await deleteApprovalSteps(me.companyId, "remote", r.id); // 결재 단계도 함께 정리(고아 방지)
+  await deleteAttachmentsForRequest(me.companyId, "remote", r.id); // 첨부파일·파일 정리
   await prisma.remoteWorkRequest.delete({ where: { id: r.id } });
   revalidatePath("/remote");
   revalidatePath("/approvals");

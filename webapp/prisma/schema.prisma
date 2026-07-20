@@ -26,6 +26,7 @@ model Company {
   remoteWorkRequests RemoteWorkRequest[]
   overtimeRequests OvertimeRequest[]
   businessTripRequests BusinessTripRequest[]
+  requestAttachments RequestAttachment[]
   // 사업장 위치(사무실 출근 GPS 확인용). 안 정하면 위치 확인은 건너뜀.
   officeLat     Float?
   officeLng     Float?
@@ -416,6 +417,26 @@ model BusinessTripRequest {
   createdAt    DateTime  @default(now())
 
   @@index([companyId, status])
+}
+
+// 신청서 첨부파일 — 외출/외근·재택·초과근무·출장 신청에 붙이는 파일(다형 참조: requestType+requestId).
+// ※ 실제 파일은 웹 공개경로 밖(storage/request-attachments/{companyId}/)에 저장, 파일명(storedName)만 보관.
+//    다운로드는 인증 route에서만(회사격리 + 신청자 본인/관리자/결재자 확인). 경로조작 방지=난수 파일명.
+// ※ 신청 취소 시 액션이 이 행들과 실제 파일을 함께 정리(고아 방지). 개당 10MB, 신청당 최대 5개(코드 상수).
+model RequestAttachment {
+  id           String   @id @default(cuid())
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id])
+  requestType  String   // "outing" | "remote" | "overtime" | "trip"
+  requestId    String   // 각 신청 모델의 id
+  originalName String   // 사용자가 올린 원래 파일명(표시용)
+  storedName   String   // storage/request-attachments/{companyId}/ 안의 실제 저장 파일명(난수)
+  mimeType     String   // application/pdf | image/jpeg | image/png
+  size         Int      // 바이트
+  uploadedBy   String   // 업로드한 사람 이름 스냅샷
+  createdAt    DateTime @default(now())
+
+  @@index([companyId, requestType, requestId])
 }
 
 // 결재 단계 — 다단계 승인(부서장 결재선)의 각 단계·진행상태.

@@ -7,6 +7,8 @@ import { OutingRequestForm } from "./OutingRequestForm";
 import { cancelOuting } from "@/app/actions/outing";
 import { outingKindLabel, outingStatusLabel } from "@/lib/outing";
 import { getApprovalProgressMap, type ApprovalProgress } from "@/lib/approval-server";
+import { getAttachmentsMap } from "@/lib/request-attachment-server";
+import { AttachmentLinks } from "@/app/components/AttachmentLinks";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
@@ -32,6 +34,9 @@ export default async function OutingPage() {
     me.company.approvalMode === "deptline"
       ? await getApprovalProgressMap(me.companyId, "outing", requests.filter((r) => r.status === "pending").map((r) => r.id))
       : new Map();
+
+  // 첨부파일(전체 신청분) — 다운로드 링크 표시용.
+  const attMap = await getAttachmentsMap(me.companyId, "outing", requests.map((r) => r.id));
 
   // 처리(승인/반려)된 신청의 처리자 이름 — 결정사유와 함께 "누가" 표시. (한 번에 조회)
   const deciderIds = [...new Set(requests.map((r) => r.decidedById).filter((v): v is string => !!v))];
@@ -111,6 +116,7 @@ export default async function OutingPage() {
                             {r.decidedAt && <span style={{ color: "var(--text-sub)" }}> · {ymd(r.decidedAt)}</span>}
                           </div>
                         )}
+                        <AttachmentLinks items={attMap.get(r.id) ?? []} canDelete={r.status === "pending"} />
                       </td>
                       <td style={{ ...td, textAlign: "right" }}>
                         {r.status === "pending" && (

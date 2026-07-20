@@ -7,6 +7,7 @@ import { RemoteApprovalsClient, type RemoteRow } from "./RemoteApprovalsClient";
 import { remoteStatusLabel, remoteRangeLabel } from "@/lib/remote";
 import { parseAnchor, toISODate } from "@/lib/period";
 import { getApprovalProgressMap } from "@/lib/approval-server";
+import { getAttachmentsMap } from "@/lib/request-attachment-server";
 
 export default async function RemoteApprovalsPage({
   searchParams,
@@ -66,6 +67,8 @@ export default async function RemoteApprovalsPage({
     return `부서장 결재 ${p.approvedCount}/${p.total}${p.nextApproverName ? ` · 다음 ${p.nextApproverName}` : ""}`;
   };
 
+  const attMap = await getAttachmentsMap(me.companyId, "remote", pendingReqs.map((r) => r.id));
+
   const toRow = (r: (typeof pendingReqs)[number]): RemoteRow => {
     const rl = remoteRangeLabel(r.startDate, r.endDate);
     const statusLabel = remoteStatusLabel(r.status);
@@ -80,6 +83,7 @@ export default async function RemoteApprovalsPage({
       status: r.status,
       statusLabel,
       progress: progressLabel(r.id),
+      attachments: attMap.get(r.id) ?? [],
       search: [r.user.name, r.user.employeeNo ?? "", rl, reason, statusLabel].join(" ").toLowerCase(),
     };
   };

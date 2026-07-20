@@ -6,6 +6,7 @@ import { SearchBox } from "@/app/components/SearchBox";
 import { queryTerms, matchesTerms } from "@/lib/search";
 import { approveTrip, rejectTrip } from "@/app/actions/trip";
 import { RejectButton } from "@/app/components/RejectButton";
+import { AttachmentLinks, type AttachmentInfo } from "@/app/components/AttachmentLinks";
 
 export type TripRow = {
   id: string;
@@ -18,6 +19,7 @@ export type TripRow = {
   status: string;
   statusLabel: string;
   progress?: string;
+  attachments: AttachmentInfo[];
   search: string;
 };
 
@@ -101,6 +103,7 @@ export function TripApprovalsClient({
                         <b style={{ color: "var(--text)" }}>{r.destination}</b>{r.reason ? ` · ${r.reason}` : ""}
                       </div>
                       {r.progress && <div style={{ fontSize: 12, color: "var(--warning)", marginTop: 3, fontWeight: 700 }}>{r.progress}</div>}
+                      <AttachmentLinks items={r.attachments} />
                     </td>
                     <td style={{ ...td, textAlign: "right" }}>
                       <div style={{ display: "inline-flex", gap: 8 }}>

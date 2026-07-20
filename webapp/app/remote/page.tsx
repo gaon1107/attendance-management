@@ -7,6 +7,8 @@ import { RemoteRequestForm } from "./RemoteRequestForm";
 import { cancelRemote } from "@/app/actions/remote";
 import { remoteStatusLabel, remoteRangeLabel } from "@/lib/remote";
 import { getApprovalProgressMap, type ApprovalProgress } from "@/lib/approval-server";
+import { getAttachmentsMap } from "@/lib/request-attachment-server";
+import { AttachmentLinks } from "@/app/components/AttachmentLinks";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
@@ -31,6 +33,8 @@ export default async function RemotePage() {
     me.company.approvalMode === "deptline"
       ? await getApprovalProgressMap(me.companyId, "remote", requests.filter((r) => r.status === "pending").map((r) => r.id))
       : new Map();
+
+  const attMap = await getAttachmentsMap(me.companyId, "remote", requests.map((r) => r.id));
 
   const deciderIds = [...new Set(requests.map((r) => r.decidedById).filter((v): v is string => !!v))];
   const deciderName = new Map<string, string>(
@@ -104,6 +108,7 @@ export default async function RemotePage() {
                             {r.decidedAt && <span style={{ color: "var(--text-sub)" }}> · {ymd(r.decidedAt)}</span>}
                           </div>
                         )}
+                        <AttachmentLinks items={attMap.get(r.id) ?? []} canDelete={r.status === "pending"} />
                       </td>
                       <td style={{ ...td, textAlign: "right" }}>
                         {r.status === "pending" && (

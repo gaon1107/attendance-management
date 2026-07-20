@@ -7,6 +7,7 @@ import { OvertimeApprovalsClient, type OvertimeRow } from "./OvertimeApprovalsCl
 import { overtimeStatusLabel, overtimeTimeLabel } from "@/lib/overtime-request";
 import { parseAnchor, toISODate } from "@/lib/period";
 import { getApprovalProgressMap } from "@/lib/approval-server";
+import { getAttachmentsMap } from "@/lib/request-attachment-server";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
@@ -70,6 +71,8 @@ export default async function OvertimeApprovalsPage({
     return `부서장 결재 ${p.approvedCount}/${p.total}${p.nextApproverName ? ` · 다음 ${p.nextApproverName}` : ""}`;
   };
 
+  const attMap = await getAttachmentsMap(me.companyId, "overtime", pendingReqs.map((r) => r.id));
+
   const toRow = (r: (typeof pendingReqs)[number]): OvertimeRow => {
     const dateLabel = ymd(r.targetDate);
     const timeLabel = overtimeTimeLabel(r.startTime, r.endTime);
@@ -86,6 +89,7 @@ export default async function OvertimeApprovalsPage({
       status: r.status,
       statusLabel,
       progress: progressLabel(r.id),
+      attachments: attMap.get(r.id) ?? [],
       search: [r.user.name, r.user.employeeNo ?? "", dateLabel, reason, statusLabel].join(" ").toLowerCase(),
     };
   };

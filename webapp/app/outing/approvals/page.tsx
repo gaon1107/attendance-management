@@ -7,6 +7,7 @@ import { OutingApprovalsClient, type OutingRow } from "./OutingApprovalsClient";
 import { outingKindLabel, outingStatusLabel } from "@/lib/outing";
 import { parseAnchor, toISODate } from "@/lib/period";
 import { getApprovalProgressMap } from "@/lib/approval-server";
+import { getAttachmentsMap } from "@/lib/request-attachment-server";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
@@ -74,6 +75,9 @@ export default async function OutingApprovalsPage({
     return `부서장 결재 ${p.approvedCount}/${p.total}${p.nextApproverName ? ` · 다음 ${p.nextApproverName}` : ""}`;
   };
 
+  // 첨부파일(대기 건) — 결재자가 다운로드해 검토.
+  const attMap = await getAttachmentsMap(me.companyId, "outing", pendingReqs.map((r) => r.id));
+
   const toRow = (r: (typeof pendingReqs)[number]): OutingRow => {
     const kindLabel = outingKindLabel(r.kind);
     const dateLabel = ymd(r.targetDate);
@@ -94,6 +98,7 @@ export default async function OutingApprovalsPage({
       status: r.status,
       statusLabel,
       progress: progressLabel(r.id),
+      attachments: attMap.get(r.id) ?? [],
       search: [r.user.name, r.user.employeeNo ?? "", kindLabel, dateLabel, place, reason, statusLabel].join(" ").toLowerCase(),
     };
   };
