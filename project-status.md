@@ -8,7 +8,15 @@
 
 ### 🎯 진행 중(사장님 지시): 전자결재 확장 — "근태 결재 세트" (5개 순차 개발, 각 구현+검수+커밋)
 > 사장님이 전자결재 필수기능 리스트를 주심. **기존 결재선 엔진(ApprovalStep·advanceApproval·결재함·진행표시·반려사유·전결) 재활용**해 새 신청유형을 붙이는 방향으로 합의. 순서: ①외출/외근 ②재택 ③초과근무 사전신청 ④출장 ⑤첨부파일.
-> **진행률: 3/5 완료.** 각 유형은 leave/corrections 패턴 + createApprovalStepsIfNeeded 훅 복제 + 공통 3곳(listMyApprovals·countMyPendingApprovals·approvals/page.tsx TYPE_META) add-only 확장. **알림센터·대시보드 대기카드도 유형마다 확장(single 대칭).**
+> **진행률: 4/5 완료.** 각 유형은 leave/corrections 패턴 + createApprovalStepsIfNeeded 훅 복제 + 공통 3곳(listMyApprovals·countMyPendingApprovals·approvals/page.tsx TYPE_META) add-only 확장. **알림센터·대시보드 대기카드도 유형마다 확장(single 대칭).**
+
+#### ✅ ④출장 신청 — 완료(2026-07-20, 커밋 4297c2f·5fddaa0, 미푸시)
+> 직원 [출장] 메뉴에서 기간(시작~종료)·**출장지(필수)**·목적 신청 → 승인. 승인=허가 기록만. 새 표 `BusinessTripRequest`. lib/trip.ts.
+- ②재택 클론 + 출장지. tripRangeLabel(연도인식) + MAX_TRIP_DAYS(366) 선반영. RequestType += trip.
+- **검증**: tsc·eslint 0 / **임시라우트 14/14 PASS**(기간라벨·deptline 라운드트립·single 폴백·반려·**5종 결재함 공존 회귀0**·취소정리, 잔존0).
+- **code-reviewer 치명·중간 0**(격리·검증·회귀·cascade·동시성·FK 전부 통과). 경미(출장지 required/maxLength) 반영. 경미(과거날짜·기간중첩)는 결재세트 공통정책=보고만.
+- ⚠️ **실화면 육안검증 남음(사장님 세션)**.
+- 🔜 다음: **⑤첨부파일**(⚠️ 저장정책 결정 필요) — 기존 lib/company-doc.ts 안전업로드 패턴 재사용.
 
 #### ✅ ③초과근무(야근) 사전신청 — 완료(2026-07-20, 커밋 d190c4f, 미푸시)
 > 직원 [초과근무] 메뉴에서 야근 예정일·시간대(자정넘김 허용)·사유 신청 → 승인. 승인=허가 기록만, **기존 주52 계산(lib/overtime.ts)과 완전 분리**. 새 표 `OvertimeRequest`. 새 파일은 `lib/overtime-request.ts`(이름충돌 회피).
