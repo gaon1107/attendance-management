@@ -141,7 +141,13 @@ export function ApprovalHistoryClient({
         <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)", fontSize: 15, fontWeight: 700, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span>
             조회 결과 {shown.length}건
-            {searching ? ` · 불러온 ${rows.length}건에서 검색` : limitReached ? ` · 표시 상한 ${historyLimit}건 도달(더 있을 수 있으니 필터로 좁혀보세요)` : ""}
+            {searching ? ` · 불러온 ${rows.length}건에서 검색` : ""}
+            {/* 상한 도달 시 검색 여부와 무관하게 항상 경고 — 검색은 불러온 범위에서만 되므로 조용한 누락 방지(감사 신뢰성). */}
+            {limitReached && (
+              <span style={{ color: "var(--danger)" }}>
+                {" · "}⚠️ 표시 상한 {historyLimit}건 도달 — {searching ? "검색은 불러온 범위에서만 됩니다. " : ""}기간을 좁혀 조회하세요
+              </span>
+            )}
           </span>
           {/* 지금 무슨 기간을 보고 있는지 항상 표기 — 기본 '이번 달'이 과거 이력을 조용히 가리지 않도록. */}
           <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>
