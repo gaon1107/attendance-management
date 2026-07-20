@@ -34,7 +34,7 @@ function ymdhm(d: Date): string {
 export default async function ApprovalHistoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string; status?: string; userId?: string; from?: string; to?: string; all?: string }>;
+  searchParams: Promise<{ type?: string; status?: string; userId?: string; from?: string; to?: string }>;
 }) {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
@@ -52,8 +52,7 @@ export default async function ApprovalHistoryPage({
     return back === s ? s : "";
   };
   // 공통 기간 달력(RangeCalendar)은 값이 항상 "시작~종료"라, 미지정이면 기본=이번 달(외출승인 등과 동일).
-  //  · all=1이면 전체 기간(감사용): 조회는 from/to=null로 기간필터를 걸지 않고, 달력엔 기본 이번 달을 표시(재선택 기준점).
-  const allPeriod = sp.all === "1";
+  //  · 과거 이력이 조용히 숨지 않도록, 지금 조회 중인 기간을 결과 헤더에 항상 표기한다(과거를 보려면 달력에서 기간을 넓게 잡는다).
   const now = new Date();
   const todayISO = toISODate(now);
   const defFrom = toISODate(new Date(now.getFullYear(), now.getMonth(), 1));
@@ -75,9 +74,8 @@ export default async function ApprovalHistoryPage({
     type: typeF,
     status: statusF,
     userId: userF,
-    // 전체 기간이면 기간필터 제거(null) → 과거 포함 전체 조회(상한 300건 유지).
-    from: allPeriod ? null : fromISO ? new Date(fromISO + "T00:00:00") : null,
-    to: allPeriod ? null : toISO ? new Date(toISO + "T23:59:59.999") : null,
+    from: fromISO ? new Date(fromISO + "T00:00:00") : null,
+    to: toISO ? new Date(toISO + "T23:59:59.999") : null,
   };
   const rows = await listApprovalHistory(me.companyId, filter);
   const empOpts: EmpOption[] = emps.map((e) => ({ id: e.id, name: e.name, employeeNo: e.employeeNo, retired: !!e.deactivatedAt }));
@@ -91,7 +89,7 @@ export default async function ApprovalHistoryPage({
   return (
     <AppShell user={me} active="approval-history" title="결재 이력" subtitle={`${me.company.name} · 전체 신청·승인·반려 조회`}>
       {/* 필터 바 — 공통 기간 달력(RangeCalendar) 사용(브라우저 기본 달력 금지, 디자인 규칙 §5.6) */}
-      <ApprovalHistoryFilters type={typeF} status={statusF} userId={userF} from={fromISO} to={toISO} todayISO={todayISO} allPeriod={allPeriod} emps={empOpts} />
+      <ApprovalHistoryFilters type={typeF} status={statusF} userId={userF} from={fromISO} to={toISO} todayISO={todayISO} emps={empOpts} />
 
       {/* 결과 표 */}
       <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
@@ -99,7 +97,7 @@ export default async function ApprovalHistoryPage({
           <span>조회 결과 {rows.length}건{rows.length >= HISTORY_LIMIT ? ` · 표시 상한 ${HISTORY_LIMIT}건 도달(더 있을 수 있으니 필터로 좁혀보세요)` : ""}</span>
           {/* 지금 무슨 기간을 보고 있는지 항상 표기 — 기본 '이번 달'이 과거 이력을 조용히 가리지 않도록. */}
           <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>
-            조회 기간(신청일 기준): {allPeriod ? "전체 기간" : `${fromISO} ~ ${toISO}`}
+            조회 기간(신청일 기준): {fromISO} ~ {toISO}
           </span>
         </div>
         <div style={{ overflowX: "auto" }}>
