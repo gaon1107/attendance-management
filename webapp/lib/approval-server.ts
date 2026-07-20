@@ -22,22 +22,29 @@ export const MAX_APPROVERS = 5;
 
 type Me = { id: string; role: string; companyId: string };
 
-// custom 결재선 편집용 후보 목록 — 신청자와 "같은 부서" 재직자만(본인 제외). 부서명·사번 포함(표시용).
-//  · 내부통제: 동료가 아닌 사람/타부서를 결재자로 못 고르게 후보 자체를 같은 부서로 제한(상호승인·부적절 지정 방지).
-//  · 신청자가 부서 미배정이면 후보 0명 → 결재선 설정 불가(신청은 관리자 단독 승인으로 폴백).
-export type LineCandidate = { id: string; name: string; employeeNo: string | null; deptName: string | null };
+// custom 결재선 편집용 후보 목록 — 신청자와 "같은 부서에서 직급(서열)이 나보다 높은" 재직자만(직급 상급자).
+//  · 혼용(B) 설계: 부서 안 상급자(대리→과장→부장)는 직원이 여기서 고르고, 부서장 위(→대표)는 조직도가 자동으로 잇는다.
+//  · 내부통제: 나보다 낮거나 같은 직급은 후보에 안 나옴 → 동료/부하 상호지정 원천 차단.
+//  · 신청자가 부서 또는 직급 미지정이면 후보 0명 → 결재선 설정 불가(부서장 위 조직도 자동부만 적용, 없으면 관리자 폴백).
+export type LineCandidate = { id: string; name: string; employeeNo: string | null; deptName: string | null; gradeName: string | null };
 export async function listApprovalCandidates(companyId: string, excludeUserId: string): Promise<LineCandidate[]> {
   const me = await prisma.user.findFirst({
     where: { id: excludeUserId, companyId },
-    select: { departmentId: true },
+    select: { departmentId: true, jobGrade: { select: { level: true } } },
   });
-  if (!me?.departmentId) return []; // 부서 미배정 → 같은 부서원 없음
+  if (!me?.departmentId || !me.jobGrade) return []; // 부서 또는 직급 미지정 → 고를 상급자 없음
   const users = await prisma.user.findMany({
-    where: { companyId, deactivatedAt: null, id: { not: excludeUserId }, departmentId: me.departmentId },
-    select: { id: true, name: true, employeeNo: true, department: { select: { name: true } } },
-    orderBy: [{ name: "asc" }],
+    where: {
+      companyId,
+      deactivatedAt: null,
+      id: { not: excludeUserId },
+      departmentId: me.departmentId,
+      jobGrade: { level: { gt: me.jobGrade.level } }, // 나보다 상급 직급만
+    },
+    select: { id: true, name: true, employeeNo: true, department: { select: { name: true } }, jobGrade: { select: { name: true } } },
+    orderBy: [{ jobGrade: { level: "asc" } }, { name: "asc" }], // 낮은 상급자부터(대리→과장→부장)
   });
-  return users.map((u) => ({ id: u.id, name: u.name, employeeNo: u.employeeNo, deptName: u.department?.name ?? null }));
+  return users.map((u) => ({ id: u.id, name: u.name, employeeNo: u.employeeNo, deptName: u.department?.name ?? null, gradeName: u.jobGrade?.name ?? null }));
 }
 
 // custom 모드: 저장된 개인 결재선(ApprovalLineTemplate)을 로드해 "실제로 결재 가능한" 결재자 id 순서를 돌려준다.
@@ -48,8 +55,8 @@ export async function resolveCustomApprovers(
   applicantUserId: string,
   requestType: RequestType,
 ): Promise<string[]> {
-  const tpl = await prisma.approvalLineTemplate.findUnique({
-    where: { userId_requestType: { userId: applicantUserId, requestType } },
+  const tpl = await prisma.approvalLineTemplate.findFirst({
+    where: { companyId, userId: applicantUserId, requestType },
     select: { approverIdsCsv: true },
   });
   if (!tpl || !tpl.approverIdsCsv.trim()) return [];
@@ -57,10 +64,10 @@ export async function resolveCustomApprovers(
   return filterActiveApprovers(companyId, applicantUserId, raw);
 }
 
-// 결재자 id 목록을 "현재 유효한" 것만 남긴다: 신청자와 같은 부서 재직자·본인 제외·중복 제거·순서 보존·상한.
-//  · 저장(saveApprovalLine)·신청(resolveCustomApprovers) 양쪽에서 공용 → 같은 부서 규칙이 선택·실행 모두에 강제된다.
-//  · 내부통제: 후보 화면(listApprovalCandidates)과 동일하게 "같은 부서"로 못박아, 폼 위조로 타부서 지정하는 것도 차단.
-//  · 신청자 부서 미배정이면 유효 결재자 0명 → 관리자 단독 승인 폴백. 저장 후 결재자가 퇴사/부서이동하면 자동 제외.
+// 결재자 id 목록을 "현재 유효한" 것만 남긴다: 신청자와 같은 부서 + 직급이 나보다 상급·본인 제외·중복 제거·순서 보존·상한.
+//  · 저장(saveApprovalLine)·신청(resolveCustomApprovers) 양쪽 공용 → 후보 화면(listApprovalCandidates)과 같은 규칙을
+//    선택·실행 모두에 강제(폼 위조로 타부서/동급·하급 지정하는 것도 차단).
+//  · 신청자 부서/직급 미지정이면 0명. 저장 후 결재자가 퇴사/부서이동/직급하락하면 자동 제외(안전 폴백).
 export async function filterActiveApprovers(
   companyId: string,
   applicantUserId: string,
@@ -74,15 +81,21 @@ export async function filterActiveApprovers(
     uniq.push(id);
   }
   if (uniq.length === 0) return [];
-  // 신청자의 부서(같은 부서 규칙의 기준). 부서 미배정이면 결재선 구성 불가.
+  // 신청자의 부서·직급(상급자 규칙의 기준). 둘 중 하나라도 미지정이면 부서 내 결재선 구성 불가.
   const applicant = await prisma.user.findFirst({
     where: { id: applicantUserId, companyId },
-    select: { departmentId: true },
+    select: { departmentId: true, jobGrade: { select: { level: true } } },
   });
-  if (!applicant?.departmentId) return [];
-  // 같은 회사·재직·같은 부서인 결재자만 남긴다(퇴사자·타회사·타부서 제거).
+  if (!applicant?.departmentId || !applicant.jobGrade) return [];
+  // 같은 회사·재직·같은 부서 + 나보다 상급 직급인 결재자만 남긴다.
   const valid = await prisma.user.findMany({
-    where: { id: { in: uniq }, companyId, deactivatedAt: null, departmentId: applicant.departmentId },
+    where: {
+      id: { in: uniq },
+      companyId,
+      deactivatedAt: null,
+      departmentId: applicant.departmentId,
+      jobGrade: { level: { gt: applicant.jobGrade.level } },
+    },
     select: { id: true },
   });
   const validSet = new Set(valid.map((u) => u.id));
@@ -108,7 +121,10 @@ export async function resolveApproverChain(
 // 신청 생성 직후 결재선(ApprovalStep들)을 만든다. 결재자가 없으면 만들지 않는다(=관리자 단일 승인).
 //  · single: 결재선 없음(관리자 단독).
 //  · deptline: 부서장 자동 결재선(전결권자 단계엔 isFinal 저장).
-//  · custom: 신청자가 종류별로 저장한 개인 결재선(순서대로, 마지막 단계 isFinal). 저장 결재자 퇴사 시 자동 건너뜀.
+//  · custom(혼용 B): [직원이 고른 부서 내 상급자] + [부서장 위 조직도 자동 상향]. 중복 제거·순서 보존.
+//      - 앞부분(직원 지정): 같은 부서 상급 직급(대리→과장→부장) 중 직원이 저장한 순서. isFinal=false.
+//      - 뒷부분(조직도 자동): 부서장→상위 부서장→…→대표(최대 3단계). 전결권자 만나면 그 사람에서 종결(isFinal 보존).
+//      - 부서장이 신청하면 앞부분 0 → 조직도가 상위 부서장부터 자동으로 올린다. 둘 다 비면 관리자 단독 승인(단계 미생성).
 export async function createApprovalStepsIfNeeded(
   company: { approvalMode: string; approvalStepCount: number } | null,
   companyId: string,
@@ -119,20 +135,41 @@ export async function createApprovalStepsIfNeeded(
 ): Promise<void> {
   if (!company) return;
 
-  // custom: 저장된 개인 결재선을 로드해 단계 생성. 없거나 유효 결재자 0명이면 관리자 단독 승인(단계 미생성).
   if (company.approvalMode === "custom") {
-    const ids = await resolveCustomApprovers(companyId, applicantUserId, requestType);
-    if (ids.length === 0) return;
+    // 1) 부서 내 상급자(직원이 고른 순서). 유효성(같은 부서·상급 직급·재직)은 resolveCustomApprovers가 재검증.
+    const picks = await resolveCustomApprovers(companyId, applicantUserId, requestType);
+    // 2) 부서장 위 조직도 자동 상향(최대 3단계). buildApprovalChain은 본인 제외·전결 종결 처리.
+    const orgChain = await resolveApproverChain(companyId, applicantUserId, applicantDeptId, 3);
+    // 3) 이어붙임 + 중복 제거(앞=지정, 뒤=조직도). 본인 제외는 양쪽에서 이미 보장.
+    //    ※ 조직도상 전결권자(isFinal=true, 주로 본인 부서장)를 직원이 지정 결재선에 고르면,
+    //      그 단계에 전결을 보존하고 거기서 결재선을 종결한다(뒤 단계 없음). 안 그러면 전결이 유실된다.
+    const orgFinal = new Set(orgChain.filter((a) => a.isFinal).map((a) => a.userId));
+    const seen = new Set<string>();
+    const merged: { userId: string; isFinal: boolean }[] = [];
+    let terminated = false;
+    for (const uid of picks) {
+      if (seen.has(uid)) continue;
+      seen.add(uid);
+      const isFinal = orgFinal.has(uid);
+      merged.push({ userId: uid, isFinal });
+      if (isFinal) { terminated = true; break; } // 전결권자를 골랐으면 여기서 종결
+    }
+    if (!terminated) {
+      for (const a of orgChain) {
+        if (seen.has(a.userId)) continue;
+        seen.add(a.userId);
+        merged.push({ userId: a.userId, isFinal: a.isFinal }); // 조직도는 buildApprovalChain이 전결에서 이미 끊음
+      }
+    }
+    if (merged.length === 0) return; // 상급자 없음(최상위·조직도 미설정) → 관리자 단독 승인 폴백
     await prisma.approvalStep.createMany({
-      data: ids.map((uid, i) => ({
+      data: merged.map((m, i) => ({
         companyId,
         requestType,
         requestId,
         stepOrder: i + 1,
-        approverUserId: uid,
-        // custom은 "전결"(대리 종결권) 개념이 아니라 순번 결재다 → isFinal=false.
-        // 마지막 단계 승인=최종 확정은 isChainComplete(전원 승인)로 자연 처리(전결 배지 오해 방지).
-        isFinal: false,
+        approverUserId: m.userId,
+        isFinal: m.isFinal,
       })),
     });
     return;

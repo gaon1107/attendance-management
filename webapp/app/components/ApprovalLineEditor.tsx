@@ -4,7 +4,7 @@
 import { useActionState, useState } from "react";
 import { saveApprovalLine } from "@/app/actions/approval-line";
 
-export type LineCandidate = { id: string; name: string; employeeNo: string | null; deptName: string | null };
+export type LineCandidate = { id: string; name: string; employeeNo: string | null; deptName: string | null; gradeName: string | null };
 
 const MAX = 5;
 
@@ -25,6 +25,7 @@ export function ApprovalLineEditor({
   const [ids, setIds] = useState<string[]>(current);
   const nameOf = (id: string) => candidates.find((c) => c.id === id)?.name ?? "(퇴사/알수없음)";
   const deptOf = (id: string) => candidates.find((c) => c.id === id)?.deptName ?? null;
+  const gradeOf = (id: string) => candidates.find((c) => c.id === id)?.gradeName ?? null;
 
   const remaining = candidates.filter((c) => !ids.includes(c.id));
 
@@ -45,14 +46,14 @@ export function ApprovalLineEditor({
     <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 20, marginBottom: 16 }}>
       <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>내 {typeLabel} 결재선</div>
       <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 14, lineHeight: 1.6 }}>
-        결재자를 순서대로 정해 저장하면, 이후 {typeLabel} 신청은 <b>이 순서대로 자동 결재</b>됩니다. (최대 {MAX}명, 언제든 수정 가능)
-        <br />※ 결재자는 <b>같은 부서 직원</b> 중에서만 지정할 수 있습니다.
+        <b>부서 안</b> 결재자를 순서대로 정해 저장하면, 이후 {typeLabel} 신청은 이 순서대로 결재됩니다. (최대 {MAX}명, 언제든 수정 가능)
+        <br />※ 같은 부서에서 <b>나보다 상급자(직급 높은 사람)</b>만 고를 수 있습니다. 부서장 위(→대표)는 <b>조직도대로 자동 결재</b>됩니다.
       </p>
 
       {/* 현재 결재선 */}
       {ids.length === 0 ? (
         <div style={{ fontSize: 13, color: "var(--text-sub)", padding: "10px 12px", background: "var(--bg)", borderRadius: 8, marginBottom: 12 }}>
-          아직 결재선이 없습니다. 아래에서 결재자를 추가하세요. (미설정 시 신청은 관리자 승인으로 처리됩니다)
+          부서 안 결재자를 아직 안 골랐습니다. 안 고르면 <b>부서장 위 조직도대로만</b> 결재됩니다.
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
@@ -61,6 +62,7 @@ export function ApprovalLineEditor({
               <span style={{ fontSize: 12, fontWeight: 800, color: "var(--primary)", minWidth: 36 }}>{i + 1}차</span>
               <span style={{ flex: 1, fontSize: 14, fontWeight: 700 }}>
                 {nameOf(id)}
+                {gradeOf(id) && <span style={{ fontSize: 12, color: "var(--primary)", fontWeight: 700, marginLeft: 6 }}>{gradeOf(id)}</span>}
                 {deptOf(id) && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400, marginLeft: 6 }}>{deptOf(id)}</span>}
               </span>
               <button type="button" onClick={() => move(i, -1)} disabled={i === 0} style={{ ...btn, opacity: i === 0 ? 0.4 : 1 }} aria-label="위로">↑</button>
@@ -71,10 +73,10 @@ export function ApprovalLineEditor({
         </div>
       )}
 
-      {/* 같은 부서에 지정할 동료가 없을 때 */}
+      {/* 부서 안에 고를 상급자가 없을 때(부서장·1인 부서·직급 미지정 등) */}
       {candidates.length === 0 && (
         <div style={{ fontSize: 13, color: "var(--text-sub)", padding: "10px 12px", background: "var(--bg)", borderRadius: 8, marginBottom: 12 }}>
-          같은 부서에 결재자로 지정할 수 있는 직원이 없습니다. 이 경우 신청은 <b>관리자 단독 승인</b>으로 처리됩니다.
+          부서 안에 고를 상급자가 없습니다. 신청은 <b>부서장 위 조직도대로 자동 결재</b>됩니다(상급자가 아예 없으면 관리자 승인).
         </div>
       )}
 
@@ -87,7 +89,7 @@ export function ApprovalLineEditor({
         >
           <option value="">+ 결재자 추가…</option>
           {remaining.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}{c.deptName ? ` · ${c.deptName}` : ""}{c.employeeNo ? ` (${c.employeeNo})` : ""}</option>
+            <option key={c.id} value={c.id}>{c.name}{c.gradeName ? ` · ${c.gradeName}` : ""}{c.deptName ? ` · ${c.deptName}` : ""}{c.employeeNo ? ` (${c.employeeNo})` : ""}</option>
           ))}
         </select>
       )}

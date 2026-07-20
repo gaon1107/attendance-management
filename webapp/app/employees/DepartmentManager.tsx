@@ -122,7 +122,9 @@ export function DepartmentManager({
   const [state, formAction, pending] = useActionState(createDepartment, {} as { error?: string; ok?: boolean });
   // 라디오 선택에 따라 단계수 표시를 즉시 바꾸기 위한 로컬 상태(저장 전 미리보기).
   const [modePreview, setModePreview] = useState(approvalMode === "deptline" ? "deptline" : approvalMode === "custom" ? "custom" : "single");
-  const isDeptline = approvalMode === "deptline";
+  // 부서장·상위부서(조직도) 설정은 부서장 결재선(deptline)뿐 아니라 상신자 지정(custom·혼용)에서도 필요하다.
+  //  custom은 부서 안은 직원이 고르고, 부서장 위(→대표)는 이 조직도로 자동 연결하기 때문.
+  const showOrgSetup = approvalMode === "deptline" || approvalMode === "custom";
 
   return (
     <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 16 }}>
@@ -209,13 +211,13 @@ export function DepartmentManager({
                 <input type="hidden" name="id" value={d.id} />
                 <button type="submit" style={{ ...smallBtn, color: "var(--danger)" }}>삭제</button>
               </form>
-              {/* 결재선 켠 회사만: 부서별 부서장·상위부서·대결자 */}
-              {isDeptline && <DeptApprovalRow dept={d} employees={employees} departments={departments} />}
+              {/* 부서장 결재선/상신자 지정 회사: 부서별 부서장·상위부서·대결자(조직도 상향 연결용) */}
+              {showOrgSetup && <DeptApprovalRow dept={d} employees={employees} departments={departments} />}
             </div>
           ))}
         </div>
       )}
-      {isDeptline && departments.length === 0 && (
+      {showOrgSetup && departments.length === 0 && (
         <p style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 12 }}>부서를 먼저 추가한 뒤 부서장을 지정하세요.</p>
       )}
     </div>
