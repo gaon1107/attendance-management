@@ -6,6 +6,8 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RangeCalendar } from "@/app/components/RangeCalendar";
 import { SearchBox } from "@/app/components/SearchBox";
+import { TablePagination } from "@/app/components/TablePagination";
+import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
 import type { RequestType } from "@/lib/approval-server";
 
@@ -87,6 +89,8 @@ export function ApprovalHistoryClient({
     const terms = queryTerms(q);
     return rows.filter((r) => matchesTerms(r.search, terms));
   }, [q, rows]);
+  // 화면 페이징 — 검색어·서버필터(유형/상태/기간)가 바뀌면 1페이지로.
+  const pg = usePagination(shown, { initialSize: 100, resetKey: `${q}|${type}|${status}|${from}|${to}` });
 
   // 유형·상태·기간은 URL 파라미터로 서버 재조회. 현재 값에 변경분만 덮어 URL 생성(기본값=생략).
   const build = (over: Partial<{ type: string; status: string; from: string; to: string }>) => {
@@ -169,14 +173,14 @@ export function ApprovalHistoryClient({
               </tr>
             </thead>
             <tbody>
-              {shown.length === 0 ? (
+              {pg.view.length === 0 ? (
                 <tr>
                   <td colSpan={8} style={{ padding: "32px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {searching ? "검색 결과가 없습니다." : "조회된 결재 이력이 없습니다."}
                   </td>
                 </tr>
               ) : (
-                shown.map((r) => (
+                pg.view.map((r) => (
                   <tr key={r.key} style={{ borderBottom: "1px solid #F3F4F6" }}>
                     <td style={{ ...td, color: "var(--text-sub)", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{r.createdAtText}</td>
                     <td style={td}>{badge(TYPE_BADGE[r.type].bg, TYPE_BADGE[r.type].color, TYPE_LABEL[r.type])}</td>
@@ -201,6 +205,7 @@ export function ApprovalHistoryClient({
             </tbody>
           </table>
         </div>
+        <TablePagination pg={pg} />
       </section>
     </>
   );

@@ -1,65 +1,72 @@
-# Plan: 결재이력 '직원 드롭다운' → 통합검색 전환 — 2026-07-21 — 상태: 검토 대기
+# Plan: 목록 화면 페이징(화면 페이징) 전면 적용 — 2026-07-21 — 상태: 검토 대기
 
-> 목표: 수백 명 회사에서 비현실적인 직원 드롭다운을 제거하고, 프로젝트 공통 통합검색(SearchBox)으로 교체. 신청자 이름·사번·부서·내용·사유·처리자를 한 검색창에서 OR로 즉시 검색.
+> 목표: 첨부 이미지 스타일(페이지 당 행 [100▼] · 1–100 / 184 · ◀▶)의 공통 페이징을 모든 목록 나열 화면에 적용. 방식=화면 페이징(데이터는 로드, 화면엔 한 페이지씩 렌더 → 렌더 부하 제거). 통합검색·필터·디자인 유지, 저위험.
 
 ## 1. 접근 방식 (+이유)
-- **공통 패턴 그대로**: 다른 16개 화면(정정승인·휴가승인 등)과 동일하게 `SearchBox`+`lib/search`로 **로드된 행을 실시간 클라이언트 필터**. 사장님이 이미 쓰는 방식과 일치.
-- **구조 통합**: SearchBox는 검색창과 표가 같은 클라이언트 컴포넌트에 있어야 필터가 걸림 → 현재 [필터바(클라)+표(서버인라인)]를 **한 클라이언트 컴포넌트**로 합침(정정승인 구조 복제). 유형·상태·기간은 그대로 router.push 서버 조회.
-- **직전 개선 보존**: 유형·상태 select는 제어형(value) 유지(뒤로가기 표시 일치), 결과 헤더 '조회 기간' 표시 유지.
+- **공통 부품 1개 신규**: `app/components/TablePagination.tsx`(이미지 디자인 재현) + 작은 훅 `app/components/usePagination.ts`(page·pageSize 상태, 총건수 바뀌면 범위 클램프, 검색어/필터 바뀌면 1페이지로 리셋). 부품 하나로 전 화면 균일·중복 최소화.
+- **각 화면 최소 변경**: 지금 `filtered.map(...)` 하는 곳을 `filtered.slice(...).map(...)`로 바꾸고 표 아래 `<TablePagination .../>` 추가. 서버·데이터 흐름 무변경.
+- **2표 화면**: 대기/처리내역(또는 재직/퇴사) 각 표에 **독립 페이징**(훅 2개).
+- **직원용 page.tsx(내 신청)**: 목록 부분을 작은 클라 컴포넌트로 분리해 동일 적용(approval-history에서 쓴 방식과 동일).
 
 ## 2. 수정/생성 파일 목록
-- `webapp/app/approval-history/page.tsx` (수정) — userId·emps·userF 제거. 각 행에 검색용 `search` 문자열 생성. 새 클라 컴포넌트로 rows+필터값 전달. (표 렌더 코드는 클라로 이동)
-- `webapp/app/approval-history/ApprovalHistoryClient.tsx` (**신규**) — 필터바(유형·상태 select + 기간 RangeCalendar + **SearchBox**) + 결과헤더 + 표. `q` 상태로 즉시 필터. 기존 배지/스타일 이관.
-- `webapp/app/approval-history/ApprovalHistoryFilters.tsx` (**삭제**) — 신규 클라 컴포넌트로 흡수.
-- **공통 무수정**: lib/search.ts·SearchBox.tsx·RangeCalendar.tsx·lib/approval-history.ts. **DB/마이그레이션 없음.**
+- **신규**: `app/components/TablePagination.tsx`, `app/components/usePagination.ts`
+- **수정(관리자 단일표)**: ApprovalHistoryClient · BiometricsList · LeaveSummaryClient · RecordsClient · ReportsClient
+- **수정(관리자 2표)**: EmployeeList · LeaveApprovalsClient · CorrectionApprovalsClient · OutingApprovalsClient · OvertimeApprovalsClient · RemoteApprovalsClient · TripApprovalsClient
+- **수정(보안)**: AccessLogClient · AlertsClient · LoginHistoryClient · BlockedIpClient
+- **수정(직원 내신청·클라 분리)**: leave/page · outing/page · overtime/page · remote/page · trip/page · corrections/page (각 목록용 소형 클라 컴포넌트 신설)
+- **무수정(제외)**: DetailTable · reports/print · shifts/FixedPattern·Rotation (목록 아님)
+- **DB/마이그레이션/서버액션 없음.**
 
 ## 3. 🛡️ 사이드 이펙트 방어
 - **영향받을 수 있는 기능 + 대응**:
-  - 유형·상태·기간 필터: 서버 router.push 방식 그대로 유지 → 동작 무변경. 제어형 select도 유지(뒤로가기 표시 일치).
-  - 조회 기간 헤더 표시(직전 작업): 클라 컴포넌트로 옮기되 문구·로직 그대로 유지.
-  - listApprovalHistory: userId만 안 넘김. lib 시그니처·쿼리·회사격리 무변경 → 다른 동작 영향 0.
-  - 기존 URL 북마크에 `userId=...`가 있어도: 서버가 무시(파싱 제거) → 에러 없이 전체 조회. 하위호환.
-- **구현 후 반드시 테스트할 기존 기능**:
-  1. 유형·상태 필터 선택 → 결과·표시 일치(제어형).
-  2. 기간 달력 적용 → 범위 조회 + 헤더 기간 라벨 일치.
-  3. **뒤로가기/앞으로가기** → 유형·상태 드롭다운 표시가 결과와 일치.
-  4. **통합검색**: 이름·사번·부서·내용·사유·처리자 각각으로 실시간 필터, 여러 단어 OR, 지우기.
-  5. 초기화 → 기본(이번 달·검색어 없음) 복귀.
-  6. 검색 결과 0건·조회 0건 안내 문구.
-  7. 비관리자·미인증 접근 차단(기존 redirect) 유지, 회사격리 유지.
+  - 통합검색: 검색은 전체 필터→그 결과를 페이징. 검색어 바뀌면 page=0 리셋(빈 페이지 방지).
+  - 기간/상태 등 기존 필터: 무변경(서버 조회 그대로), 필터 결과에 페이징만 얹음.
+  - 승인/반려/삭제 등 액션 후 목록 재조회: 행 수 줄면 현재 page가 범위 밖일 수 있음 → 훅이 자동 클램프(마지막 페이지로).
+  - 인쇄(reports/print): 제외 → 전량 출력 유지.
+  - 정렬/합계(리포트 등): 페이징은 렌더만 자르므로 서버 합계·정렬 무영향.
+- **구현 후 반드시 테스트할 기존 기능(화면별)**:
+  1. 페이지 이동(◀▶), 페이지 크기 변경(50/100/200), 범위표시(start–end / total) 정확.
+  2. 통합검색과 동시 사용 → 검색 시 1페이지로, 결과 페이징 정확.
+  3. 2표 화면 두 표 독립 페이징.
+  4. 액션(승인/반려/삭제) 후 목록·페이지 정상.
+  5. 총건수 0·1페이지 경계(화살표 비활성).
+  6. 각 화면 권한/회사격리(서버측) 불변.
 
-## 4. 작업분해 TODO (1개 = 독립 완성·확인 단위)
-- [ ] 1단계: 신규 `ApprovalHistoryClient.tsx` 생성 — 필터바(유형·상태·기간)+SearchBox+결과헤더+표, `q` 즉시필터. (기존 page.tsx의 표/배지/스타일 이관)
-- [ ] 2단계: `page.tsx` 수정 — userId·emps·userF 제거, 각 행 `search` 문자열 생성, ApprovalHistoryClient에 rows+필터값 전달.
-- [ ] 3단계: `ApprovalHistoryFilters.tsx` 삭제 + import 정리.
-- [ ] 4단계: tsc·eslint 0 확인.
-- [ ] 5단계: 3000 실서버 검증(§3 목록 7항목) + 콘솔0.
-- [ ] 6단계: code-reviewer 검수 + project-status.md 갱신 + 커밋.
+## 4. 작업분해 TODO (배치 단위 — 배치마다 tsc·eslint·실화면·커밋)
+- [ ] 0단계: 공통 `TablePagination` + `usePagination` 생성 + 임시 검증(경계·클램프)
+- [ ] 1단계(배치A): 관리자 단일표 5개 적용 → 검증·커밋
+- [ ] 2단계(배치B): 관리자 2표 승인·직원 7개 적용 → 검증·커밋
+- [ ] 3단계(배치C): 보안 로그 4개 적용 → 검증·커밋
+- [ ] 4단계(배치D): 직원 "내 신청" 6개(클라 분리) 적용 → 검증·커밋
+- [ ] 5단계: 전체 3001 실서버 검증(대표 화면들 페이지·크기·검색 상호작용) + 콘솔0
+- [ ] 6단계: code-reviewer 검수 + project-status.md 갱신 + 최종 커밋
 
 ## 5. 핵심 로직 샘플 (계획용, 실제 구현 아님)
 ```tsx
-// page.tsx — 행에 검색 문자열 부여(서버)
-const rows = await listApprovalHistory(me.companyId, filter); // userId 안 넘김
-const clientRows = rows.map((r) => ({
-  ...r,
-  search: [r.applicantName, r.applicantNo, r.applicantDept, TYPE_LABEL[r.type],
-           r.summary, r.reason, STATUS_LABEL[r.status], r.decidedByName]
-          .filter(Boolean).join(" ").toLowerCase(),
-}));
-// <ApprovalHistoryClient rows={clientRows} type={typeF} status={statusF} from={fromISO} to={toISO} todayISO={todayISO} />
+// usePagination.ts
+export function usePagination<T>(items: T[], initialSize = 100) {
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState(initialSize);
+  const total = items.length;
+  const pageCount = Math.max(1, Math.ceil(total / size));
+  const safePage = Math.min(page, pageCount - 1);       // 클램프
+  const start = total === 0 ? 0 : safePage * size;
+  const view = items.slice(start, start + size);
+  // items 길이/검색 바뀌어 page 범위 벗어나면 자동 보정
+  useEffect(() => { if (page > pageCount - 1) setPage(pageCount - 1); }, [pageCount, page]);
+  return { view, page: safePage, setPage, size, setSize, total, start, end: start + view.length, pageCount };
+}
 ```
 ```tsx
-// ApprovalHistoryClient.tsx (client)
-const [q, setQ] = useState("");
-const shown = useMemo(() => { const t = queryTerms(q); return rows.filter((r) => matchesTerms(r.search, t)); }, [q, rows]);
-// 필터바: 유형 select(value, router.push) · 상태 select · RangeCalendar · <SearchBox value={q} onChange={setQ} placeholder="신청자·내용·사유 검색" />
-// 헤더: 조회 결과 {shown.length}건 · 조회 기간(신청일 기준): {from} ~ {to}
+// TablePagination.tsx (이미지 디자인)
+// [페이지 당 행: <select 50/100/200>]   {start+1}–{end} / {total}   [◀ disabled at 0] [▶ disabled at last]
+// 화면 사용: const pg = usePagination(filtered, 100);  pg.view.map(...)  <TablePagination pg={pg} />
 ```
 
 ## 6. 구현하지 않을 것 (범위 제외 + 이유)
-- 서버측 전체DB 이름검색/페이징(상한 300 유지). 통합검색은 로드된 행(유형·상태·기간+300) 내 필터 — 타 화면과 동일. **특정 직원 전체이력은 기간을 넓게 잡아 조합**(헤더/플레이스홀더로 안내).
-- 공통 컴포넌트(SearchBox·RangeCalendar·lib/search·listApprovalHistory) 수정.
-- 유형·상태 필터의 검색화(작은 고정목록이라 드롭다운이 적절).
+- **서버 페이징**(DB LIMIT/OFFSET·서버검색): 진짜 전송량 감축이나 대공사·회귀위험(통합검색 재설계). 사장님 결정=화면 페이징. 대량회사 실불편 시 추후 별도.
+- 목록 아닌 표: DetailTable(상세)·reports/print(인쇄)·shifts 패턴(설정) — 제외.
+- URL에 페이지 상태 저장(북마크): 이번 범위 밖(클라 상태로 충분).
 
 ## 📌 사용자 메모 공간 (검토 후 여기에 적어주세요)
 -
