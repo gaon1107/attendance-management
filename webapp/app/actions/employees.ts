@@ -96,6 +96,14 @@ export async function updateEmployeeProfile(
   ) {
     return { error: "이미 같은 사번을 쓰는 직원이 있습니다. 다른 사번을 입력해 주세요." };
   }
+  // 직급 서열(선택) — 빈 값=미지정(null), 값=내 회사 직급인지 확인 후 저장.
+  const rawGrade = String(formData.get("jobGradeId") ?? "").trim();
+  let jobGradeId: string | null = null;
+  if (rawGrade) {
+    const g = await prisma.jobGrade.findFirst({ where: { id: rawGrade, companyId: me.companyId }, select: { id: true } });
+    if (!g) return { error: "직급을 찾을 수 없습니다." };
+    jobGradeId = g.id;
+  }
   await prisma.user.update({
     where: { id: target.id },
     data: {
@@ -103,6 +111,7 @@ export async function updateEmployeeProfile(
       position: parsed.profile.position,
       employeeNo: parsed.profile.employeeNo,
       hireDate: parsed.profile.hireDate,
+      jobGradeId,
     },
   });
 

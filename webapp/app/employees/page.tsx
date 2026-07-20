@@ -7,6 +7,7 @@ import { AddEmployeeForm } from "./AddEmployeeForm";
 import { InviteLink } from "./InviteLink";
 import { PendingResetRequests } from "./PendingResetRequests";
 import { DepartmentManager } from "./DepartmentManager";
+import { JobGradeManager, type GradeRow } from "./JobGradeManager";
 import { EmployeeList, type EmpRow, type RetiredRow } from "./EmployeeList";
 import { createInvite, cancelInvite } from "@/app/actions/invites";
 
@@ -41,6 +42,17 @@ export default async function EmployeesPage() {
     parentId: d.parentId,
     deputyUserId: d.deputyUserId,
     finalApproval: d.finalApproval,
+  }));
+
+  // 직급 사다리 + 직급별 재직 인원 수(직급 관리 섹션용). 서열 오름차순(하급→상급).
+  const jobGrades = await prisma.jobGrade.findMany({
+    where: { companyId: me.companyId },
+    orderBy: { level: "asc" },
+  });
+  const gradeData: GradeRow[] = jobGrades.map((g) => ({
+    id: g.id,
+    name: g.name,
+    memberCount: employees.filter((e) => e.jobGradeId === g.id).length,
   }));
 
   // 회사 결재방식(결재선 설정용). 없으면 기본 single.
@@ -129,6 +141,9 @@ export default async function EmployeesPage() {
         approvalMode={approvalCompany?.approvalMode ?? "single"}
         approvalStepCount={approvalCompany?.approvalStepCount ?? 1}
       />
+
+      {/* 직급 관리 */}
+      <JobGradeManager grades={gradeData} />
 
       {/* 직원 초대 (링크 방식 — 직원이 스스로 가입) */}
       <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 16 }}>

@@ -28,6 +28,7 @@ model Company {
   businessTripRequests BusinessTripRequest[]
   requestAttachments RequestAttachment[]
   approvalLineTemplates ApprovalLineTemplate[]
+  jobGrades     JobGrade[]
   // 사업장 위치(사무실 출근 GPS 확인용). 안 정하면 위치 확인은 건너뜀.
   officeLat     Float?
   officeLng     Float?
@@ -178,7 +179,11 @@ model User {
   department     Department? @relation(fields: [departmentId], references: [id])
   // 인적정보(선택) — 초대 가입 때 직원이 입력하거나, 관리자가 직원 상세에서 입력·수정한다. 없어도 무방.
   phone          String?   // 전화번호(연락처)
-  position       String?   // 직급/직책 (예: 사원·대리·과장·부장)
+  position       String?   // 직급/직책 라벨 (예: 사원·대리·과장·부장). 표시용. 서열 비교는 jobGrade.level로.
+  // 직급 서열(결재선용). 회사 직급표(JobGrade)의 한 직급을 가리킨다. null=미지정 → 직급 기반 결재선에서 제외.
+  //  · add-only(nullable) — 기존 직원 전부 null = 기존 동작 그대로(회귀 0).
+  jobGradeId     String?
+  jobGrade       JobGrade? @relation(fields: [jobGradeId], references: [id])
   employeeNo     String?   // 사번(사원번호) — 회사 내부 고유번호. 현재 중복검사 없음(단순 저장).
   hireDate       DateTime? // 입사일 (자동 기록되는 가입일 createdAt과는 별개)
   attendanceCorrections AttendanceCorrection[]
@@ -480,6 +485,21 @@ model ApprovalStep {
 
   @@index([companyId, requestType, requestId]) // 한 신청의 단계들 조회
   @@index([approverUserId, status])            // 결재함(내 차례) 조회
+}
+
+// 직급(직위) 사다리 — 회사마다 직접 만든다. 결재선 서열 비교(상급자 판별)에 쓴다.
+//  · level이 클수록 상급(예: 사원 10 < 대리 30 < 과장 40 < 부장 60 < 임원 70). 회사가 순서를 정한다.
+//  · 직원은 User.jobGradeId로 한 직급에 속한다. 삭제하면 소속 직원은 자동으로 미지정(null)이 된다.
+model JobGrade {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  name      String   // 직급명 (사원·대리·과장 등)
+  level     Int      // 서열(클수록 상급). 같은 회사 안에서 비교용.
+  createdAt DateTime @default(now())
+  users     User[]
+
+  @@index([companyId])
 }
 
 // 부서 — 회사 안의 조직 단위. 관리자가 만들고, 직원을 부서에 배정한다.

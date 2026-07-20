@@ -36,7 +36,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   const { id } = await params;
   const emp = await prisma.user.findFirst({
     where: { id, companyId: me.companyId },
-    include: { department: { select: { name: true } } },
+    include: { department: { select: { name: true } }, jobGrade: { select: { name: true } } },
   });
   if (!emp) notFound();
 
@@ -44,6 +44,13 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   const departments = await prisma.department.findMany({
     where: { companyId: me.companyId },
     orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
+
+  // 회사 직급 사다리(직급 드롭다운용). 상급이 위로 오게 서열 내림차순.
+  const jobGrades = await prisma.jobGrade.findMany({
+    where: { companyId: me.companyId },
+    orderBy: { level: "desc" },
     select: { id: true, name: true },
   });
 
@@ -70,6 +77,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
     { label: "전화번호", value: <span style={{ color: emp.phone ? "var(--text)" : "#9CA3AF" }}>{emp.phone ?? "미입력"}</span> },
     { label: "부서", value: <span style={{ color: emp.department ? "var(--text)" : "#9CA3AF" }}>{emp.department?.name ?? "미배정"}</span> },
     { label: "직급/직책", value: <span style={{ color: emp.position ? "var(--text)" : "#9CA3AF" }}>{emp.position ?? "미입력"}</span> },
+    { label: "직급 서열", value: <span style={{ color: emp.jobGrade ? "var(--text)" : "#9CA3AF" }}>{emp.jobGrade?.name ?? "미지정"}</span> },
     { label: "사번", value: <span style={{ color: emp.employeeNo ? "var(--text)" : "#9CA3AF" }}>{emp.employeeNo ?? "미입력"}</span> },
     { label: "역할", value: emp.role === "admin" ? "관리자" : "직원" },
     {
@@ -148,6 +156,8 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           initialPosition={emp.position ?? ""}
           initialEmployeeNo={emp.employeeNo ?? ""}
           initialHireDate={ymdInput(emp.hireDate)}
+          grades={jobGrades}
+          initialJobGradeId={emp.jobGradeId ?? ""}
         />
       </div>
       </div>
