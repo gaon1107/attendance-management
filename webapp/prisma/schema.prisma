@@ -25,6 +25,7 @@ model Company {
   outingRequests OutingRequest[]
   remoteWorkRequests RemoteWorkRequest[]
   overtimeRequests OvertimeRequest[]
+  businessTripRequests BusinessTripRequest[]
   // 사업장 위치(사무실 출근 GPS 확인용). 안 정하면 위치 확인은 건너뜀.
   officeLat     Float?
   officeLng     Float?
@@ -182,6 +183,7 @@ model User {
   outingRequests OutingRequest[]
   remoteWorkRequests RemoteWorkRequest[]
   overtimeRequests OvertimeRequest[]
+  businessTripRequests BusinessTripRequest[]
   // 공지(알림)를 마지막으로 확인한 시각. 이 시각 이후 올라온 공지는 "새 알림(NEW)"으로 본다.
   noticesSeenAt  DateTime?
   // 첫 사용 안내(온보딩 투어)를 본 시각. 값이 있으면 다시 띄우지 않는다.
@@ -393,6 +395,29 @@ model OvertimeRequest {
   @@index([companyId, status])
 }
 
+// 출장 신청 — 직원이 출장(기간·출장지)을 사전 신청하고 결재자가 승인/반려한다.
+// ※ 사전 허가 워크플로: 승인은 "허가 기록"만 — 근태/실근무 판정 로직에 영향 없음.
+model BusinessTripRequest {
+  id           String    @id @default(cuid())
+  companyId    String
+  company      Company   @relation(fields: [companyId], references: [id])
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  startDate    DateTime  // 출장 시작일(자정 기준)
+  endDate      DateTime  // 출장 종료일(자정 기준, 포함). 하루면 start==end.
+  destination  String    // 출장지(필수)
+  reason       String?   // 출장 목적/사유(선택)
+  // 상태: "pending"(대기) | "approved"(승인·허가됨) | "rejected"(반려)
+  status       String    @default("pending")
+  decidedAt    DateTime?
+  // 결재선 2차와 동일: 결재자 결정 사유·처리자. add-only(nullable).
+  decisionComment String? // 승인/반려 사유(선택 저장). 신청자에게 표시.
+  decidedById     String? // 처리한 결재자/관리자 userId(표시용, 관계 없이 id만 보관)
+  createdAt    DateTime  @default(now())
+
+  @@index([companyId, status])
+}
+
 // 결재 단계 — 다단계 승인(부서장 결재선)의 각 단계·진행상태.
 // 원본 신청(LeaveRequest/AttendanceCorrection)은 스키마 무변경 — 다형 참조(requestType+requestId)로 연결한다.
 // approvalMode=deptline 회사만 생성한다. single 회사는 이 표를 쓰지 않고 기존 단일 승인 경로 그대로.
@@ -400,8 +425,8 @@ model ApprovalStep {
   id             String    @id @default(cuid())
   companyId      String
   company        Company   @relation(fields: [companyId], references: [id])
-  requestType    String    // "leave" | "correction" | "outing" | "remote" | "overtime"(초과근무 사전신청)
-  requestId      String    // LeaveRequest / AttendanceCorrection / OutingRequest / RemoteWorkRequest / OvertimeRequest 의 id
+  requestType    String    // "leave" | "correction" | "outing" | "remote" | "overtime" | "trip"(출장)
+  requestId      String    // LeaveRequest / AttendanceCorrection / OutingRequest / RemoteWorkRequest / OvertimeRequest / BusinessTripRequest 의 id
   stepOrder      Int       // 1,2,3… 순서
   approverUserId String    // 이 단계 결재자(부서장/대결자/관리자)
   // 상태: "pending"(대기) | "approved"(승인) | "rejected"(반려) | "skipped"(건너뜀=본인 결재 등)

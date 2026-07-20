@@ -22,12 +22,13 @@ export type AdminNotification = {
 //  (요청 단위 메모이즈일 뿐 TTL 캐시가 아니므로 "실시간 카운트"는 그대로 유지 — 처리하면 다음 요청에서 즉시 반영)
 export const listAdminNotifications = cache(async (companyId: string): Promise<{ items: AdminNotification[]; total: number }> => {
   // 결재/요청 대기 건수(단순 count — 처리하면 줄어든다)
-  const [pendingLeave, pendingCorrection, pendingOuting, pendingRemote, pendingOvertime, pendingReset] = await Promise.all([
+  const [pendingLeave, pendingCorrection, pendingOuting, pendingRemote, pendingOvertime, pendingTrip, pendingReset] = await Promise.all([
     prisma.leaveRequest.count({ where: { companyId, status: "pending" } }),
     prisma.attendanceCorrection.count({ where: { companyId, status: "pending" } }),
     prisma.outingRequest.count({ where: { companyId, status: "pending" } }),
     prisma.remoteWorkRequest.count({ where: { companyId, status: "pending" } }),
     prisma.overtimeRequest.count({ where: { companyId, status: "pending" } }),
+    prisma.businessTripRequest.count({ where: { companyId, status: "pending" } }),
     prisma.passwordResetRequest.count({ where: { companyId, status: "pending" } }),
   ]);
 
@@ -95,6 +96,12 @@ export const listAdminNotifications = cache(async (companyId: string): Promise<{
     items.push({
       key: "overtime", title: "초과근무 신청 대기", detail: "승인/반려를 기다리는 초과근무(야근) 사전신청이 있습니다.",
       count: pendingOvertime, countLabel: `${pendingOvertime}건`, href: "/overtime/approvals", cta: "검토", severity: "primary",
+    });
+  }
+  if (pendingTrip > 0) {
+    items.push({
+      key: "trip", title: "출장 신청 대기", detail: "승인/반려를 기다리는 출장 신청이 있습니다.",
+      count: pendingTrip, countLabel: `${pendingTrip}건`, href: "/trip/approvals", cta: "검토", severity: "primary",
     });
   }
 
