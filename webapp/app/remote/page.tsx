@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
+import { PaginatedTable } from "@/app/components/PaginatedTable";
 import { RemoteRequestForm } from "./RemoteRequestForm";
 import { cancelRemote } from "@/app/actions/remote";
 import { remoteStatusLabel, remoteRangeLabel } from "@/lib/remote";
@@ -67,8 +68,11 @@ export default async function RemotePage() {
       {/* 내 신청 내역 */}
       <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
         <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)", fontSize: 15, fontWeight: 700 }}>내 신청 내역</div>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 480 }}>
+        <PaginatedTable
+          minWidth={480}
+          colSpan={4}
+          emptyText="아직 신청한 재택근무가 없습니다."
+          head={
             <thead>
               <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                 <th style={th}>기간</th>
@@ -77,15 +81,8 @@ export default async function RemotePage() {
                 <th style={{ ...th, textAlign: "right" }}></th>
               </tr>
             </thead>
-            <tbody>
-              {requests.length === 0 ? (
-                <tr>
-                  <td colSpan={4} style={{ padding: "28px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
-                    아직 신청한 재택근무가 없습니다.
-                  </td>
-                </tr>
-              ) : (
-                requests.map((r) => {
+          }
+          rows={requests.map((r) => {
                   const s = STATUS_STYLE[r.status] ?? STATUS_STYLE.pending;
                   return (
                     <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
@@ -128,11 +125,8 @@ export default async function RemotePage() {
                       </td>
                     </tr>
                   );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                })}
+        />
       </section>
       </div>
     </AppShell>
