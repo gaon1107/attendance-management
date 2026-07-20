@@ -6,9 +6,18 @@
 
 ## ▶▶ 다음 세션 시작점 (여기부터 읽기) — 2026-07-20 (후반)
 
-### 🎯 진행 중(사장님 지시): 전자결재 확장 — "근태 결재 세트" (5개 순차 개발, 각 구현+검수+커밋)
-> 사장님이 전자결재 필수기능 리스트를 주심. **기존 결재선 엔진(ApprovalStep·advanceApproval·결재함·진행표시·반려사유·전결) 재활용**해 새 신청유형을 붙이는 방향으로 합의. 순서: ①외출/외근 ②재택 ③초과근무 사전신청 ④출장 ⑤첨부파일.
-> **진행률: 4/5 완료.** 각 유형은 leave/corrections 패턴 + createApprovalStepsIfNeeded 훅 복제 + 공통 3곳(listMyApprovals·countMyPendingApprovals·approvals/page.tsx TYPE_META) add-only 확장. **알림센터·대시보드 대기카드도 유형마다 확장(single 대칭).**
+### 🎯 ✅ 완료(사장님 지시): 전자결재 확장 — "근태 결재 세트" (5/5 전부 완료, 각 구현+검수+커밋)
+> 사장님이 전자결재 필수기능 리스트를 주심. **기존 결재선 엔진(ApprovalStep·advanceApproval·결재함·진행표시·반려사유·전결) 재활용**해 새 신청유형 5종을 붙임. 순서: ①외출/외근 ②재택 ③초과근무 사전신청 ④출장 ⑤첨부파일.
+> **진행률: 5/5 완료.** 미푸시 커밋 다수(0af42fe~84d548d). **⚠️ 실화면 육안검증(사장님 세션)만 남음** — 각 유형 신청→대시보드 대기카드→승인 화면 승인→직원 화면 반영, 첨부 업로드/다운로드 육안확인.
+
+#### ✅ ⑤신청서 첨부파일 — 완료(2026-07-20, 커밋 0c5c942·84d548d, 미푸시)
+> 4종(외출/재택/초과/출장) 신청에 파일 첨부(최대 5개·개당 10MB·PDF/JPG/PNG). 다운로드=신청자 본인/관리자/결재자, 회사격리. 새 표 `RequestAttachment`(다형).
+- 기존 lib/company-doc 저장패턴 재사용(웹 공개경로 밖·매직바이트 검증·난수 파일명·경로조작 차단), 저장폴더는 `storage/request-attachments/`(gitignore). 텍스트는 서버액션 유지, 파일은 route로 업로드(4MB 한도 회피). request* 반환에 id 추가, cancel* 첨부정리.
+- **검증**: tsc·eslint 0 / **임시라우트 17/17 PASS**(저장 라운드트립·경로조작 차단·업로드/열람 권한 6종·타사격리·승인후 차단·정리) + 미인증 401.
+- **code-reviewer 치명0·중간2 반영**: ①업로드 Content-Length 가드(DoS) ②개수 상한 트랜잭션 원자화. 보안강화=강제 다운로드(attachment). 경미(삭제순서 고아파일)=보고만.
+- ⚠️ **실업로드/다운로드 육안검증 남음(사장님 세션, 로그인 필요)**.
+
+#### (이전 4종은 아래에 각각 기록) 각 유형은 leave/corrections 패턴 + createApprovalStepsIfNeeded 훅 복제 + 공통 3곳(listMyApprovals·countMyPendingApprovals·approvals/page.tsx TYPE_META) add-only 확장. **알림센터·대시보드 대기카드도 유형마다 확장(single 대칭).**
 
 #### ✅ ④출장 신청 — 완료(2026-07-20, 커밋 4297c2f·5fddaa0, 미푸시)
 > 직원 [출장] 메뉴에서 기간(시작~종료)·**출장지(필수)**·목적 신청 → 승인. 승인=허가 기록만. 새 표 `BusinessTripRequest`. lib/trip.ts.
