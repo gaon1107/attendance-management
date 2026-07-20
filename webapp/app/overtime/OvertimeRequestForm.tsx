@@ -1,8 +1,9 @@
 "use client";
 // 초과근무(야근) 사전신청 폼(직원) — 날짜·시각(야근 시간대)·사유. (외출외근 폼 패턴)
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { requestOvertime } from "@/app/actions/overtime";
 import { DatePicker } from "@/app/components/DatePicker";
+import { TimePicker, joinTime } from "@/app/components/TimePicker";
 import { AttachmentField } from "@/app/components/AttachmentField";
 
 const inputStyle: React.CSSProperties = {
@@ -13,6 +14,11 @@ const labelStyle: React.CSSProperties = { display: "block", fontSize: 13, fontWe
 
 export function OvertimeRequestForm() {
   const [state, formAction, pending] = useActionState(requestOvertime, {});
+  // 시각은 공통 TimePicker(시·분 드롭다운, 10분 단위). 값은 "HH:MM"으로 hidden input에 담아 서버로 보낸다.
+  const [sH, setSH] = useState("18");
+  const [sM, setSM] = useState("00");
+  const [eH, setEH] = useState("21");
+  const [eM, setEM] = useState("00");
 
   return (
     <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -22,13 +28,15 @@ export function OvertimeRequestForm() {
       </div>
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 120 }}>
+        <div style={{ flex: 1, minWidth: 150 }}>
           <label style={labelStyle}>시작 시각</label>
-          <input name="startTime" type="time" defaultValue="18:00" required style={inputStyle} />
+          <TimePicker h={sH} m={sM} onH={setSH} onM={setSM} allowEmpty={false} />
+          <input type="hidden" name="startTime" value={joinTime(sH, sM)} />
         </div>
-        <div style={{ flex: 1, minWidth: 120 }}>
+        <div style={{ flex: 1, minWidth: 150 }}>
           <label style={labelStyle}>종료 시각</label>
-          <input name="endTime" type="time" defaultValue="21:00" required style={inputStyle} />
+          <TimePicker h={eH} m={eM} onH={setEH} onM={setEM} allowEmpty={false} />
+          <input type="hidden" name="endTime" value={joinTime(eH, eM)} />
         </div>
       </div>
       <p style={{ fontSize: 12, color: "var(--text-sub)", marginTop: -6, lineHeight: 1.5 }}>
