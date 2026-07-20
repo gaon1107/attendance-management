@@ -6,7 +6,8 @@ import { AppShell } from "@/app/components/AppShell";
 import { LeaveRequestForm } from "./LeaveRequestForm";
 import { cancelLeave } from "@/app/actions/leave";
 import { leaveTypeLabel, leaveStatusLabel, usedLeaveDays, annualLeaveGranted } from "@/lib/leave";
-import { getApprovalProgressMap, type ApprovalProgress } from "@/lib/approval-server";
+import { getApprovalProgressMap, type ApprovalProgress, listApprovalCandidates, resolveCustomApprovers } from "@/lib/approval-server";
+import { ApprovalLineEditor } from "@/app/components/ApprovalLineEditor";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
@@ -46,6 +47,10 @@ export default async function LeavePage() {
       : []
   );
 
+  const isCustom = me.company.approvalMode === "custom";
+  const candidates = isCustom ? await listApprovalCandidates(me.companyId, me.id) : [];
+  const currentLine = isCustom ? await resolveCustomApprovers(me.companyId, me.id, "leave") : [];
+
   const used = usedLeaveDays(requests);
   const granted = annualLeaveGranted(me); // 입사일 기준 자동 발생(관리자 수동조정 우선)
   const remaining = Math.round((granted - used) * 10) / 10;
@@ -61,6 +66,7 @@ export default async function LeavePage() {
 
   return (
     <AppShell user={me} active="leave" title="휴가" subtitle={`${me.name} 님`}>
+      {isCustom && <ApprovalLineEditor requestType="leave" typeLabel="휴가" candidates={candidates} current={currentLine} />}
       {/* 잔여 연차 */}
       <div className="kpi-grid-3" style={{ marginBottom: 20 }}>
         {kpis.map((k) => (

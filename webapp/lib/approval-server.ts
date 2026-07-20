@@ -11,7 +11,68 @@ import { tripRangeLabel } from "@/lib/trip";
 
 export type RequestType = "leave" | "correction" | "outing" | "remote" | "overtime" | "trip";
 
+// 결재선 대상 신청 유형 목록(런타임). custom 결재선 저장·검증에서 화이트리스트로 사용.
+export const REQUEST_TYPES: readonly RequestType[] = ["leave", "correction", "outing", "remote", "overtime", "trip"];
+export function isRequestType(t: string): t is RequestType {
+  return (REQUEST_TYPES as readonly string[]).includes(t);
+}
+
+// custom 결재선 1건당 최대 결재자 수.
+export const MAX_APPROVERS = 5;
+
 type Me = { id: string; role: string; companyId: string };
+
+// custom 결재선 편집용 후보 목록(같은 회사 재직자, 본인 제외). 부서명·사번 포함(표시용).
+export type LineCandidate = { id: string; name: string; employeeNo: string | null; deptName: string | null };
+export async function listApprovalCandidates(companyId: string, excludeUserId: string): Promise<LineCandidate[]> {
+  const users = await prisma.user.findMany({
+    where: { companyId, deactivatedAt: null, id: { not: excludeUserId } },
+    select: { id: true, name: true, employeeNo: true, department: { select: { name: true } } },
+    orderBy: [{ name: "asc" }],
+  });
+  return users.map((u) => ({ id: u.id, name: u.name, employeeNo: u.employeeNo, deptName: u.department?.name ?? null }));
+}
+
+// custom 모드: 저장된 개인 결재선(ApprovalLineTemplate)을 로드해 "실제로 결재 가능한" 결재자 id 순서를 돌려준다.
+//  · 검증: 같은 회사 재직자 + 본인 제외 + 중복 제거 + 순서 보존 + 최대 MAX_APPROVERS.
+//  · 저장 후 결재자가 퇴사(deactivatedAt)했으면 자동으로 건너뛴다. 결과 빈 배열이면 관리자 단일 승인 폴백.
+export async function resolveCustomApprovers(
+  companyId: string,
+  applicantUserId: string,
+  requestType: RequestType,
+): Promise<string[]> {
+  const tpl = await prisma.approvalLineTemplate.findUnique({
+    where: { userId_requestType: { userId: applicantUserId, requestType } },
+    select: { approverIdsCsv: true },
+  });
+  if (!tpl || !tpl.approverIdsCsv.trim()) return [];
+  const raw = tpl.approverIdsCsv.split(",").map((s) => s.trim()).filter(Boolean);
+  return filterActiveApprovers(companyId, applicantUserId, raw);
+}
+
+// 결재자 id 목록을 "현재 유효한" 것만 남긴다: 같은 회사 재직자·본인 제외·중복 제거·순서 보존·상한.
+//  · 저장(saveApprovalLine)·신청(resolveCustomApprovers) 양쪽에서 공용.
+export async function filterActiveApprovers(
+  companyId: string,
+  applicantUserId: string,
+  ids: string[],
+): Promise<string[]> {
+  const uniq: string[] = [];
+  const seen = new Set<string>([applicantUserId]); // 본인 제외
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    uniq.push(id);
+  }
+  if (uniq.length === 0) return [];
+  // 같은 회사 재직자만(퇴사자·타회사 제거).
+  const valid = await prisma.user.findMany({
+    where: { id: { in: uniq }, companyId, deactivatedAt: null },
+    select: { id: true },
+  });
+  const validSet = new Set(valid.map((u) => u.id));
+  return uniq.filter((id) => validSet.has(id)).slice(0, MAX_APPROVERS);
+}
 
 // 신청자의 결재선(결재자 목록)을 계산. 빈 배열이면 결재선 없음(관리자 단일 승인 폴백).
 //  · 반환 각 원소 isFinal=true면 전결권자(그 단계에서 종결). 전결권자를 만나면 배열이 그 사람에서 끝난다.
@@ -29,8 +90,10 @@ export async function resolveApproverChain(
   return buildApprovalChain(applicantUserId, applicantDeptId, map, stepCount).approvers;
 }
 
-// 신청 생성 직후 결재선(ApprovalStep들)을 만든다. deptline이 아니거나 결재자가 없으면 만들지 않는다(=단일 승인).
-//  · 전결권자 단계엔 isFinal=true를 저장(표시·감사용). 동작은 "그 단계가 마지막"이라 기존 완료 판정으로 자연 종결.
+// 신청 생성 직후 결재선(ApprovalStep들)을 만든다. 결재자가 없으면 만들지 않는다(=관리자 단일 승인).
+//  · single: 결재선 없음(관리자 단독).
+//  · deptline: 부서장 자동 결재선(전결권자 단계엔 isFinal 저장).
+//  · custom: 신청자가 종류별로 저장한 개인 결재선(순서대로, 마지막 단계 isFinal). 저장 결재자 퇴사 시 자동 건너뜀.
 export async function createApprovalStepsIfNeeded(
   company: { approvalMode: string; approvalStepCount: number } | null,
   companyId: string,
@@ -39,7 +102,26 @@ export async function createApprovalStepsIfNeeded(
   requestType: RequestType,
   requestId: string,
 ): Promise<void> {
-  if (!company || company.approvalMode !== "deptline") return;
+  if (!company) return;
+
+  // custom: 저장된 개인 결재선을 로드해 단계 생성. 없거나 유효 결재자 0명이면 관리자 단독 승인(단계 미생성).
+  if (company.approvalMode === "custom") {
+    const ids = await resolveCustomApprovers(companyId, applicantUserId, requestType);
+    if (ids.length === 0) return;
+    await prisma.approvalStep.createMany({
+      data: ids.map((uid, i) => ({
+        companyId,
+        requestType,
+        requestId,
+        stepOrder: i + 1,
+        approverUserId: uid,
+        isFinal: i === ids.length - 1, // 마지막 결재자가 최종 확정
+      })),
+    });
+    return;
+  }
+
+  if (company.approvalMode !== "deptline") return;
   const approvers = await resolveApproverChain(companyId, applicantUserId, applicantDeptId, company.approvalStepCount);
   if (approvers.length === 0) return; // 결재자 없음 → 관리자 단일 승인
   await prisma.approvalStep.createMany({

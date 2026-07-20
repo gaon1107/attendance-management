@@ -27,6 +27,7 @@ model Company {
   overtimeRequests OvertimeRequest[]
   businessTripRequests BusinessTripRequest[]
   requestAttachments RequestAttachment[]
+  approvalLineTemplates ApprovalLineTemplate[]
   // 사업장 위치(사무실 출근 GPS 확인용). 안 정하면 위치 확인은 건너뜀.
   officeLat     Float?
   officeLng     Float?
@@ -109,7 +110,7 @@ model Company {
   // ── 결재선(다단계 승인). approvalMode=single이면 기존 단일 관리자 승인(현행 동작). ──
   // deptline이면 부서장 자동 결재선: 신청이 소속 부서장→상위 부서장 순으로 approvalStepCount 단계만큼 타고 올라간다.
   // 부서장 미지정 부서는 관리자 폴백. 원본 신청 status는 전 단계 승인 시에만 approved로 바뀐다(그전엔 pending=미승인).
-  approvalMode      String  @default("single") // "single"(기존) | "deptline"(결재선)
+  approvalMode      String  @default("single") // "single"(기존) | "deptline"(부서장 자동) | "custom"(상신자 종류별 저장 결재선)
   approvalStepCount Int     @default(1)         // 결재 단계 수(1~2 권장, 최대 3 방어)
   approvalSteps     ApprovalStep[]
 }
@@ -185,6 +186,7 @@ model User {
   remoteWorkRequests RemoteWorkRequest[]
   overtimeRequests OvertimeRequest[]
   businessTripRequests BusinessTripRequest[]
+  approvalLineTemplates ApprovalLineTemplate[]
   // 공지(알림)를 마지막으로 확인한 시각. 이 시각 이후 올라온 공지는 "새 알림(NEW)"으로 본다.
   noticesSeenAt  DateTime?
   // 첫 사용 안내(온보딩 투어)를 본 시각. 값이 있으면 다시 띄우지 않는다.
@@ -437,6 +439,25 @@ model RequestAttachment {
   createdAt    DateTime @default(now())
 
   @@index([companyId, requestType, requestId])
+}
+
+// 개인 결재선 템플릿 — 회사가 approvalMode="custom"일 때, 직원이 신청 종류별로 저장해 둔 결재자 순서.
+// ※ 신청 시 이 템플릿을 로드해 ApprovalStep을 자동 생성한다(매번 안 골라도 됨). 종류별 1개(@@unique).
+// ※ approverIdsCsv = 결재자 userId를 순서대로 쉼표 구분("userA,userB" → 1차 A, 2차 B). 최대 5명.
+//    저장 시·신청 시 모두 서버에서 검증(같은 회사·재직·본인 제외·중복 제거). custom 아닌 회사는 미사용.
+model ApprovalLineTemplate {
+  id             String   @id @default(cuid())
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id])
+  userId         String   // 결재선 소유 직원(신청자)
+  user           User     @relation(fields: [userId], references: [id])
+  requestType    String   // "leave" | "correction" | "outing" | "remote" | "overtime" | "trip"
+  approverIdsCsv String   // 결재자 userId 순서(쉼표 구분). 빈 문자열이면 결재자 없음.
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt @default(now())
+
+  @@unique([userId, requestType]) // 직원·종류당 1개
+  @@index([companyId])
 }
 
 // 결재 단계 — 다단계 승인(부서장 결재선)의 각 단계·진행상태.

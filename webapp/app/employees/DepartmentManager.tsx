@@ -121,7 +121,7 @@ export function DepartmentManager({
 }) {
   const [state, formAction, pending] = useActionState(createDepartment, {} as { error?: string; ok?: boolean });
   // 라디오 선택에 따라 단계수 표시를 즉시 바꾸기 위한 로컬 상태(저장 전 미리보기).
-  const [modePreview, setModePreview] = useState(approvalMode === "deptline" ? "deptline" : "single");
+  const [modePreview, setModePreview] = useState(approvalMode === "deptline" ? "deptline" : approvalMode === "custom" ? "custom" : "single");
   const isDeptline = approvalMode === "deptline";
 
   return (
@@ -149,6 +149,12 @@ export function DepartmentManager({
             <input type="radio" name="approvalMode" value="deptline" defaultChecked={modePreview === "deptline"} onChange={() => setModePreview("deptline")} style={{ marginTop: 3 }} />
             <span style={{ fontSize: 13, lineHeight: 1.5 }}>
               <b>부서장 결재선</b> — 신청이 소속 부서장 → 상위 부서장 순서로 올라가 승인 (아래에서 부서마다 부서장 지정)
+            </span>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer" }}>
+            <input type="radio" name="approvalMode" value="custom" defaultChecked={modePreview === "custom"} onChange={() => setModePreview("custom")} style={{ marginTop: 3 }} />
+            <span style={{ fontSize: 13, lineHeight: 1.5 }}>
+              <b>상신자 지정 결재선</b> — 직원이 신청 종류마다 <b>자기 결재선을 한 번 저장</b>하면, 이후 신청은 저장된 순서로 자동 결재 (각 신청 화면의 &ldquo;내 결재선 설정&rdquo;에서 지정)
             </span>
           </label>
         </div>

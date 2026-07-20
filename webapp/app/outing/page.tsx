@@ -6,9 +6,10 @@ import { AppShell } from "@/app/components/AppShell";
 import { OutingRequestForm } from "./OutingRequestForm";
 import { cancelOuting } from "@/app/actions/outing";
 import { outingKindLabel, outingStatusLabel } from "@/lib/outing";
-import { getApprovalProgressMap, type ApprovalProgress } from "@/lib/approval-server";
+import { getApprovalProgressMap, type ApprovalProgress, listApprovalCandidates, resolveCustomApprovers } from "@/lib/approval-server";
 import { getAttachmentsMap } from "@/lib/request-attachment-server";
 import { AttachmentLinks } from "@/app/components/AttachmentLinks";
+import { ApprovalLineEditor } from "@/app/components/ApprovalLineEditor";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
@@ -38,6 +39,11 @@ export default async function OutingPage() {
   // 첨부파일(전체 신청분) — 다운로드 링크 표시용.
   const attMap = await getAttachmentsMap(me.companyId, "outing", requests.map((r) => r.id));
 
+  // custom(상신자 지정) 모드면 "내 결재선 설정" 노출.
+  const isCustom = me.company.approvalMode === "custom";
+  const candidates = isCustom ? await listApprovalCandidates(me.companyId, me.id) : [];
+  const currentLine = isCustom ? await resolveCustomApprovers(me.companyId, me.id, "outing") : [];
+
   // 처리(승인/반려)된 신청의 처리자 이름 — 결정사유와 함께 "누가" 표시. (한 번에 조회)
   const deciderIds = [...new Set(requests.map((r) => r.decidedById).filter((v): v is string => !!v))];
   const deciderName = new Map<string, string>(
@@ -51,6 +57,7 @@ export default async function OutingPage() {
 
   return (
     <AppShell user={me} active="outing" title="외출/외근" subtitle={`${me.name} 님`}>
+      {isCustom && <ApprovalLineEditor requestType="outing" typeLabel="외출/외근" candidates={candidates} current={currentLine} />}
       {/* PC=2단(신청 폼 | 내역), 좁은 화면=세로 */}
       <div className="split-2">
       {/* 신청 폼 */}

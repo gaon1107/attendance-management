@@ -64,7 +64,8 @@ export async function saveApprovalMode(formData: FormData): Promise<void> {
   if (!me || me.role !== "admin") return;
 
   const mode = String(formData.get("approvalMode") ?? "single");
-  const approvalMode = mode === "deptline" ? "deptline" : "single"; // 화이트리스트
+  // 화이트리스트: single(기본) | deptline(부서장 자동) | custom(상신자 종류별 저장 결재선)
+  const approvalMode = mode === "deptline" ? "deptline" : mode === "custom" ? "custom" : "single";
   let count = parseInt(String(formData.get("approvalStepCount") ?? "1"), 10);
   if (!Number.isFinite(count)) count = 1;
   const approvalStepCount = Math.max(1, Math.min(count, 3)); // 방어: 1~3

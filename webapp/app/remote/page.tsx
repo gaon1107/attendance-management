@@ -6,9 +6,10 @@ import { AppShell } from "@/app/components/AppShell";
 import { RemoteRequestForm } from "./RemoteRequestForm";
 import { cancelRemote } from "@/app/actions/remote";
 import { remoteStatusLabel, remoteRangeLabel } from "@/lib/remote";
-import { getApprovalProgressMap, type ApprovalProgress } from "@/lib/approval-server";
+import { getApprovalProgressMap, type ApprovalProgress, listApprovalCandidates, resolveCustomApprovers } from "@/lib/approval-server";
 import { getAttachmentsMap } from "@/lib/request-attachment-server";
 import { AttachmentLinks } from "@/app/components/AttachmentLinks";
+import { ApprovalLineEditor } from "@/app/components/ApprovalLineEditor";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
@@ -36,6 +37,10 @@ export default async function RemotePage() {
 
   const attMap = await getAttachmentsMap(me.companyId, "remote", requests.map((r) => r.id));
 
+  const isCustom = me.company.approvalMode === "custom";
+  const candidates = isCustom ? await listApprovalCandidates(me.companyId, me.id) : [];
+  const currentLine = isCustom ? await resolveCustomApprovers(me.companyId, me.id, "remote") : [];
+
   const deciderIds = [...new Set(requests.map((r) => r.decidedById).filter((v): v is string => !!v))];
   const deciderName = new Map<string, string>(
     deciderIds.length
@@ -48,6 +53,7 @@ export default async function RemotePage() {
 
   return (
     <AppShell user={me} active="remote" title="재택근무" subtitle={`${me.name} 님`}>
+      {isCustom && <ApprovalLineEditor requestType="remote" typeLabel="재택근무" candidates={candidates} current={currentLine} />}
       <div className="split-2">
       {/* 신청 폼 */}
       <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>

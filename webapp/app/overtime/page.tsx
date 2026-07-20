@@ -6,9 +6,10 @@ import { AppShell } from "@/app/components/AppShell";
 import { OvertimeRequestForm } from "./OvertimeRequestForm";
 import { cancelOvertime } from "@/app/actions/overtime";
 import { overtimeStatusLabel, overtimeTimeLabel } from "@/lib/overtime-request";
-import { getApprovalProgressMap, type ApprovalProgress } from "@/lib/approval-server";
+import { getApprovalProgressMap, type ApprovalProgress, listApprovalCandidates, resolveCustomApprovers } from "@/lib/approval-server";
 import { getAttachmentsMap } from "@/lib/request-attachment-server";
 import { AttachmentLinks } from "@/app/components/AttachmentLinks";
+import { ApprovalLineEditor } from "@/app/components/ApprovalLineEditor";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
@@ -36,6 +37,10 @@ export default async function OvertimePage() {
 
   const attMap = await getAttachmentsMap(me.companyId, "overtime", requests.map((r) => r.id));
 
+  const isCustom = me.company.approvalMode === "custom";
+  const candidates = isCustom ? await listApprovalCandidates(me.companyId, me.id) : [];
+  const currentLine = isCustom ? await resolveCustomApprovers(me.companyId, me.id, "overtime") : [];
+
   const deciderIds = [...new Set(requests.map((r) => r.decidedById).filter((v): v is string => !!v))];
   const deciderName = new Map<string, string>(
     deciderIds.length
@@ -48,6 +53,7 @@ export default async function OvertimePage() {
 
   return (
     <AppShell user={me} active="overtime" title="초과근무 신청" subtitle={`${me.name} 님`}>
+      {isCustom && <ApprovalLineEditor requestType="overtime" typeLabel="초과근무" candidates={candidates} current={currentLine} />}
       <div className="split-2">
       {/* 신청 폼 */}
       <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>

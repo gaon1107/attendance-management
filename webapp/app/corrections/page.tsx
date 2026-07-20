@@ -6,7 +6,8 @@ import { AppShell } from "@/app/components/AppShell";
 import { CorrectionRequestForm } from "./CorrectionRequestForm";
 import { cancelCorrection } from "@/app/actions/corrections";
 import { correctionStatusLabel } from "@/lib/corrections";
-import { getApprovalProgressMap, type ApprovalProgress } from "@/lib/approval-server";
+import { getApprovalProgressMap, type ApprovalProgress, listApprovalCandidates, resolveCustomApprovers } from "@/lib/approval-server";
+import { ApprovalLineEditor } from "@/app/components/ApprovalLineEditor";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
@@ -40,6 +41,10 @@ export default async function CorrectionsPage() {
       : []
   );
 
+  const isCustom = me.company.approvalMode === "custom";
+  const candidates = isCustom ? await listApprovalCandidates(me.companyId, me.id) : [];
+  const currentLine = isCustom ? await resolveCustomApprovers(me.companyId, me.id, "correction") : [];
+
   const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 16px", whiteSpace: "nowrap" };
   const td: React.CSSProperties = { padding: "12px 16px", fontSize: 14, verticalAlign: "middle" };
 
@@ -52,6 +57,7 @@ export default async function CorrectionsPage() {
 
   return (
     <AppShell user={me} active="corrections" title="근태 정정" subtitle={`${me.name} 님`}>
+      {isCustom && <ApprovalLineEditor requestType="correction" typeLabel="근태 정정" candidates={candidates} current={currentLine} />}
       {/* PC=2단(요청 폼 | 내역), 좁은 화면=세로 */}
       <div className="split-2">
       {/* 요청 폼 */}

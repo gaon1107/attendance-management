@@ -6,9 +6,10 @@ import { AppShell } from "@/app/components/AppShell";
 import { TripRequestForm } from "./TripRequestForm";
 import { cancelTrip } from "@/app/actions/trip";
 import { tripStatusLabel, tripRangeLabel } from "@/lib/trip";
-import { getApprovalProgressMap, type ApprovalProgress } from "@/lib/approval-server";
+import { getApprovalProgressMap, type ApprovalProgress, listApprovalCandidates, resolveCustomApprovers } from "@/lib/approval-server";
 import { getAttachmentsMap } from "@/lib/request-attachment-server";
 import { AttachmentLinks } from "@/app/components/AttachmentLinks";
+import { ApprovalLineEditor } from "@/app/components/ApprovalLineEditor";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
@@ -36,6 +37,10 @@ export default async function TripPage() {
 
   const attMap = await getAttachmentsMap(me.companyId, "trip", requests.map((r) => r.id));
 
+  const isCustom = me.company.approvalMode === "custom";
+  const candidates = isCustom ? await listApprovalCandidates(me.companyId, me.id) : [];
+  const currentLine = isCustom ? await resolveCustomApprovers(me.companyId, me.id, "trip") : [];
+
   const deciderIds = [...new Set(requests.map((r) => r.decidedById).filter((v): v is string => !!v))];
   const deciderName = new Map<string, string>(
     deciderIds.length
@@ -48,6 +53,7 @@ export default async function TripPage() {
 
   return (
     <AppShell user={me} active="trip" title="출장" subtitle={`${me.name} 님`}>
+      {isCustom && <ApprovalLineEditor requestType="trip" typeLabel="출장" candidates={candidates} current={currentLine} />}
       <div className="split-2">
       {/* 신청 폼 */}
       <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
