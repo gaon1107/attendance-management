@@ -1,43 +1,34 @@
-# Research: 결재선 2차 — 전결(전결권자 지정) (2026-07-20)
+# Research: 결재이력 날짜필터 수정(저비용 2건) (2026-07-21)
 
-> 범위(사장님 확정): **B. 전결권자 지정 방식** + **휴가·근태정정 둘 다**. 조건별·자동에스컬레이션은 이번 범위 제외(별도 조각).
-> 작업 위치: **메인 저장소 master**(직전 교대 정리와 동일 라인).
-
-## 전결이란(이 시스템에서의 정의)
-- 결재선은 **신청자 부서장(1단계) → 상위 부서장(2단계) → …** 순으로 아래→위로 올라간다(`buildApprovalChain`).
-- **전결권자** = 관리자가 부서에 "이 부서장은 전결권자"라고 미리 지정한 사람. 결재선이 그 사람까지 오면 **그 사람의 승인이 최종** — 상위로 올라가지 않고 종결.
-- 한국 전결규정에 충실: 전결권자는 보통 낮은 단계(직속 부서장)라, 그 선에서 끝내 상위를 거치지 않게 한다.
+## 배경
+관리자 [결재이력] 화면(감사·내부통제 조회용)의 code-reviewer 지적 2건(미반영, 치명 아님):
+- **①비제어 select 뒤로가기 어긋남**: 유형·상태·직원 드롭다운이 `defaultValue`(비제어)라, 브라우저 **뒤로/앞으로** 이동 시 URL·결과는 바뀌는데 드롭다운 표시는 마지막 선택값에 머물러 **표시와 실제 결과가 불일치**. 감사 화면이라 신뢰성 문제.
+- **②기본기간 '이번 달' 조용히 숨김**: 기간 미지정 시 기본이 '이번 달'이라, 과거 이력이 화면 어디에도 안내 없이 **조용히 제외**됨. 감사 화면에서 위험.
 
 ## 관련 파일과 역할
-- `webapp/lib/approval.ts` — 순수함수. `buildApprovalChain`(결재자 배열 산출), `DeptNode`, `ApprovalChain`, `nextPendingStep`/`isChainComplete`/`isChainRejected`. **핵심 수정 대상.**
-- `webapp/lib/approval-server.ts` — DB 로직. `resolveApproverChain`(부서 조회→buildApprovalChain), `createApprovalStepsIfNeeded`(ApprovalStep 생성), `advanceApproval`(단계 진행), `getApprovalProgressMap`/`listMyApprovals`(표시). **수정 대상.**
-- `webapp/app/actions/departments.ts` — `saveDepartmentApproval`(부서장·상위부서·대결자 저장). **전결권자 저장 추가 지점.**
-- `webapp/app/employees/DepartmentManager.tsx` — 부서 결재설정 폼(`DeptApprovalRow`). **전결권자 체크박스 UI 추가 지점.**
-- `webapp/app/employees/page.tsx` — 부서 데이터 로드(`department.findMany`는 select 없이 전체 → finalApproval 자동 포함). `deptData` map에 필드 추가만.
-- `webapp/prisma/schema.prisma` — `Department`(336), `ApprovalStep`(317). **add-only 필드 추가.**
-- 진행표시 소비처: `leave/page.tsx`, `leave/approvals/page.tsx`, `corrections/page.tsx`, `corrections/approvals/page.tsx`(모두 `getApprovalProgressMap` 사용). 결재함 `app/approvals/page.tsx`(`listMyApprovals`).
+- `webapp/app/approval-history/page.tsx` — 서버 컴포넌트. searchParams(type/status/userId/from/to) 파싱 → 기본기간=이번 달 계산 → `listApprovalHistory` 조회 → 표 렌더. 필터바에 `ApprovalHistoryFilters` 렌더.
+- `webapp/app/approval-history/ApprovalHistoryFilters.tsx` — **클라이언트** 필터바. 문제의 `<select defaultValue=...>` 3개 + 공통 `RangeCalendar`. onChange→`router.push`.
+- `webapp/lib/approval-history.ts` — 조회 로직. `HistoryFilter.from/to`가 **null/undefined면 createdAt 범위 필터를 아예 안 걸어 전체 기간 조회**(84~86행). → "전체 기간" 구현 가능(별도 스키마·쿼리 변경 불필요).
+- `webapp/app/components/RangeCalendar.tsx` — **공통 컴포넌트**(여러 화면 사용). 버튼 표시는 `from/to` prop을 직접 사용 → prop 바뀌면 즉시 갱신되어 **뒤로가기 어긋남 없음**. → **건드리지 않음**.
 
-## 🔴 영향 범위 (수정 대상을 사용하는 모든 곳) — 전수 추적 결과
-- `buildApprovalChain` 호출처: **`resolveApproverChain` 1곳뿐**(lib/approval-server.ts:24, `.approverUserIds` 참조).
-- `resolveApproverChain` 호출처: **`createApprovalStepsIfNeeded` 1곳뿐**(내부).
-- `createApprovalStepsIfNeeded` 호출처: `leave.ts:66`, `corrections.ts:44` — **둘 다 인자 무변경**(전결은 체인 내부에서 처리되므로 이 두 액션은 손대지 않음).
-- ⇒ 체인 반환 타입을 바꿔도 **lib/approval.ts + lib/approval-server.ts 안에서만** 파급. 신청 생성 경로 무변경 = 회귀 위험 낮음.
+## 🔴 영향 범위 (수정 대상을 사용하는 모든 곳)
+- `ApprovalHistoryFilters` import처: **`app/approval-history/page.tsx` 단 1곳**(전수 확인). 페이지 전용 컴포넌트 → 격리됨.
+- 비제어 `select defaultValue + router.push` 패턴: 전 webapp에서 **이 파일(ApprovalHistoryFilters.tsx) 3곳뿐**(grep 전수). 다른 화면 영향 없음.
+- `listApprovalHistory` 시그니처 변경 **없음**(from/to에 null을 넘기는 것은 기존에 이미 허용된 입력).
 
 ## 공통 모듈 여부 / 건드리면 안 되는 부분
-- `buildApprovalChain`은 순수함수지만 호출처가 1개라 사실상 격리됨 → safe-coding 관점에서도 저위험.
-- **건드리면 안 됨**: `advanceApproval`의 승인/반려/멱등복구 로직 골격(전결은 "체인이 전결권자에서 끝난다"로 자연 처리되므로 advanceApproval 특수분기 불필요), 원본 status는 체인 완료 시에만 approved(원칙 A, 소비처 9곳 회귀 0).
+- **RangeCalendar = 공통 모듈** → 수정 대상 아님(표시 로직 이미 안전). safe-coding 절차 불필요(안 건드림).
+- **listApprovalHistory = 공통 조회** → 시그니처·쿼리 무변경, null 입력만 활용.
+- 수정 범위는 **페이지 전용 파일 2개**(page.tsx, ApprovalHistoryFilters.tsx)로 한정.
 
 ## DB·API 변경 여부, 위험 요소
-- **schema add-only 2필드**(둘 다 `@default(false)` → 기존 행 자동 false = 무영향):
-  - `Department.finalApproval Boolean @default(false)` — 전결권자 지정.
-  - `ApprovalStep.isFinal Boolean @default(false)` — 이 단계가 전결 종결 단계인지(표시·감사용).
-- 마이그레이션 1건 추가(migrate dev). 기존 deptline 회사: finalApproval 전부 false → `buildApprovalChain`이 조기 종결 안 함 → **체인 동일 = 회귀 0**.
-- 동시성: 기존 트랜잭션·멱등 구조 유지. N+1 없음.
-- 테넌트 격리: departments 조회·저장 모두 companyId 스코프(기존 유지).
+- **DB/스키마 변경 없음.** 마이그레이션 없음.
+- **API·서버액션 변경 없음.** URL searchParams만 추가(`all=1` 전체기간 플래그, add-only·기존 URL 호환).
+- **회사격리**: 기존 `listApprovalHistory`의 companyId 격리 그대로. 필터 파라미터만 조정 → 격리 무영향.
+- 위험: 낮음. "전체 기간"은 상한 300건(HISTORY_LIMIT)이 그대로 걸려 대량조회 폭주 없음.
 
 ## 결론 (계획 시 고려사항)
-1. **핵심 메커니즘 = 체인 조기 종결(truncation)**: `buildApprovalChain`이 전결권자를 결재자로 추가하면 그 지점에서 상위 탐색을 멈춘다. 그 사람이 마지막 단계가 되어, 기존 `isChainComplete`가 그의 승인을 완료로 판정 → **advanceApproval 특수 분기 불필요**(가장 안전).
-2. 전결권자가 **신청자 본인**이면 자기결재 방지로 추가 안 됨 → 종결 안 하고 상위로 계속(엣지 자연 처리). "실제로 전결권자를 추가했을 때만 종결"이 핵심.
-3. `ApprovalStep.isFinal`은 생성 시 마지막(전결) 단계에만 true → "전결" 배지·감사표시용. 없어도 동작은 되지만, 조기종결 체인과 일반 1단계 체인을 구분하려면 필요.
-4. 표시(전결 배지)는 소비처가 많아 **핵심 동작 우선, 표시는 최소**로. 관리자 설정(전결권자 지정·현재저장 표시)은 필수, 신청자/결재함 배지는 경량 추가.
-5. 반환 타입 변경(`approverUserIds: string[]` → `approvers: {userId, isFinal}[]`)은 호출처 2곳(내부)만 손보면 됨.
+1. **①비제어→제어**: 3개 select를 `value={...}`(제어형)로 전환. onChange는 그대로 router.push. 서버가 새 prop을 내려주면 표시=실제결과 항상 일치.
+2. **②조용한 숨김 해소**: (a) 결과 헤더에 **현재 조회 기간을 명시**(전체 기간이면 "전체 기간") + (b) 필터바에 **"전체 기간" 버튼** 추가(URL `all=1` → from/to null → 전체 조회).
+3. `build()`에 `all` 상태 반영: 다른 필터(유형/상태/직원) 변경 시 현재 기간 모드(이번달/특정범위/전체) 유지. 달력 적용 시 all 해제.
+4. 검증: tsc·eslint 0 + 임시라우트(build URL 조합·전체기간 null 조회) + 실화면(뒤로가기 표시 일치·전체기간 조회) + code-reviewer.
