@@ -4,6 +4,8 @@
 import { useMemo, useState } from "react";
 import { RangeCalendarNav } from "@/app/components/RangeCalendarNav";
 import { SearchBox } from "@/app/components/SearchBox";
+import { TablePagination } from "@/app/components/TablePagination";
+import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
 import { markSecurityChecked } from "@/app/actions/security-alerts";
 
@@ -67,6 +69,8 @@ export function AlertsClient({
     if (!terms.length) return byKind;
     return byKind.filter((r) => matchesTerms([r.title, r.detail, r.who, r.ip].join(" ").toLowerCase(), terms));
   }, [rows, q, kindKey]);
+  // 표만 페이징. 검색어·동작필터·기간 바뀌면 1페이지로.
+  const pg = usePagination(shown, { initialSize: 100, resetKey: `${q}|${kindKey}|${from}|${to}` });
 
   const highCount = rows.filter((r) => r.level === "high").length;
 
@@ -175,7 +179,7 @@ export function AlertsClient({
               </tr>
             </thead>
             <tbody>
-              {shown.length === 0 ? (
+              {pg.view.length === 0 ? (
                 <tr>
                   <td colSpan={5} style={{ padding: "36px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center", lineHeight: 1.7 }}>
                     {rows.length === 0 ? (
@@ -190,7 +194,7 @@ export function AlertsClient({
                   </td>
                 </tr>
               ) : (
-                shown.map((r) => {
+                pg.view.map((r) => {
                   const st = LEVEL_STYLE[r.level];
                   return (
                     <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6", background: r.isNew ? "#FFFBEB" : undefined }}>
@@ -224,6 +228,7 @@ export function AlertsClient({
             </tbody>
           </table>
         </div>
+        <TablePagination pg={pg} />
       </section>
 
       <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 12, lineHeight: 1.7 }}>

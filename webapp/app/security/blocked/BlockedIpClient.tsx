@@ -4,6 +4,8 @@
 //  · 폼이 넓어 어색하지 않도록 .split-2 2단 배치(디자인룰 §2).
 import { useActionState, useEffect, useState } from "react";
 import { addBlockedIp, removeBlockedIp } from "@/app/actions/ip-block";
+import { TablePagination } from "@/app/components/TablePagination";
+import { usePagination } from "@/app/components/usePagination";
 
 export type BlockedRow = {
   id: string;
@@ -43,6 +45,9 @@ export function BlockedIpClient({
   // 후보 [차단] 클릭 시 폼에 채워 넣기 위한 제어 상태
   const [pattern, setPattern] = useState("");
   const [reason, setReason] = useState("");
+  // 후보·차단명단 표 각각 페이징(검색 없음 — 길면 페이지로만 나눔).
+  const pgC = usePagination(candidates, { initialSize: 100 });
+  const pgB = usePagination(rows, { initialSize: 100 });
 
   // 저장에 성공하면 입력칸을 비운다 — 안 비우면 연타 시 "이미 차단 목록에 있는 IP" 에러가 뜬다.
   useEffect(() => {
@@ -145,14 +150,14 @@ export function BlockedIpClient({
                 </tr>
               </thead>
               <tbody>
-                {candidates.length === 0 ? (
+                {pgC.view.length === 0 ? (
                   <tr>
                     <td colSpan={4} style={{ padding: "24px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                       수상한 IP가 없습니다.
                     </td>
                   </tr>
                 ) : (
-                  candidates.map((c) => (
+                  pgC.view.map((c) => (
                     <tr key={c.ip} style={{ borderBottom: "1px solid #F3F4F6" }}>
                       <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>
                         {c.ip}
@@ -183,6 +188,7 @@ export function BlockedIpClient({
               </tbody>
             </table>
           </div>
+          <TablePagination pg={pgC} />
         </section>
       </div>
 
@@ -203,14 +209,14 @@ export function BlockedIpClient({
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 ? (
+              {pgB.view.length === 0 ? (
                 <tr>
                   <td colSpan={5} style={{ padding: "28px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     차단 중인 IP가 없습니다.
                   </td>
                 </tr>
               ) : (
-                rows.map((r) => (
+                pgB.view.map((r) => (
                   <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                     <td style={{ ...td, fontWeight: 700, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
                       {r.pattern}
@@ -240,6 +246,7 @@ export function BlockedIpClient({
             </tbody>
           </table>
         </div>
+        <TablePagination pg={pgB} />
       </section>
     </div>
   );

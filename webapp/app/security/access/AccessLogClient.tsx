@@ -4,6 +4,8 @@
 import { useMemo, useState } from "react";
 import { RangeCalendarNav } from "@/app/components/RangeCalendarNav";
 import { SearchBox } from "@/app/components/SearchBox";
+import { TablePagination } from "@/app/components/TablePagination";
+import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
 
 export type AccessRow = {
@@ -78,6 +80,8 @@ export function AccessLogClient({
     if (!terms.length) return byKind;
     return byKind.filter((r) => matchesTerms(r.search, terms));
   }, [rows, q, kindKey]);
+  // 표만 페이징(KPI는 shown 전체 기준 유지). 검색어·동작필터·기간 바뀌면 1페이지로.
+  const pg = usePagination(shown, { initialSize: 100, resetKey: `${q}|${kindKey}|${from}|${to}` });
 
   // KPI는 "화면에 보이는" 기준(기간·동작필터·검색 반영).
   const officeCount = shown.filter((r) => r.net === "office").length;
@@ -186,14 +190,14 @@ export function AccessLogClient({
               </tr>
             </thead>
             <tbody>
-              {shown.length === 0 ? (
+              {pg.view.length === 0 ? (
                 <tr>
                   <td colSpan={8} style={{ padding: "28px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {rows.length === 0 ? "이 기간에 접속 기록이 없습니다." : "검색 결과가 없습니다."}
                   </td>
                 </tr>
               ) : (
-                shown.map((r) => {
+                pg.view.map((r) => {
                   const n = NET_STYLE[r.net];
                   const s = RESULT_STYLE[r.result] ?? RESULT_STYLE.success;
                   return (
@@ -230,6 +234,7 @@ export function AccessLogClient({
             </tbody>
           </table>
         </div>
+        <TablePagination pg={pg} />
       </section>
     </div>
   );

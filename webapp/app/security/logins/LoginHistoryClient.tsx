@@ -4,6 +4,8 @@
 import { useMemo, useState } from "react";
 import { RangeCalendarNav } from "@/app/components/RangeCalendarNav";
 import { SearchBox } from "@/app/components/SearchBox";
+import { TablePagination } from "@/app/components/TablePagination";
+import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
 
 export type LoginRow = {
@@ -54,6 +56,8 @@ export function LoginHistoryClient({
     if (!terms.length) return rows;
     return rows.filter((r) => matchesTerms(r.search, terms));
   }, [rows, q]);
+  // 표만 페이징(KPI는 shown 전체 기준 유지). 검색어·기간 바뀌면 1페이지로.
+  const pg = usePagination(shown, { initialSize: 100, resetKey: `${q}|${from}|${to}` });
 
   // KPI는 "화면에 보이는" 기준(검색 반영).
   const okCount = shown.filter((r) => r.kind === "login").length;
@@ -120,14 +124,14 @@ export function LoginHistoryClient({
               </tr>
             </thead>
             <tbody>
-              {shown.length === 0 ? (
+              {pg.view.length === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ padding: "28px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {rows.length === 0 ? "이 기간에 접속 기록이 없습니다." : "검색 결과가 없습니다."}
                   </td>
                 </tr>
               ) : (
-                shown.map((r) => {
+                pg.view.map((r) => {
                   const s = RESULT_STYLE[r.result] ?? RESULT_STYLE.success;
                   return (
                     <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
@@ -156,6 +160,7 @@ export function LoginHistoryClient({
             </tbody>
           </table>
         </div>
+        <TablePagination pg={pg} />
       </section>
     </div>
   );
