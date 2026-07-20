@@ -32,14 +32,18 @@ export async function saveApprovalLine(
   if (company?.approvalMode !== "custom") return { error: "이 회사의 결재방식이 아닙니다." };
 
   const raw = String(formData.get("approverIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  // 유효 결재자만(같은 회사·재직·본인 제외·중복 제거·최대 5명).
+  // 유효 결재자만(같은 부서·재직·본인 제외·중복 제거·최대 5명).
   const ids = await filterActiveApprovers(me.companyId, me.id, raw);
 
   if (ids.length === 0) {
-    // 빈 결재선 = 미설정으로 되돌림(있으면 삭제).
-    await prisma.approvalLineTemplate.deleteMany({ where: { userId: me.id, requestType } });
-    revalidatePath(PATH[requestType]);
-    return { ok: true };
+    if (raw.length === 0) {
+      // 아무도 안 골랐으면 = 미설정으로 되돌림(있으면 삭제).
+      await prisma.approvalLineTemplate.deleteMany({ where: { companyId: me.companyId, userId: me.id, requestType } });
+      revalidatePath(PATH[requestType]);
+      return { ok: true };
+    }
+    // 골랐는데 전부 무효(같은 부서 아님·퇴사 등) → 실수/위조. 조용히 지우지 않고 알린다.
+    return { error: "같은 부서 직원만 결재자로 지정할 수 있습니다. 화면을 새로고침해 다시 선택해주세요." };
   }
 
   const csv = ids.join(",");

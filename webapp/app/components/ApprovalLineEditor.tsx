@@ -46,6 +46,7 @@ export function ApprovalLineEditor({
       <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>내 {typeLabel} 결재선</div>
       <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 14, lineHeight: 1.6 }}>
         결재자를 순서대로 정해 저장하면, 이후 {typeLabel} 신청은 <b>이 순서대로 자동 결재</b>됩니다. (최대 {MAX}명, 언제든 수정 가능)
+        <br />※ 결재자는 <b>같은 부서 직원</b> 중에서만 지정할 수 있습니다.
       </p>
 
       {/* 현재 결재선 */}
@@ -70,8 +71,15 @@ export function ApprovalLineEditor({
         </div>
       )}
 
+      {/* 같은 부서에 지정할 동료가 없을 때 */}
+      {candidates.length === 0 && (
+        <div style={{ fontSize: 13, color: "var(--text-sub)", padding: "10px 12px", background: "var(--bg)", borderRadius: 8, marginBottom: 12 }}>
+          같은 부서에 결재자로 지정할 수 있는 직원이 없습니다. 이 경우 신청은 <b>관리자 단독 승인</b>으로 처리됩니다.
+        </div>
+      )}
+
       {/* 결재자 추가 */}
-      {ids.length < MAX && (
+      {candidates.length > 0 && ids.length < MAX && (
         <select
           value=""
           onChange={(e) => { add(e.target.value); e.target.value = ""; }}

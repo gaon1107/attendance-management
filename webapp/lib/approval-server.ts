@@ -22,11 +22,18 @@ export const MAX_APPROVERS = 5;
 
 type Me = { id: string; role: string; companyId: string };
 
-// custom 결재선 편집용 후보 목록(같은 회사 재직자, 본인 제외). 부서명·사번 포함(표시용).
+// custom 결재선 편집용 후보 목록 — 신청자와 "같은 부서" 재직자만(본인 제외). 부서명·사번 포함(표시용).
+//  · 내부통제: 동료가 아닌 사람/타부서를 결재자로 못 고르게 후보 자체를 같은 부서로 제한(상호승인·부적절 지정 방지).
+//  · 신청자가 부서 미배정이면 후보 0명 → 결재선 설정 불가(신청은 관리자 단독 승인으로 폴백).
 export type LineCandidate = { id: string; name: string; employeeNo: string | null; deptName: string | null };
 export async function listApprovalCandidates(companyId: string, excludeUserId: string): Promise<LineCandidate[]> {
+  const me = await prisma.user.findFirst({
+    where: { id: excludeUserId, companyId },
+    select: { departmentId: true },
+  });
+  if (!me?.departmentId) return []; // 부서 미배정 → 같은 부서원 없음
   const users = await prisma.user.findMany({
-    where: { companyId, deactivatedAt: null, id: { not: excludeUserId } },
+    where: { companyId, deactivatedAt: null, id: { not: excludeUserId }, departmentId: me.departmentId },
     select: { id: true, name: true, employeeNo: true, department: { select: { name: true } } },
     orderBy: [{ name: "asc" }],
   });
@@ -50,8 +57,10 @@ export async function resolveCustomApprovers(
   return filterActiveApprovers(companyId, applicantUserId, raw);
 }
 
-// 결재자 id 목록을 "현재 유효한" 것만 남긴다: 같은 회사 재직자·본인 제외·중복 제거·순서 보존·상한.
-//  · 저장(saveApprovalLine)·신청(resolveCustomApprovers) 양쪽에서 공용.
+// 결재자 id 목록을 "현재 유효한" 것만 남긴다: 신청자와 같은 부서 재직자·본인 제외·중복 제거·순서 보존·상한.
+//  · 저장(saveApprovalLine)·신청(resolveCustomApprovers) 양쪽에서 공용 → 같은 부서 규칙이 선택·실행 모두에 강제된다.
+//  · 내부통제: 후보 화면(listApprovalCandidates)과 동일하게 "같은 부서"로 못박아, 폼 위조로 타부서 지정하는 것도 차단.
+//  · 신청자 부서 미배정이면 유효 결재자 0명 → 관리자 단독 승인 폴백. 저장 후 결재자가 퇴사/부서이동하면 자동 제외.
 export async function filterActiveApprovers(
   companyId: string,
   applicantUserId: string,
@@ -65,9 +74,15 @@ export async function filterActiveApprovers(
     uniq.push(id);
   }
   if (uniq.length === 0) return [];
-  // 같은 회사 재직자만(퇴사자·타회사 제거).
+  // 신청자의 부서(같은 부서 규칙의 기준). 부서 미배정이면 결재선 구성 불가.
+  const applicant = await prisma.user.findFirst({
+    where: { id: applicantUserId, companyId },
+    select: { departmentId: true },
+  });
+  if (!applicant?.departmentId) return [];
+  // 같은 회사·재직·같은 부서인 결재자만 남긴다(퇴사자·타회사·타부서 제거).
   const valid = await prisma.user.findMany({
-    where: { id: { in: uniq }, companyId, deactivatedAt: null },
+    where: { id: { in: uniq }, companyId, deactivatedAt: null, departmentId: applicant.departmentId },
     select: { id: true },
   });
   const validSet = new Set(valid.map((u) => u.id));
