@@ -8,7 +8,15 @@
 
 ### 🎯 진행 중(사장님 지시): 전자결재 확장 — "근태 결재 세트" (5개 순차 개발, 각 구현+검수+커밋)
 > 사장님이 전자결재 필수기능 리스트를 주심. **기존 결재선 엔진(ApprovalStep·advanceApproval·결재함·진행표시·반려사유·전결) 재활용**해 새 신청유형을 붙이는 방향으로 합의. 순서: ①외출/외근 ②재택 ③초과근무 사전신청 ④출장 ⑤첨부파일.
-> **진행률: 2/5 완료.** 각 유형은 leave/corrections 패턴 + createApprovalStepsIfNeeded 훅 복제 + 공통 3곳(listMyApprovals·countMyPendingApprovals·approvals/page.tsx TYPE_META) add-only 확장. **알림센터·대시보드 대기카드도 유형마다 확장(single 대칭).**
+> **진행률: 3/5 완료.** 각 유형은 leave/corrections 패턴 + createApprovalStepsIfNeeded 훅 복제 + 공통 3곳(listMyApprovals·countMyPendingApprovals·approvals/page.tsx TYPE_META) add-only 확장. **알림센터·대시보드 대기카드도 유형마다 확장(single 대칭).**
+
+#### ✅ ③초과근무(야근) 사전신청 — 완료(2026-07-20, 커밋 d190c4f, 미푸시)
+> 직원 [초과근무] 메뉴에서 야근 예정일·시간대(자정넘김 허용)·사유 신청 → 승인. 승인=허가 기록만, **기존 주52 계산(lib/overtime.ts)과 완전 분리**. 새 표 `OvertimeRequest`. 새 파일은 `lib/overtime-request.ts`(이름충돌 회피).
+- RequestType += overtime. 자정넘김 표시(`22:00~익일 02:00`). 알림·대시보드 대기카드 반영.
+- **검증**: tsc·eslint 0 / **임시라우트 14/14 PASS**(자정넘김 라벨·deptline 라운드트립·single 폴백·반려·**4종 결재함 공존 회귀0**·취소정리, 잔존0).
+- **code-reviewer 치명·중간 0**(주52 무접촉·자정넘김 일관성·격리·cascade·동시성 전부 통과). 경미(역순시각 무경고 등)는 형제와 동일 기존한계=보고만.
+- ⚠️ **실화면 육안검증 남음(사장님 세션)**.
+- 🔜 다음: **④출장 신청**(기록만, 결정 불필요) → **⑤첨부파일**.
 
 #### ✅ ②재택근무 신청 — 완료(2026-07-20, 커밋 00d86fd·a4e6e23, 미푸시)
 > 직원 [재택] 메뉴에서 **기간(시작~종료)**·사유 신청 → 관리자/부서장 결재선 승인. 승인=허가 기록만. 새 표 `RemoteWorkRequest`(add-only).
