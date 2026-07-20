@@ -88,9 +88,15 @@ export function ApprovalHistoryFilters({
 
       <label style={{ display: "flex", flexDirection: "column", gap: 4, ...capStyle }}>
         신청 기간
-        {/* 특정 범위 선택 시 all 해제(from/to로 조회). 전체 기간이면 버튼에 안내 배지. */}
+        {/* 특정 범위 선택 시 all 해제(from/to로 조회). 전체 기간이면 달력을 흐리게(범위필터 미적용 표시)하고 '전체 기간' 버튼을 강조.
+            흐려도 클릭은 가능 — 달력에서 범위를 고르면 range 모드로 전환된다. */}
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <RangeCalendar from={from} to={to} todayISO={todayISO} onApply={(f, t) => router.push(build({ from: f, to: t, all: false }))} />
+          <span
+            style={{ opacity: allPeriod ? 0.45 : 1 }}
+            title={allPeriod ? "전체 기간 조회 중 — 날짜를 고르면 기간 조회로 전환됩니다" : undefined}
+          >
+            <RangeCalendar from={from} to={to} todayISO={todayISO} onApply={(f, t) => router.push(build({ from: f, to: t, all: false }))} />
+          </span>
           <button
             type="button"
             onClick={() => router.push(build({ all: true }))}
