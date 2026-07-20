@@ -115,7 +115,9 @@ export async function createApprovalStepsIfNeeded(
         requestId,
         stepOrder: i + 1,
         approverUserId: uid,
-        isFinal: i === ids.length - 1, // 마지막 결재자가 최종 확정
+        // custom은 "전결"(대리 종결권) 개념이 아니라 순번 결재다 → isFinal=false.
+        // 마지막 단계 승인=최종 확정은 isChainComplete(전원 승인)로 자연 처리(전결 배지 오해 방지).
+        isFinal: false,
       })),
     });
     return;

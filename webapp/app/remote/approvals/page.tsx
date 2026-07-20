@@ -57,7 +57,7 @@ export default async function RemoteApprovalsPage({
   });
 
   const progressMap =
-    me.company.approvalMode === "deptline"
+    (me.company.approvalMode === "deptline" || me.company.approvalMode === "custom")
       ? await getApprovalProgressMap(me.companyId, "remote", pendingReqs.map((r) => r.id))
       : new Map();
   const progressLabel = (id: string): string | undefined => {

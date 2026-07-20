@@ -31,7 +31,7 @@ export default async function OvertimePage() {
   });
 
   const progressMap: Map<string, ApprovalProgress> =
-    me.company.approvalMode === "deptline"
+    (me.company.approvalMode === "deptline" || me.company.approvalMode === "custom")
       ? await getApprovalProgressMap(me.companyId, "overtime", requests.filter((r) => r.status === "pending").map((r) => r.id))
       : new Map();
 

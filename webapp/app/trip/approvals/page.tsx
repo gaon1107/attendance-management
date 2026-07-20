@@ -57,7 +57,7 @@ export default async function TripApprovalsPage({
   });
 
   const progressMap =
-    me.company.approvalMode === "deptline"
+    (me.company.approvalMode === "deptline" || me.company.approvalMode === "custom")
       ? await getApprovalProgressMap(me.companyId, "trip", pendingReqs.map((r) => r.id))
       : new Map();
   const progressLabel = (id: string): string | undefined => {

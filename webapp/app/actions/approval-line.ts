@@ -27,6 +27,10 @@ export async function saveApprovalLine(
   const requestType = String(formData.get("requestType") ?? "");
   if (!isRequestType(requestType)) return { error: "신청 종류가 올바르지 않습니다." };
 
+  // custom(상신자 지정) 모드에서만 개인 결재선을 저장한다(다른 모드에선 무의미·무검증 쓰기 방지).
+  const company = await prisma.company.findUnique({ where: { id: me.companyId }, select: { approvalMode: true } });
+  if (company?.approvalMode !== "custom") return { error: "이 회사의 결재방식이 아닙니다." };
+
   const raw = String(formData.get("approverIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   // 유효 결재자만(같은 회사·재직·본인 제외·중복 제거·최대 5명).
   const ids = await filterActiveApprovers(me.companyId, me.id, raw);

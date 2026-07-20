@@ -35,7 +35,7 @@ export default async function LeavePage() {
 
   // 부서장 결재선을 켠 회사면, 대기 중인 신청의 결재 진행상황을 함께 표시.
   const progressMap: Map<string, ApprovalProgress> =
-    me.company.approvalMode === "deptline"
+    (me.company.approvalMode === "deptline" || me.company.approvalMode === "custom")
       ? await getApprovalProgressMap(me.companyId, "leave", requests.filter((r) => r.status === "pending").map((r) => r.id))
       : new Map();
 

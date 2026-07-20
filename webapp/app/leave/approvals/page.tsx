@@ -69,7 +69,7 @@ export default async function LeaveApprovalsPage({
 
   // 부서장 결재선을 켠 회사면, 대기 건의 결재 진행상황을 함께 보여 관리자가 조기 승인하지 않도록 안내.
   const progressMap =
-    me.company.approvalMode === "deptline"
+    (me.company.approvalMode === "deptline" || me.company.approvalMode === "custom")
       ? await getApprovalProgressMap(me.companyId, "leave", pendingReqs.map((r) => r.id))
       : new Map();
   const progressLabel = (id: string): string | undefined => {

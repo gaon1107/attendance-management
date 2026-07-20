@@ -29,7 +29,7 @@ export default async function CorrectionsPage() {
   });
 
   const progressMap: Map<string, ApprovalProgress> =
-    me.company.approvalMode === "deptline"
+    (me.company.approvalMode === "deptline" || me.company.approvalMode === "custom")
       ? await getApprovalProgressMap(me.companyId, "correction", requests.filter((r) => r.status === "pending").map((r) => r.id))
       : new Map();
 

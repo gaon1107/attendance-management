@@ -129,12 +129,14 @@ function groupsFor(role: string, showApprovals: boolean): NavGroup[] {
 }
 
 export async function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
-  const deptline = user.company.approvalMode === "deptline";
+  // 다단계 결재를 쓰는 회사(부서장 자동 deptline · 상신자 지정 custom). single은 결재함 없음.
+  const multiStep = user.company.approvalMode === "deptline" || user.company.approvalMode === "custom";
   const initial = user.name.slice(0, 1);
-  // 결재선 켠 회사에서만 내 결재 대기 수를 배지로. 결재자 아니면 첫 쿼리에서 0(값싸다). single이면 조회 없음.
-  const approvalWaiting = deptline && user.companyId && user.id ? await countMyPendingApprovals(user.companyId, user.id) : 0;
-  // [결재함] 메뉴는 결재 라인 구성원(부서장·대결자) 또는 지금 결재 대기가 있는 사람에게만. single/일반 직원은 숨김.
-  const showApprovals = deptline && !!user.companyId && !!user.id && (approvalWaiting > 0 || (await isApprovalLineMember(user.companyId, user.id)));
+  // 다단계 결재 회사에서만 내 결재 대기 수를 배지로. 결재자 아니면 첫 쿼리에서 0(값싸다). single이면 조회 없음.
+  const approvalWaiting = multiStep && user.companyId && user.id ? await countMyPendingApprovals(user.companyId, user.id) : 0;
+  // [결재함] 메뉴: 지금 결재 대기가 있으면(두 모드 공통), 또는 deptline이면 결재 라인 구성원(부서장·대결자)에게 미리 노출.
+  //  · custom은 지정 결재자가 고정 조직이 아니므로, 내 차례가 온 시점(approvalWaiting>0)에 메뉴·배지가 뜬다.
+  const showApprovals = multiStep && !!user.companyId && !!user.id && (approvalWaiting > 0 || (user.company.approvalMode === "deptline" && (await isApprovalLineMember(user.companyId, user.id))));
   const groups = groupsFor(user.role, showApprovals);
 
   return (
