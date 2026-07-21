@@ -10,6 +10,7 @@ import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
 import { approveCorrection, rejectCorrection } from "@/app/actions/corrections";
 import { RejectButton } from "@/app/components/RejectButton";
+import { ConfirmApproveButton } from "@/app/components/ConfirmApproveButton";
 
 export type CorrectionRow = {
   id: string;
@@ -110,10 +111,7 @@ export function CorrectionApprovalsClient({
                     </td>
                     <td style={{ ...td, textAlign: "right" }}>
                       <div style={{ display: "inline-flex", gap: 8 }}>
-                        <form action={approveCorrection}>
-                          <input type="hidden" name="id" value={r.id} />
-                          <button type="submit" style={{ height: 34, padding: "0 14px", border: "none", borderRadius: 8, background: "var(--primary)", color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>승인</button>
-                        </form>
+                        <ConfirmApproveButton action={approveCorrection} requestId={r.id} progress={r.progress} compact />
                         <RejectButton action={rejectCorrection} requestId={r.id} compact />
                       </div>
                     </td>

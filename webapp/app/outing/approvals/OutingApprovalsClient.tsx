@@ -8,6 +8,7 @@ import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
 import { approveOuting, rejectOuting } from "@/app/actions/outing";
 import { RejectButton } from "@/app/components/RejectButton";
+import { ConfirmApproveButton } from "@/app/components/ConfirmApproveButton";
 import { AttachmentLinks, type AttachmentInfo } from "@/app/components/AttachmentLinks";
 
 export type OutingRow = {
@@ -117,10 +118,7 @@ export function OutingApprovalsClient({
                     </td>
                     <td style={{ ...td, textAlign: "right" }}>
                       <div style={{ display: "inline-flex", gap: 8 }}>
-                        <form action={approveOuting}>
-                          <input type="hidden" name="id" value={r.id} />
-                          <button type="submit" style={{ height: 34, padding: "0 14px", border: "none", borderRadius: 8, background: "var(--primary)", color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>승인</button>
-                        </form>
+                        <ConfirmApproveButton action={approveOuting} requestId={r.id} progress={r.progress} compact />
                         <RejectButton action={rejectOuting} requestId={r.id} compact />
                       </div>
                     </td>
