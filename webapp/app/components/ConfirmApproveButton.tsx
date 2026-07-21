@@ -71,10 +71,10 @@ export function ConfirmApproveButton({
                   marginBottom: 12,
                 }}
               >
-                <p style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700, lineHeight: 1.6, margin: 0 }}>
-                  ⚠️ 관리자 권한으로 남은 결재를 <b>모두 건너뛰고 즉시 최종 승인</b>합니다.
+                <p style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700, lineHeight: 1.6, margin: 0, wordBreak: "keep-all" }}>
+                  ⚠️ 남은 결재를 모두 건너뛰고 즉시 최종 승인합니다.
                 </p>
-                <p style={{ fontSize: 13, color: "var(--text-sub)", lineHeight: 1.6, margin: "6px 0 0" }}>
+                <p style={{ fontSize: 13, color: "var(--text-sub)", lineHeight: 1.6, margin: "6px 0 0", wordBreak: "keep-all" }}>
                   현재 진행: <b style={{ color: "var(--text)" }}>{progress}</b>
                 </p>
               </div>

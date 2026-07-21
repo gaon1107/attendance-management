@@ -93,6 +93,8 @@ export default async function XxxPage() {
 - 숫자에는 `fontVariantNumeric: "tabular-nums"` (자릿수 정렬).
 - 카드/섹션: `background:#fff; border:1px solid var(--border); borderRadius:12; overflow:hidden`.
 - 라벨은 `whiteSpace:"nowrap"`로 글자 단위 줄바꿈 방지.
+- **한글 문장(안내·경고·모달·툴팁 문구)에는 반드시 `wordBreak:"keep-all"`을 준다.** 안 주면 브라우저가 **음절(글자) 중간에서** 줄바꿈해 `승인합니 / 다.`처럼 어색하게 잘린다. `keep-all`이면 **띄어쓰기(어절) 단위로만** 줄바꿈된다. (2026-07-21 확정 — 승인 확인 모달 사례)
+  - **좁은 폭(모달·팝업·배지)에서 한 줄에 담아야 하는 문구는 문장 자체를 간결하게 줄인다.** 모달 폭은 좁으므로(예: `maxWidth:420`) 긴 안내는 접힌다 — 없어도 뜻이 통하는 수식어(예: "관리자 권한으로", "반드시")를 빼서 짧게.
 
 ---
 
@@ -241,6 +243,7 @@ import { DatePicker } from "@/app/components/DatePicker";
 - [ ] 카드 격자에 `.kpi-grid`/`.kpi-grid-3`, 2단에 `.dash-split`/`.split-2`를 썼는가? (인라인 grid 금지)
 - [ ] 표를 `overflowX:auto`로 감싸고 `minWidth`를 줬는가?
 - [ ] 색을 CSS 변수(`var(--...)`)로 썼는가? (하드코딩 금지)
+- [ ] 한글 안내·경고·모달 문구에 `wordBreak:"keep-all"`을 줬는가? (음절 중간 줄바꿈 방지 §4) 좁은 폭이면 문장을 간결하게.
 - [ ] 전화번호칸은 `type="tel"`, 금액·큰 숫자칸은 `type="text" + data-format="number"`로 했는가? (§5.5 — 서버는 `stripCommas`로 파싱)
 - [ ] 날짜·시간·검색이 필요하면 공통 컴포넌트(§5.6: 기간=`RangeCalendar` / 단일날짜=`DatePicker` / 시각=`TimePicker` / 검색=`SearchBox`)를 썼는가? **브라우저 기본 `type="date"`·`type="time"` 금지.** 검색창은 왼쪽 정렬.
 - [ ] **DB에 없는 가짜 데이터를 넣지 않았는가?**
