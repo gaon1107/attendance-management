@@ -209,6 +209,26 @@ import { DatePicker } from "@/app/components/DatePicker";
 
 ---
 
+## 5.7 알림/확인 팝업 — 공용 Modal 하나로 통일 (2026-07-21 확정)
+
+화면 위에 뜨는 **알림창·확인창·다이얼로그(딤 배경 + 중앙 카드)**는 **직접 만들지 말고 반드시 `app/components/Modal.tsx`를 쓴다.** 팝업마다 중앙정렬 방식·모서리·여백·그림자·딤 농도가 달라지는 걸 막는다(사장님 지적: "알림창이 제각기 다른 형식이면 안 된다").
+
+```tsx
+"use client";
+import { Modal } from "@/app/components/Modal";
+const [open, setOpen] = useState(false);
+<Modal open={open} onClose={() => setOpen(false)} title="승인 확인" maxWidth={420}>
+  {/* 본문 + 버튼 */}
+</Modal>
+```
+- **중앙정렬**: `top/left 50% + translate(-50%,-50%)`로 화면 정중앙 고정. **표·카드 등 깊은 곳에서 렌더돼도 안 밀린다**(예전 flex `inset:0 center` 방식은 상황에 따라 치우쳐 보여 폐기).
+- **닫기**: 딤 배경 클릭 · 우상단 ✕ · **ESC** 3가지 표준 제공. 제목이 없거나 ✕가 불필요하면 `showClose={false}`.
+- **표준 형식**: 모서리 14 · 여백 24 · 그림자 `0 12px 40px rgba(0,0,0,0.2)` · 딤 `rgba(0,0,0,0.4)` · 폭 `min(maxWidth, 92vw)`(모바일 자동 축소) · 최대높이 86vh 스크롤. 이 값은 Modal 한 곳에만 있으므로 **바꾸려면 Modal.tsx만** 고친다.
+- 적용 예(이미 통일됨): 승인 확인(`ConfirmApproveButton`)·반려 사유(`RejectButton`)·최신 공지(`LatestNoticeModal`)·온보딩 투어(`OnboardingTour`).
+- ⚠️ **날짜/시간 선택기·지도·카메라 오버레이는 성격이 다른 팝업**이라 여기(§5.6 공통 컴포넌트)를 따른다. Modal은 "알림/확인 다이얼로그" 전용.
+
+---
+
 ## 6. 확인(검증) 절차
 
 새 화면/수정 후 반드시 브라우저로 확인한다:
@@ -244,6 +264,7 @@ import { DatePicker } from "@/app/components/DatePicker";
 - [ ] 표를 `overflowX:auto`로 감싸고 `minWidth`를 줬는가?
 - [ ] 색을 CSS 변수(`var(--...)`)로 썼는가? (하드코딩 금지)
 - [ ] 한글 안내·경고·모달 문구에 `wordBreak:"keep-all"`을 줬는가? (음절 중간 줄바꿈 방지 §4) 좁은 폭이면 문장을 간결하게.
+- [ ] 알림/확인 팝업(다이얼로그)은 공용 `Modal`(§5.7)을 썼는가? (직접 딤 배경·중앙 카드 만들지 말 것 — 형식 통일)
 - [ ] 전화번호칸은 `type="tel"`, 금액·큰 숫자칸은 `type="text" + data-format="number"`로 했는가? (§5.5 — 서버는 `stripCommas`로 파싱)
 - [ ] 날짜·시간·검색이 필요하면 공통 컴포넌트(§5.6: 기간=`RangeCalendar` / 단일날짜=`DatePicker` / 시각=`TimePicker` / 검색=`SearchBox`)를 썼는가? **브라우저 기본 `type="date"`·`type="time"` 금지.** 검색창은 왼쪽 정렬.
 - [ ] **DB에 없는 가짜 데이터를 넣지 않았는가?**

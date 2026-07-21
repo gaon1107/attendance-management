@@ -3,6 +3,7 @@
 // 닫거나 "시작하기"를 누르면 다시 뜨지 않는다(markTourSeen).
 import { useState, useTransition } from "react";
 import { markTourSeen } from "@/app/actions/tour";
+import { Modal } from "@/app/components/Modal";
 
 const STEPS = [
   {
@@ -27,8 +28,6 @@ export function OnboardingTour() {
   const [step, setStep] = useState(0);
   const [, startTransition] = useTransition();
 
-  if (!open) return null;
-
   const last = step === STEPS.length - 1;
   const s = STEPS[step];
 
@@ -38,56 +37,43 @@ export function OnboardingTour() {
   }
 
   return (
-    <div
-      style={{
-        position: "fixed", inset: 0, zIndex: 1000,
-        background: "rgba(17,24,39,0.55)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 20,
-      }}
-      onClick={close}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{ width: "100%", maxWidth: 420, background: "#fff", borderRadius: 16, padding: "28px 24px 22px", boxShadow: "0 20px 50px rgba(0,0,0,0.3)" }}
-      >
-        <div style={{ fontSize: 44, textAlign: "center", marginBottom: 12 }}>{s.emoji}</div>
-        <div style={{ fontSize: 19, fontWeight: 700, textAlign: "center", marginBottom: 10 }}>{s.title}</div>
-        <p style={{ fontSize: 14, color: "var(--text-sub)", lineHeight: 1.7, textAlign: "center", marginBottom: 22 }}>{s.body}</p>
+    <Modal open={open} onClose={close} showClose={false} escClose={false} maxWidth={420}>
+      <div style={{ fontSize: 44, textAlign: "center", marginBottom: 12 }}>{s.emoji}</div>
+      <div style={{ fontSize: 19, fontWeight: 700, textAlign: "center", marginBottom: 10 }}>{s.title}</div>
+      <p style={{ fontSize: 14, color: "var(--text-sub)", lineHeight: 1.7, textAlign: "center", marginBottom: 22 }}>{s.body}</p>
 
-        {/* 단계 점 */}
-        <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 20 }}>
-          {STEPS.map((_, i) => (
-            <span key={i} style={{ width: i === step ? 20 : 7, height: 7, borderRadius: 999, background: i === step ? "var(--primary)" : "#D1D5DB", transition: "width .2s" }} />
-          ))}
-        </div>
+      {/* 단계 점 */}
+      <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 20 }}>
+        {STEPS.map((_, i) => (
+          <span key={i} style={{ width: i === step ? 20 : 7, height: 7, borderRadius: 999, background: i === step ? "var(--primary)" : "#D1D5DB", transition: "width .2s" }} />
+        ))}
+      </div>
 
-        <div style={{ display: "flex", gap: 10 }}>
-          {!last ? (
-            <>
-              <button
-                onClick={close}
-                style={{ flex: "0 0 auto", height: 48, padding: "0 18px", border: "1px solid var(--border)", borderRadius: 10, background: "#fff", color: "var(--text-sub)", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
-              >
-                건너뛰기
-              </button>
-              <button
-                onClick={() => setStep((v) => v + 1)}
-                style={{ flex: 1, height: 48, border: "none", borderRadius: 10, background: "var(--primary)", color: "#fff", fontFamily: "inherit", fontSize: 15, fontWeight: 700, cursor: "pointer" }}
-              >
-                다음
-              </button>
-            </>
-          ) : (
+      <div style={{ display: "flex", gap: 10 }}>
+        {!last ? (
+          <>
             <button
               onClick={close}
+              style={{ flex: "0 0 auto", height: 48, padding: "0 18px", border: "1px solid var(--border)", borderRadius: 10, background: "#fff", color: "var(--text-sub)", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
+            >
+              건너뛰기
+            </button>
+            <button
+              onClick={() => setStep((v) => v + 1)}
               style={{ flex: 1, height: 48, border: "none", borderRadius: 10, background: "var(--primary)", color: "#fff", fontFamily: "inherit", fontSize: 15, fontWeight: 700, cursor: "pointer" }}
             >
-              시작하기
+              다음
             </button>
-          )}
-        </div>
+          </>
+        ) : (
+          <button
+            onClick={close}
+            style={{ flex: 1, height: 48, border: "none", borderRadius: 10, background: "var(--primary)", color: "#fff", fontFamily: "inherit", fontSize: 15, fontWeight: 700, cursor: "pointer" }}
+          >
+            시작하기
+          </button>
+        )}
       </div>
-    </div>
+    </Modal>
   );
 }
