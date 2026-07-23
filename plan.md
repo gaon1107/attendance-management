@@ -1,72 +1,55 @@
-# Plan: 목록 화면 페이징(화면 페이징) 전면 적용 — 2026-07-21 — 상태: 검토 대기
+# Plan: BlockedIpClient eslint(set-state-in-effect) 정리 — 2026-07-23 — 상태: 검토 대기
 
-> 목표: 첨부 이미지 스타일(페이지 당 행 [100▼] · 1–100 / 184 · ◀▶)의 공통 페이징을 모든 목록 나열 화면에 적용. 방식=화면 페이징(데이터는 로드, 화면엔 한 페이지씩 렌더 → 렌더 부하 제거). 통합검색·필터·디자인 유지, 저위험.
+> 목표: 차단 IP 화면의 eslint error 1건 제거. **눈에 보이는 동작은 전혀 바뀌지 않는다**(입력칸 비우기 UX 그대로).
 
 ## 1. 접근 방식 (+이유)
-- **공통 부품 1개 신규**: `app/components/TablePagination.tsx`(이미지 디자인 재현) + 작은 훅 `app/components/usePagination.ts`(page·pageSize 상태, 총건수 바뀌면 범위 클램프, 검색어/필터 바뀌면 1페이지로 리셋). 부품 하나로 전 화면 균일·중복 최소화.
-- **각 화면 최소 변경**: 지금 `filtered.map(...)` 하는 곳을 `filtered.slice(...).map(...)`로 바꾸고 표 아래 `<TablePagination .../>` 추가. 서버·데이터 흐름 무변경.
-- **2표 화면**: 대기/처리내역(또는 재직/퇴사) 각 표에 **독립 페이징**(훅 2개).
-- **직원용 page.tsx(내 신청)**: 목록 부분을 작은 클라 컴포넌트로 분리해 동일 적용(approval-history에서 쓴 방식과 동일).
+
+**채택: ③ 렌더 중 이전값 비교 패턴** (usePagination과 동일)
+
+`useEffect`로 "나중에" 지우는 대신, **렌더하는 순간 "저장 결과가 새로 왔고 성공이면" 입력칸을 비운다.** React가 화면을 그리기 전에 정리되므로 화면 깜빡임·연쇄 렌더가 없고, eslint 규칙도 통과한다.
+
+| 후보 | 판단 |
+|---|---|
+| ① form key 리마운트 | ❌ 입력칸이 React 상태(`pattern`)로 제어되므로 폼만 다시 그려도 값이 안 지워짐 |
+| ② 비제어 입력 + ref.reset() | ❌ "폼에 채우기" 버튼이 값을 넣어야 해서 구조를 더 크게 뜯어야 함(위험↑) |
+| **③ 렌더 중 이전값 비교** | ✅ **채택** — 6줄 수정, 프로젝트에 이미 검증된 관례, 동작 동일 |
 
 ## 2. 수정/생성 파일 목록
-- **신규**: `app/components/TablePagination.tsx`, `app/components/usePagination.ts`
-- **수정(관리자 단일표)**: ApprovalHistoryClient · BiometricsList · LeaveSummaryClient · RecordsClient · ReportsClient
-- **수정(관리자 2표)**: EmployeeList · LeaveApprovalsClient · CorrectionApprovalsClient · OutingApprovalsClient · OvertimeApprovalsClient · RemoteApprovalsClient · TripApprovalsClient
-- **수정(보안)**: AccessLogClient · AlertsClient · LoginHistoryClient · BlockedIpClient
-- **수정(직원 내신청·클라 분리)**: leave/page · outing/page · overtime/page · remote/page · trip/page · corrections/page (각 목록용 소형 클라 컴포넌트 신설)
-- **무수정(제외)**: DetailTable · reports/print · shifts/FixedPattern·Rotation (목록 아님)
-- **DB/마이그레이션/서버액션 없음.**
+- **수정 1개**: `webapp/app/security/blocked/BlockedIpClient.tsx` (53~58줄 교체 + 5줄 import에서 `useEffect` 제거)
+- 생성·삭제 파일 없음. DB·서버액션·공통부품 **무수정**.
 
 ## 3. 🛡️ 사이드 이펙트 방어
-- **영향받을 수 있는 기능 + 대응**:
-  - 통합검색: 검색은 전체 필터→그 결과를 페이징. 검색어 바뀌면 page=0 리셋(빈 페이지 방지).
-  - 기간/상태 등 기존 필터: 무변경(서버 조회 그대로), 필터 결과에 페이징만 얹음.
-  - 승인/반려/삭제 등 액션 후 목록 재조회: 행 수 줄면 현재 page가 범위 밖일 수 있음 → 훅이 자동 클램프(마지막 페이지로).
-  - 인쇄(reports/print): 제외 → 전량 출력 유지.
-  - 정렬/합계(리포트 등): 페이징은 렌더만 자르므로 서버 합계·정렬 무영향.
-- **구현 후 반드시 테스트할 기존 기능(화면별)**:
-  1. 페이지 이동(◀▶), 페이지 크기 변경(50/100/200), 범위표시(start–end / total) 정확.
-  2. 통합검색과 동시 사용 → 검색 시 1페이지로, 결과 페이징 정확.
-  3. 2표 화면 두 표 독립 페이징.
-  4. 액션(승인/반려/삭제) 후 목록·페이지 정상.
-  5. 총건수 0·1페이지 경계(화살표 비활성).
-  6. 각 화면 권한/회사격리(서버측) 불변.
+- **영향받을 수 있는 기능**: 차단 IP 추가 폼의 입력칸 비우기, "폼에 채우기" 버튼, IPv6 안내 문구(`pattern.includes(":")`), 성공/실패 배너.
+  - 대응: `pattern`·`reason` 상태의 **이름·타입·용도를 그대로 유지**한다. 바뀌는 건 "언제 비우는가"의 실행 시점뿐.
+- **다른 화면 영향**: 없음(이 컴포넌트를 쓰는 곳이 blocked/page.tsx 1곳). 페이징 부품(`usePagination`·`TablePagination`)은 **읽기만** 하고 수정하지 않는다.
+- **구현 후 반드시 테스트할 기존 기능**:
+  1. 차단 IP 추가 → 성공 배너 + **입력칸 2개가 비워짐**
+  2. 같은 IP 연타 → "이미 차단 목록에 있는 IP" 에러가 **안 뜨는지**(빈 칸이므로 "IP를 입력해주세요"가 떠야 정상)
+  3. 실패(잘못된 IP 형식) → **입력값이 남아 있어야** 함(고쳐서 다시 낼 수 있게)
+  4. "폼에 채우기" 버튼 → 후보 IP·사유가 폼에 들어가고 **지워지지 않음**
+  5. 차단 명단 [해제], 두 표의 페이징 ◀▶ 정상
 
-## 4. 작업분해 TODO (배치 단위 — 배치마다 tsc·eslint·실화면·커밋)
-- [ ] 0단계: 공통 `TablePagination` + `usePagination` 생성 + 임시 검증(경계·클램프)
-- [ ] 1단계(배치A): 관리자 단일표 5개 적용 → 검증·커밋
-- [ ] 2단계(배치B): 관리자 2표 승인·직원 7개 적용 → 검증·커밋
-- [ ] 3단계(배치C): 보안 로그 4개 적용 → 검증·커밋
-- [ ] 4단계(배치D): 직원 "내 신청" 6개(클라 분리) 적용 → 검증·커밋
-- [ ] 5단계: 전체 3001 실서버 검증(대표 화면들 페이지·크기·검색 상호작용) + 콘솔0
-- [ ] 6단계: code-reviewer 검수 + project-status.md 갱신 + 최종 커밋
+## 4. 작업분해 TODO
+- [ ] 1단계: BlockedIpClient.tsx 53~58줄을 렌더 중 비교 패턴으로 교체 + `useEffect` import 제거
+- [ ] 2단계: `npx tsc --noEmit` + `npx eslint app/security/blocked/BlockedIpClient.tsx` → **0건** 확인
+- [ ] 3단계: 3001 검증서버에서 실제 화면 동작 확인(위 5개 항목)
+- [ ] 4단계: code-reviewer 서브에이전트 검수
+- [ ] 5단계: git 커밋 + project-status.md 갱신
 
-## 5. 핵심 로직 샘플 (계획용, 실제 구현 아님)
+## 5. 핵심 로직 샘플 (계획용 — 실제 구현 아님)
 ```tsx
-// usePagination.ts
-export function usePagination<T>(items: T[], initialSize = 100) {
-  const [page, setPage] = useState(0);
-  const [size, setSize] = useState(initialSize);
-  const total = items.length;
-  const pageCount = Math.max(1, Math.ceil(total / size));
-  const safePage = Math.min(page, pageCount - 1);       // 클램프
-  const start = total === 0 ? 0 : safePage * size;
-  const view = items.slice(start, start + size);
-  // items 길이/검색 바뀌어 page 범위 벗어나면 자동 보정
-  useEffect(() => { if (page > pageCount - 1) setPage(pageCount - 1); }, [pageCount, page]);
-  return { view, page: safePage, setPage, size, setSize, total, start, end: start + view.length, pageCount };
+// 저장에 성공하면 입력칸을 비운다 — 안 비우면 연타 시 "이미 차단 목록에 있는 IP" 에러가 뜬다.
+// effect 대신 "이전 결과와 비교"(렌더 중 리셋) — 연쇄 렌더 회피, usePagination과 같은 패턴.
+const [prevState, setPrevState] = useState(state);
+if (state !== prevState) {
+  setPrevState(state);
+  if (state.ok) { setPattern(""); setReason(""); }
 }
 ```
-```tsx
-// TablePagination.tsx (이미지 디자인)
-// [페이지 당 행: <select 50/100/200>]   {start+1}–{end} / {total}   [◀ disabled at 0] [▶ disabled at last]
-// 화면 사용: const pg = usePagination(filtered, 100);  pg.view.map(...)  <TablePagination pg={pg} />
-```
 
-## 6. 구현하지 않을 것 (범위 제외 + 이유)
-- **서버 페이징**(DB LIMIT/OFFSET·서버검색): 진짜 전송량 감축이나 대공사·회귀위험(통합검색 재설계). 사장님 결정=화면 페이징. 대량회사 실불편 시 추후 별도.
-- 목록 아닌 표: DetailTable(상세)·reports/print(인쇄)·shifts 패턴(설정) — 제외.
-- URL에 페이지 상태 저장(북마크): 이번 범위 밖(클라 상태로 충분).
+## 6. 구현하지 않을 것 (범위 제외)
+- 서버 액션(`ip-block.ts`) 로직·검증·보안 방어 — 무접촉.
+- 차단 IP 화면의 디자인·문구·페이징 — 무접촉.
+- 다른 파일의 eslint 정리 — **이 파일만**(요청 범위).
 
 ## 📌 사용자 메모 공간 (검토 후 여기에 적어주세요)
--

@@ -2,7 +2,7 @@
 // 차단 IP 관리(관리자) — 추가 폼 + 현재 명단 + 차단 후보.
 //  · 권한·회사격리·검증은 서버(page.tsx / actions/ip-block.ts)가 책임. 여기선 입력·표시만.
 //  · 폼이 넓어 어색하지 않도록 .split-2 2단 배치(디자인룰 §2).
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import { addBlockedIp, removeBlockedIp } from "@/app/actions/ip-block";
 import { TablePagination } from "@/app/components/TablePagination";
 import { usePagination } from "@/app/components/usePagination";
@@ -49,13 +49,19 @@ export function BlockedIpClient({
   const pgC = usePagination(candidates, { initialSize: 100 });
   const pgB = usePagination(rows, { initialSize: 100 });
 
-  // 저장에 성공하면 입력칸을 비운다 — 안 비우면 연타 시 "이미 차단 목록에 있는 IP" 에러가 뜬다.
-  useEffect(() => {
+  // 저장에 성공하면 입력칸을 비운다 — 안 비우면 성공 후 [차단 추가]를 다시 눌렀을 때
+  // 같은 값이 남아 있어 "이미 차단 목록에 있는 IP" 에러가 뜬다.
+  //  · effect 대신 "이전 결과와 비교"해 렌더 중 리셋(연쇄 렌더 회피 — usePagination과 같은 패턴).
+  //  · 실패(state.error)면 비우지 않는다 — 사용자가 값을 고쳐서 다시 낼 수 있게.
+  //  ⚠️ 이 비교는 addBlockedIp가 호출마다 "새 객체"를 반환한다는 전제 위에 있다(상수 객체 재사용 금지).
+  const [prevState, setPrevState] = useState(state);
+  if (state !== prevState) {
+    setPrevState(state);
     if (state.ok) {
       setPattern("");
       setReason("");
     }
-  }, [state]);
+  }
 
   return (
     <div>
