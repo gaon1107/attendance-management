@@ -1,55 +1,75 @@
-# Plan: BlockedIpClient eslint(set-state-in-effect) 정리 — 2026-07-23 — 상태: 검토 대기
+# Plan: B-6 외출 사유 회사별 편집 — 2026-07-23 — 상태: 검토 대기
 
-> 목표: 차단 IP 화면의 eslint error 1건 제거. **눈에 보이는 동작은 전혀 바뀌지 않는다**(입력칸 비우기 UX 그대로).
+> 목표: 직원 [출퇴근] 화면의 외출 사유 드롭다운(현재 "식사·외근·개인용무·기타" 고정)을 **회사가 [설정]에서 직접 편집**할 수 있게 한다. 설정 안 한 회사는 **지금과 100% 동일**하게 동작.
 
 ## 1. 접근 방식 (+이유)
 
-**채택: ③ 렌더 중 이전값 비교 패턴** (usePagination과 동일)
+**회사 설정에 "외출 사유" 칸을 추가하고, 비어 있으면 기존 4종을 쓴다.**
 
-`useEffect`로 "나중에" 지우는 대신, **렌더하는 순간 "저장 결과가 새로 왔고 성공이면" 입력칸을 비운다.** React가 화면을 그리기 전에 정리되므로 화면 깜빡임·연쇄 렌더가 없고, eslint 규칙도 통과한다.
-
-| 후보 | 판단 |
-|---|---|
-| ① form key 리마운트 | ❌ 입력칸이 React 상태(`pattern`)로 제어되므로 폼만 다시 그려도 값이 안 지워짐 |
-| ② 비제어 입력 + ref.reset() | ❌ "폼에 채우기" 버튼이 값을 넣어야 해서 구조를 더 크게 뜯어야 함(위험↑) |
-| **③ 렌더 중 이전값 비교** | ✅ **채택** — 6줄 수정, 프로젝트에 이미 검증된 관례, 동작 동일 |
+- 저장 형식 = **쉼표로 구분한 한 줄 문자열**(예: `식사, 외근, 개인용무, 기타`). 이미 `officeIps`(허용 IP)·`workDays`(근무요일)가 같은 방식이라 관례 일치 + 표를 새로 만들 필요 없음 = 가장 작은 변경.
+- 목록 해석 규칙(빈값→기본 4종, 공백 제거, 중복 제거, 최대 개수)은 **`lib/outing-reasons.ts` 순수함수 하나**로 모아 화면·서버 양쪽이 같은 걸 쓰게 한다(규칙이 두 군데로 갈라지는 사고 방지).
 
 ## 2. 수정/생성 파일 목록
-- **수정 1개**: `webapp/app/security/blocked/BlockedIpClient.tsx` (53~58줄 교체 + 5줄 import에서 `useEffect` 제거)
-- 생성·삭제 파일 없음. DB·서버액션·공통부품 **무수정**.
+
+**생성 2개**
+- `webapp/lib/outing-reasons.ts` — 기본값 상수 + `parseOutingReasons(raw)` 순수함수 (단일 출처)
+- `webapp/app/settings/OutingReasonForm.tsx` — 설정 화면 카드(입력·저장·미리보기)
+
+**수정 5개**
+- `webapp/prisma/schema.prisma` — `Company.outingReasons String?` **1칸 add-only** (+ 마이그레이션 1개)
+- `webapp/app/actions/settings.ts` — `saveOutingReasons` 서버액션 **추가**(기존 액션 무수정)
+- `webapp/app/settings/page.tsx` — 카드 1개 배치(기존 카드 무수정)
+- `webapp/app/attendance/page.tsx` — 하드코딩 `REASONS` 제거 → 회사 설정에서 읽어 드롭다운 구성
+- `webapp/app/actions/attendance.ts` — `startBreak`가 **목록에 있는 사유인지 검증**(폼 위조 차단)
 
 ## 3. 🛡️ 사이드 이펙트 방어
-- **영향받을 수 있는 기능**: 차단 IP 추가 폼의 입력칸 비우기, "폼에 채우기" 버튼, IPv6 안내 문구(`pattern.includes(":")`), 성공/실패 배너.
-  - 대응: `pattern`·`reason` 상태의 **이름·타입·용도를 그대로 유지**한다. 바뀌는 건 "언제 비우는가"의 실행 시점뿐.
-- **다른 화면 영향**: 없음(이 컴포넌트를 쓰는 곳이 blocked/page.tsx 1곳). 페이징 부품(`usePagination`·`TablePagination`)은 **읽기만** 하고 수정하지 않는다.
+
+- **과거 외출 기록**: 저장된 사유 문자열은 그대로 둔다(이력 보존). 목록에서 지운 사유도 옛 기록엔 그대로 표시 → 근태상세·통계 무영향. *(research: 사유로 분기하는 로직이 코드 전체에 0곳)*
+- **근무시간 계산**([lib/worktime.ts](webapp/lib/worktime.ts)): **손대지 않는다.** 외출 시간 차감 규칙 그대로.
+- **설정 안 한 기존 회사**: DB 값 `null` → 기본 4종 폴백 → **현재와 화면·동작 동일**(회귀 0).
+- **다른 설정 카드**(근무규칙·사내네트워크·얼굴·공휴일 등): 파일을 건드리지 않고 `settings/page.tsx`에 **추가만** 한다.
+- **외출/외근 결재 신청**(`OutingRequest`·approvals): **완전 무접촉.**
 - **구현 후 반드시 테스트할 기존 기능**:
-  1. 차단 IP 추가 → 성공 배너 + **입력칸 2개가 비워짐**
-  2. 같은 IP 연타 → "이미 차단 목록에 있는 IP" 에러가 **안 뜨는지**(빈 칸이므로 "IP를 입력해주세요"가 떠야 정상)
-  3. 실패(잘못된 IP 형식) → **입력값이 남아 있어야** 함(고쳐서 다시 낼 수 있게)
-  4. "폼에 채우기" 버튼 → 후보 IP·사유가 폼에 들어가고 **지워지지 않음**
-  5. 차단 명단 [해제], 두 표의 페이징 ◀▶ 정상
+  1. 설정 안 한 회사 → 외출 드롭다운에 기존 4종 그대로
+  2. 외출 → 복귀 → 근무시간에서 외출시간 차감되는지(기존 계산)
+  3. 근태상세(직원별 상세)에 외출 사유 표시
+  4. 대시보드 "외출 중" 인원 수
+  5. 리포트·엑셀의 외출(회) 숫자
+  6. [설정] 화면의 다른 카드들 정상
 
 ## 4. 작업분해 TODO
-- [ ] 1단계: BlockedIpClient.tsx 53~58줄을 렌더 중 비교 패턴으로 교체 + `useEffect` import 제거
-- [ ] 2단계: `npx tsc --noEmit` + `npx eslint app/security/blocked/BlockedIpClient.tsx` → **0건** 확인
-- [ ] 3단계: 3001 검증서버에서 실제 화면 동작 확인(위 5개 항목)
-- [ ] 4단계: code-reviewer 서브에이전트 검수
-- [ ] 5단계: git 커밋 + project-status.md 갱신
+- [ ] 1단계: `lib/outing-reasons.ts` 순수함수 + 기본값 상수
+- [ ] 2단계: 스키마 `Company.outingReasons` 추가 + 마이그레이션(서버 끄고 실행)
+- [ ] 3단계: `saveOutingReasons` 서버액션(관리자만·검증)
+- [ ] 4단계: `OutingReasonForm` + 설정 화면 배치
+- [ ] 5단계: `attendance/page.tsx` 드롭다운 배선 + `startBreak` 검증
+- [ ] 6단계: 임시 라우트로 순수함수·저장 라운드트립 검증 → **라우트 삭제**
+- [ ] 7단계: 3001 실화면 검증(위 6개 항목)
+- [ ] 8단계: code-reviewer 검수 → 커밋 → project-status.md 갱신
 
 ## 5. 핵심 로직 샘플 (계획용 — 실제 구현 아님)
-```tsx
-// 저장에 성공하면 입력칸을 비운다 — 안 비우면 연타 시 "이미 차단 목록에 있는 IP" 에러가 뜬다.
-// effect 대신 "이전 결과와 비교"(렌더 중 리셋) — 연쇄 렌더 회피, usePagination과 같은 패턴.
-const [prevState, setPrevState] = useState(state);
-if (state !== prevState) {
-  setPrevState(state);
-  if (state.ok) { setPattern(""); setReason(""); }
+```ts
+// lib/outing-reasons.ts
+export const DEFAULT_OUTING_REASONS = ["식사", "외근", "개인용무", "기타"];
+export const MAX_OUTING_REASONS = 10;
+export const MAX_REASON_LEN = 20;
+
+/** 회사 설정 문자열 → 사유 목록. 비었거나 전부 걸러지면 기본 4종. */
+export function parseOutingReasons(raw: string | null | undefined): string[] {
+  const list = (raw ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((s) => s.length <= MAX_REASON_LEN);
+  const uniq = [...new Set(list)].slice(0, MAX_OUTING_REASONS);
+  return uniq.length > 0 ? uniq : DEFAULT_OUTING_REASONS;
 }
 ```
 
-## 6. 구현하지 않을 것 (범위 제외)
-- 서버 액션(`ip-block.ts`) 로직·검증·보안 방어 — 무접촉.
-- 차단 IP 화면의 디자인·문구·페이징 — 무접촉.
-- 다른 파일의 eslint 정리 — **이 파일만**(요청 범위).
+## 6. 구현하지 않을 것 (범위 제외 + 이유)
+- **사유별 근무시간 차감 구분**("외근은 근무로 인정" 등) — 근무시간 계산 규칙 변경은 별개의 큰 결정. *(연차·리포트·법정기록에 전부 파급)*
+- **외출/외근 결재 신청(OutingRequest)의 자유입력 사유** — 다른 기능.
+- **휴게시간 회사별 설정화면**(백로그 별건) · **사유별 통계 화면** — 이번 범위 아님.
+- 과거 기록의 사유 일괄 변경(마이그레이션) — 이력은 보존이 원칙.
 
 ## 📌 사용자 메모 공간 (검토 후 여기에 적어주세요)
