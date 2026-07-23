@@ -19,6 +19,8 @@ export type NavKey =
   | "outing" | "outing-approvals" // 외출/외근 신청(직원) · 승인(관리자)
   | "remote" | "remote-approvals" // 재택근무 신청(직원) · 승인(관리자)
   | "overtime" | "overtime-approvals" // 초과근무 사전신청(직원) · 승인(관리자)
+  | "overtime-manage" // 초과근무 관리(관리자) — 주 단위 연장근로 현황 조회 전용
+  | "break-time" // 휴게시간 관리(관리자) — 최소 휴게 기준 설정 + 준수 현황
   | "trip" | "trip-approvals" // 출장 신청(직원) · 승인(관리자)
   | "security" // 보안로그(로그인 이력·접속 로그) — 관리자
   | "live" // 실시간 현황판(사무실 지도·근무 중·접속) — 관리자
@@ -61,6 +63,8 @@ const ICON: Record<NavKey, string> = {
   "remote-approvals": '<path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/>',
   overtime: '<circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/><path d="M12 2v2M12 20v2"/>',
   "overtime-approvals": '<path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/>',
+  "overtime-manage": '<path d="M4 20V10M10 20V6M16 20v-9M22 20H2"/><circle cx="16" cy="6" r="2.5"/>',
+  "break-time": '<path d="M4 9h13v4a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 10h2a2 2 0 0 1 0 4h-2"/><path d="M7 3v3M11 3v3"/>',
   trip: '<path d="M17.8 19.2 16 11l3.5-3.5a2.12 2.12 0 0 0-3-3L13 8 4.8 6.2a1 1 0 0 0-.9 1.7l4.6 3.1-2 3-2.5-.3-.9.9 3 1.5 1.5 3 .9-.9-.3-2.5 3-2 3.1 4.6a1 1 0 0 0 1.7-.9z"/>',
   "trip-approvals": '<path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/>',
 };
@@ -95,6 +99,8 @@ const LABEL: Record<NavKey, string> = {
   "remote-approvals": "재택승인",
   overtime: "초과근무",
   "overtime-approvals": "야근승인",
+  "overtime-manage": "초과근무관리",
+  "break-time": "휴게시간",
   trip: "출장",
   "trip-approvals": "출장승인",
 };
@@ -123,7 +129,7 @@ function toItems(keys: NavKey[]): Item[] {
 //  → 결재선 켠 회사여도 일반 직원/미지정 관리자에겐 안 보인다(빈 결재함 노출 방지). 판정은 Sidebar에서.
 function groupsFor(role: string, showApprovals: boolean): NavGroup[] {
   if (role === "admin") {
-    const adminKeys: NavKey[] = ["dashboard", "notifications", "live", "employees", "records", "shifts", "schedule", "reports", "leave-approvals", "outing-approvals", "remote-approvals", "overtime-approvals", "trip-approvals", ...(showApprovals ? (["approvals"] as NavKey[]) : []), "approval-history", "leave-summary", "biometrics", "security", "company", "settings"];
+    const adminKeys: NavKey[] = ["dashboard", "notifications", "live", "employees", "records", "shifts", "schedule", "reports", "overtime-manage", "break-time", "leave-approvals", "outing-approvals", "remote-approvals", "overtime-approvals", "trip-approvals", ...(showApprovals ? (["approvals"] as NavKey[]) : []), "approval-history", "leave-summary", "biometrics", "security", "company", "settings"];
     return [{ caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(adminKeys) }];
   }
   // 직원: 결재 라인에 있는 사람(부서장 등)에게만 [결재함](자기 차례 승인)을 추가.

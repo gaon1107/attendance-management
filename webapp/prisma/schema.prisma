@@ -54,6 +54,11 @@ model Company {
   // 실시간 외출(Break) 사유 드롭다운 목록 CSV. 비면 기본 4종(식사·외근·개인용무·기타) — lib/outing-reasons.ts 단일 출처.
   // ※ 외출/외근 "결재 신청"(OutingRequest)의 자유입력 사유와는 무관.
   outingReasons String?
+  // ── 휴게시간 준수 점검(근로기준법 제54조). 판정·표시 전용 — 실근무 계산(lib/worktime.ts)에는 관여하지 않는다. ──
+  // 켜짐이면 [휴게시간] 화면에서 그날 휴게(외출 기록 합계)가 최소 기준에 못 미치는 직원을 표시.
+  breakCheckOn Boolean @default(true)
+  breakMin4h   Int     @default(30) // 근무 4시간 초과 시 최소 휴게(분). 법정 30분.
+  breakMin8h   Int     @default(60) // 근무 8시간 초과 시 최소 휴게(분). 법정 60분.
   // 법정공휴일 자동 반영 스위치. 켜짐이면 전국 공휴일(Holiday 표)을 "쉬는 날"로 본다(지각·결근·연차 제외).
   // 공휴일에도 정상근무하는 업종(병원·서비스업)은 꺼둔다. 회사 수동 휴무일(CompanyHoliday)은 이 스위치와 무관하게 항상 적용.
   holidayAutoOn Boolean  @default(true)

@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { parseDays, daysToCsv } from "@/lib/workdays";
 import { stripCommas } from "@/lib/format";
 import { normalizeOutingReasons, formatOutingReasons, MAX_REASON_LEN, MAX_OUTING_REASONS } from "@/lib/outing-reasons";
+import { parseBreakRuleInput, LEGAL_BREAK_MIN_4H, LEGAL_BREAK_MIN_8H } from "@/lib/break-rule";
 
 // 외출 사유 저장 결과 — saved(정규화되어 실제 저장된 문자열)로 화면 입력칸을 DB와 맞춘다.
 export type OutingReasonsResult = { error?: string; ok?: boolean; warn?: string; saved?: string };
@@ -118,6 +119,42 @@ export async function saveOutingReasons(
       ? { warn: `중복이거나 ${MAX_REASON_LEN}글자를 넘거나 ${MAX_OUTING_REASONS}개를 초과한 ${dropped}개 항목은 저장되지 않았습니다.` }
       : {}),
   };
+}
+
+// 휴게시간 기준 저장 — 관리자만. 근로기준법 최소 휴게(4h 초과 30분 / 8h 초과 60분) 이상으로만 설정 가능.
+//  · ⚠️ 이 값은 "준수 점검"에만 쓰인다. 실근무시간 계산(lib/worktime.ts)에는 관여하지 않는다(자동 차감 없음).
+export async function saveBreakRule(
+  _prev: { error?: string; ok?: boolean },
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean }> {
+  const me = await getCurrentUser();
+  if (!me || me.role !== "admin") {
+    return { error: "권한이 없습니다." };
+  }
+
+  const on = formData.get("checkOn") === "1";
+  // 범위를 벗어난 값을 조용히 기본값으로 바꾸지 않는다(화면과 DB가 달라지는 사고 방지) — 에러로 알린다.
+  const parsed = parseBreakRuleInput(formData.get("min4h"), formData.get("min8h"));
+  if (parsed.error || !parsed.rule) return { error: parsed.error ?? "입력값을 확인해주세요." };
+  const rule = parsed.rule;
+
+  // 법정 최소보다 낮게는 못 내린다(법 위반 설정 방지). 더 넉넉히 주는 것은 허용.
+  if (rule.min4h < LEGAL_BREAK_MIN_4H || rule.min8h < LEGAL_BREAK_MIN_8H) {
+    return { error: `법정 최소(4시간 초과 ${LEGAL_BREAK_MIN_4H}분 / 8시간 초과 ${LEGAL_BREAK_MIN_8H}분)보다 낮게 설정할 수 없습니다.` };
+  }
+  // 8시간 기준이 4시간 기준보다 적으면 판정이 뒤집힌다(오래 일할수록 덜 쉬는 규칙).
+  if (rule.min8h < rule.min4h) {
+    return { error: "8시간 초과 기준은 4시간 초과 기준보다 짧을 수 없습니다." };
+  }
+
+  await prisma.company.update({
+    where: { id: me.companyId },
+    data: { breakCheckOn: on, breakMin4h: rule.min4h, breakMin8h: rule.min8h },
+  });
+
+  await logAdminAction(me, "config", "break_rule");
+  revalidatePath("/break-time");
+  return { ok: true };
 }
 
 // 얼굴 인식 기준 크기 저장 — 관리자만. 얼굴 폭이 화면 폭의 몇 % 이상이어야 통과되는지.

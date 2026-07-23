@@ -1,0 +1,62 @@
+-- RedefineTables
+PRAGMA defer_foreign_keys=ON;
+PRAGMA foreign_keys=OFF;
+CREATE TABLE "new_Company" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "name" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "officeLat" REAL,
+    "officeLng" REAL,
+    "officeRadiusM" INTEGER NOT NULL DEFAULT 200,
+    "officeAddress" TEXT,
+    "officeAddressDetail" TEXT,
+    "officeIps" TEXT,
+    "workStartTime" TEXT,
+    "workEndTime" TEXT,
+    "lateGraceMin" INTEGER NOT NULL DEFAULT 0,
+    "standardWorkHours" REAL NOT NULL DEFAULT 8,
+    "overtimeAlertOn" BOOLEAN NOT NULL DEFAULT true,
+    "overtimeWarnHours" REAL NOT NULL DEFAULT 48,
+    "workDays" TEXT NOT NULL DEFAULT '1,2,3,4,5',
+    "outingReasons" TEXT,
+    "breakCheckOn" BOOLEAN NOT NULL DEFAULT true,
+    "breakMin4h" INTEGER NOT NULL DEFAULT 30,
+    "breakMin8h" INTEGER NOT NULL DEFAULT 60,
+    "holidayAutoOn" BOOLEAN NOT NULL DEFAULT true,
+    "faceMinPercent" INTEGER NOT NULL DEFAULT 30,
+    "faceMinBrightness" INTEGER NOT NULL DEFAULT 0,
+    "livenessPercent" INTEGER NOT NULL DEFAULT 50,
+    "securityCheckedAt" DATETIME,
+    "alertNightOn" BOOLEAN NOT NULL DEFAULT true,
+    "alertNightStart" INTEGER NOT NULL DEFAULT 22,
+    "alertNightEnd" INTEGER NOT NULL DEFAULT 6,
+    "alertFailOn" BOOLEAN NOT NULL DEFAULT true,
+    "alertFailCount" INTEGER NOT NULL DEFAULT 5,
+    "bizRegNo" TEXT,
+    "corpRegNo" TEXT,
+    "ceoName" TEXT,
+    "bizType" TEXT,
+    "bizItem" TEXT,
+    "zipCode" TEXT,
+    "address" TEXT,
+    "addressDetail" TEXT,
+    "companyPhone" TEXT,
+    "companyFax" TEXT,
+    "companyEmail" TEXT,
+    "website" TEXT,
+    "managerName" TEXT,
+    "managerTitle" TEXT,
+    "managerPhone" TEXT,
+    "managerEmail" TEXT,
+    "companyNote" TEXT,
+    "logoName" TEXT,
+    "shiftMode" INTEGER,
+    "scheduleType" TEXT,
+    "approvalMode" TEXT NOT NULL DEFAULT 'single',
+    "approvalStepCount" INTEGER NOT NULL DEFAULT 1
+);
+INSERT INTO "new_Company" ("address", "addressDetail", "alertFailCount", "alertFailOn", "alertNightEnd", "alertNightOn", "alertNightStart", "approvalMode", "approvalStepCount", "bizItem", "bizRegNo", "bizType", "ceoName", "companyEmail", "companyFax", "companyNote", "companyPhone", "corpRegNo", "createdAt", "faceMinBrightness", "faceMinPercent", "holidayAutoOn", "id", "lateGraceMin", "livenessPercent", "logoName", "managerEmail", "managerName", "managerPhone", "managerTitle", "name", "officeAddress", "officeAddressDetail", "officeIps", "officeLat", "officeLng", "officeRadiusM", "outingReasons", "overtimeAlertOn", "overtimeWarnHours", "scheduleType", "securityCheckedAt", "shiftMode", "standardWorkHours", "website", "workDays", "workEndTime", "workStartTime", "zipCode") SELECT "address", "addressDetail", "alertFailCount", "alertFailOn", "alertNightEnd", "alertNightOn", "alertNightStart", "approvalMode", "approvalStepCount", "bizItem", "bizRegNo", "bizType", "ceoName", "companyEmail", "companyFax", "companyNote", "companyPhone", "corpRegNo", "createdAt", "faceMinBrightness", "faceMinPercent", "holidayAutoOn", "id", "lateGraceMin", "livenessPercent", "logoName", "managerEmail", "managerName", "managerPhone", "managerTitle", "name", "officeAddress", "officeAddressDetail", "officeIps", "officeLat", "officeLng", "officeRadiusM", "outingReasons", "overtimeAlertOn", "overtimeWarnHours", "scheduleType", "securityCheckedAt", "shiftMode", "standardWorkHours", "website", "workDays", "workEndTime", "workStartTime", "zipCode" FROM "Company";
+DROP TABLE "Company";
+ALTER TABLE "new_Company" RENAME TO "Company";
+PRAGMA foreign_keys=ON;
+PRAGMA defer_foreign_keys=OFF;

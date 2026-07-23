@@ -6,6 +6,12 @@
 // 주 52시간 법정 상한(분). 이 값 이상이면 "초과"(법 위반 위험).
 export const LEGAL_WEEKLY_LIMIT_MIN = 52 * 60; // 3120분
 
+// ── [add-only] 초과근무 관리화면(2026-07-23)에서 쓰는 상수. 기존 함수·판정은 무수정. ──
+// 소정근로 주 40시간. 이 시간까지가 "기본근무", 넘는 분이 "연장근로".
+export const WEEKLY_REGULAR_MIN = 40 * 60; // 2400분
+// 연장근로 법정 한도 주 12시간(40+12=52). 이 값 이상이면 한도 초과.
+export const WEEKLY_EXTRA_LIMIT_MIN = 12 * 60; // 720분
+
 // 이번 주의 시작 = 월요일 00:00 (로컬 시간대 기준).
 // 일요일(getDay 0)은 그 주의 마지막 날이므로 6일 전 월요일로 되돌린다.
 export function weekStartMonday(now: Date): Date {
