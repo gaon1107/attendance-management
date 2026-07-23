@@ -5,6 +5,10 @@ import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { parseDays, daysToCsv } from "@/lib/workdays";
 import { stripCommas } from "@/lib/format";
+import { normalizeOutingReasons, formatOutingReasons, MAX_REASON_LEN, MAX_OUTING_REASONS } from "@/lib/outing-reasons";
+
+// 외출 사유 저장 결과 — saved(정규화되어 실제 저장된 문자열)로 화면 입력칸을 DB와 맞춘다.
+export type OutingReasonsResult = { error?: string; ok?: boolean; warn?: string; saved?: string };
 import { logAdminAction } from "@/lib/audit";
 
 export async function saveOfficeLocation(
@@ -71,6 +75,49 @@ export async function saveOfficeNetwork(
   await logAdminAction(me, "config", "office_network"); // 감사로그 — 보안 핵심(허용 IP를 몰래 넓히는 것 추적)
   revalidatePath("/settings");
   return { ok: true };
+}
+
+// 외출 사유 목록 저장(B-6) — 관리자만. 직원 [출퇴근] 화면의 외출 사유 드롭다운을 회사가 편집한다.
+//  · 비우면 null 저장 → 기본 4종으로 폴백(설정 안 한 회사와 동일 상태로 되돌리기).
+//  · 정리·상한 규칙은 lib/outing-reasons.ts 단일 출처를 그대로 사용한다.
+export async function saveOutingReasons(
+  _prev: OutingReasonsResult,
+  formData: FormData
+): Promise<OutingReasonsResult> {
+  const me = await getCurrentUser();
+  if (!me || me.role !== "admin") {
+    return { error: "권한이 없습니다." };
+  }
+
+  const raw = String(formData.get("reasons") ?? "").trim();
+  const list = normalizeOutingReasons(raw);
+
+  // 뭔가 입력했는데 한 개도 안 남았다 = 전부 공백이거나 전부 글자수 초과 → 조용히 기본값으로 되돌리지 않고 알린다.
+  if (raw && list.length === 0) {
+    return { error: `사유는 1~${MAX_REASON_LEN}글자로 입력해주세요. (쉼표로 구분)` };
+  }
+
+  // 입력한 항목 수와 실제 저장될 수가 다르면(중복·길이초과·개수초과로 제외) 성공이라고만 하지 않고 알린다 — 조용한 누락 방지.
+  const entered = raw.split(",").map((s) => s.trim()).filter(Boolean).length;
+  const dropped = entered - list.length;
+
+  const saved = list.length > 0 ? formatOutingReasons(list) : null;
+  await prisma.company.update({
+    where: { id: me.companyId },
+    data: { outingReasons: saved },
+  });
+
+  // 감사로그 — 사유 목록은 근태 이력에 남는 라벨이라 "언제 누가 바꿨는지" 추적이 필요하다(다른 설정 액션과 동일).
+  await logAdminAction(me, "config", "outing_reasons");
+  revalidatePath("/settings");
+  revalidatePath("/attendance"); // 직원 출퇴근 화면의 드롭다운에 즉시 반영
+  return {
+    ok: true,
+    saved: saved ?? "",
+    ...(dropped > 0
+      ? { warn: `중복이거나 ${MAX_REASON_LEN}글자를 넘거나 ${MAX_OUTING_REASONS}개를 초과한 ${dropped}개 항목은 저장되지 않았습니다.` }
+      : {}),
+  };
 }
 
 // 얼굴 인식 기준 크기 저장 — 관리자만. 얼굴 폭이 화면 폭의 몇 % 이상이어야 통과되는지.

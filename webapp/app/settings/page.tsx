@@ -8,6 +8,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { WorkRulesForm } from "./WorkRulesForm";
 import { OfficeLocationForm } from "./OfficeLocationForm";
 import { OfficeNetworkForm } from "./OfficeNetworkForm";
+import { OutingReasonForm } from "./OutingReasonForm";
 import { FaceRuleForm } from "./FaceRuleForm";
 import { LivenessRuleForm } from "./LivenessRuleForm";
 import { AlertRulesForm } from "./AlertRulesForm";
@@ -29,6 +30,7 @@ export default async function SettingsPage() {
       alertNightOn: true, alertNightStart: true, alertNightEnd: true, alertFailOn: true, alertFailCount: true,
       holidayAutoOn: true,
       shiftMode: true, scheduleType: true,
+      outingReasons: true,
     },
   });
 
@@ -72,6 +74,9 @@ export default async function SettingsPage() {
           }}
         />
         <OfficeNetworkForm initialIps={company?.officeIps ?? ""} currentIp={currentIp} />
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <OutingReasonForm initialReasons={company?.outingReasons ?? ""} />
       </div>
       <div className="split-2" style={{ marginBottom: 16 }}>
         <FaceRuleForm initialPercent={company?.faceMinPercent ?? 30} initialBrightness={company?.faceMinBrightness ?? 0} />

@@ -8,6 +8,7 @@ import { workedMinutes, formatMinutes } from "@/lib/worktime";
 import { workModeLabel, locationStatusLabel } from "@/lib/location";
 import { clockOutText } from "@/lib/labels";
 import { PHOTO_CONSENT_SINCE } from "@/lib/clock-photo";
+import { parseOutingReasons } from "@/lib/outing-reasons";
 import { ClockInPanel } from "./ClockInPanel";
 import { FaceClockPanel } from "./FaceClockPanel";
 import { OnboardingTour } from "./OnboardingTour";
@@ -16,8 +17,6 @@ import { AddToHomeHint } from "./AddToHomeHint";
 function hhmm(d: Date): string {
   return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
-
-const REASONS = ["식사", "외근", "개인용무", "기타"];
 
 export default async function AttendancePage() {
   const me = await getCurrentUser();
@@ -65,10 +64,15 @@ export default async function AttendancePage() {
   const faceUser = me.authMethod === "face" && Boolean(me.faceEnrolledAt);
   // 사진 보관 문구(2026-07-11)보다 먼저 동의한 얼굴인증 직원 — 재동의 전까지 사진이 저장되지 않으므로 안내 배너
   const needReconsent = me.authMethod === "face" && !!me.faceConsentAt && me.faceConsentAt < PHOTO_CONSENT_SINCE;
-  // 얼굴 크기 가이드(타원) 크기 — 회사 설정 "얼굴 인식 기준 크기(%)"와 동일 값 사용
-  const faceMinPercent = faceUser
-    ? (await prisma.company.findUnique({ where: { id: me.companyId }, select: { faceMinPercent: true } }))?.faceMinPercent ?? 30
-    : 30;
+  // 회사 설정 1회 조회 — ①얼굴 크기 가이드(타원) 기준 ②외출 사유 목록(B-6).
+  const company = await prisma.company.findUnique({
+    where: { id: me.companyId },
+    select: { faceMinPercent: true, outingReasons: true },
+  });
+  // 얼굴 크기 가이드(타원) 크기 — 회사 설정 "얼굴 인식 기준 크기(%)"와 동일 값 사용(얼굴인증 직원만 사용)
+  const faceMinPercent = faceUser ? company?.faceMinPercent ?? 30 : 30;
+  // 외출 사유 드롭다운 — 회사가 [설정]에서 편집. 미설정이면 기본 4종(lib/outing-reasons.ts).
+  const reasons = parseOutingReasons(company?.outingReasons);
 
   // 출근/퇴근 요약(가장 최근 기록 기준) — 실제 데이터만
   const latest = open ?? (todays.length > 0 ? todays[todays.length - 1] : null);
@@ -182,8 +186,8 @@ export default async function AttendancePage() {
             )}
             {/* 외출: 사유 선택 + 외출 시작 */}
             <form action={startBreak} style={{ display: "flex", gap: 8 }}>
-              <select name="reason" defaultValue="식사" style={{ flex: 1, height: 48, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 10, fontFamily: "inherit", fontSize: 15, background: "#fff" }}>
-                {REASONS.map((r) => (
+              <select name="reason" defaultValue={reasons[0]} style={{ flex: 1, height: 48, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 10, fontFamily: "inherit", fontSize: 15, background: "#fff" }}>
+                {reasons.map((r) => (
                   <option key={r} value={r}>{r}</option>
                 ))}
               </select>

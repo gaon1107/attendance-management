@@ -8,6 +8,7 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
+import { parseOutingReasons } from "@/lib/outing-reasons";
 
 // [접속기록 — add-only] 출퇴근이 "실제로 처리된 뒤"에만 접속 IP·기기를 남긴다(보안 화면 3단계).
 //  · 출퇴근 판정·중복방지 로직은 일절 건드리지 않는다. 이 함수는 맨 끝에서만 호출된다.
@@ -130,13 +131,26 @@ export async function startBreak(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
 
-  const reason = String(formData.get("reason") ?? "기타");
-
   const open = await prisma.attendance.findFirst({
     where: { userId: me.id, clockOut: null },
     orderBy: { clockIn: "desc" },
   });
   if (!open) return; // 출근 상태가 아니면 무시
+
+  // 사유는 회사가 설정한 목록(미설정이면 기본 4종) 안에서만 받는다 — 폼 위조로 임의 문자열이 저장되는 것 차단(B-6).
+  // 목록 밖이면 외출 기록 자체를 버리지 않고(=실근무시간 과다계산 방지) 뜻이 가장 덜 왜곡되는 "기타"로 저장한다.
+  const company = await prisma.company.findUnique({
+    where: { id: me.companyId },
+    select: { outingReasons: true },
+  });
+  const allowed = parseOutingReasons(company?.outingReasons);
+  const picked = String(formData.get("reason") ?? "");
+  let reason = picked;
+  if (!allowed.includes(picked)) {
+    // 관리자가 방금 목록을 바꿔 직원의 열린 화면이 옛 목록인 경우 등. 조용히 넘기지 않고 흔적을 남긴다.
+    reason = allowed.includes("기타") ? "기타" : allowed[0];
+    console.warn(`[startBreak] 목록 밖 사유 "${picked}" → "${reason}"로 대체 (company=${me.companyId})`);
+  }
 
   // 이미 외출 중이면 중복 생성 안 함
   const openBreak = await prisma.break.findFirst({
