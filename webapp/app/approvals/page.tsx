@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { AppShell } from "@/app/components/AppShell";
 import { listMyApprovals, type RequestType } from "@/lib/approval-server";
+import { waitingDaysBetween } from "@/lib/pending-approvals";
 import { approveLeave, rejectLeave } from "@/app/actions/leave";
 import { approveCorrection, rejectCorrection } from "@/app/actions/corrections";
 import { approveOuting, rejectOuting } from "@/app/actions/outing";
@@ -22,11 +23,20 @@ const TYPE_META: Record<RequestType, { label: string; badgeBg: string; badgeColo
   trip: { label: "출장", badgeBg: "#E0F2FE", badgeColor: "#0369A1", approve: approveTrip, reject: rejectTrip },
 };
 
+// 결재함에서 "며칠째 대기"를 강조하는 배지(오래 밀린 건을 결재자가 알아채게 — 독촉).
+//  · 0~2일은 표시 안 함(신선한 건까지 배지로 시끄럽지 않게), 3일↑ 주의, 7일↑ 위험.
+function waitingBadge(days: number): { text: string; bg: string; color: string } | null {
+  if (days >= 7) return { text: `🔴 ${days}일째 대기`, bg: "#FEE2E2", color: "#B91C1C" };
+  if (days >= 3) return { text: `🟡 ${days}일째 대기`, bg: "#FEF3C7", color: "#B45309" };
+  return null;
+}
+
 export default async function ApprovalsPage() {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
 
   const items = await listMyApprovals(me);
+  const now = new Date();
 
   return (
     <AppShell user={me} active="approvals" title="결재함" subtitle={`${me.company.name} · 내 차례 ${items.length}건`}>
@@ -58,6 +68,12 @@ export default async function ApprovalsPage() {
                     <span style={{ fontSize: 15, fontWeight: 700 }}>{it.applicantName}</span>
                     {it.applicantNo && <span style={{ fontSize: 12, color: "var(--text-sub)" }}>{it.applicantNo}</span>}
                     <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 700 }}>· {it.stepOrder}/{it.totalSteps}단계</span>
+                    {(() => {
+                      const wb = waitingBadge(waitingDaysBetween(it.createdAt, now));
+                      return wb ? (
+                        <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: wb.bg, color: wb.color, whiteSpace: "nowrap" }}>{wb.text}</span>
+                      ) : null;
+                    })()}
                     {it.isFinal && (
                       <span
                         title="전결권자 단계 — 내가 승인하면 상위로 올라가지 않고 바로 최종 확정됩니다."

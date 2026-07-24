@@ -32,6 +32,7 @@ export default async function PendingApprovalsPage({
 
   const clientRows: PendingClientRow[] = rows.map((r) => ({
     key: `${r.type}:${r.requestId}`,
+    requestId: r.requestId,
     type: r.type,
     createdAtText: ymdhm(r.createdAt),
     waitingDays: r.waitingDays,

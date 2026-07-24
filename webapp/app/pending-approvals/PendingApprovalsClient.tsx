@@ -7,11 +7,15 @@ import { useRouter } from "next/navigation";
 import { SearchBox } from "@/app/components/SearchBox";
 import { TablePagination } from "@/app/components/TablePagination";
 import { usePagination } from "@/app/components/usePagination";
+import { ConfirmApproveButton } from "@/app/components/ConfirmApproveButton";
+import { RejectButton } from "@/app/components/RejectButton";
+import { decidePendingApproval } from "@/app/actions/pending-approvals";
 import { queryTerms, matchesTerms } from "@/lib/search";
 import type { RequestType } from "@/lib/approval-server";
 
 export type PendingClientRow = {
   key: string;
+  requestId: string; // 유형별 원본 신청 id(대리 처리 폼에 넘긴다)
   type: RequestType;
   createdAtText: string;
   waitingDays: number;
@@ -150,7 +154,7 @@ export function PendingApprovalsClient({
           <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-sub)" }}>오래된 순(가장 밀린 것이 맨 위)</span>
         </div>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1040 }}>
             <thead>
               <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                 <th style={th}>경과</th>
@@ -159,12 +163,13 @@ export function PendingApprovalsClient({
                 <th style={th}>내용</th>
                 <th style={th}>진행 상태(지금 누구 차례)</th>
                 <th style={th}>신청일시</th>
+                <th style={{ ...th, textAlign: "right" }}>대리 처리</th>
               </tr>
             </thead>
             <tbody>
               {pg.view.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: "32px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={7} style={{ padding: "32px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {searching ? "검색 결과가 없습니다." : "대기 중인 결재가 없습니다. 👍"}
                   </td>
                 </tr>
@@ -184,6 +189,19 @@ export function PendingApprovalsClient({
                     </td>
                     <td style={{ ...td, minWidth: 200 }}>{progressText(r)}</td>
                     <td style={{ ...td, color: "var(--text-sub)", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{r.createdAtText}</td>
+                    <td style={{ ...td, whiteSpace: "nowrap" }}>
+                      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                        {/* 유형·처리를 bind로 묶어 넘긴다 — 실제 처리는 기존 유형별 액션 재사용(관리자 오버라이드). */}
+                        {/* progress: 남은 결재선이 있으면(단계>0) 승인 확인창이 "건너뛰고 최종 승인" 경고를 띄운다. */}
+                        <ConfirmApproveButton
+                          action={decidePendingApproval.bind(null, r.type, "approve")}
+                          requestId={r.requestId}
+                          progress={r.stepTotal > 0 ? `${r.approvedCount}/${r.stepTotal}단계 승인${r.nextApproverName ? ` · 다음 ${r.nextApproverName}` : ""}` : undefined}
+                          compact
+                        />
+                        <RejectButton action={decidePendingApproval.bind(null, r.type, "reject")} requestId={r.requestId} compact />
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
