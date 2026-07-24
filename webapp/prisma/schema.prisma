@@ -223,6 +223,16 @@ model Attendance {
   locationStatus String?
   // 얼굴 출퇴근 시 촬영 사진·판독 기록(출근/퇴근 각 1건). GPS/일반 출퇴근은 없음.
   clockPhotos ClockPhoto[]
+
+  // 조회 색인(데이터·결과는 그대로, 찾는 속도만 빨라진다). 기록이 쌓일수록 효과가 커진다.
+  //  · [companyId, clockIn]  — "회사의 특정 기간" 조회. 근태현황·리포트(화면/인쇄/엑셀)·대시보드·현황판·초과근무 관리·휴게시간 관리.
+  //  · [userId, clockIn]     — "특정 직원의 기간" 조회. 내근태·직원 근태상세·근태정정 반영.
+  //  · [userId, clockOut]    — "퇴근 안 한 열린 출근 찾기"(clockOut IS NULL). 출퇴근 버튼·외출/복귀·얼굴 출퇴근 등 6곳에서 가장 자주 돈다.
+  //      ※ [userId, clockIn]만으로는 userId까지만 색인이 먹고 clockOut은 한 건씩 확인하므로,
+  //        "열린 기록이 없는" 평상시에 그 직원의 전 기간 기록을 훑게 된다(근속연수에 비례해 느려짐). 이 색인이 그걸 막는다.
+  @@index([companyId, clockIn])
+  @@index([userId, clockIn])
+  @@index([userId, clockOut])
 }
 
 // 출퇴근 촬영 사진 + 위조 판독(라이브니스) 기록 — 얼굴 출퇴근 1회당 1건.
@@ -261,6 +271,9 @@ model Break {
   startAt      DateTime   @default(now())
   endAt        DateTime? // 복귀 시각(복귀 전엔 null)
   createdAt    DateTime   @default(now())
+
+  // 출퇴근 기록에 외출을 붙일 때(include: { breaks: true }) 쓰는 색인. 위 Attendance를 조회하는 화면 대부분이 함께 탄다.
+  @@index([attendanceId])
 }
 
 // 직원 초대 — 관리자가 만든 초대 링크. 직원이 이 링크로 스스로 가입(비밀번호 직접 설정)한다.
