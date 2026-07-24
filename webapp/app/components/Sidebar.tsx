@@ -99,7 +99,8 @@ const LABEL: Record<NavKey, string> = {
   "remote-approvals": "재택승인",
   overtime: "초과근무",
   "overtime-approvals": "야근승인",
-  "overtime-manage": "초과근무관리",
+  // 6글자라 56px 칸에 한 줄로 안 들어간다. 띄어쓰기를 넣어 "초과근무 / 관리"로 예쁘게 두 줄이 되게 한다(아래 wordBreak:keep-all과 한 쌍).
+  "overtime-manage": "초과근무 관리",
   "break-time": "휴게시간",
   trip: "출장",
   "trip-approvals": "출장승인",
@@ -233,7 +234,9 @@ export async function Sidebar({ user, active }: { user: NavUser; active: NavKey 
                   style={{
                     position: "relative",
                     width: 56,
-                    height: 50,
+                    // minHeight(고정 height 아님): 라벨이 두 줄인 항목이 혹시 칸을 넘겨도 칸이 늘어날 뿐 아래 메뉴와 겹치지 않는다.
+                    // 한 줄 라벨(콘텐츠 34px)은 그대로 50px 유지 → 기존 화면 변화 없음.
+                    minHeight: 50,
                     borderRadius: 11,
                     display: "flex",
                     flexDirection: "column",
@@ -251,7 +254,12 @@ export async function Sidebar({ user, active }: { user: NavUser; active: NavKey 
                       __html: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${it.icon}</svg>`,
                     }}
                   />
-                  <span style={{ fontSize: 11, fontWeight: 700 }}>{it.label}</span>
+                  {/* 라벨: 한글은 띄어쓰기 없으면 아무 글자에서나 잘리므로 keep-all로 "띄어쓰기에서만" 줄바꿈시킨다("초과근무 관리" → 초과근무/관리).
+                      overflowWrap:anywhere = 안전장치. 띄어쓰기가 없는 긴 라벨(5글자↑)은 keep-all만으론 안 끊겨 가로로 삐져나가 잘리므로,
+                        정 안 들어갈 때만 강제로 끊게 한다(현재 라벨은 전부 4글자 이하라 동작 변화 없음).
+                      lineHeight 1.2 → 두 줄 26.4px + 아이콘 19 + gap 3 = 48.4px < 50px 칸(여유 1.6px).
+                        ※ fontSize·gap·minHeight 중 하나라도 바꾸면 이 계산을 다시 할 것. */}
+                  <span style={{ fontSize: 11, fontWeight: 700, wordBreak: "keep-all", overflowWrap: "anywhere", textAlign: "center", lineHeight: 1.2 }}>{it.label}</span>
                   {/* 결재함: 내 결재 대기 건수 배지 */}
                   {it.key === "approvals" && approvalWaiting > 0 && (
                     <span
