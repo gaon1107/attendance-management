@@ -27,6 +27,12 @@ internal sealed class TrayApp : IDisposable
     private InfoWindow? _infoWindow;
     private bool _checking;
 
+    /// <summary>"닫아도 계속 돕니다" 풍선 안내를 이미 보여줬는지(앱을 켠 뒤 딱 한 번만).</summary>
+    private bool _closeHintShown;
+
+    /// <summary>[종료]를 눌러 정말 끄는 중인지. 이때는 "계속 실행 중" 안내를 띄우면 안 된다.</summary>
+    private bool _exiting;
+
     public TrayApp()
     {
         // 트레이 메뉴가 요즘 윈도우 모양으로 그려지게 한다(안 하면 옛 회색 메뉴로 보인다).
@@ -83,6 +89,7 @@ internal sealed class TrayApp : IDisposable
                 MessageBoxImage.Warning);
             return;
         }
+        _exiting = true; // 창이 닫힐 때 "계속 실행 중" 안내가 뜨지 않게
         Application.Current.Shutdown();
     }
 
@@ -122,7 +129,11 @@ internal sealed class TrayApp : IDisposable
         _config = AgentConfig.Load();
 
         var window = new PairWindow(_config, RefreshStatus, OpenInfoWindow);
-        window.Closed += (_, _) => _pairWindow = null;
+        window.Closed += (_, _) =>
+        {
+            _pairWindow = null;
+            ShowCloseHintOnce();
+        };
         _pairWindow = window;
         window.Show();
         window.Activate();
@@ -137,6 +148,31 @@ internal sealed class TrayApp : IDisposable
         _infoWindow = window;
         window.Show();
         window.Activate();
+    }
+
+    /// <summary>
+    /// 창을 닫았을 때 "프로그램은 계속 돕니다"를 트레이 풍선으로 <b>한 번만</b> 알린다.
+    ///  · 왜 한 번만인가: 매번 뜨면 그 자체가 업무 방해다. 한 번 알면 그 다음부터는 아는 사실이다.
+    ///  · 왜 필요한가: 창을 닫으면 프로그램이 꺼진 것처럼 보여, 직원이 매번 트레이를 확인하거나
+    ///    "내가 꺼버린 건 아닌가" 불안해한다.
+    ///  · 풍선 알림은 윈도우 알림 설정에 따라 안 보일 수 있다(있으면 좋은 것). 실패해도 무시한다.
+    /// </summary>
+    private void ShowCloseHintOnce()
+    {
+        if (_exiting || _closeHintShown) return;
+        _closeHintShown = true;
+
+        try
+        {
+            _tray.BalloonTipTitle = $"{AppInfo.Name} 실행 중";
+            _tray.BalloonTipText = "창을 닫아도 계속 실행됩니다. 이 아이콘을 눌러 다시 열 수 있습니다.";
+            _tray.BalloonTipIcon = WinForms.ToolTipIcon.Info;
+            _tray.ShowBalloonTip(5000);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"트레이 안내 표시 실패: {ex.GetType().Name}");
+        }
     }
 
     // ── 서버 연결 확인 ──────────────────────────────────────────────────────

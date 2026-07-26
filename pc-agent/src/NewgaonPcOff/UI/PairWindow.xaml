@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="PC-OFF"
         Width="470" SizeToContent="Height"
-        ResizeMode="NoResize"
+        ResizeMode="CanMinimize"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource CardBg}"
         FontFamily="{StaticResource UiFont}"
@@ -76,7 +76,12 @@
                         Click="CloseButton_Click" />
             </StackPanel>
 
-            <TextBlock Margin="0,14,0,0">
+            <!-- 닫아도 프로그램이 죽지 않는다는 사실을 알려준다.
+                  없으면 직원은 [닫기]가 "프로그램 끄기"인 줄 알고 매번 트레이를 확인하게 된다. -->
+            <TextBlock Style="{StaticResource BodyText}" Margin="0,14,0,0" FontSize="12"
+                       Text="이 창을 닫거나 최소화해도 PC-OFF는 트레이(화면 오른쪽 아래)에서 계속 실행됩니다. 완전히 끄려면 트레이 아이콘을 오른쪽 클릭해 [종료]를 누르세요." />
+
+            <TextBlock Margin="0,10,0,0">
                 <Hyperlink Click="InfoLink_Click" Foreground="{StaticResource Primary}"
                            TextDecorations="Underline" FontSize="13">
                     이 프로그램이 수집하는 정보 보기
@@ -139,6 +144,9 @@
                 <Button x:Name="CloseButton" Style="{StaticResource GhostButton}" Content="닫기"
                         Click="CloseButton_Click" />
             </StackPanel>
+
+            <TextBlock Style="{StaticResource BodyText}" Margin="0,12,0,0" FontSize="12"
+                       Text="이 창을 닫아도 PC-OFF는 트레이(화면 오른쪽 아래)에서 계속 실행됩니다." />
 
         </StackPanel>
     </Grid>
