@@ -1,0 +1,14 @@
+<Application x:Class="NewgaonPcOff.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <!-- StartupUri 없음: 이 앱은 창이 아니라 **트레이(작업표시줄 알림영역)** 에서 산다.
+         ShutdownMode=OnExplicitShutdown — 창을 다 닫아도 앱이 종료되지 않게(트레이에 남아야 한다). -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="UI/Theme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

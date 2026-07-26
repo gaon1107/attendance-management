@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>NewgaonPcOff</AssemblyName>
+    <RootNamespace>NewgaonPcOff</RootNamespace>
+    <Version>0.2.0</Version>
+
+    <UseWPF>true</UseWPF>
+    <!-- 트레이 아이콘(NotifyIcon)은 WinForms에만 있다. 외부 라이브러리(NuGet) 없이 쓰기 위해 함께 켠다. -->
+    <UseWindowsForms>true</UseWindowsForms>
+
+    <!-- ⚠️ WPF와 WinForms를 함께 쓰면 Application·MessageBox 같은 이름이 두 곳에 다 있어 충돌한다.
+         암시적 using을 끄고 파일마다 필요한 것만 명시해 충돌을 원천 차단한다. -->
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <!-- 한국어 화면 전용 — 다른 언어 리소스는 담지 않는다(설치본 용량). -->
+    <SatelliteResourceLanguages>ko</SatelliteResourceLanguages>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 트레이 아이콘은 실행파일 안에 넣어 배포한다(별도 파일 없이 동작). -->
+    <Resource Include="Assets\app.ico" />
+    <Resource Include="Assets\app-idle.ico" />
+  </ItemGroup>
+
+  <!-- 외부 패키지(NuGet) 참조 0개 — 통신·JSON·암호보관 모두 윈도우/닷넷 기본 기능만 사용한다. -->
+
+</Project>

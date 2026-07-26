@@ -1,0 +1,15 @@
+# .NET 빌드 산출물 (용량 큼 — 저장 안 함, dotnet build로 다시 만듦)
+bin/
+obj/
+
+# Visual Studio 개인 설정
+*.user
+*.suo
+.vs/
+
+# 실행 중 만들어지는 로컬 파일 (혹시 프로젝트 폴더에 생겼을 때 대비)
+#  · 경로를 pc-agent 바로 아래로 한정한다. 넓게 걸면 나중에 만들 "설정 템플릿(config.json)" 같은
+#    파일이 조용히 커밋에서 빠져 배포본이 망가진다.
+*.log
+/device.bin
+/config.json
