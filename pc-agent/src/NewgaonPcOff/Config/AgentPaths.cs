@@ -21,6 +21,14 @@ internal static class AgentPaths
     /// <summary>기기 토큰(암호화 보관). ⚠️ 이 파일 내용을 로그·화면에 절대 출력하지 않는다.</summary>
     public static string TokenFile => Path.Combine(Root, "device.bin");
 
+    /// <summary>
+    /// 마지막으로 받은 회사 설정(정책) 보관 — <b>암호화</b>해서 저장한다.
+    ///  · 인터넷이 끊겨도 이 값으로 잠금 여부를 판단한다(지시서 §5 오프라인 요구사항).
+    ///  · ⚠️ 암호화가 필수인 이유: [수집하는 정보] 화면이 근로자에게 "암호화해 보관합니다"라고
+    ///    이미 고지하고 있다. 평문으로 두면 그 고지가 <b>허위</b>가 된다.
+    /// </summary>
+    public static string PolicyFile => Path.Combine(Root, "policy.bin");
+
     /// <summary>진단 기록 폴더(이 PC 안에만 남는다. 서버로 보내지 않는다).</summary>
     public static string LogDir => Path.Combine(Root, "logs");
 

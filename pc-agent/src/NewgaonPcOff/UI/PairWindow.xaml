@@ -50,19 +50,31 @@
                     <Border Height="1" Background="{StaticResource BorderLine}" Margin="0,12,0,12" />
 
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,7">
+                        <TextBlock Style="{StaticResource LabelText}" Width="92" Margin="0" Text="근무 기준" />
+                        <TextBlock x:Name="ValRule" Style="{StaticResource BodyText}" Width="286"
+                                   TextWrapping="Wrap" Foreground="{StaticResource TextMain}" Text="-" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,7">
                         <TextBlock Style="{StaticResource LabelText}" Width="92" Margin="0" Text="잠금" />
-                        <TextBlock x:Name="ValLock" Style="{StaticResource BodyText}" Width="230"
-                                   Foreground="{StaticResource TextMain}" Text="확인 중..." />
+                        <TextBlock x:Name="ValLock" Style="{StaticResource BodyText}" Width="286"
+                                   TextWrapping="Wrap" Foreground="{StaticResource TextMain}" Text="확인 중..." />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Style="{StaticResource LabelText}" Width="92" Margin="0" Text="마지막 확인" />
-                        <TextBlock x:Name="ValCheckedAt" Style="{StaticResource BodyText}" Text="-" />
+                        <TextBlock x:Name="ValCheckedAt" Style="{StaticResource BodyText}" Width="286"
+                                   TextWrapping="Wrap" Text="-" />
                     </StackPanel>
                 </StackPanel>
             </Border>
 
             <TextBlock x:Name="StatusNote" Style="{StaticResource BodyText}" Margin="0,12,0,0"
                        Visibility="Collapsed" />
+
+            <!-- ⚠️ 지금 단계(2-B) 한계를 밝히는 줄. **2-C(잠금화면)를 만들면 이 줄을 지운다.**
+                  숨기면 "잠긴다고 표시되는데 안 잠긴다"는 오해가 생긴다(사규: 화면에 가짜 데이터 금지). -->
+            <TextBlock x:Name="PendingNote" Style="{StaticResource BodyText}" Margin="0,12,0,0" FontSize="12"
+                       Foreground="{StaticResource Warning}" FontWeight="Bold"
+                       Text="※ 지금은 잠길 시각만 계산해 보여줍니다. 실제 화면 잠금은 다음 단계에서 켜집니다." />
 
             <Button x:Name="RecheckButton" Style="{StaticResource PrimaryButton}" Margin="0,16,0,0"
                     Content="서버 다시 확인" Click="RecheckButton_Click" />

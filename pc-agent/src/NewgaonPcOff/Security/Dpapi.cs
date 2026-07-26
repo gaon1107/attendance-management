@@ -22,14 +22,6 @@ internal static class Dpapi
 
     private const int CryptprotectUiForbidden = 0x1; // 화면에 창을 띄우지 않는다(백그라운드 앱이므로 필수)
 
-    /// <summary>
-    /// 추가 자물쇠(entropy). 이 값을 모르면 DPAPI 한 줄로는 풀 수 없다.
-    ///  · ⚠️ 솔직한 한계: 프로그램 안에 들어 있으므로 마음먹고 파보면 알아낼 수 있다(난독화 수준).
-    ///    그래도 "같은 계정에서 도는 아무 프로그램이 한 줄로 토큰을 꺼내는" 가장 쉬운 길은 막힌다.
-    ///  · 진짜 방어선은 서버 쪽이다 — 토큰은 해시만 저장되고, 기기는 웹에서 즉시 해제할 수 있다.
-    /// </summary>
-    private static readonly byte[] Entropy = System.Text.Encoding.UTF8.GetBytes("NewgaonPcOff/device-token/v1");
-
     [DllImport("crypt32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern bool CryptProtectData(
         ref DataBlob pDataIn, string? szDataDescr, IntPtr pOptionalEntropy,
@@ -43,22 +35,36 @@ internal static class Dpapi
     [DllImport("kernel32.dll")]
     private static extern IntPtr LocalFree(IntPtr hMem);
 
-    public static byte[] Protect(byte[] plain)
+    /// <summary>
+    /// 잠근다.
+    /// </summary>
+    /// <param name="entropy">
+    /// 추가 자물쇠. 이 값을 모르면 DPAPI 한 줄로는 풀 수 없다.
+    ///  · ⚠️ <b>용도마다 다른 값을 쓰고, 한 번 정한 값은 절대 바꾸지 않는다.</b>
+    ///    바꾸면 이미 저장된 파일이 열리지 않는다 — 그러면 "연결됨으로 보이는데 실제로는 미연결"인
+    ///    상태가 되어 PC가 조용히 잠기지 않는다(2-A 검수에서 실제로 잡힌 치명 사고).
+    ///  · 솔직한 한계: 프로그램 안에 들어 있으므로 마음먹고 파보면 알아낼 수 있다(난독화 수준).
+    ///    그래도 "같은 계정에서 도는 아무 프로그램이 한 줄로 꺼내는" 가장 쉬운 길은 막힌다.
+    /// </param>
+    public static byte[] Protect(byte[] plain, byte[] entropy)
     {
         ArgumentNullException.ThrowIfNull(plain);
-        return Run(plain, encrypt: true);
+        ArgumentNullException.ThrowIfNull(entropy);
+        return Run(plain, entropy, encrypt: true);
     }
 
-    public static byte[] Unprotect(byte[] encrypted)
+    /// <summary>푼다. <paramref name="entropy"/>는 잠글 때 쓴 값과 <b>정확히 같아야</b> 한다.</summary>
+    public static byte[] Unprotect(byte[] encrypted, byte[] entropy)
     {
         ArgumentNullException.ThrowIfNull(encrypted);
-        return Run(encrypted, encrypt: false);
+        ArgumentNullException.ThrowIfNull(entropy);
+        return Run(encrypted, entropy, encrypt: false);
     }
 
-    private static byte[] Run(byte[] input, bool encrypt)
+    private static byte[] Run(byte[] input, byte[] entropy, bool encrypt)
     {
         var inPtr = Marshal.AllocHGlobal(input.Length == 0 ? 1 : input.Length);
-        var entPtr = Marshal.AllocHGlobal(Entropy.Length);
+        var entPtr = Marshal.AllocHGlobal(entropy.Length == 0 ? 1 : entropy.Length);
         // 추가 자물쇠는 구조체(DATA_BLOB)를 가리키는 포인터로 넘겨야 한다 — 관리 메모리를 고정하는 대신
         // 비관리 메모리에 구조체를 그대로 써서 넘긴다(가장 오해가 적은 방식).
         var entBlobPtr = Marshal.AllocHGlobal(Marshal.SizeOf<DataBlob>());
@@ -67,8 +73,8 @@ internal static class Dpapi
         try
         {
             Marshal.Copy(input, 0, inPtr, input.Length);
-            Marshal.Copy(Entropy, 0, entPtr, Entropy.Length);
-            Marshal.StructureToPtr(new DataBlob { cbData = Entropy.Length, pbData = entPtr }, entBlobPtr, false);
+            Marshal.Copy(entropy, 0, entPtr, entropy.Length);
+            Marshal.StructureToPtr(new DataBlob { cbData = entropy.Length, pbData = entPtr }, entBlobPtr, false);
 
             var inBlob = new DataBlob { cbData = input.Length, pbData = inPtr };
             var ok = encrypt

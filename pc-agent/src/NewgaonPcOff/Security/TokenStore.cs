@@ -15,6 +15,27 @@ namespace NewgaonPcOff.Security;
 internal static class TokenStore
 {
     /// <summary>
+    /// 이 파일 전용 추가 자물쇠.
+    ///  · 🔒 <b>이 문자열은 절대 바꾸지 않는다.</b> 한 글자만 달라져도 이미 저장된 <c>device.bin</c>이
+    ///    열리지 않고, 그러면 "연결됨으로 보이는데 실제로는 미연결"이 되어 PC가 조용히 잠기지 않는다
+    ///    (2-A 재검수에서 실제로 잡힌 치명 사고 N-1).
+    ///  · 정책 캐시는 <see cref="Core.PolicyCache"/>가 <b>다른</b> 값을 쓴다(용도별 분리).
+    /// </summary>
+    private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("NewgaonPcOff/device-token/v1");
+
+    /// <summary>
+    /// 연속으로 몇 번 못 풀었을 때 파일을 지울지.
+    ///  · ⚠️ 왜 한 번에 지우지 않는가: 2-B부터 판정기가 이 함수를 <b>수시로</b> 부른다.
+    ///    로그오프 직전처럼 윈도우 암호해제가 일시적으로 실패하는 순간이 한 번만 걸려도
+    ///    멀쩡한 연결이 끊기고 직원은 새 연결코드를 받아야 한다(그 사이 PC는 잠기지 않는다).
+    ///  · 그래도 <b>결국은 지운다</b> — 못 푸는 파일을 남기면 "연결됨으로 보이는데 미연결"이 되기 때문이다
+    ///    (2-A 재검수 치명 N-1). 늦추기만 하고 없애지는 않는다.
+    /// </summary>
+    private const int DeleteAfterFailures = 3;
+
+    private static int _decryptFailures;
+
+    /// <summary>
     /// 토큰을 암호화해서 저장한다.
     ///  · 임시 파일에 먼저 쓴 뒤 바꿔치기한다 — 쓰다가 끊겨 <b>반쪽 파일</b>이 남으면
     ///    "파일은 있는데 열 수 없는" 상태가 되고, 그건 화면과 실제가 어긋나는 사고로 이어진다.
@@ -25,7 +46,7 @@ internal static class TokenStore
 
         AgentPaths.EnsureDirs();
         var bytes = Encoding.UTF8.GetBytes(token);
-        var locked = Dpapi.Protect(bytes);
+        var locked = Dpapi.Protect(bytes, Entropy);
         Array.Clear(bytes); // 평문 흔적 지우기
 
         var tmp = AgentPaths.TokenFile + ".tmp";
@@ -39,6 +60,7 @@ internal static class TokenStore
             try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* 임시파일 정리 실패는 무시 */ }
             throw;
         }
+        _decryptFailures = 0; // 새로 저장했으니 앞의 실패 기록은 의미가 없다
         Log.Info("기기 토큰을 저장했습니다."); // 값은 남기지 않는다
     }
 
@@ -69,17 +91,29 @@ internal static class TokenStore
         {
             if (raw.Length == 0) throw new InvalidDataException("빈 파일");
 
-            var plain = Dpapi.Unprotect(raw);
+            var plain = Dpapi.Unprotect(raw, Entropy);
             var token = Encoding.UTF8.GetString(plain);
             Array.Clear(plain);
             if (string.IsNullOrWhiteSpace(token)) throw new InvalidDataException("빈 토큰");
+
+            _decryptFailures = 0; // 한 번 풀렸으면 앞의 실패는 일시적인 것이었다
             return token;
         }
         catch (Exception ex)
         {
-            // 여기로 오는 경우: 다른 계정·다른 PC로 파일을 옮김 / 프로그램이 바뀜 / 파일 손상.
-            // 어차피 쓸 수 없는 파일이므로 지워서 "연결 안 됨" 상태로 일치시킨다(→ 연결창이 뜬다).
-            Log.Warn($"기기 토큰을 풀 수 없어 삭제합니다(다시 연결이 필요합니다): {ex.GetType().Name}");
+            // 여기로 오는 경우: 다른 계정·다른 PC로 파일을 옮김 / 프로그램이 바뀜 / 파일 손상
+            //                 / 일시적인 암호해제 실패(로그오프·세션 전환 등).
+            _decryptFailures++;
+
+            if (_decryptFailures < DeleteAfterFailures)
+            {
+                Log.Warn($"기기 토큰을 풀지 못했습니다({_decryptFailures}/{DeleteAfterFailures}회) — " +
+                         $"일시적인 문제일 수 있어 파일은 그대로 둡니다: {ex.GetType().Name}");
+                return null;
+            }
+
+            // 계속 못 푼다 = 정말 쓸 수 없는 파일이다. 지워서 "연결 안 됨" 상태로 일치시킨다(→ 연결창이 뜬다).
+            Log.Warn($"기기 토큰을 {_decryptFailures}회 연속 풀 수 없어 삭제합니다(다시 연결이 필요합니다): {ex.GetType().Name}");
             try { File.Delete(AgentPaths.TokenFile); }
             catch (Exception delEx) { Log.Warn($"쓸 수 없는 토큰 파일 삭제 실패: {delEx.GetType().Name}"); }
             return null;

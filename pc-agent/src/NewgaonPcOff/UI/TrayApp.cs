@@ -2,8 +2,8 @@ using System;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
-using NewgaonPcOff.Api;
 using NewgaonPcOff.Config;
+using NewgaonPcOff.Core;
 using NewgaonPcOff.Diagnostics;
 using NewgaonPcOff.Security;
 using WinForms = System.Windows.Forms;
@@ -23,6 +23,7 @@ internal sealed class TrayApp : IDisposable
     private readonly System.Drawing.Icon _iconOff;
 
     private AgentConfig _config;
+    private PolicyService _service;
     private PairWindow? _pairWindow;
     private InfoWindow? _infoWindow;
     private bool _checking;
@@ -42,12 +43,17 @@ internal sealed class TrayApp : IDisposable
         _iconOn = LoadIcon("app.ico");
         _iconOff = LoadIcon("app-idle.ico");
 
+        // 판정기. 이 앱에서 시간에 따라 스스로 움직이는 유일한 부분이다.
+        _service = new PolicyService(_config);
+        _service.Changed += RefreshStatus;
+
         BuildMenu();
     }
 
     public void Start()
     {
         _tray.Visible = true;
+        _service.Start();   // 저장된 설정으로 즉시 판정 시작 + 서버에 물어보기
         RefreshStatus();
 
         // 아직 연결되지 않았으면(설치 직후) 바로 연결창을 띄워준다 — 직원이 무엇을 해야 할지 알 수 있게.
@@ -105,18 +111,35 @@ internal sealed class TrayApp : IDisposable
         return item;
     }
 
+    /// <summary>
+    /// 트레이 아이콘·도움말·메뉴 첫 줄을 지금 상태에 맞춘다.
+    ///  · 판정기가 상태를 바꿀 때마다(10초 주기) 불린다 → 무거운 일을 하지 않는다.
+    ///  · 문장은 <see cref="StatusWording"/> 한 곳에서만 만든다(창과 트레이가 다른 말을 하지 않게).
+    /// </summary>
     private void RefreshStatus()
     {
-        var paired = TokenStore.IsUsable(); // 파일 존재가 아니라 "열 수 있는지"
-        _tray.Icon = paired ? _iconOn : _iconOff;
+        try
+        {
+            var s = _service.Status;
 
-        var who = Join(_config.PairedCompanyName, _config.PairedUserName);
-        _statusItem.Text = paired
-            ? (who.Length > 0 ? $"연결됨 — {who}" : "연결됨")
-            : "아직 연결되지 않았습니다";
+            // 잠금 대상임을 **확인했을 때만** 켜진 아이콘.
+            //  · 회사가 끔·예외자·정책 모름은 모두 "이 PC는 지금 잠기지 않는다"이므로 회색이 맞다.
+            var active = s.Paired && !s.Revoked && s.Policy is { Enabled: true };
+            _tray.Icon = active ? _iconOn : _iconOff;
 
-        // 트레이 풍선 도움말은 길이 제한이 있어 짧게 자른다.
-        _tray.Text = Truncate(paired && who.Length > 0 ? $"{AppInfo.Name} — {who}" : $"{AppInfo.Name} — 연결 안 됨", 60);
+            var who = Join(_config.PairedCompanyName, _config.PairedUserName);
+            var brief = StatusWording.Short(s);
+
+            _statusItem.Text = s.Paired && who.Length > 0 ? $"{who} — {brief}" : brief;
+
+            // 트레이 풍선 도움말은 길이 제한이 있어 짧게 자른다.
+            _tray.Text = Truncate($"{AppInfo.Name} — {brief}", 60);
+        }
+        catch (Exception ex)
+        {
+            // 트레이 갱신이 예외로 죽으면 판정기의 알림 고리가 끊긴다. 반드시 붙잡는다.
+            Log.Error("트레이 상태 갱신 중 오류", ex);
+        }
     }
 
     // ── 창 열기 ─────────────────────────────────────────────────────────────
@@ -127,8 +150,9 @@ internal sealed class TrayApp : IDisposable
 
         // 설정 파일이 밖에서 바뀌었을 수도 있어 열 때 다시 읽는다.
         _config = AgentConfig.Load();
+        _service.UpdateConfig(_config); // 판정기도 같은 설정을 보게 맞춘다
 
-        var window = new PairWindow(_config, RefreshStatus, OpenInfoWindow);
+        var window = new PairWindow(_config, _service, RefreshStatus, OpenInfoWindow);
         window.Closed += (_, _) =>
         {
             _pairWindow = null;
@@ -196,8 +220,9 @@ internal sealed class TrayApp : IDisposable
     }
 
     /// <summary>
-    /// 지금 상태로 서버에서 정책을 한 번 받아와 사람이 읽을 수 있게 보여준다.
-    ///  · 연결이 실제로 되는지, 회사 설정이 어떻게 내려오는지 확인하는 용도(2-A의 검증 수단).
+    /// 서버에 지금 한 번 물어본 뒤, 판정기가 들고 있는 상태를 사람이 읽을 수 있게 보여준다.
+    ///  · ⚠️ 여기서 서버를 직접 부르지 않는다 — 판정기의 폴링과 겹치면 같은 순간에 서로 다른 결과를
+    ///    트레이와 창에 쓰게 된다. 통신 창구는 <see cref="PolicyService"/> 하나로 둔다.
     /// </summary>
     private async Task CheckServerAsync()
     {
@@ -205,8 +230,7 @@ internal sealed class TrayApp : IDisposable
         _checking = true;
         try
         {
-            var token = TokenStore.TryLoad();
-            if (token == null)
+            if (!TokenStore.IsUsable())
             {
                 Notice("아직 이 PC가 연결되지 않았습니다.\n\n웹 [계정] → \"내 PC 연결\"에서 연결코드를 받아 입력해주세요.",
                     MessageBoxImage.Information);
@@ -214,24 +238,19 @@ internal sealed class TrayApp : IDisposable
                 return;
             }
 
-            var res = await AgentApi.GetPolicyAsync(_config.ServerUrl, token);
-            if (!res.Ok || res.Value == null)
+            await _service.RefreshAsync();
+
+            var s = _service.Status;
+            if (s.Revoked)
             {
-                if (res.Unauthorized)
-                {
-                    Notice("이 PC의 연결이 해제되었거나 만료되었습니다.\n\n웹에서 새 연결코드를 받아 다시 연결해주세요.",
-                        MessageBoxImage.Warning);
-                    OpenPairWindow();
-                }
-                else
-                {
-                    Notice($"서버에 연결하지 못했습니다.\n\n{res.Error}", MessageBoxImage.Warning);
-                }
+                Notice("이 PC의 연결이 해제되었거나 만료되었습니다.\n\n웹에서 새 연결코드를 받아 다시 연결해주세요.",
+                    MessageBoxImage.Warning);
+                OpenPairWindow();
                 return;
             }
 
-            Log.Info($"서버 연결 확인 성공 (enabled={res.Value.Enabled}, policyVersion={res.Value.PolicyVersion})");
-            Notice(Describe(res.Value), MessageBoxImage.Information);
+            var icon = s.LastError != null || s.PolicyProblem != null ? MessageBoxImage.Warning : MessageBoxImage.Information;
+            Notice(Describe(s), icon);
         }
         finally
         {
@@ -239,76 +258,64 @@ internal sealed class TrayApp : IDisposable
         }
     }
 
-    /// <summary>받아온 정책을 사람이 읽을 문장으로 바꾼다.</summary>
-    private string Describe(PcOffPolicy p)
+    /// <summary>지금 상태를 사람이 읽을 문장으로 바꾼다(문제를 찾을 때 쓰는 확인용 화면).</summary>
+    private string Describe(AgentStatus s)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("서버와 정상적으로 통신했습니다.");
+
+        if (s.LastError != null) sb.AppendLine($"서버에 연결하지 못했습니다.\n{s.LastError}");
+        else sb.AppendLine("서버와 정상적으로 통신했습니다.");
+
         sb.AppendLine();
         sb.AppendLine($"· 서버: {_config.ServerUrl}");
         sb.AppendLine($"· 이 PC 이름: {_config.DeviceName}");
 
-        if (DateTimeOffset.TryParse(p.ServerTime, out var serverTime))
+        if (s.Decision.At is { } t)
         {
-            var gapSec = (int)Math.Round((DateTimeOffset.Now - serverTime).TotalSeconds);
-            sb.AppendLine($"· 서버 시각: {serverTime.LocalDateTime:yyyy-MM-dd HH:mm:ss} (이 PC 시계와 {gapSec:+0;-0;0}초 차이)");
+            // 회사 기준으로 찍는다(화면의 잠금 시각과 같은 기준이라야 사용자가 비교할 수 있다).
+            var gapSec = (int)Math.Round((DateTimeOffset.Now - t).TotalSeconds);
+            sb.AppendLine($"· 판정 기준 시각: {t.ToOffset(Hm.CompanyOffset):yyyy-MM-dd HH:mm:ss} (이 PC 시계와 {gapSec:+0;-0;0}초 차이)");
+        }
+        if (s.FromCache) sb.AppendLine("· ⚠️ 서버에 못 붙어 마지막으로 받은 설정으로 판단 중입니다.");
+
+        var p = s.Policy;
+        if (p == null)
+        {
+            sb.AppendLine($"· 잠금: {StatusWording.Lock(s)}");
+            return sb.ToString();
         }
 
-        sb.AppendLine(p.Enabled
-            ? "· 잠금: 사용 중 (이 PC는 잠금 대상입니다)"
-            : $"· 잠금: 사용 안 함 — {ReasonText(p.DisabledReason)}");
+        if (!p.Enabled)
+        {
+            sb.AppendLine($"· 잠금: 사용 안 함 — {StatusWording.DisabledText(p.DisabledReason)}");
+            return sb.ToString();
+        }
 
-        sb.AppendLine($"· 퇴근 기준시각: {p.Work.EndTime ?? "미설정"} · 유예 {p.DelayMin}분");
-        sb.AppendLine($"· 근무요일: {WorkDaysText(p.Work.WorkDays)}");
+        sb.AppendLine($"· 지금: {StatusWording.Lock(s)}");
+        sb.AppendLine($"· 근무 기준: {StatusWording.Rule(s)}");
+        sb.AppendLine($"· 근무요일: {WorkDaysText(p.WorkDaysCsv)}");
         sb.AppendLine(p.NotifyMins.Length == 0
             ? "· 사전 알림: 없음"
             : $"· 사전 알림: {string.Join("분 전 · ", p.NotifyMins)}분 전");
-        sb.AppendLine($"· 일시사용: {p.TempUse.Minutes}분 × 하루 {p.TempUse.PerDay}회 (오늘 {p.TempUse.UsedToday}회 사용)");
-        sb.AppendLine(p.TempUse.Reasons.Length == 0
+        sb.AppendLine($"· 일시사용: {p.TempUseMinutes}분 × 하루 {p.TempUsePerDay}회 (오늘 {p.TempUsedToday}회 사용)");
+        sb.AppendLine(p.TempReasons.Length == 0
             ? "· 일시사용 사유 목록: 없음"
-            : $"· 일시사용 사유: {string.Join(" / ", p.TempUse.Reasons)}");
+            : $"· 일시사용 사유: {string.Join(" / ", p.TempReasons)}");
 
         foreach (var d in p.Days)
         {
-            var kind = d.IsWorkday ? "근무일" : d.OffDayName is { Length: > 0 } ? $"휴무 ({d.OffDayName})" : "휴무";
-            sb.AppendLine($"· {d.Date}: {kind}");
+            var kind = d.IsWorkday ? "근무일" : d.OffDayName is { Length: > 0 } name ? $"휴무 ({name})" : "휴무";
+            sb.AppendLine($"· {d.Date:yyyy-MM-dd}: {kind}");
         }
 
-        sb.AppendLine($"· 승인된 연장근무: {p.ApprovedOvertime.Length}건");
-        foreach (var o in p.ApprovedOvertime)
+        sb.AppendLine($"· 승인된 연장근무: {p.Overtime.Length}건");
+        foreach (var w in p.Overtime)
         {
-            var start = HmToMinutes(o.StartTime);
-            var end = HmToMinutes(o.EndTime);
-            // 종료가 시작보다 작거나 같으면 자정을 넘긴 야근이라는 뜻(서버 규칙과 동일).
-            var overnight = start >= 0 && end >= 0 && end <= start ? " (다음 날까지)" : "";
-            sb.AppendLine($"   - {o.Date} {o.StartTime}~{o.EndTime}{overnight}");
+            sb.AppendLine($"   - {w.Start:MM-dd HH:mm} ~ {w.End:MM-dd HH:mm}"); // 이미 회사 기준 시각이다
         }
 
         return sb.ToString();
     }
-
-    /// <summary>
-    /// "HH:MM" → 자정부터의 분. 못 읽으면 -1.
-    ///  · ⚠️ 글자 그대로 크기를 비교하면 안 된다("9:00"과 "10:00"이 뒤집힌다). 반드시 숫자로 바꿔 비교한다.
-    /// </summary>
-    private static int HmToMinutes(string? hm)
-    {
-        if (string.IsNullOrWhiteSpace(hm)) return -1;
-        var parts = hm.Split(':');
-        if (parts.Length != 2) return -1;
-        if (!int.TryParse(parts[0], out var h) || !int.TryParse(parts[1], out var m)) return -1;
-        if (h is < 0 or > 23 || m is < 0 or > 59) return -1;
-        return h * 60 + m;
-    }
-
-    private static string ReasonText(string? reason) => reason switch
-    {
-        "company_off" => "회사가 PC-OFF를 사용하지 않습니다",
-        "user_exempt" => "회원님은 잠금 예외자로 지정돼 있습니다",
-        "no_worktime" => "회사 퇴근 기준시각이 설정되지 않았습니다",
-        "shift_unsupported" => "교대근무 회사는 아직 지원하지 않습니다",
-        _ => "회사 설정을 확인할 수 없습니다",
-    };
 
     /// <summary>근무요일 CSV("1,2,3,4,5")를 "월·화·수·목·금"으로.</summary>
     private static string WorkDaysText(string csv)
@@ -360,6 +367,9 @@ internal sealed class TrayApp : IDisposable
 
     public void Dispose()
     {
+        _service.Changed -= RefreshStatus;
+        _service.Dispose();
+
         // 아이콘은 Dispose하지 않는다 — 기본 아이콘(SystemIcons)은 윈도우가 여러 곳에서 공유하는 것이라
         // 여기서 해제하면 다른 곳에 영향이 갈 수 있다. 프로세스가 끝나면 어차피 정리된다.
         _tray.Visible = false;

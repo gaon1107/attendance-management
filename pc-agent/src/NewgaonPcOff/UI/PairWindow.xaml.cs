@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using NewgaonPcOff.Api;
 using NewgaonPcOff.Config;
+using NewgaonPcOff.Core;
 using NewgaonPcOff.Diagnostics;
 using NewgaonPcOff.Security;
 
@@ -25,17 +26,19 @@ namespace NewgaonPcOff.UI;
 ///    (실패한 값을 저장하면 이미 연결된 다른 서버 주소를 잘못 덮어써 앱이 엉뚱한 곳을 보게 된다)
 ///  · 연결 중에는 창을 닫을 수 없다 — 닫힌 창에 결과를 쓰면 사용자는 성공·실패를 영원히 알 수 없고,
 ///    그 사이 새로 연 창과 설정 파일을 서로 덮어쓰는 사고가 난다.
-///  · "몇 시에 잠긴다" 같은 판단은 하지 않는다 — 그건 판정기(2-B)의 일이다.
-///    여기서는 서버가 내려준 값을 글자로 옮기기만 한다.
+///  · <b>"몇 시에 잠긴다"를 이 창이 계산하지 않는다.</b> 판정은 <see cref="PolicyService"/>가 하고,
+///    이 창은 그 결과(<see cref="AgentStatus"/>)를 <see cref="StatusWording"/>로 글자로 옮기기만 한다.
+///    같은 것을 두 곳에서 계산하면 트레이와 창이 서로 다른 말을 하게 된다.
 /// </summary>
 public partial class PairWindow : Window
 {
     private const double SetupWidth = 470;
-    private const double StatusWidth = 430;
+    private const double StatusWidth = 470;
 
     private readonly Action _onChanged;
     private readonly Action _openInfo;
     private readonly AgentConfig _config;
+    private readonly PolicyService _service;
     private readonly CancellationTokenSource _closing = new();
     private bool _sanitizing;
     private bool _busy;
@@ -51,17 +54,33 @@ public partial class PairWindow : Window
     /// </summary>
     internal bool IsBusy => _busy;
 
-    internal PairWindow(AgentConfig config, Action onChanged, Action openInfo)
+    internal PairWindow(AgentConfig config, PolicyService service, Action onChanged, Action openInfo)
     {
         InitializeComponent();
         _config = config;
+        _service = service;
         _onChanged = onChanged;
         _openInfo = openInfo;
 
         ServerUrlBox.Text = _config.ServerUrl;
         DeviceNameBox.Text = _config.DeviceName;
         RefreshInsecureNote();
+
+        // 판정기가 상태를 바꿀 때마다 이 창을 다시 그린다(남은 시간도 함께 흐른다).
+        //  · 구독 해제는 Closed에서 한다 — Closing은 트레이 [종료](Application.Shutdown)에서
+        //    발생하지 않으므로 그쪽에 두면 해제되지 않는 경로가 생긴다.
+        _service.Changed += OnServiceChanged;
+        Closed += (_, _) => _service.Changed -= OnServiceChanged;
+
         ApplyMode(checkServer: true);
+    }
+
+    /// <summary>판정기가 알려온 변화. 화면 스레드에서 오므로 그대로 그려도 된다.</summary>
+    private void OnServiceChanged()
+    {
+        if (StatusPanel.Visibility != Visibility.Visible) return;
+        try { RenderStatus(); }
+        catch (Exception ex) { Log.Error("상태 표시 중 오류", ex); }
     }
 
     // ── 두 모습 전환 ────────────────────────────────────────────────────────
@@ -87,17 +106,40 @@ public partial class PairWindow : Window
 
         if (showStatus)
         {
-            StatusWho.Text = WhoText();
-            ValDevice.Text = _config.DeviceName;
-            ValServer.Text = _config.ServerUrl;
-            ValPairedAt.Text = PairedAtText("", "");
-            SetBadge("연결됨", "Success");
+            RenderStatus();
             if (checkServer) _ = RunServerCheck();
         }
         else
         {
             CodeBox.Focus();
         }
+    }
+
+    /// <summary>
+    /// 판정기의 지금 상태를 화면에 옮긴다. <b>여기서 계산하지 않는다</b> — 글자로 옮기기만 한다.
+    /// </summary>
+    private void RenderStatus()
+    {
+        var s = _service.Status;
+
+        StatusWho.Text = WhoText();
+        ValDevice.Text = _config.DeviceName;
+        ValServer.Text = _config.ServerUrl;
+        ValPairedAt.Text = PairedAtText("", "");
+
+        var (badge, badgeColor) = StatusWording.Badge(s);
+        SetBadge(badge, badgeColor);
+
+        ValRule.Text = StatusWording.Rule(s);
+        ValLock.Text = StatusWording.Lock(s);
+        ValCheckedAt.Text = StatusWording.Checked(s);
+
+        var note = StatusWording.Note(s);
+        if (note == null) StatusNote.Visibility = Visibility.Collapsed;
+        else ShowNote(note.Value.text, note.Value.color);
+
+        // 잠금 대상이 아니면(회사가 끔·예외자) "잠길 시각" 안내는 뜻이 없으므로 숨긴다.
+        PendingNote.Visibility = s.Policy is { Enabled: true } ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private string WhoText()
@@ -116,86 +158,48 @@ public partial class PairWindow : Window
     // ── 서버 상태 한 번 확인 ────────────────────────────────────────────────
 
     /// <summary>
-    /// 창을 열 때(그리고 [서버 다시 확인]을 눌렀을 때) 서버에 한 번 물어본다.
-    ///  · ⚠️ 기다리지 않고 띄우는 작업이라 오류를 여기서 반드시 붙잡는다 —
-    ///    놓치면 "확인 중..."에서 멈춘 채 아무 설명도 나오지 않는다.
+    /// 서버에 지금 한 번 물어보게 한다(창을 열 때, [서버 다시 확인]을 눌렀을 때).
+    ///  · 통신은 <see cref="PolicyService"/>가 한다 — 이 창이 따로 서버를 부르면 폴링과 겹쳐
+    ///    같은 순간에 서로 다른 결과를 화면과 트레이에 쓰게 된다.
+    ///  · ⚠️ 기다리지 않고 띄우는 작업이라 오류를 여기서 반드시 붙잡는다.
     /// </summary>
     private async Task RunServerCheck()
     {
         if (_busy) return;
 
         SetBusy(true);
-        SetBadge("확인 중...", "TextSub");
-        ValLock.Text = "확인 중...";
         StatusNote.Visibility = Visibility.Collapsed;
 
+        var ran = true;
         try
         {
-            var token = TokenStore.TryLoad();
-            if (token == null)
-            {
-                // 확인하는 사이에 연결 정보가 사라졌다(다른 곳에서 지웠거나 못 푸는 파일이 정리됨).
-                _forceSetup = false;
-                ApplyMode(checkServer: false);
-                ShowStatus("이 PC의 연결 정보가 없습니다. 새 연결코드로 다시 연결해주세요.", isError: true);
-                _onChanged();
-                return;
-            }
-
-            var res = await AgentApi.GetPolicyAsync(_config.ServerUrl, token, _closing.Token);
-            ValCheckedAt.Text = DateTime.Now.ToString("HH:mm:ss");
-
-            if (res.Unauthorized)
-            {
-                SetBadge("연결이 해제되었습니다", "Danger");
-                ValLock.Text = "-";
-                ShowNote("관리자가 이 PC의 연결을 해제했거나 연결이 만료되었습니다.\n" +
-                         "웹 [계정]에서 새 연결코드를 받아 [다시 연결]을 눌러주세요.", "Danger");
-                return;
-            }
-            if (!res.Ok || res.Value == null)
-            {
-                SetBadge("연결됨 · 서버 확인 실패", "Warning");
-                ValLock.Text = "확인하지 못했습니다";
-                ShowNote(res.Error ?? "서버에 연결하지 못했습니다.", "Warning");
-                return;
-            }
-
-            SetBadge("연결됨", "Success");
-            ValLock.Text = LockText(res.Value);
-            Log.Info($"상태 확인 성공 (enabled={res.Value.Enabled})");
+            // 주기 확인이 막 돌고 있으면 이 호출은 아무 일도 하지 않는다 → 사용자에게 그 사실을 알린다
+            // (그러지 않으면 버튼이 먹통인 줄 안다).
+            ran = await _service.RefreshAsync();
         }
         catch (Exception ex)
         {
-            Log.Error($"상태 확인 중 오류: {ex.GetType().FullName}");
-            SetBadge("연결됨 · 서버 확인 실패", "Warning");
-            ValLock.Text = "확인하지 못했습니다";
-            ShowNote($"상태를 확인하는 중 오류가 발생했습니다. ({ex.GetType().Name})", "Warning");
+            Log.Error("상태 확인 중 오류", ex);
         }
         finally
         {
             SetBusy(false);
         }
-    }
 
-    /// <summary>
-    /// 서버가 내려준 값을 글자로 옮긴다. <b>계산하지 않는다</b>(잠금 시각 판단은 2-B 판정기의 일).
-    /// </summary>
-    private static string LockText(PcOffPolicy p)
-    {
-        if (!p.Enabled)
+        // 확인하는 사이에 연결 정보가 사라졌을 수 있다(다른 곳에서 지웠거나 못 푸는 파일이 정리됨).
+        if (!TokenStore.IsUsable())
         {
-            return p.DisabledReason switch
-            {
-                "company_off" => "회사가 PC-OFF를 사용하지 않습니다",
-                "user_exempt" => "잠금 예외자로 지정돼 있습니다",
-                "no_worktime" => "회사 퇴근 기준시각이 설정되지 않았습니다",
-                "shift_unsupported" => "교대근무 회사는 아직 지원하지 않습니다",
-                _ => "회사 설정을 확인할 수 없습니다",
-            };
+            _forceSetup = false;
+            ApplyMode(checkServer: false);
+            ShowStatus("이 PC의 연결 정보가 없습니다. 새 연결코드로 다시 연결해주세요.", isError: true);
+            _onChanged();
+            return;
         }
-        var end = string.IsNullOrWhiteSpace(p.Work.EndTime) ? "미설정" : p.Work.EndTime!;
-        return $"사용 중 — 퇴근 {end} + 유예 {p.DelayMin}분";
+
+        RenderStatus();
+
+        // ⚠️ RenderStatus가 안내줄을 다시 쓰므로 이 안내는 **그 뒤에** 덮어써야 남는다.
+        if (!ran) ShowNote("이미 서버를 확인하는 중입니다. 잠시만 기다려주세요.", StatusWording.Plain);
     }
 
     // ── 버튼 ────────────────────────────────────────────────────────────────
@@ -361,6 +365,8 @@ public partial class PairWindow : Window
                     "컴퓨터 이름이 겹칩니다", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
 
+            // 판정기에게 "연결이 바뀌었다"고 알려 새 설정을 곧바로 받아오게 한다.
+            _service.NotifyPairingChanged(_config);
             _onChanged();
 
             if (!savedConfig)
@@ -423,6 +429,9 @@ public partial class PairWindow : Window
         _config.PairedCompanyName = null;
         _config.PairedAt = null;
         var saved = _config.Save();
+
+        // 판정기도 멈추고 이 PC에 남은 회사 설정(정책 캐시)까지 지운다 — 남의 설정을 남겨두지 않는다.
+        _service.NotifyPairingChanged(_config);
 
         _forceSetup = false;
         ApplyMode(checkServer: false); // 이제 미연결 → 설정 폼으로 돌아간다
