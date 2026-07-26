@@ -15,6 +15,12 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // 개발 중에만 뜨는 Next.js 표시기("N" 동그라미) 위치. 기본값 bottom-left가
+  // 사이드바 맨 아래 프로필 아바타(계정 설정 진입점)를 정확히 덮어 클릭을 막으므로 오른쪽 아래로 옮긴다.
+  // ⚠️ 개발 화면 전용 — 빌드된 배포본에는 나타나지 않는다.
+  devIndicators: {
+    position: "bottom-right",
+  },
   // 얼굴 출퇴근이 연속 3장(장당 최대 850KB)을 서버 액션으로 보내므로 본문 한도를 올린다(기본 1MB → 4MB).
   experimental: {
     serverActions: {
