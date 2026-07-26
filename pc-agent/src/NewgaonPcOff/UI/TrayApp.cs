@@ -57,7 +57,7 @@ internal sealed class TrayApp : IDisposable
         var menu = new WinForms.ContextMenuStrip();
         menu.Items.Add(_statusItem);
         menu.Items.Add(new WinForms.ToolStripSeparator());
-        menu.Items.Add(MenuItem("연결 설정...", OpenPairWindow));
+        menu.Items.Add(MenuItem("상태 · 연결 설정...", OpenPairWindow));
         menu.Items.Add(MenuItem("서버 연결 확인", RunCheckServer));
         menu.Items.Add(MenuItem("수집하는 정보", OpenInfoWindow));
         menu.Items.Add(new WinForms.ToolStripSeparator());
