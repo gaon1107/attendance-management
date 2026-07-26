@@ -29,6 +29,14 @@ public partial class PairWindow : Window
     private bool _sanitizing;
     private bool _busy;
 
+    /// <summary>
+    /// 지금 서버와 연결하는 중인지. 트레이 [종료]가 이 값을 보고 막는다.
+    ///  · <c>Application.Shutdown()</c>은 창의 Closing을 발생시키지 않아 이 창의 가드를 지나쳐 버린다.
+    ///    그 상태로 종료하면 서버는 코드를 소진하고 토큰까지 새로 발급했는데
+    ///    이 PC에는 아무것도 저장되지 않는다(재연결이었다면 기존 연결까지 끊긴다).
+    /// </summary>
+    internal bool IsBusy => _busy;
+
     internal PairWindow(AgentConfig config, Action onChanged, Action openInfo)
     {
         InitializeComponent();
@@ -45,7 +53,7 @@ public partial class PairWindow : Window
 
     private void RefreshPairedPanel()
     {
-        var paired = TokenStore.Exists;
+        var paired = TokenStore.IsUsable(); // 파일 존재가 아니라 "열 수 있는지"
         PairedPanel.Visibility = paired ? Visibility.Visible : Visibility.Collapsed;
         ClearButton.Visibility = paired ? Visibility.Visible : Visibility.Collapsed;
 
@@ -124,13 +132,12 @@ public partial class PairWindow : Window
             if (!res.Ok || pair == null || string.IsNullOrWhiteSpace(token))
             {
                 // 시간 초과는 특별히 다룬다: 서버가 코드를 **먼저** 소진하므로, 응답만 유실되면
-                // 같은 코드를 다시 넣어도 계속 실패한다.
-                //  ⚠️ 다만 "서버 주소를 잘못 적어 아예 닿지 못한 경우"도 같은 시간 초과로 끝난다.
-                //     둘을 구분할 방법이 없으므로 **주소 확인을 먼저 안내**한다(가장 흔한 실수).
+                // 같은 코드를 다시 넣어도 계속 실패한다. 새 코드를 받으라고 분명히 안내한다.
+                //  · TimedOut은 "서버에 닿았는데 응답이 없었다"는 뜻만 갖는다(주소 오타는 별도 문구).
+                //    구분은 AgentApi.SendAsync가 한다.
                 var message = res.TimedOut
-                    ? "서버 응답이 없어 연결을 마치지 못했습니다.\n" +
-                      "① 서버 주소가 맞는지 확인해주세요.\n" +
-                      "② 주소가 맞다면 이 연결코드는 이미 사용됐을 수 있으니, 웹에서 새 코드를 발급받아 다시 시도해주세요."
+                    ? "서버에 연결은 됐지만 응답이 오지 않아 연결을 마치지 못했습니다.\n" +
+                      "이 연결코드는 이미 사용됐을 수 있으니, 웹에서 새 코드를 발급받아 다시 시도해주세요."
                     : res.Error ?? "연결에 실패했습니다. 웹에서 새 연결코드를 받아 다시 시도해주세요.";
                 ShowStatus(message, isError: true);
 
@@ -180,13 +187,22 @@ public partial class PairWindow : Window
                     "컴퓨터 이름이 겹칩니다", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
 
+            // 다 쓴 코드는 칸에서 지운다 — 남겨두면 성공 후 한 번 더 눌러 401 오류가
+            // 초록 성공 메시지를 덮어쓰고, 서버의 실패 횟수(IP 차단 한도)까지 잠식한다.
+            CodeBox.Clear();
+
             RefreshPairedPanel();
             _onChanged();
         }
         catch (Exception ex)
         {
+            // 여기 오는 대표 경우: 토큰 저장 실패(디스크·권한).
+            //  ⚠️ 이 시점에 서버는 **이미 코드를 소진하고 토큰을 새로 발급**했다.
+            //     같은 코드로는 절대 다시 성공할 수 없으므로 "새 코드"를 받으라고 안내해야 한다.
             Log.Error($"연결 처리 중 오류: {ex.GetType().FullName}");
-            ShowStatus("연결 정보를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.", isError: true);
+            ShowStatus("연결 정보를 이 PC에 저장하지 못했습니다.\n" +
+                       "이 연결코드는 이미 사용됐으니, 웹에서 새 코드를 발급받아 다시 시도해주세요.", isError: true);
+            CodeBox.Clear();
         }
         finally
         {

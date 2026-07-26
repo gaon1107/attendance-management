@@ -69,11 +69,11 @@ internal static class AgentApi
             // 옛 연결을 계속 써서 통신이 안 되는 상태가 오래 이어진다.
             PooledConnectionLifetime = TimeSpan.FromMinutes(5),
             AutomaticDecompression = DecompressionMethods.All,
-            // ⚠️ ConnectTimeout은 일부러 두지 않는다.
-            //  연결 단계에서 시간이 만료되면 "우리가 건 제한 시간"과 **똑같은 종류의 예외**로 올라와
-            //  둘을 구분할 수 없다. 그러면 "서버 주소를 잘못 적은 것"을 "연결코드가 소진된 것"으로
-            //  잘못 안내하게 된다(가장 흔한 초보 실수를 엉뚱한 길로 보내는 사고).
-            //  → 제한 시간은 아래 SendAsync의 호출별 하나로만 관리한다.
+            // ⚠️ 이 값이 아래 제한 시간(15초·40초)보다 **짧아야** 한다.
+            //  그러면 "서버에 닿지도 못한 것"과 "닿았는데 응답이 없는 것"을 구분할 수 있다
+            //  (아래 SendAsync의 timer.IsCancellationRequested 판정). 구분하지 못하면
+            //  서버 주소 오타를 "연결코드가 소진됐다"고 잘못 안내해, 멀쩡한 코드를 버리게 만든다.
+            ConnectTimeout = TimeSpan.FromSeconds(10),
         };
 
         var client = new HttpClient(handler)
@@ -178,9 +178,19 @@ internal static class AgentApi
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            // 우리가 건 제한 시간이 끝난 경우 = 시간 초과.
-            Log.Warn($"{what} 시간 초과({timeout.TotalSeconds:0}초)");
-            return ApiResult<T>.Fail("서버 응답이 없습니다(시간 초과). 네트워크 상태와 서버 주소를 확인해주세요.", timedOut: true);
+            // ⚠️ 여기 오는 이유가 두 가지다. 반드시 구분해야 한다.
+            //  ① 우리가 건 제한 시간이 끝남(timer가 취소됨) = 서버에 **닿았는데** 응답이 없다
+            //     → 서버가 요청을 처리했을 수 있다(연결코드는 서버가 먼저 소진한다).
+            //  ② ConnectTimeout이 먼저 끝남(timer는 아직 안 취소됨) = TCP 연결 자체를 못 했다
+            //     → 요청이 서버로 나가지도 않았으므로 연결코드는 **그대로 살아 있다**.
+            if (!timer.IsCancellationRequested)
+            {
+                Log.Warn($"{what} 서버 접속 실패(연결 제한시간)");
+                return ApiResult<T>.Fail("서버에 연결할 수 없습니다. 서버 주소와 네트워크를 확인해주세요.");
+            }
+
+            Log.Warn($"{what} 응답 시간 초과({timeout.TotalSeconds:0}초)");
+            return ApiResult<T>.Fail("서버에 연결은 됐지만 응답이 오지 않았습니다(시간 초과).", timedOut: true);
         }
         catch (OperationCanceledException)
         {

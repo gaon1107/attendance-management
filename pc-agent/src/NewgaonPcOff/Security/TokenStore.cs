@@ -14,7 +14,11 @@ namespace NewgaonPcOff.Security;
 /// </summary>
 internal static class TokenStore
 {
-    /// <summary>토큰을 암호화해서 저장한다.</summary>
+    /// <summary>
+    /// 토큰을 암호화해서 저장한다.
+    ///  · 임시 파일에 먼저 쓴 뒤 바꿔치기한다 — 쓰다가 끊겨 <b>반쪽 파일</b>이 남으면
+    ///    "파일은 있는데 열 수 없는" 상태가 되고, 그건 화면과 실제가 어긋나는 사고로 이어진다.
+    /// </summary>
     public static void Save(string token)
     {
         if (string.IsNullOrWhiteSpace(token)) throw new ArgumentException("빈 토큰은 저장할 수 없습니다.", nameof(token));
@@ -23,33 +27,75 @@ internal static class TokenStore
         var bytes = Encoding.UTF8.GetBytes(token);
         var locked = Dpapi.Protect(bytes);
         Array.Clear(bytes); // 평문 흔적 지우기
-        File.WriteAllBytes(AgentPaths.TokenFile, locked);
+
+        var tmp = AgentPaths.TokenFile + ".tmp";
+        try
+        {
+            File.WriteAllBytes(tmp, locked);
+            File.Move(tmp, AgentPaths.TokenFile, overwrite: true);
+        }
+        catch
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* 임시파일 정리 실패는 무시 */ }
+            throw;
+        }
         Log.Info("기기 토큰을 저장했습니다."); // 값은 남기지 않는다
     }
 
-    /// <summary>저장된 토큰을 읽는다. 없거나 풀 수 없으면 <c>null</c>(→ 다시 연결 안내).</summary>
+    /// <summary>
+    /// 저장된 토큰을 읽는다. 없거나 풀 수 없으면 <c>null</c>.
+    ///  · ⚠️ <b>풀 수 없는 파일은 지운다.</b> 그러지 않으면 <see cref="Exists"/>(파일 있음)와
+    ///    이 함수(열 수 있음)의 답이 갈려서, 트레이는 "연결됨"인데 실제로는 미연결인 상태가 된다.
+    ///    그 상태에서는 연결창도 자동으로 뜨지 않아 <b>직원은 할 일이 없다고 믿고, PC는 잠기지 않는다.</b>
+    ///  · 다만 파일을 읽지 못한 것(잠김·권한)과 못 푼 것을 구분한다 — 잠깐의 파일 잠금으로
+    ///    멀쩡한 연결 정보를 날리면 안 되기 때문이다.
+    /// </summary>
     public static string? TryLoad()
     {
+        byte[] raw;
         try
         {
             if (!File.Exists(AgentPaths.TokenFile)) return null;
-            var raw = File.ReadAllBytes(AgentPaths.TokenFile);
-            if (raw.Length == 0) return null;
+            raw = File.ReadAllBytes(AgentPaths.TokenFile);
+        }
+        catch (Exception ex)
+        {
+            // 읽기 실패(다른 프로그램이 잠금·권한) — 파일은 멀쩡할 수 있으니 지우지 않는다.
+            Log.Warn($"기기 토큰 파일을 읽지 못했습니다(파일은 그대로 둡니다): {ex.GetType().Name}");
+            return null;
+        }
+
+        try
+        {
+            if (raw.Length == 0) throw new InvalidDataException("빈 파일");
 
             var plain = Dpapi.Unprotect(raw);
             var token = Encoding.UTF8.GetString(plain);
             Array.Clear(plain);
-            return string.IsNullOrWhiteSpace(token) ? null : token;
+            if (string.IsNullOrWhiteSpace(token)) throw new InvalidDataException("빈 토큰");
+            return token;
         }
         catch (Exception ex)
         {
-            // 다른 계정·다른 PC로 파일을 옮긴 경우 여기로 온다(설계된 동작).
-            Log.Warn("저장된 기기 토큰을 풀 수 없습니다(다시 연결이 필요합니다). " + ex.GetType().Name);
+            // 여기로 오는 경우: 다른 계정·다른 PC로 파일을 옮김 / 프로그램이 바뀜 / 파일 손상.
+            // 어차피 쓸 수 없는 파일이므로 지워서 "연결 안 됨" 상태로 일치시킨다(→ 연결창이 뜬다).
+            Log.Warn($"기기 토큰을 풀 수 없어 삭제합니다(다시 연결이 필요합니다): {ex.GetType().Name}");
+            try { File.Delete(AgentPaths.TokenFile); }
+            catch (Exception delEx) { Log.Warn($"쓸 수 없는 토큰 파일 삭제 실패: {delEx.GetType().Name}"); }
             return null;
         }
     }
 
+    /// <summary>파일이 있는지만 본다. ⚠️ 화면 표시에는 쓰지 말 것 — <see cref="IsUsable"/>을 쓴다.</summary>
     public static bool Exists => File.Exists(AgentPaths.TokenFile);
+
+    /// <summary>
+    /// 이 PC가 <b>실제로 연결된 상태인지</b>. 파일 존재가 아니라 "열 수 있는지"로 판단한다.
+    ///  · 화면·자동 연결창·앞으로의 폴링은 모두 이 값을 기준으로 해야 한다.
+    ///    파일 존재만 보면 "연결됨으로 보이는데 아무 일도 안 하는" 상태가 만들어진다.
+    ///  · 못 푸는 파일은 <see cref="TryLoad"/>가 이 호출 중에 정리한다.
+    /// </summary>
+    public static bool IsUsable() => TryLoad() != null;
 
     /// <summary>
     /// 이 PC에서 연결 정보를 지운다(서버 쪽 기기 해제는 웹 [계정]·[PC관리]에서 한다).

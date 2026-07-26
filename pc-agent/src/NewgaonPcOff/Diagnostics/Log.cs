@@ -23,8 +23,15 @@ internal static class Log
     public static void Info(string message) => Write("INFO", message);
     public static void Warn(string message) => Write("WARN", message);
 
+    /// <summary>
+    /// 오류 기록. <b>예외 메시지(ex.Message)는 절대 담지 않는다 — 종류만 담는다.</b>
+    ///  · .NET 예외는 문제가 된 **값**을 메시지에 넣는 관례가 있어(예: 형식 오류·헤더 검증),
+    ///    한 번 새면 기기 토큰이 이 파일에 14일간 평문으로 남는다. 그 파일은 "캡처해서 보내주세요"라고
+    ///    안내하는 파일이다(사규 8조).
+    ///  · 경로·파일명처럼 비밀이 아닌 정보가 필요하면 호출부가 <paramref name="message"/>에 직접 넣는다.
+    /// </summary>
     public static void Error(string message, Exception? ex = null)
-        => Write("ERROR", ex == null ? message : $"{message} :: {ex.GetType().Name}: {ex.Message}");
+        => Write("ERROR", ex == null ? message : $"{message} :: {ex.GetType().FullName}");
 
     private static void Write(string level, string message)
     {

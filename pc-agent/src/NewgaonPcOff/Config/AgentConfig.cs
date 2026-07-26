@@ -69,9 +69,10 @@ internal sealed class AgentConfig
             AgentPaths.EnsureDirs();
             var me = Normalized();
             File.WriteAllText(tmp, JsonSerializer.Serialize(me, Json));
-
-            if (File.Exists(AgentPaths.ConfigFile)) File.Replace(tmp, AgentPaths.ConfigFile, null);
-            else File.Move(tmp, AgentPaths.ConfigFile);
+            // overwrite:true 한 번으로 "있을 때/없을 때"를 모두 처리한다.
+            //  · 두 갈래로 나누면 "없다고 판단한 직후 다른 인스턴스가 만드는" 아주 좁은 틈에서
+            //    쓸데없이 저장이 실패한다(중복 실행 차단이 실패해 두 개가 도는 경우가 있다).
+            File.Move(tmp, AgentPaths.ConfigFile, overwrite: true);
             return true;
         }
         catch (Exception ex)

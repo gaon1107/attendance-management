@@ -45,7 +45,9 @@ internal sealed class TrayApp : IDisposable
         RefreshStatus();
 
         // 아직 연결되지 않았으면(설치 직후) 바로 연결창을 띄워준다 — 직원이 무엇을 해야 할지 알 수 있게.
-        if (!TokenStore.Exists) OpenPairWindow();
+        //  · 파일 존재가 아니라 **열 수 있는지**로 판단한다(못 푸는 파일이 남아 있으면 연결창이 안 떠서
+        //    직원은 할 일이 없다고 믿고 PC는 잠기지 않는 상태가 된다).
+        if (!TokenStore.IsUsable()) OpenPairWindow();
     }
 
     // ── 트레이 메뉴 ─────────────────────────────────────────────────────────
@@ -59,10 +61,29 @@ internal sealed class TrayApp : IDisposable
         menu.Items.Add(MenuItem("서버 연결 확인", RunCheckServer));
         menu.Items.Add(MenuItem("수집하는 정보", OpenInfoWindow));
         menu.Items.Add(new WinForms.ToolStripSeparator());
-        menu.Items.Add(MenuItem("종료", () => Application.Current.Shutdown()));
+        menu.Items.Add(MenuItem("종료", RequestExit));
 
         _tray.ContextMenuStrip = menu;
         _tray.DoubleClick += (_, _) => OpenPairWindow();
+    }
+
+    /// <summary>
+    /// 종료 요청. 연결하는 중이면 막는다.
+    ///  · <c>Application.Shutdown()</c>은 창의 Closing을 발생시키지 않아 연결창의 "연결 중 닫기 금지"를
+    ///    그냥 지나쳐 버린다. 그러면 서버는 코드를 소진하고 토큰을 새로 발급했는데
+    ///    이 PC에는 아무것도 저장되지 않은 채 프로그램이 사라진다.
+    /// </summary>
+    private void RequestExit()
+    {
+        if (_pairWindow is { IsBusy: true } busyWindow)
+        {
+            busyWindow.Activate();
+            Notice("서버와 연결하는 중입니다. 끝난 뒤에 종료해주세요.\n\n" +
+                   "지금 종료하면 연결코드가 사용된 채로 연결이 완료되지 않습니다.",
+                MessageBoxImage.Warning);
+            return;
+        }
+        Application.Current.Shutdown();
     }
 
     /// <summary>메뉴 항목 하나. 눌렀을 때 오류가 나도 앱이 죽지 않게 감싼다.</summary>
@@ -79,7 +100,7 @@ internal sealed class TrayApp : IDisposable
 
     private void RefreshStatus()
     {
-        var paired = TokenStore.Exists;
+        var paired = TokenStore.IsUsable(); // 파일 존재가 아니라 "열 수 있는지"
         _tray.Icon = paired ? _iconOn : _iconOff;
 
         var who = Join(_config.PairedCompanyName, _config.PairedUserName);

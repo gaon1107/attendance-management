@@ -14,6 +14,10 @@ echo  아이콘을 오른쪽 클릭하면:
 echo    연결 설정 / 서버 연결 확인 / 수집하는 정보 / 종료
 echo.
 
+rem 이미 켜져 있으면 실행 파일이 잠겨 빌드가 실패한다. 먼저 끈다.
+rem (없으면 아무 일도 하지 않고 넘어간다)
+taskkill /IM NewgaonPcOff.exe /F > nul 2> nul
+
 echo [1/2] 프로그램 만들기(빌드) 중...
 dotnet build src\NewgaonPcOff\NewgaonPcOff.csproj -v q --nologo
 if errorlevel 1 goto fail

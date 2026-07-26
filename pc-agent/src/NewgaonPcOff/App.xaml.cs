@@ -86,15 +86,28 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// 같은 오류가 반복될 때 알림창이 무한히 쌓이지 않도록 두는 간격.
+    ///  · 앞으로 붙을 폴링 타이머(2-B)가 같은 예외를 5분마다 던지면, 간격이 없으면 창이 계속 늘어난다.
+    /// </summary>
+    private static readonly TimeSpan NoticeCooldown = TimeSpan.FromMinutes(10);
+    private static DateTime _lastNoticeAt = DateTime.MinValue;
+
     private static void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         // ⚠️ 예외 메시지에는 값이 실릴 수 있어(토큰 등) 기록·화면에 그대로 쓰지 않는다. 종류만 알린다.
         Log.Error($"처리되지 않은 화면 오류: {e.Exception.GetType().FullName}");
+        e.Handled = true; // 앱을 죽이지 않는다
+
+        // 기록은 매번, 알림창은 10분에 한 번만.
+        var now = DateTime.Now;
+        if (now - _lastNoticeAt < NoticeCooldown) return;
+        _lastNoticeAt = now;
+
         MessageBox.Show(
             $"예상하지 못한 오류가 발생했습니다. ({e.Exception.GetType().Name})\n\n" +
             "프로그램은 계속 동작합니다. 반복되면 관리자에게 알려주세요.",
             AppInfo.Name, MessageBoxButton.OK, MessageBoxImage.Warning);
-        e.Handled = true; // 앱을 죽이지 않는다
     }
 
     private static void OnDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
