@@ -13,6 +13,7 @@ import { FaceRuleForm } from "./FaceRuleForm";
 import { LivenessRuleForm } from "./LivenessRuleForm";
 import { AlertRulesForm } from "./AlertRulesForm";
 import { HolidayForm } from "./HolidayForm";
+import { PcOffForm } from "./PcOffForm";
 
 export default async function SettingsPage() {
   const me = await getCurrentUser();
@@ -31,7 +32,15 @@ export default async function SettingsPage() {
       holidayAutoOn: true,
       shiftMode: true, scheduleType: true,
       outingReasons: true,
+      // PC-OFF(근무시간 외 PC 잠금) 설정 — 기본값이 있어 기존 회사도 그대로 읽힌다.
+      pcOffOn: true, pcOffMode: true, pcOffDelayMin: true, pcOffNotifyMins: true,
+      pcOffTempUseMin: true, pcOffTempUsePerDay: true,
     },
+  });
+
+  // PC-OFF 카드에 보여줄 "지금 연결된 PC 수"(해제되지 않은 기기만). 가짜 숫자를 쓰지 않기 위해 실제로 센다.
+  const pcDeviceCount = await prisma.agentDevice.count({
+    where: { companyId: me.companyId, revokedAt: null },
   });
 
   // 교대조 정의(있으면) — 근무제 폼에서 조별 시각을 보여준다.
@@ -90,6 +99,21 @@ export default async function SettingsPage() {
             nightEnd: company?.alertNightEnd ?? 6,
             failOn: company?.alertFailOn ?? true,
             failCount: company?.alertFailCount ?? 5,
+          }}
+        />
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <PcOffForm
+          initial={{
+            on: company?.pcOffOn ?? false,
+            mode: company?.pcOffMode ?? "lock",
+            delayMin: company?.pcOffDelayMin ?? 30,
+            notifyMins: company?.pcOffNotifyMins ?? "10,5",
+            tempUseMin: company?.pcOffTempUseMin ?? 30,
+            tempUsePerDay: company?.pcOffTempUsePerDay ?? 1,
+            workEndTime: company?.workEndTime ?? null,
+            deviceCount: pcDeviceCount,
+            isShiftCompany: !!company?.shiftMode,
           }}
         />
       </div>

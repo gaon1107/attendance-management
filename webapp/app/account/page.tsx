@@ -3,10 +3,30 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { AppShell } from "@/app/components/AppShell";
 import { ChangePasswordForm } from "./ChangePasswordForm";
+import { PcLinkCard } from "./PcLinkCard";
+import { prisma } from "@/lib/db";
+import { isDeviceOnline } from "@/lib/agent-auth";
+
+const MY_EVENT_LIMIT = 20; // [내 PC 기록]에 보여줄 최근 건수(본인 데이터 열람권)
 
 export default async function AccountPage() {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
+
+  // PC-OFF: 내 기기와 내 기록(본인 것만). 기존 카드 데이터와 무관하게 따로 조회한다.
+  const [myDevices, myEvents] = await Promise.all([
+    prisma.agentDevice.findMany({
+      where: { userId: me.id, companyId: me.companyId, revokedAt: null },
+      select: { id: true, deviceName: true, pairedAt: true, lastSeenAt: true },
+      orderBy: { pairedAt: "desc" },
+    }),
+    prisma.agentEvent.findMany({
+      where: { userId: me.id, companyId: me.companyId },
+      select: { id: true, type: true, at: true, meta: true, device: { select: { deviceName: true } } },
+      orderBy: { at: "desc" },
+      take: MY_EVENT_LIMIT,
+    }),
+  ]);
 
   const info: { label: string; value: string }[] = [
     { label: "이름", value: me.name },
@@ -39,6 +59,24 @@ export default async function AccountPage() {
         </p>
         <ChangePasswordForm />
       </div>
+      </div>
+
+      {/* PC-OFF 연결 — 기존 두 카드 아래에 추가(기존 카드는 그대로) */}
+      <div style={{ marginTop: 16 }}>
+        <PcLinkCard
+          pcOffOn={me.company.pcOffOn}
+          exempt={me.pcOffExempt}
+          devices={myDevices.map((d) => ({
+            id: d.id,
+            deviceName: d.deviceName,
+            pairedAt: d.pairedAt.toISOString(),
+            lastSeenAt: d.lastSeenAt ? d.lastSeenAt.toISOString() : null,
+            online: isDeviceOnline(d.lastSeenAt),
+          }))}
+          events={myEvents.map((e) => ({
+            id: e.id, type: e.type, at: e.at.toISOString(), meta: e.meta, deviceName: e.device.deviceName,
+          }))}
+        />
       </div>
     </AppShell>
   );
