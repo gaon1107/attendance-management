@@ -8,7 +8,7 @@ import { prisma } from "./db";
 import { loadOffDays } from "./holiday-server";
 import { effectiveWorkDays, daysToCsv } from "./workdays";
 import { toISODate } from "./period";
-import { parseNotifyMins } from "./pcoff";
+import { parseNotifyMins, parseTempReasons } from "./pcoff";
 
 // 정책 응답(앱이 받는 JSON) — 여기에 없는 항목은 앱이 알 수 없다(수집·전달 범위를 이 타입이 못박는다).
 export type PcOffPolicy = {
@@ -25,6 +25,7 @@ export type PcOffPolicy = {
     minutes: number;         // 1회 길이(분)
     perDay: number;          // 하루 허용 횟수
     usedToday: number;       // 오늘 이미 쓴 횟수(서버가 센다 — 앱을 다시 깔아도 초기화되지 않는다)
+    reasons: string[];       // 잠금화면에서 고를 사유 목록. ⚠️ 앱은 자유입력을 주지 않는다(민감정보 유입 차단).
   };
   work: {
     startTime: string | null; // "HH:MM" 회사 표준 출근 기준시각
@@ -55,7 +56,7 @@ export async function buildPcOffPolicy(userId: string, companyId: string, now = 
       where: { id: companyId },
       select: {
         pcOffOn: true, pcOffMode: true, pcOffDelayMin: true, pcOffNotifyMins: true,
-        pcOffTempUseMin: true, pcOffTempUsePerDay: true,
+        pcOffTempUseMin: true, pcOffTempUsePerDay: true, pcOffTempReasons: true,
         workStartTime: true, workEndTime: true, workDays: true, holidayAutoOn: true,
         shiftMode: true, // 교대근무 회사 판정용(1차 미지원 — 아래에서 잠금 대상에서 제외)
       },
@@ -125,7 +126,10 @@ export async function buildPcOffPolicy(userId: string, companyId: string, now = 
     mode: company.pcOffMode,
     delayMin: company.pcOffDelayMin,
     notifyMins,
-    tempUse: { minutes: company.pcOffTempUseMin, perDay: company.pcOffTempUsePerDay, usedToday },
+    tempUse: {
+      minutes: company.pcOffTempUseMin, perDay: company.pcOffTempUsePerDay, usedToday,
+      reasons: parseTempReasons(company.pcOffTempReasons),
+    },
     work: {
       startTime: company.workStartTime,
       endTime: company.workEndTime,
@@ -138,7 +142,7 @@ export async function buildPcOffPolicy(userId: string, companyId: string, now = 
     // 설정이 바뀌면 값이 달라지는 간단한 지문. 앱이 "정책이 바뀌었나"를 싸게 확인한다.
     policyVersion: fingerprint([
       company.pcOffOn, company.pcOffMode, company.pcOffDelayMin, company.pcOffNotifyMins,
-      company.pcOffTempUseMin, company.pcOffTempUsePerDay,
+      company.pcOffTempUseMin, company.pcOffTempUsePerDay, company.pcOffTempReasons,
       company.workStartTime, company.workEndTime, daysToCsv(workDaySet), user.pcOffExempt,
       ...days.map((d) => `${d.date}:${d.isWorkday}`),
       ...overtimes.map((o) => `${toISODate(o.targetDate)}:${o.startTime}-${o.endTime}`),
@@ -150,8 +154,8 @@ export async function buildPcOffPolicy(userId: string, companyId: string, now = 
 function emptyPolicy(serverTime: string, reason: string): PcOffPolicy {
   return {
     serverTime, enabled: false, disabledReason: reason,
-    mode: "lock", delayMin: 30, notifyMins: [],
-    tempUse: { minutes: 0, perDay: 0, usedToday: 0 },
+    mode: "lock", delayMin: 10, notifyMins: [],
+    tempUse: { minutes: 0, perDay: 0, usedToday: 0, reasons: [] },
     work: { startTime: null, endTime: null, workDays: "" },
     days: [], approvedOvertime: [], policyVersion: 0,
   };

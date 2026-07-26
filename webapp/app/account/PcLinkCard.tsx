@@ -104,7 +104,9 @@ export function PcLinkCard({ devices, events, pcOffOn, exempt }: {
               <div key={e.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "8px 0", borderTop: i === 0 ? "none" : "1px solid #F3F4F6" }}>
                 <span style={{ fontSize: 13, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{fmt(e.at)}</span>
                 <span style={{ fontSize: 13, fontWeight: 700 }}>{EVENT_TEXT[e.type] ?? e.type}</span>
-                <span style={{ fontSize: 12, color: "var(--text-sub)", flex: 1, textAlign: "right", wordBreak: "keep-all" }}>{e.meta ?? e.deviceName}</span>
+                <span style={{ fontSize: 12, color: "var(--text-sub)", flex: 1, textAlign: "right", wordBreak: "keep-all" }}>
+                  {e.meta ?? (e.type === "temp_use" ? "(사유 미확인)" : e.deviceName)}
+                </span>
               </div>
             ))}
           </div>

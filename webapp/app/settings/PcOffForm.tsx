@@ -6,7 +6,10 @@ import { useActionState, useState } from "react";
 import { savePcOffSettings } from "@/app/actions/pcoff";
 // ⚠️ 서버 전용 lib/pcoff-policy.ts(prisma 사용)가 아니라 순수 모듈 lib/pcoff.ts에서 가져온다.
 //    (서버 전용 파일을 화면에서 import하면 DB 관련 코드가 브라우저로 딸려간다)
-import { parseNotifyMins, PCOFF_LIMITS } from "@/lib/pcoff";
+import {
+  parseNotifyMins, PCOFF_LIMITS, parseTempReasons,
+  RETENTION_WORK_LABEL, RETENTION_SYSTEM_LABEL,
+} from "@/lib/pcoff";
 
 type Props = {
   initial: {
@@ -16,6 +19,7 @@ type Props = {
     notifyMins: string;
     tempUseMin: number;
     tempUsePerDay: number;
+    tempReasons: string;        // 일시사용 사유 목록(쉼표 구분). 직원은 여기서만 고른다(자유입력 없음).
     workEndTime: string | null; // 잠금 기준선. 없으면 동작하지 않으므로 화면에서 먼저 알린다.
     deviceCount: number;        // 지금 연결된 PC 수(가짜 데이터 금지 — 실제 AgentDevice 수)
     isShiftCompany: boolean;    // 교대근무 회사면 1차 미지원(야간조가 표준 퇴근시각에 잠기는 사고 방지)
@@ -36,6 +40,7 @@ export function PcOffForm({ initial }: Props) {
   const [notify, setNotify] = useState(initial.notifyMins);
   const [tempUseMin, setTempUseMin] = useState(String(initial.tempUseMin));
   const [perDay, setPerDay] = useState(String(initial.tempUsePerDay));
+  const [reasons, setReasons] = useState(initial.tempReasons);
 
   // 저장 성공 시 실제 저장된 알림값으로 입력칸을 맞춘다(정리 규칙으로 빠진 항목이 화면과 어긋나지 않게).
   //  · effect 대신 이전 결과와 비교해 렌더 중 갱신(OutingReasonForm·usePagination과 같은 검증된 패턴).
@@ -43,9 +48,11 @@ export function PcOffForm({ initial }: Props) {
   if (state !== prevState) {
     setPrevState(state);
     if (state.ok && typeof state.savedNotify === "string") setNotify(state.savedNotify);
+    if (state.ok && typeof state.savedReasons === "string") setReasons(state.savedReasons);
   }
 
   const notifyPreview = parseNotifyMins(notify);
+  const reasonPreview = parseTempReasons(reasons);
   const delayNum = Number(delayMin);
   // 잠금 예정 시각 미리보기 — 퇴근 기준시각 + 유예. 실제 판정은 설치 앱이 서버시각 기준으로 한다.
   const lockAt = initial.workEndTime && Number.isFinite(delayNum) ? addMinutes(initial.workEndTime, delayNum) : null;
@@ -130,15 +137,32 @@ export function PcOffForm({ initial }: Props) {
           </div>
         </div>
         <p style={{ fontSize: 12, color: "var(--text-sub)", marginTop: -4, lineHeight: 1.5, wordBreak: "keep-all" }}>
-          결재자가 자리에 없어 연장근무 승인을 못 받을 때, 직원이 <b>사유를 적고</b> 잠금을 잠시 푸는 기능입니다.
+          결재자가 자리에 없어 연장근무 승인을 못 받을 때, 직원이 <b>사유를 골라</b> 잠금을 잠시 푸는 기능입니다.
           사용 내역은 [PC관리] 화면에 남습니다. 횟수를 <b>0</b>으로 두면 사용할 수 없습니다.
         </p>
+
+        {/* 일시사용 사유 — 직원은 이 목록에서만 고른다(자유 서술 없음) */}
+        <div>
+          <label htmlFor="pcoff-reasons" style={labelStyle}>일시사용 사유 목록 (쉼표로 구분)</label>
+          <input
+            id="pcoff-reasons" name="pcOffTempReasons" type="text" value={reasons}
+            onChange={(e) => setReasons(e.target.value)} placeholder="긴급 장애 대응, 고객 요청 마감, 결재자 부재, 기타" style={inputStyle}
+          />
+          <p style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 6, lineHeight: 1.5, wordBreak: "keep-all" }}>
+            잠금화면에서 직원이 고를 항목입니다({reasonPreview.length}개). 항목 구분에 쓰이므로 <b>사유 안에 쉼표는 넣을 수 없습니다</b>.
+            <br />
+            <b>직접 적는 칸은 제공하지 않습니다</b> — 자유롭게 쓰게 하면 직원이 질병·가족 사정 같은 민감한 개인정보를 스스로 적게 되기 때문입니다.
+          </p>
+        </div>
 
         <div style={{ background: "#F9FAFB", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px" }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-sub)", marginBottom: 6 }}>직원에게 알려야 할 점</div>
           <p style={{ fontSize: 12, color: "var(--text-sub)", lineHeight: 1.6, wordBreak: "keep-all", margin: 0 }}>
             이 기능은 <b>PC 사용 가능 시간만</b> 제어합니다. 화면 내용·입력 내용·사용한 프로그램 목록은 <b>수집하지 않습니다</b>.
             도입 전 취업규칙·동의 절차를 확인하세요. 대표·전산담당 등은 [PC관리]에서 예외로 지정할 수 있습니다.
+            <br />
+            기록 보관기간: 잠금·해제·일시사용 <b>{RETENTION_WORK_LABEL}</b>(근로기준법상 임금 산정 근거),
+            그 밖의 장비 기록 <b>{RETENTION_SYSTEM_LABEL}</b>. 기간이 지나면 <b>자동으로 파기</b>됩니다.
           </p>
         </div>
 

@@ -34,7 +34,7 @@ export default async function SettingsPage() {
       outingReasons: true,
       // PC-OFF(근무시간 외 PC 잠금) 설정 — 기본값이 있어 기존 회사도 그대로 읽힌다.
       pcOffOn: true, pcOffMode: true, pcOffDelayMin: true, pcOffNotifyMins: true,
-      pcOffTempUseMin: true, pcOffTempUsePerDay: true,
+      pcOffTempUseMin: true, pcOffTempUsePerDay: true, pcOffTempReasons: true,
     },
   });
 
@@ -107,10 +107,11 @@ export default async function SettingsPage() {
           initial={{
             on: company?.pcOffOn ?? false,
             mode: company?.pcOffMode ?? "lock",
-            delayMin: company?.pcOffDelayMin ?? 30,
+            delayMin: company?.pcOffDelayMin ?? 10,
             notifyMins: company?.pcOffNotifyMins ?? "10,5",
             tempUseMin: company?.pcOffTempUseMin ?? 30,
-            tempUsePerDay: company?.pcOffTempUsePerDay ?? 1,
+            tempUsePerDay: company?.pcOffTempUsePerDay ?? 2,
+            tempReasons: company?.pcOffTempReasons ?? "",
             workEndTime: company?.workEndTime ?? null,
             deviceCount: pcDeviceCount,
             isShiftCompany: !!company?.shiftMode,

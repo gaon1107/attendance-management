@@ -2,11 +2,14 @@
 //  · 표시하는 값은 전부 실제 DB(AgentDevice·AgentEvent·User)에서 읽는다(가짜 데이터 금지).
 //  · ⚠️ 여기에는 화면 내용·입력 내용이 없다. 애초에 수집하지 않으므로 보여줄 것도 없다.
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { isDeviceOnline } from "@/lib/agent-auth";
 import { revokeAgentDevice, setPcOffExempt } from "@/app/actions/pcoff";
+import { purgeAgentEventsDaily } from "@/lib/pcoff-retention";
+import { RETENTION_WORK_LABEL, RETENTION_SYSTEM_LABEL } from "@/lib/pcoff";
 
 // 사건 종류 → 사람이 읽는 라벨. ⚠️ app/api/agent/events/route.ts의 ALLOWED_TYPES와 짝이다(늘릴 때 함께).
 const EVENT_LABEL: Record<string, { text: string; bg: string; fg: string }> = {
@@ -28,6 +31,10 @@ export default async function PcDevicesPage() {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   if (me.role !== "admin") redirect("/attendance");
+
+  // 보관기간이 지난 옛 기록 파기(하루 1회만 실제로 돈다). PC 앱이 없는 회사에서도 이 화면을 열면 정리된다.
+  //  · after() = 화면을 다 보낸 뒤 실행 → 삭제가 오래 걸려도 화면이 늦게 뜨지 않는다(records 화면과 같은 방식).
+  after(() => purgeAgentEventsDaily());
 
   const today = new Date();
   const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -192,6 +199,9 @@ export default async function PcDevicesPage() {
             잠금·해제·일시사용이 언제 일어났는지의 기록입니다. 화면 내용이나 어떤 프로그램을 썼는지는 <b>수집하지 않습니다</b>.
             <br />
             “시각”은 직원 PC의 프로그램이 알려온 값이라 PC 시계에 따라 달라질 수 있습니다. 서버가 받은 시각과 5분 넘게 차이 나면 <b>(지연)</b>으로 표시합니다.
+            <br />
+            보관기간은 <b>기록이 생긴 날</b>부터 셉니다 — 잠금·해제·일시사용 <b>{RETENTION_WORK_LABEL}</b>(근로기준법상 임금 산정 근거로 보존),
+            사전알림·오프라인·연결 <b>{RETENTION_SYSTEM_LABEL}</b>. 기간이 지나면 <b>자동으로 파기</b>되고, 퇴사자는 퇴사 후 {RETENTION_WORK_LABEL}이 지나면 남은 기록까지 모두 파기됩니다.
           </p>
         </div>
         <div style={{ overflowX: "auto" }}>
@@ -225,7 +235,10 @@ export default async function PcDevicesPage() {
                     <td style={td}>
                       <span style={{ display: "inline-flex", alignItems: "center", height: 24, padding: "0 9px", borderRadius: 6, background: lb.bg, color: lb.fg, fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>{lb.text}</span>
                     </td>
-                    <td style={{ ...td, fontSize: 14, color: "var(--text-sub)", wordBreak: "keep-all" }}>{e.meta ?? "-"}</td>
+                    {/* 일시사용인데 사유가 비어 있으면 "-"가 아니라 미확인임을 밝힌다(사유를 지어내지 않는다) */}
+                    <td style={{ ...td, fontSize: 14, color: "var(--text-sub)", wordBreak: "keep-all" }}>
+                      {e.meta ?? (e.type === "temp_use" ? "(사유 미확인)" : "-")}
+                    </td>
                   </tr>
                 );
               })}

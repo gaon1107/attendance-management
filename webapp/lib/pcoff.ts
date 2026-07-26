@@ -26,3 +26,45 @@ export function parseNotifyMins(csv: string | null | undefined): number[] {
 export function formatNotifyMins(mins: number[]): string {
   return mins.join(",");
 }
+
+// ───────────────────────── [일시사용] 사유 목록 ─────────────────────────
+// 자유서술을 받지 않고 회사가 정한 목록에서만 고르게 한다(노무사 자료 제4권 2.1).
+//  · 자유서술은 직원이 질병·가족 사정·조합 활동 같은 민감정보를 스스로 적게 되는 통로다.
+//  · 구조는 lib/outing-reasons.ts와 동일(같은 문제를 이미 그렇게 풀었다).
+export const DEFAULT_TEMP_REASONS = ["긴급 장애 대응", "고객 요청 마감", "결재자 부재", "기타"];
+export const MAX_TEMP_REASONS = 10;   // 잠금화면 드롭다운이 길어지면 고르기 불편
+export const MAX_TEMP_REASON_LEN = 20; // 한 사유의 최대 글자 수
+
+/** 회사 설정 문자열 → 실제 사용할 사유 목록. 항상 1개 이상을 돌려준다(빈 설정이어도 동작). */
+export function parseTempReasons(raw: string | null | undefined): string[] {
+  const list = normalizeTempReasons(raw);
+  return list.length > 0 ? list : DEFAULT_TEMP_REASONS;
+}
+
+/** 입력값 정리(폴백 없음) — 공백·빈 항목·길이초과·중복 제거 후 개수 상한. 빈 배열이면 저장할 게 없다는 뜻. */
+export function normalizeTempReasons(raw: string | null | undefined): string[] {
+  const items = (raw ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && s.length <= MAX_TEMP_REASON_LEN);
+  return [...new Set(items)].slice(0, MAX_TEMP_REASONS);
+}
+
+export function formatTempReasons(list: string[]): string {
+  return list.join(", ");
+}
+
+// ───────────────────────── 사건 기록 보관기간 ─────────────────────────
+// 노무사 자료 제4권 3.2 — 항목별 차등 보관. "길게 보관하면 안전하다"는 착각을 막는다
+// (불필요한 장기 보관 자체가 개인정보보호법 제21조 위반).
+export const RETENTION_WORK_DAYS = 365 * 3; // 잠금·해제·일시사용 = 근로시간/임금 산정 근거 → 3년(근로기준법 제42조)
+export const RETENTION_SYSTEM_DAYS = 90;    // 사전알림·오프라인·연결 = 근로시간과 무관한 시스템 기록 → 최소보관
+
+// 화면에 그대로 쓰는 표기. 위 일수에서 계산하지 않고 글자로 고정한다
+//  · 일수를 365로 나눠 반올림하면 값이 바뀌었을 때(예: 400일) 화면엔 "1년"으로 나와 실제와 어긋난다.
+export const RETENTION_WORK_LABEL = "3년";
+export const RETENTION_SYSTEM_LABEL = "90일";
+
+/** 90일 보관 대상(장비 상태 기록). ⚠️ 파기 로직은 "이 목록에 없는 모든 종류"를 3년 보관으로 본다
+ *  (새 종류를 여기 넣는 걸 잊어도 근로기록이 일찍 지워지지 않는 쪽으로 떨어지게 하기 위함). */
+export const SYSTEM_EVENT_TYPES = ["notify", "offline", "paired"] as const;

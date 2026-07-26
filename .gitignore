@@ -9,6 +9,8 @@ build/
 # 로컬 DB (SQLite) — 실제 근태 데이터는 저장점에 넣지 않음
 *.db
 *.db-journal
+*.db.bak-*
+
 *.sqlite
 *.sqlite3
 

@@ -1,9 +1,11 @@
 // [PC 에이전트] 사건 기록 업로드 — 잠금·해제·일시사용 같은 "일어난 일"을 묶어서 보낸다.
 //  · 오프라인이었다가 복구되면 쌓아둔 것을 한 번에 보내므로 **배열(묶음)만** 받는다(호출 수를 줄인다).
 //  · ⚠️ 저장하는 것: 사건 종류·시각·짧은 사유뿐. 화면·입력 내용·앱 목록은 받지도, 저장할 칸도 없다.
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { prisma } from "@/lib/db";
 import { authenticateAgent, touchDevice, tooLarge, MAX_BODY_EVENTS } from "@/lib/agent-auth";
+import { parseTempReasons } from "@/lib/pcoff";
+import { purgeAgentEventsDaily } from "@/lib/pcoff-retention";
 
 // 허용 종류(화이트리스트) — 모르는 종류는 조용히 버린다. 나중에 늘릴 땐 [PC관리] 화면의 라벨도 함께 늘린다.
 const ALLOWED_TYPES = new Set(["lock", "unlock", "temp_use", "notify", "offline", "paired"]);
@@ -41,6 +43,28 @@ export async function POST(req: Request) {
   let dropped = 0;
   const seenIds = new Set<string>(); // 한 배치 안의 중복도 걸러낸다(DB 제약과 별개로 미리)
 
+  // [일시사용] 사유는 회사가 정한 목록의 값만 저장한다(자유서술 금지).
+  //  · 이유: 자유서술은 직원이 질병·가족 사정 같은 민감정보를 스스로 적게 되는 통로가 된다(노무사 자료 제4권 2.1).
+  //  · ⚠️ 목록에 없는 값이 와도 **다른 사유로 바꾸지 않는다**. 비워 둘 뿐이다.
+  //    (관리자가 사유 목록을 바꾼 직후 앱이 옛 목록으로 보낼 수 있는데, 그걸 임의로 치환하면
+  //     직원이 고르지 않은 사유가 기록에 남는다 = 없는 사실을 만드는 것.)
+  //  · 사유를 못 알아봐도 사건 자체는 저장한다 — 기록을 잃으면 근로시간 근거가 사라지기 때문.
+  const hasTempUse = raw.some((it) => String(((it ?? {}) as Record<string, unknown>).type ?? "") === "temp_use");
+  let tempReasons: string[] | null = null;
+  if (hasTempUse) {
+    try {
+      const c = await prisma.company.findUnique({
+        where: { id: auth.user.companyId },
+        select: { pcOffTempReasons: true },
+      });
+      tempReasons = parseTempReasons(c?.pcOffTempReasons);
+    } catch (e) {
+      // 사유 확인에 실패했다고 잠금·해제 기록까지 잃으면 안 된다 — 사유만 비우고 저장은 진행한다.
+      console.warn("[agent] 일시사용 사유 목록 조회 실패(사유 없이 저장):", e);
+      tempReasons = [];
+    }
+  }
+
   for (const item of raw) {
     const e = (item ?? {}) as Record<string, unknown>;
     const type = String(e.type ?? "");
@@ -53,8 +77,15 @@ export async function POST(req: Request) {
     const diff = at.getTime() - now;
     if (diff > 5 * 60 * 1000 || diff < -30 * 24 * 60 * 60 * 1000) { dropped++; continue; }
 
-    const metaRaw = e.meta == null ? "" : String(e.meta).trim();
-    const meta = metaRaw ? Array.from(metaRaw).slice(0, MAX_META_LEN).join("") : null;
+    // ⚠️ meta(부가정보)는 [일시사용] 사유에만 쓴다. 다른 종류는 서버에서 무조건 비운다.
+    //    그러지 않으면 앱이 "해제 사유" 같은 자유입력을 붙이는 순간 민감정보 차단이 무력해진다.
+    let meta: string | null = null;
+    if (type === "temp_use") {
+      const metaRaw = e.meta == null ? "" : String(e.meta).normalize("NFC").trim();
+      const cut = metaRaw ? Array.from(metaRaw).slice(0, MAX_META_LEN).join("") : "";
+      // 목록에 있는 값만 저장. 그 외(자유서술 포함)는 null = "사유 미확인"으로 남긴다(치환하지 않는다).
+      meta = cut && tempReasons?.some((r) => r.normalize("NFC") === cut) ? cut : null;
+    }
 
     // 재전송 중복 방지용 고유번호(앱이 붙인다). 같은 배치에 두 번 들어오면 뒤엣것은 버린다.
     const cidRaw = e.clientEventId == null ? "" : String(e.clientEventId).trim().slice(0, 64);
@@ -107,6 +138,11 @@ export async function POST(req: Request) {
   } catch (e) {
     console.warn("[agent] 생존신호 기록 실패(사건 저장은 정상):", e);
   }
+
+  // 보관기간이 지난 옛 기록 파기(하루 1회만 실제로 돈다).
+  //  · after() = 응답을 보낸 **뒤**에 실행. 삭제가 오래 걸려도 앱을 기다리게 하지 않는다
+  //    (lib/clock-photo.ts를 쓰는 app/records/page.tsx와 같은 방식).
+  after(() => purgeAgentEventsDaily());
 
   return NextResponse.json({ ok: true, saved, dropped, duplicated });
 }

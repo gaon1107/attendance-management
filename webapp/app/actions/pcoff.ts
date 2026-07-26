@@ -7,9 +7,14 @@ import { getCurrentUser } from "@/lib/session";
 import { logAdminAction } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
 import { generatePairCode, PAIR_CODE_TTL_MIN } from "@/lib/agent-auth";
-import { parseNotifyMins, formatNotifyMins, MAX_NOTIFY_MINS, PCOFF_LIMITS } from "@/lib/pcoff";
+import {
+  parseNotifyMins, formatNotifyMins, MAX_NOTIFY_MINS, PCOFF_LIMITS,
+  normalizeTempReasons, formatTempReasons, MAX_TEMP_REASONS, MAX_TEMP_REASON_LEN,
+} from "@/lib/pcoff";
 
-export type PcOffSettingsResult = { error?: string; ok?: boolean; warn?: string; savedNotify?: string };
+export type PcOffSettingsResult = {
+  error?: string; ok?: boolean; warn?: string; savedNotify?: string; savedReasons?: string;
+};
 
 // ── 회사 PC-OFF 설정 저장(관리자만) ─────────────────────────────────────
 export async function savePcOffSettings(
@@ -26,7 +31,7 @@ export async function savePcOffSettings(
   const mode = String(formData.get("pcOffMode") ?? "lock");
   if (mode !== "lock") return { error: "지금은 '화면 잠금'만 지원합니다." };
 
-  const delay = num(formData.get("pcOffDelayMin"), 30);
+  const delay = num(formData.get("pcOffDelayMin"), 10);
   if (!inRange(delay, PCOFF_LIMITS.delayMin)) {
     return { error: `퇴근 후 유예는 ${PCOFF_LIMITS.delayMin.min}~${PCOFF_LIMITS.delayMin.max}분 사이로 입력해주세요.` };
   }
@@ -36,9 +41,19 @@ export async function savePcOffSettings(
     return { error: `일시사용 시간은 ${PCOFF_LIMITS.tempUseMin.min}~${PCOFF_LIMITS.tempUseMin.max}분 사이로 입력해주세요.` };
   }
 
-  const perDay = num(formData.get("pcOffTempUsePerDay"), 1);
+  const perDay = num(formData.get("pcOffTempUsePerDay"), 2);
   if (!inRange(perDay, PCOFF_LIMITS.tempUsePerDay)) {
     return { error: `일시사용 횟수는 하루 ${PCOFF_LIMITS.tempUsePerDay.min}~${PCOFF_LIMITS.tempUsePerDay.max}회 사이로 입력해주세요.` };
+  }
+
+  // 일시사용 사유 목록 — 직원은 이 목록에서만 고른다(자유입력 없음). 외출 사유 설정과 같은 정리 규칙.
+  //  · ⚠️ 필수로 요구하는 건 "PC-OFF를 켜고 + 일시사용을 쓰는" 회사뿐이다.
+  //    무조건 요구하면 일시사용을 안 쓰는 회사는 물론 **PC-OFF를 끄려는 저장까지 막힌다**.
+  const reasonsRaw = String(formData.get("pcOffTempReasons") ?? "").trim();
+  const reasons = normalizeTempReasons(reasonsRaw);
+  const enteredReasons = reasonsRaw ? reasonsRaw.split(",").filter((s) => s.trim()).length : 0;
+  if (reasons.length === 0 && pcOffOn && perDay > 0) {
+    return { error: `일시사용 사유는 최소 1개가 필요합니다. (한 사유당 ${MAX_TEMP_REASON_LEN}자 이내, 쉼표로 구분)` };
   }
 
   // 알림 시점("10,5") — 정리 규칙은 정책 조립부와 **같은 함수**를 쓴다(화면·앱이 어긋나지 않게).
@@ -55,6 +70,7 @@ export async function savePcOffSettings(
   });
 
   const saved = formatNotifyMins(notify);
+  const savedReasons = formatTempReasons(reasons);
   await prisma.company.update({
     where: { id: me.companyId },
     data: {
@@ -64,6 +80,7 @@ export async function savePcOffSettings(
       pcOffNotifyMins: saved,
       pcOffTempUseMin: Math.round(tempUseMin),
       pcOffTempUsePerDay: Math.round(perDay),
+      pcOffTempReasons: savedReasons,
     },
   });
 
@@ -72,14 +89,18 @@ export async function savePcOffSettings(
   revalidatePath("/pc-devices");
 
   const dropped = enteredCount - notify.length;
+  const droppedReasons = enteredReasons - reasons.length;
   return {
     ok: true,
     savedNotify: saved,
+    savedReasons,
     ...(pcOffOn && !company?.workEndTime
       ? { warn: "퇴근 기준시각이 설정되지 않아 아직 잠기지 않습니다. [근무제] 카드에서 퇴근 시각을 먼저 정해주세요." }
       : dropped > 0
         ? { warn: `중복이거나 1~240 범위를 벗어나거나 ${MAX_NOTIFY_MINS}개를 초과한 ${dropped}개 항목은 저장되지 않았습니다.` }
-        : {}),
+        : droppedReasons > 0
+          ? { warn: `중복이거나 ${MAX_TEMP_REASON_LEN}자를 넘거나 ${MAX_TEMP_REASONS}개를 초과한 사유 ${droppedReasons}개는 저장되지 않았습니다.` }
+          : {}),
   };
 }
 

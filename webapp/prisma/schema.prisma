@@ -126,10 +126,15 @@ model Company {
   // 설치된 PC 에이전트가 /api/agent/policy로 이 설정을 받아 잠금 시각을 판단한다. 웹은 정책만 정하고 잠그지 않는다.
   pcOffOn        Boolean @default(false) // 사용 여부. 끔이 기본 — 회사가 켜야 동작(강제 아님)
   pcOffMode      String  @default("lock") // "lock"(화면 잠금 — 1차는 이것만) | "shutdown"(전원 종료, 미구현·2차)
-  pcOffDelayMin  Int     @default(30)     // 퇴근 기준시각 이후 유예(분). 마무리 시간을 준 뒤 잠근다.
+  // ⚠️ 아래 기본값은 노무사 상담 자료(제2권 4.1 / 최종부록 D-1) 권고에 맞춘 값이다. 근거 없이 바꾸지 말 것.
+  pcOffDelayMin  Int     @default(10)     // 퇴근 기준시각 이후 유예(분). 길수록 무급 노동이 구조화되므로 10분 권고.
   pcOffNotifyMins String @default("10,5") // 잠금 전 미리 알림 시점(분 전) CSV. 예: "10,5" = 10분 전·5분 전
   pcOffTempUseMin Int    @default(30)     // [일시사용] 1회 길이(분). 결재자 부재 등 급한 상황용.
-  pcOffTempUsePerDay Int @default(1)      // [일시사용] 하루 허용 횟수
+  pcOffTempUsePerDay Int @default(2)      // [일시사용] 하루 허용 횟수. 부족하면 우회근무를 유발하므로 2회 권고.
+  // [일시사용] 사유 목록(쉼표 구분 한 줄) — outingReasons와 같은 관례.
+  //  · 자유서술을 받지 않고 이 목록에서만 고르게 한다: 자유서술은 직원이 질병·가족·조합 활동 등
+  //    민감정보를 스스로 적게 되는 통로이기 때문(노무사 자료 제4권 2.1).
+  pcOffTempReasons String @default("긴급 장애 대응, 고객 요청 마감, 결재자 부재, 기타")
   agentDevices   AgentDevice[]
   agentEvents    AgentEvent[]
 }
@@ -850,4 +855,23 @@ model AgentEvent {
   @@index([companyId, at])
   @@index([userId, at])
   @@index([deviceId])
+  @@index([type, at]) // 보관기간 자동 파기가 "종류+시각"으로 훑는다. 없으면 표 전체 스캔이 된다.
+}
+
+// 보관기간 자동 파기 실행 이력 — "무엇을 언제 몇 건 지웠는지"의 증명 기록.
+//  · 개인 식별정보를 담지 않는다(건수만). 그래서 회사 구분도 두지 않는다 — 파기는 전사 일괄이다.
+//  · console 로그는 서버를 재시작하면 사라져 증명이 안 되므로 DB에 남긴다(개인정보 파기는 기록 의무).
+//  · "하루 1회"의 기준도 이 표를 쓴다(서버 인스턴스가 여러 개여도 중복 실행되지 않게).
+model AgentPurgeLog {
+  id        String   @id @default(cuid())
+  ranAt     DateTime @default(now())
+  workDeleted     Int @default(0) // 3년 지난 근로기록(잠금·해제·일시사용 등)
+  systemDeleted   Int @default(0) // 90일 지난 장비기록(사전알림·오프라인·연결)
+  resignedDeleted Int @default(0) // 퇴사 3년 경과자 기록
+  // 한 번에 지울 건수가 상한을 넘어 **중단**했는지. 서버 시계 이상·버그로 전 회사 기록이
+  // 통째로 날아가는 사고를 막는 브레이크다(중단되면 사람이 확인할 때까지 아무것도 지우지 않는다).
+  aborted   Boolean  @default(false)
+  note      String?
+
+  @@index([ranAt])
 }
