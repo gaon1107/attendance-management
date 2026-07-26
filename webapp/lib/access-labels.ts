@@ -70,6 +70,10 @@ function baseMetaLabel(meta: string): string {
     // 이상접속 알림(6단계) — 감지 기준 변경 + "확인함" 처리
     alert_rules: "이상접속 감지 기준",
     security_checked: "이상접속 확인",
+    // PC-OFF(근무시간 외 PC 잠금) — actions/pcoff.ts. 노무 분쟁 소지가 큰 기능이라 "무엇을 바꿨나"가 남아야 한다.
+    pcoff_rule: "PC-OFF 잠금 규칙",
+    pcoff_exempt: "PC-OFF 잠금 예외자",
+    pcoff_device_revoke: "PC 연결 해제",
     // 생체정보 파기 경로(actions/authmethod.ts)
     admin_revoke: "관리자 파기",
     self_withdraw: "본인 철회",

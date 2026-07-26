@@ -122,6 +122,16 @@ model Company {
   approvalMode      String  @default("single") // "single"(기존) | "deptline"(부서장 자동) | "custom"(상신자 종류별 저장 결재선)
   approvalStepCount Int     @default(1)         // 결재 단계 수(1~2 권장, 최대 3 방어)
   approvalSteps     ApprovalStep[]
+  // ── PC-OFF(근무시간 외 PC 잠금). pcOffOn=false가 기본 = 기존 회사 전부 현행 동작 그대로(회귀 0). ──
+  // 설치된 PC 에이전트가 /api/agent/policy로 이 설정을 받아 잠금 시각을 판단한다. 웹은 정책만 정하고 잠그지 않는다.
+  pcOffOn        Boolean @default(false) // 사용 여부. 끔이 기본 — 회사가 켜야 동작(강제 아님)
+  pcOffMode      String  @default("lock") // "lock"(화면 잠금 — 1차는 이것만) | "shutdown"(전원 종료, 미구현·2차)
+  pcOffDelayMin  Int     @default(30)     // 퇴근 기준시각 이후 유예(분). 마무리 시간을 준 뒤 잠근다.
+  pcOffNotifyMins String @default("10,5") // 잠금 전 미리 알림 시점(분 전) CSV. 예: "10,5" = 10분 전·5분 전
+  pcOffTempUseMin Int    @default(30)     // [일시사용] 1회 길이(분). 결재자 부재 등 급한 상황용.
+  pcOffTempUsePerDay Int @default(1)      // [일시사용] 하루 허용 횟수
+  agentDevices   AgentDevice[]
+  agentEvents    AgentEvent[]
 }
 
 // 회사 첨부문서 — 사업자등록증·통장사본 등. 종류(kind)별 최신 1건만 유지(재업로드 시 이전 파일 교체·삭제).
@@ -204,6 +214,13 @@ model User {
   noticesSeenAt  DateTime?
   // 첫 사용 안내(온보딩 투어)를 본 시각. 값이 있으면 다시 띄우지 않는다.
   tourSeenAt     DateTime?
+
+  // ── PC-OFF 예외자. true면 회사가 PC-OFF를 켜도 이 직원 PC는 잠그지 않는다(대표·전산담당·당직 등). ──
+  //    add-only(기본 false) — 기존 직원 전부 false = 기존 동작 그대로.
+  pcOffExempt    Boolean   @default(false)
+  agentDevices   AgentDevice[]
+  agentPairCodes AgentPairCode[]
+  agentEvents    AgentEvent[]
 
   // "이 회사의 직원 목록" 조회 색인. 대시보드·근태현황·리포트·초과근무 관리·휴게시간 관리·직원관리 등
   // 20곳 이상이 매번 부른다(주로 role·deactivatedAt을 함께 거르지만, 회사로 좁히는 것만으로 충분하다).
@@ -767,4 +784,70 @@ model ShiftChangeLog {
   actorId   String   // 수정 실행자 userId
   createdAt DateTime @default(now())
   @@index([companyId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PC-OFF (근무시간 외 PC 잠금) — 설치형 PC 에이전트와 주고받는 3개 표.
+//  · 브라우저 세션(Session)과 완전히 분리된 별도 인증이다. 앱은 쿠키를 쓸 수 없다.
+//  · ⚠️ 수집 범위는 "상태·시각"뿐. 화면캡처·키 입력·앱 목록은 구조적으로 저장할 곳이 없다(신뢰 설계).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 설치된 PC 에이전트(기기) — "누구의 어떤 PC에 앱이 깔렸나".
+// 토큰은 평문 저장하지 않는다(비밀번호와 같은 원칙): 발급 때 1회만 보여주고 DB엔 sha256 해시만 둔다.
+model AgentDevice {
+  id           String    @id @default(cuid())
+  companyId    String
+  company      Company   @relation(fields: [companyId], references: [id])
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  deviceName   String    // 컴퓨터 이름(표시용). 앱이 페어링 때 보낸다.
+  tokenHash    String    @unique // 기기 토큰의 sha256 해시. 평문은 DB에 없음.
+  agentVersion String?   // 설치된 앱 버전(업데이트 안내용)
+  pairedAt     DateTime  @default(now())
+  lastSeenAt   DateTime? // 마지막 생존신호(정책 조회·이벤트 전송 시 갱신). 10분 내면 "온라인"으로 본다.
+  revokedAt    DateTime? // 관리자가 연결 해제한 시각. 값이 있으면 이 토큰은 즉시 무효(401).
+  events       AgentEvent[]
+
+  @@index([companyId])
+  @@index([userId])
+}
+
+// 일회용 연결코드 — 직원이 웹 [계정]에서 발급받아 앱에 입력하는 6자리 숫자.
+// 5분 유효·1회용. 코드가 유출돼도 짧은 시간·단발이라 피해가 제한된다.
+model AgentPairCode {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  code      String    // 6자리 숫자 문자열
+  expiresAt DateTime
+  usedAt    DateTime? // 사용된 시각. 값이 있으면 재사용 불가.
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([code])
+}
+
+// 에이전트가 보낸 사건 기록(감사·소명용). 관리자 [PC관리] 화면과 직원 본인 열람에 쓴다.
+// type: "lock"(잠금) | "unlock"(해제) | "temp_use"(일시사용) | "notify"(사전알림) | "offline"(오프라인 동작) | "paired"(연결)
+model AgentEvent {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  deviceId  String
+  device    AgentDevice @relation(fields: [deviceId], references: [id])
+  type      String
+  at        DateTime // 사건이 실제로 일어난 시각(오프라인 후 뒤늦게 올라올 수 있어 서버 수신시각과 다르다)
+  meta      String?  // 일시사용 사유 등 짧은 부가정보. ※ 화면·입력 내용은 절대 담지 않는다.
+  createdAt DateTime @default(now()) // 서버가 받은 시각. ⚠️ 일시사용 "하루 몇 회" 집계는 이 값 기준(앱이 정하는 at은 조작 가능).
+  // 앱이 사건마다 붙이는 고유번호. 재전송(응답 못 받고 다시 보냄) 때 같은 사건이 두 번 저장되는 것을 막는다.
+  //  · 없으면 [일시사용]이 실제보다 많이 세어져, 하루 1회인 회사에서 직원이 쓰지도 않고 소진되는 사고가 난다.
+  //  · nullable(add-only) — 옛 버전 앱이 안 보내도 저장은 된다(그 경우 중복 방지만 못 함).
+  clientEventId String?
+
+  @@unique([deviceId, clientEventId])
+  @@index([companyId, at])
+  @@index([userId, at])
+  @@index([deviceId])
 }
