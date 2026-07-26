@@ -44,4 +44,13 @@ internal sealed class AgentStatus
 
     /// <summary>지금 서버에 물어보는 중인가.</summary>
     public bool Checking { get; init; }
+
+    /// <summary>[일시사용]이 끝나는 시각. 쓰는 중이 아니면 <c>null</c>.</summary>
+    public DateTimeOffset? TempUseUntil { get; init; }
+
+    /// <summary>오늘 남은 [일시사용] 횟수.</summary>
+    public int TempUseLeft { get; init; }
+
+    /// <summary>아직 서버로 보내지 못한 기록 건수(오프라인이었을 때 쌓인다).</summary>
+    public int PendingEvents { get; init; }
 }

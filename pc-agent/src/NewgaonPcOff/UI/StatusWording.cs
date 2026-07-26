@@ -91,6 +91,31 @@ internal static class StatusWording
         return why;
     }
 
+    /// <summary>
+    /// 잠금화면 부제 — "언제 풀리는지".
+    ///  · 서버는 오늘·내일 이틀치만 준다 → 금요일 밤에는 월요일 시각을 알 수 없다.
+    ///    그때는 날짜를 <b>추측하지 않고</b> "다음 근무일"이라고만 말한다.
+    /// </summary>
+    public static string LockScreen(AgentStatus s)
+    {
+        var d = s.Decision;
+
+        if (d.ChangeAt.HasValue && d.At.HasValue)
+        {
+            return $"{When(d.ChangeAt.Value, d.At.Value)}에 자동으로 풀립니다. " +
+                   $"(남은 시간 {Hm.Remaining(d.ChangeAt.Value - d.At.Value)})";
+        }
+
+        var p = s.Policy;
+        return p != null && p.StartMin != Hm.Invalid
+            ? $"다음 근무일 {Hm.ToText(p.StartMin)}에 자동으로 풀립니다."
+            : "다음 근무일에 자동으로 풀립니다.";
+    }
+
+    /// <summary>사전알림 문구 — "몇 분 뒤 잠깁니다".</summary>
+    public static string NotifySoon(int minutes, DateTimeOffset lockAt)
+        => $"{minutes}분 뒤({lockAt:HH:mm}) PC 화면이 잠깁니다.";
+
     /// <summary>퇴근·유예 같은 회사 설정을 한 줄로(참고 표시용).</summary>
     public static string Rule(AgentStatus s)
     {

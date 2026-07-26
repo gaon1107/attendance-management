@@ -1,0 +1,138 @@
+<Window x:Class="NewgaonPcOff.UI.LockWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PC-OFF"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Background="#0F172A"
+        FontFamily="{StaticResource UiFont}"
+        Closing="Window_Closing"
+        Deactivated="Window_Deactivated">
+
+    <!-- 잠금화면 — 화면 전체(여러 대면 전부)를 덮는 최상위 창.
+          ⚠️ 이것은 **소프트 잠금**이다(지시서 §0 · 사장님 결정 A).
+             작업관리자로 이 프로그램을 끄면 잠금이 풀린다. 그것을 막는 장치(워치독)는 범위 밖이고,
+             대신 **서버가 "잠금 기록이 안 왔다"를 알아채서** 관리자에게 알린다.
+          ⚠️ 화면 내용·키 입력·앱 목록은 보지도, 보내지도 않는다. 이 창은 **덮기만** 한다. -->
+
+    <Grid x:Name="Root">
+        <!-- 카드는 주 모니터 한가운데에 놓는다(창 자체는 모든 모니터를 덮는다).
+              화면이 두 대일 때 창 한가운데에 두면 카드가 두 화면의 이음매에 걸쳐 반씩 잘려 보인다. -->
+        <Grid x:Name="CardHost" HorizontalAlignment="Left" VerticalAlignment="Top">
+            <Border Background="{StaticResource CardBg}" CornerRadius="16" Width="620"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Padding="34,28,34,26">
+                <StackPanel>
+
+                    <!-- 테스트 모드 배지 — 평소에는 보이지 않는다. -->
+                    <Border x:Name="TestBadge" Visibility="Collapsed" CornerRadius="8"
+                            Background="#FEF3C7" BorderBrush="{StaticResource Warning}" BorderThickness="1"
+                            Padding="12,9,12,9" Margin="0,0,0,16">
+                        <TextBlock x:Name="TestBadgeText" FontSize="13" FontWeight="Bold"
+                                   Foreground="#92400E" TextWrapping="Wrap"
+                                   Text="테스트 모드입니다." />
+                    </Border>
+
+                    <TextBlock x:Name="HeadText" FontSize="26" FontWeight="Bold"
+                               Foreground="{StaticResource TextMain}" TextWrapping="Wrap"
+                               Text="퇴근 시간이 지났습니다" />
+
+                    <TextBlock x:Name="SubText" FontSize="15" Margin="0,10,0,0"
+                               Foreground="{StaticResource TextSub}" TextWrapping="Wrap" LineHeight="24"
+                               Text="-" />
+
+                    <Border Background="{StaticResource PageBg}" CornerRadius="10" Padding="14,11,14,11" Margin="0,16,0,0">
+                        <StackPanel>
+                            <TextBlock x:Name="WhoText" FontSize="13" FontWeight="Bold"
+                                       Foreground="{StaticResource TextMain}" TextWrapping="Wrap" Text="-" />
+                            <TextBlock x:Name="RuleText" FontSize="12" Margin="0,5,0,0"
+                                       Foreground="{StaticResource TextSub}" TextWrapping="Wrap" Text="-" />
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock x:Name="GuideText" FontSize="13" Margin="0,16,0,0"
+                               Foreground="{StaticResource TextSub}" TextWrapping="Wrap" LineHeight="21"
+                               Text="업무가 남았다면 아래에서 연장근무를 신청해주세요. 관리자가 승인하면 바로 풀립니다." />
+
+                    <!-- ── 버튼 줄 ─────────────────────────────────────────── -->
+                    <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                        <Button x:Name="OvertimeButton" Style="{StaticResource PrimaryButton}"
+                                Width="176" Content="연장근무 신청" Click="OvertimeButton_Click" />
+                        <Button x:Name="TempButton" Style="{StaticResource GhostButton}" Height="42"
+                                Margin="8,0,0,0" Content="일시사용" Click="TempButton_Click" />
+                        <Button x:Name="RefreshButton" Style="{StaticResource GhostButton}" Height="42"
+                                Margin="8,0,0,0" Content="서버 다시 확인" Click="RefreshButton_Click" />
+                    </StackPanel>
+
+                    <!-- ── 연장근무 신청 폼 ─────────────────────────────────── -->
+                    <Border x:Name="OvertimePanel" Visibility="Collapsed" Margin="0,14,0,0"
+                            Background="{StaticResource PageBg}" CornerRadius="10" Padding="16,14,16,16">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource LabelText}" Text="연장근무 신청" FontSize="14" />
+                            <TextBlock x:Name="OvertimeWhenText" FontSize="13" Margin="0,2,0,0"
+                                       Foreground="{StaticResource TextSub}" TextWrapping="Wrap" Text="-" />
+
+                            <StackPanel Orientation="Horizontal" Margin="0,12,0,0" VerticalAlignment="Center">
+                                <TextBlock Style="{StaticResource LabelText}" Width="72" Margin="0,0,0,0"
+                                           VerticalAlignment="Center" Text="종료 시각" />
+                                <ComboBox x:Name="OvertimeEndBox" Width="180" Height="32" FontSize="13" />
+                            </StackPanel>
+
+                            <TextBlock Style="{StaticResource LabelText}" Margin="0,14,0,6" Text="사유 (선택)" />
+                            <TextBox x:Name="OvertimeReasonBox" Style="{StaticResource InputBox}" MaxLength="200" />
+                            <TextBlock FontSize="11" Margin="0,6,0,0" Foreground="{StaticResource TextSub}"
+                                       TextWrapping="Wrap"
+                                       Text="※ 업무 사유만 적어주세요. 건강·가족 사정 같은 개인 사정은 적지 않으셔도 됩니다." />
+
+                            <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                                <Button x:Name="OvertimeSubmitButton" Style="{StaticResource PrimaryButton}"
+                                        Width="130" Content="신청하기" Click="OvertimeSubmit_Click" />
+                                <Button Style="{StaticResource GhostButton}" Height="42" Margin="8,0,0,0"
+                                        Content="닫기" Click="ClosePanels_Click" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ── 일시사용 폼 ─────────────────────────────────────── -->
+                    <Border x:Name="TempPanel" Visibility="Collapsed" Margin="0,14,0,0"
+                            Background="{StaticResource PageBg}" CornerRadius="10" Padding="16,14,16,16">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource LabelText}" Text="일시사용" FontSize="14" />
+                            <TextBlock x:Name="TempInfoText" FontSize="13" Margin="0,2,0,0"
+                                       Foreground="{StaticResource TextSub}" TextWrapping="Wrap" Text="-" />
+
+                            <TextBlock Style="{StaticResource LabelText}" Margin="0,14,0,6" Text="사유" />
+                            <ComboBox x:Name="TempReasonBox" Width="260" Height="32" FontSize="13"
+                                      HorizontalAlignment="Left" />
+                            <TextBlock FontSize="11" Margin="0,6,0,0" Foreground="{StaticResource TextSub}"
+                                       TextWrapping="Wrap"
+                                       Text="※ 회사가 정한 목록에서만 고릅니다. 직접 적는 칸은 없습니다." />
+
+                            <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                                <Button x:Name="TempSubmitButton" Style="{StaticResource PrimaryButton}"
+                                        Width="130" Content="사용하기" Click="TempSubmit_Click" />
+                                <Button Style="{StaticResource GhostButton}" Height="42" Margin="8,0,0,0"
+                                        Content="닫기" Click="ClosePanels_Click" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock x:Name="MessageText" Visibility="Collapsed" Margin="0,14,0,0"
+                               FontSize="13" FontWeight="Bold" TextWrapping="Wrap"
+                               Foreground="{StaticResource TextMain}" Text="-" />
+
+                    <Border Background="{StaticResource BorderLine}" Height="1" Margin="0,20,0,14" />
+
+                    <TextBlock FontSize="11" Foreground="{StaticResource TextSub}" TextWrapping="Wrap" LineHeight="18"
+                               Text="이 프로그램은 정해진 시간에 화면을 덮기만 합니다. 화면 내용·키보드 입력·사용한 프로그램 목록은 보지도, 보내지도 않습니다." />
+
+                    <Button x:Name="TestExitButton" Visibility="Collapsed" Style="{StaticResource GhostButton}"
+                            Height="38" Margin="0,14,0,0" HorizontalAlignment="Left"
+                            Content="테스트 종료 (지금 잠금 풀기)" Click="TestExit_Click" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

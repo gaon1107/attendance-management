@@ -44,8 +44,14 @@ internal sealed class PolicyService : IDisposable
     /// <summary>연결 여부(암호해제) 결과를 재사용하는 시간.</summary>
     private static readonly TimeSpan PairedCacheFor = TimeSpan.FromSeconds(30);
 
+    /// <summary>사건이 생기면 이만큼 뒤에 서버로 보낸다(잠금·해제가 5분 늦게 보고되지 않게).</summary>
+    private static readonly TimeSpan EventSendSoon = TimeSpan.FromSeconds(15);
+
     private readonly DispatcherTimer _timer = new() { Interval = Tick };
     private readonly ServerClock _clock = new();
+
+    /// <summary>아직 서버로 보내지 못한 사건(잠금·해제·일시사용) 대기줄.</summary>
+    private readonly EventQueue _events = new();
 
     private AgentConfig _config;
     private SafePolicy? _policy;
@@ -60,6 +66,39 @@ internal sealed class PolicyService : IDisposable
 
     private bool _pairedCache;
     private long _pairedCheckedTick = long.MinValue;
+
+    /// <summary>
+    /// [일시사용]이 끝나는 시각. 쓰는 중이 아니면 <c>null</c>.
+    ///  · ⚠️ <b>메모리에만</b> 둔다(파일에 저장하지 않는다). 앱을 껐다 켜면 일시사용은 사라지고 다시 잠긴다.
+    ///    파일에 두면 직원이 그 파일을 고쳐 잠금을 영구히 푸는 통로가 되기 때문이다.
+    ///    "다시 잠기는 쪽"이 안전한 방향이고, 쓴 횟수는 서버가 세므로 껐다 켜도 되돌려지지 않는다.
+    /// </summary>
+    private DateTimeOffset? _tempUseUntil;
+
+    /// <summary>
+    /// 쓴 [일시사용] 횟수 중 <b>서버가 아직 세지 못한</b> 것.
+    ///  · 서버의 <c>usedToday</c>는 사건이 서버에 닿아야 올라간다. 그 사이에 다시 누르면
+    ///    하루 1회 제한이 2회가 되어 버리므로, 도착이 확인될 때까지 여기서 함께 센다.
+    ///  · ⚠️ 앱을 껐다 켜도 이어져야 한다 — 아니면 랜선을 뽑고 재시작하는 것만으로
+    ///    하루 제한을 무한히 넘길 수 있다(검수 치명 C-2). 그래서 시작할 때
+    ///    <b>아직 못 보낸 기록</b>에서 오늘치를 세어 채운다(새 파일 없이 이미 있는 대기줄을 쓴다).
+    /// </summary>
+    private int _tempUsedLocal;
+
+    /// <summary><see cref="_tempUsedLocal"/>이 어느 날짜의 값인지(날이 바뀌면 0으로 되돌린다).</summary>
+    private DateOnly _tempUsedDate;
+
+    private bool _flushing;
+
+    /// <summary>연속 전송 실패 횟수(계속 실패하는데 1분마다 두드리지 않기 위해 센다).</summary>
+    private int _flushFailCount;
+
+    /// <summary>
+    /// 지금은 사건을 기록하지 않는다(연결이 바뀌는 중).
+    ///  · A직원 → B직원으로 다시 연결하면 A의 잠금을 푸는 "해제" 기록이 <b>B의 근로기록</b>으로
+    ///    올라간다(B는 잠긴 적이 없다). 전환 중에는 아예 남기지 않는다(검수 중간 M-2).
+    /// </summary>
+    private bool _suppressEvents;
 
     private DateTimeOffset? _lastServerOkAt;
     private DateTimeOffset? _lastTryAt;
@@ -96,14 +135,24 @@ internal sealed class PolicyService : IDisposable
             PolicyCache.Clear();
         }
 
+        // 아직 못 보낸 기록에서 오늘 쓴 [일시사용] 횟수를 이어받는다(껐다 켜기로 우회하지 못하게).
+        try
+        {
+            _tempUsedDate = CompanyToday();
+            _tempUsedLocal = _events.CountOn("temp_use", _tempUsedDate, Hm.CompanyOffset);
+            if (_tempUsedLocal > 0) Log.Info($"아직 서버에 닿지 않은 오늘 일시사용 {_tempUsedLocal}회를 이어서 셉니다.");
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"일시사용 사용 횟수를 이어받지 못했습니다: {ex.GetType().Name}");
+        }
+
         try { Recompute(); }
         catch (Exception ex) { Log.Error("첫 판정 계산 실패 — 잠그지 않고 시작합니다", ex); }
 
         _timer.Start();
         _ = PollAsync("시작"); // 곧바로 서버에도 물어본다
     }
-
-    public void Stop() => _timer.Stop();
 
     /// <summary>
     /// 설정 파일을 다시 읽었을 때 같은 값을 쓰도록 맞춘다(서버 주소가 밖에서 바뀌었을 수 있다).
@@ -130,12 +179,25 @@ internal sealed class PolicyService : IDisposable
         _authFailCount = 0;
         _lastError = null;
         _lastServerOkAt = null;
+        _tempUseUntil = null;         // A직원이 받은 일시사용이 B직원에게 이어지면 안 된다
+        _tempUsedLocal = 0;
+        _tempUsedDate = default;
         SetPolicy(null, null, fromCache: false);
         _clock.Reset();
         PolicyCache.Clear();          // 남의 회사 설정을 이 PC에 남겨두지 않는다
+        _events.Clear();              // 남의 계정으로 남의 기록을 올리지 않는다
         InvalidatePairedCache();
 
-        Recompute();
+        // ⚠️ 아래 Recompute()는 잠금화면을 닫게 만들고, 그 과정에서 "해제" 기록이 생긴다.
+        //    방금 비운 대기줄에 그 기록이 들어가면 **A의 해제가 B의 근로기록으로** 올라간다.
+        //    전환이 끝날 때까지 기록을 막는다(검수 중간 M-2).
+        //    ⚠️ 여기서 예외가 새어 나가면 아래 첫 확인(PollAsync)이 건너뛰어져, 방금 연결한 PC가
+        //       모든 것이 비워진 반쪽 상태로 남는다. 다른 Recompute 호출부와 같게 붙잡는다.
+        _suppressEvents = true;
+        try { Recompute(); }
+        catch (Exception ex) { Log.Error("연결 변경 후 판정 계산 실패 — 잠그지 않고 계속합니다", ex); }
+        finally { _suppressEvents = false; }
+
         if (IsPaired()) _ = PollAsync("연결 변경");
     }
 
@@ -148,6 +210,202 @@ internal sealed class PolicyService : IDisposable
         if (_polling) return false;
         await PollAsync("사용자 요청");
         return true;
+    }
+
+    // ── 사건 기록 (잠금·해제·사전알림·일시사용) ─────────────────────────────
+
+    /// <summary>
+    /// 일어난 일을 기록해 둔다(보내기는 이 함수가 하지 않는다 — 대기줄에 세우기만 한다).
+    ///  · ⚠️ 서버가 <b>이 기록이 오는지</b>로 "앱을 끈 PC"를 찾아낸다(webapp/lib/pcoff-alert.ts).
+    ///    그래서 기록을 남기는 일은 화면을 잠그는 일만큼 중요하다.
+    /// </summary>
+    public void EnqueueEvent(string type, DateTimeOffset at, string? meta = null)
+    {
+        if (_suppressEvents)
+        {
+            Log.Info($"연결이 바뀌는 중이라 기록({type})을 남기지 않습니다.");
+            return;
+        }
+
+        try
+        {
+            _events.Enqueue(type, at, meta);
+
+            // 평상시 확인 주기는 5분이다. 그대로 두면 방금 잠근 사실이 최대 5분 뒤에야 서버에 닿는다.
+            //  · 서버 감시가 "퇴근+유예+여유 30분"으로 판단하므로 5분이 치명적이진 않지만,
+            //    관리자가 [PC관리]를 열었을 때 방금 일을 못 보는 것은 이상하다 → 곧 보내도록 당긴다.
+            var soon = DateTimeOffset.Now + EventSendSoon;
+            if (_nextPollAt == null || _nextPollAt.Value > soon) _nextPollAt = soon;
+        }
+        catch (Exception ex)
+        {
+            // 기록에 실패해도 잠금은 계속돼야 한다.
+            Log.Error($"기록을 남기지 못했습니다({type})", ex);
+        }
+    }
+
+    /// <summary>대기줄에 쌓인 것을 지금 보낸다(성공한 것만 지운다).</summary>
+    private async Task FlushEventsAsync(string token)
+    {
+        if (_flushing || _events.Count == 0) return;
+        _flushing = true;
+        try
+        {
+            // 한 번에 다 보내지 않고 묶음 단위로 보낸다(서버 상한 100건 · 본문 크기 제한).
+            //  · 여러 묶음이 밀려 있으면 다음 주기에 이어서 보낸다 — 한 번에 몰아치지 않는다.
+            var batch = _events.Peek();
+            if (batch.Length == 0) return;
+
+            // ⚠️ ConfigureAwait(false) 금지 — 이 뒤의 처리가 화면 스레드로 돌아와야 한다(위 설명 참조).
+            var res = await AgentApi.PostEventsAsync(_config.ServerUrl, token, batch);
+            if (!res.Ok || res.Value == null)
+            {
+                _flushFailCount++;
+
+                // ⚠️ 여기서 "4xx면 버린다"로 넓게 잡으면 **정상 기록이 대량으로 사라진다.**
+                //    사내 프록시(407)·공용 와이파이 로그인 페이지(403)·서버 주소 오타(404)는
+                //    전부 4xx인데, 그 순간 며칠치 잠금 기록이 영구 소실된다(재검수 치명 C-3).
+                //    그래서 **400(형식 오류)만**, 그것도 **세 번 연속 같은 실패일 때만** 버린다.
+                //    그리고 묶음 전체가 아니라 **맨 앞 한 건만** 버린다 — 나머지 멀쩡한 기록을 지키기 위해서다.
+                if (res.Status == 400 && _flushFailCount >= 3)
+                {
+                    _events.Remove([batch[0]]);
+                    _flushFailCount = 0;
+                    Log.Error($"서버가 기록 1건을 계속 거부해(HTTP 400) 그 한 건만 버립니다 — 나머지는 그대로 다시 보냅니다.");
+                    return;
+                }
+
+                Log.Warn($"기록 {batch.Length}건을 보내지 못했습니다({_flushFailCount}번째, HTTP {res.Status}) — 다음에 다시 보냅니다.");
+                return;
+            }
+
+            // 서버가 받아들였다(저장·중복·버림 모두 "처리됨"이다) → 지운다.
+            //  · 버려진 건(모르는 종류·말이 안 되는 시각)을 남겨두면 영원히 다시 보내게 된다.
+            _flushFailCount = 0;
+            _events.Remove(batch);
+            var v = res.Value;
+            Log.Info($"기록 {batch.Length}건 전송 (저장 {v.Saved} · 중복 {v.Duplicated} · 제외 {v.Dropped}).");
+        }
+        catch (Exception ex)
+        {
+            Log.Error("기록 전송 중 오류", ex);
+        }
+        finally
+        {
+            _flushing = false;
+        }
+    }
+
+    // ── [일시사용] ──────────────────────────────────────────────────────────
+
+    /// <summary>[일시사용]을 지금 더 쓸 수 있는가(서버가 센 횟수 + 아직 못 보낸 횟수).</summary>
+    public bool CanUseTemp => TempUseLeft > 0;
+
+    /// <summary>오늘 남은 [일시사용] 횟수.</summary>
+    public int TempUseLeft
+    {
+        get
+        {
+            var p = _policy;
+            if (p == null || !p.Enabled || p.TempUseMinutes <= 0) return 0;
+            var left = p.TempUsePerDay - p.TempUsedToday - _tempUsedLocal;
+            return left > 0 ? left : 0;
+        }
+    }
+
+    /// <summary>
+    /// [일시사용]을 시작한다. 성공하면 그 시간 동안 잠기지 않는다.
+    ///  · 사유는 <b>회사가 정한 목록의 값</b>만 받는다(자유입력 금지 — 민감정보 유입 차단).
+    /// </summary>
+    public bool TryStartTempUse(string? reason, out string error)
+    {
+        error = "";
+        var p = _policy;
+        if (p == null || !p.Enabled)
+        {
+            error = "회사 설정을 받지 못해 지금은 사용할 수 없습니다.";
+            return false;
+        }
+        if (p.TempUseMinutes <= 0)
+        {
+            error = "회사가 일시사용을 허용하지 않았습니다.";
+            return false;
+        }
+        if (TempUseLeft <= 0)
+        {
+            error = $"오늘 사용할 수 있는 횟수({p.TempUsePerDay}회)를 모두 썼습니다.";
+            return false;
+        }
+
+        var now = _clock.Now;
+        if (now == null)
+        {
+            // 기준 시각을 모르면 언제 끝나는지도 정할 수 없다 → 시작하지 않는다.
+            error = "서버 시각을 확인하지 못했습니다. [서버 다시 확인]을 눌러주세요.";
+            return false;
+        }
+
+        // 사유는 **회사가 정한 목록의 값**만 받는다(지시서 §5: 일시사용은 사유 필수).
+        //  · 목록에 없는 값이면 시작하지 않는다 — 서버는 그런 값을 저장하지 않으므로,
+        //    그대로 진행하면 "사유 없는 일시사용"이 만들어진다.
+        var picked = reason;
+        if (p.TempReasons.Length > 0 && (picked == null || Array.IndexOf(p.TempReasons, picked) < 0))
+        {
+            error = "회사가 정한 사유 중에서 골라주세요.";
+            return false;
+        }
+        if (p.TempReasons.Length == 0)
+        {
+            error = "회사가 일시사용 사유 목록을 정하지 않아 사용할 수 없습니다. 관리자에게 문의해주세요.";
+            return false;
+        }
+
+        _tempUseUntil = now.Value.AddMinutes(p.TempUseMinutes);
+        _tempUsedLocal++;
+        EnqueueEvent("temp_use", now.Value, picked);
+
+        Log.Info($"일시사용 시작 — {p.TempUseMinutes}분 (오늘 남은 횟수 {TempUseLeft}회).");
+        Recompute();
+
+        // 서버에 곧바로 알린다(횟수를 서버가 세야 앱을 다시 깔아도 우회되지 않는다).
+        _ = PollAsync("일시사용");
+        return true;
+    }
+
+    // ── 연장근무 신청 (잠금화면에서) ────────────────────────────────────────
+
+    /// <summary>
+    /// 잠금화면에서 낸 연장근무 신청을 서버로 보낸다.
+    ///  · 승인은 웹에서 관리자가 한다. 승인되면 다음 확인(최대 1분) 때 자동으로 풀린다.
+    /// </summary>
+    public async Task<(bool ok, string message)> SubmitOvertimeAsync(
+        string targetDate, string startTime, string endTime, string? reason)
+    {
+        var token = TokenStore.TryLoad();
+        if (token == null) return (false, "이 PC가 연결되어 있지 않습니다.");
+
+        try
+        {
+            var res = await AgentApi.PostOvertimeAsync(_config.ServerUrl, token, targetDate, startTime, endTime, reason)
+                .ConfigureAwait(true);
+
+            if (!res.Ok || res.Value == null)
+            {
+                return (false, res.Error ?? "신청하지 못했습니다. 잠시 후 다시 시도해주세요.");
+            }
+
+            // 승인되면 빨리 풀리도록 곧바로 다시 확인한다.
+            _ = PollAsync("연장근무 신청");
+
+            return res.Value.Duplicated
+                ? (true, "이미 같은 신청이 접수돼 있습니다. 관리자 승인을 기다려주세요.")
+                : (true, "신청했습니다. 관리자가 승인하면 1분 안에 자동으로 풀립니다.");
+        }
+        catch (Exception ex)
+        {
+            Log.Error("연장근무 신청 중 오류", ex);
+            return (false, $"신청 중 오류가 발생했습니다. ({ex.GetType().Name})");
+        }
     }
 
     // ── 매 10초 ─────────────────────────────────────────────────────────────
@@ -199,6 +457,13 @@ internal sealed class PolicyService : IDisposable
         _lastTryAt = DateTimeOffset.Now;
         Recompute();
 
+        // ⚠️ 서버가 세는 [일시사용] 횟수(usedToday)는 **이 요청보다 먼저 도착한 사건**만 반영한다.
+        //    그래서 "지금 대기줄이 비어 있었다"는 사실과 **그때까지 따로 세던 횟수**를 함께 기억해 둔다.
+        //    응답이 오면 그 횟수만큼만 뺀다 — 통째로 0으로 만들면, 서버를 기다리는 사이(최대 15초)에
+        //    직원이 누른 [일시사용] 한 번이 없던 일이 되어 하루 제한이 한 번 늘어난다(재검수 중간 M-1).
+        var queueWasEmpty = _events.Count == 0;
+        var tempUsedAtRequest = _tempUsedLocal;
+
         try
         {
             var res = await AgentApi.GetPolicyAsync(_config.ServerUrl, token);
@@ -228,6 +493,8 @@ internal sealed class PolicyService : IDisposable
             _lastError = null;
             _lastServerOkAt = DateTimeOffset.Now;
             _authFailCount = 0;
+            // 서버가 이미 세어 준 만큼만 뺀다(그 사이에 새로 누른 것은 그대로 남긴다).
+            if (queueWasEmpty) _tempUsedLocal = Math.Max(0, _tempUsedLocal - tempUsedAtRequest);
 
             if (_revoked)
             {
@@ -255,6 +522,13 @@ internal sealed class PolicyService : IDisposable
                     Log.Info($"회사 설정을 받았습니다 (버전 {safe.PolicyVersion}, 잠금대상={safe.Enabled}).");
                 }
             }
+
+            // 서버와 통신이 되는 것을 방금 확인했다 → 못 보낸 기록을 이 기회에 올린다.
+            //  · 통신이 안 될 때는 시도하지 않는다(같은 실패를 두 번 겪을 필요가 없다).
+            //  · ⚠️ 여기서 ConfigureAwait(false)를 쓰면 안 된다 — 아래 finally의 Recompute()가
+            //    화면 스레드 밖에서 돌게 되어, 이 값을 받아 그리는 트레이·잠금화면이 통째로 예외로 죽는다
+            //    (실기기 검증에서 실제로 발생: "잠금 처리 중 오류 :: InvalidOperationException").
+            await FlushEventsAsync(token);
         }
         catch (Exception ex)
         {
@@ -269,7 +543,13 @@ internal sealed class PolicyService : IDisposable
 
             // ⚠️ 주기는 **방금 받은 정책**으로 정해야 한다. Status는 아직 이전 판정이므로 직접 계산한다
             //    (그러지 않으면 잠금 상태로 막 바뀐 순간에도 5분을 기다려 해제 승인이 늦게 반영된다).
-            _nextPollAt = DateTimeOffset.Now + ChoosePollInterval(SafeDecide());
+            var next = DateTimeOffset.Now + ChoosePollInterval(SafeDecide());
+
+            // ⚠️ 이 폴링이 도는 사이에 사건이 생겨 "15초 뒤에 보내자"고 당겨 놨을 수 있다.
+            //    여기서 그냥 덮어쓰면 그 약속이 1분·5분으로 밀린다(재검수 중간 M-10). 더 이른 쪽을 남긴다.
+            _nextPollAt = _nextPollAt is { } pending && pending > DateTimeOffset.Now && pending < next
+                ? pending
+                : next;
             Recompute();
         }
     }
@@ -312,6 +592,9 @@ internal sealed class PolicyService : IDisposable
     {
         if (_revoked) return RevokedRetry;         // 거부된 기기 → 드물게, 그래도 포기하지 않는다
         if (_lastError != null) return PollFast;   // 실패 → 빨리 복구
+        // 못 보낸 기록이 남았다 → 빨리 마저 보낸다.
+        //  · 다만 계속 실패하는 중이라면 1분마다 두드리지 않는다(하루 1,440번 헛수고 방지).
+        if (_events.Count > 0) return _flushFailCount >= 5 ? PollNormal : PollFast;
         if (decision.ShouldLock) return PollFast;  // 잠금 중 → 해제(승인)를 빨리 반영
         if (_fromCache) return PollFast;           // 저장된 설정으로 버티는 중
 
@@ -334,7 +617,7 @@ internal sealed class PolicyService : IDisposable
     {
         try
         {
-            return LockDecider.Decide(_policy, _clock.Now);
+            return LockDecider.Decide(_policy, _clock.Now, _tempUseUntil);
         }
         catch (Exception ex)
         {
@@ -404,13 +687,29 @@ internal sealed class PolicyService : IDisposable
     /// <summary>다음 확인 때 실제로 파일을 다시 보게 한다(연결이 바뀐 직후에 부른다).</summary>
     private void InvalidatePairedCache() => _pairedCheckedTick = long.MinValue;
 
+    /// <summary>회사 기준 오늘 날짜(서버 시각 기준을 알면 그것으로, 모르면 이 PC 시계로).</summary>
+    private DateOnly CompanyToday()
+        => DateOnly.FromDateTime((_clock.Now ?? DateTimeOffset.Now).ToOffset(Hm.CompanyOffset).DateTime);
+
     // ── 판정 다시 계산 ──────────────────────────────────────────────────────
 
     private void Recompute()
     {
+        // ⚠️ 이 함수는 반드시 **화면 스레드**에서 돌아야 한다. 여기서 알리는 값(Changed)을 받아
+        //    트레이·잠금화면이 곧바로 그리기 때문이다. 다른 스레드에서 부르면 화면 갱신이 통째로
+        //    예외로 죽는다(2-C 실기기 검증에서 실제로 발생). 전제를 코드로 못박아 재발을 막는다.
+        _timer.Dispatcher.VerifyAccess();
+
+        // 날이 바뀌면 앱이 따로 세던 [일시사용] 횟수는 0으로 되돌린다(새 날 = 새 허용량).
+        var today = CompanyToday();
+        if (today != _tempUsedDate)
+        {
+            _tempUsedDate = today;
+            _tempUsedLocal = 0;
+        }
+
         var paired = IsPaired();
 
-        // 일시사용은 2-C에서 채워진다. 지금은 항상 null(=쓰는 중이 아님).
         var decision = paired
             ? SafeDecide()
             : LockDecision.NoLock(LockReason.NotPaired, _clock.Now);
@@ -429,6 +728,9 @@ internal sealed class PolicyService : IDisposable
             PolicyProblem = _policyProblem,
             NextPollAt = _nextPollAt,
             Checking = _polling,
+            TempUseUntil = _tempUseUntil,
+            TempUseLeft = TempUseLeft,
+            PendingEvents = _events.Count,
         };
 
         // 판정이 실제로 바뀐 순간만 기록에 남긴다(10초마다 같은 줄을 쌓지 않게).

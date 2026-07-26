@@ -141,3 +141,31 @@ internal sealed class ErrorResponse
 {
     [JsonPropertyName("error")] public string? Error { get; set; }
 }
+
+// ── 사건 기록·연장근무 신청 응답 (2-C) ───────────────────────────────────────
+
+/// <summary>사건 묶음 전송 결과. <c>saved</c>+<c>duplicated</c>는 "서버가 받아들였다"는 뜻이다.</summary>
+internal sealed class EventsResponse
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("saved")] public int Saved { get; set; }
+
+    /// <summary>서버가 버린 건수(모르는 종류·말이 안 되는 시각). 버려도 다시 보내지 않는다.</summary>
+    [JsonPropertyName("dropped")] public int Dropped { get; set; }
+
+    /// <summary>이미 저장돼 있던 건수(재전송). 성공으로 본다.</summary>
+    [JsonPropertyName("duplicated")] public int Duplicated { get; set; }
+}
+
+/// <summary>잠금화면에서 낸 연장근무 신청 결과.</summary>
+internal sealed class OvertimeResponse
+{
+    [JsonPropertyName("ok")] public bool Ok { get; set; }
+    [JsonPropertyName("id")] public string? Id { get; set; }
+
+    /// <summary>항상 "pending"(대기). 승인은 웹에서 관리자가 한다.</summary>
+    [JsonPropertyName("status")] public string? Status { get; set; }
+
+    /// <summary>같은 신청이 이미 있었다(버튼 연타 등). 사용자에게는 성공으로 안내한다.</summary>
+    [JsonPropertyName("duplicated")] public bool Duplicated { get; set; }
+}

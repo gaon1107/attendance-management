@@ -46,6 +46,10 @@ public partial class App : Application
             AgentPaths.EnsureDirs();
             Log.Info($"{AppInfo.FullName} {AppInfo.Version} 시작");
 
+            // ⚠️ 테스트 모드는 **실행 인자에서만** 읽는다(설정 파일에 두면 직원이 고쳐 잠금을 무력화한다).
+            //    기록 폴더가 준비된 뒤에 부른다 — 이 안에서 기록을 남기기 때문이다.
+            Core.AppMode.Parse(e.Args);
+
             _tray = new TrayApp();
             _tray.Start();
         }
@@ -103,6 +107,10 @@ public partial class App : Application
         var now = DateTime.Now;
         if (now - _lastNoticeAt < NoticeCooldown) return;
         _lastNoticeAt = now;
+
+        // ⚠️ 잠금 중에는 알림창을 띄우지 않는다 — 잠금화면 뒤에 가려져 누를 수 없는 창이 되고,
+        //    그 상태로 쌓이면 종료조차 어려워진다(검수 중간 M-5). 기록은 이미 위에 남겼다.
+        if (UI.LockController.AnyLocked) return;
 
         MessageBox.Show(
             $"예상하지 못한 오류가 발생했습니다. ({e.Exception.GetType().Name})\n\n" +

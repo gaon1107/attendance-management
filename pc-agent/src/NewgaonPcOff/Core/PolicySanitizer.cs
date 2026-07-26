@@ -30,6 +30,25 @@ internal static class PolicySanitizer
     private const int MaxNotifyMin = 12 * 60;
 
     /// <summary>
+    /// [일시사용] 1회 길이 상한(분) — 유예와 <b>같은 이유</b>로 둔다.
+    ///  · 서버 설정 화면은 5~240분으로 막지만(<c>webapp/lib/pcoff.ts</c>), DB를 직접 고치거나
+    ///    기본값이 바뀌면 그 방어가 뚫린다. 앱에도 같은 선을 둬야 "한 번 누르면 며칠간 안 잠김"이 안 된다.
+    /// </summary>
+    private const int MaxTempUseMin = 240;
+
+    /// <summary>[일시사용] 하루 허용 횟수 상한 — 서버(<c>PCOFF_LIMITS.tempUsePerDay</c>)와 같은 10.</summary>
+    private const int MaxTempUsePerDay = 10;
+
+    /// <summary>
+    /// [일시사용] 사유 목록의 개수·글자 상한 — 서버(<c>MAX_TEMP_REASONS</c>·<c>MAX_TEMP_REASON_LEN</c>)와 같은 값.
+    ///  · ⚠️ 상한을 넘는 사유는 <b>자르지 않고 버린다.</b> 잘라서 보내면 서버가 회사 목록과 글자로
+    ///    비교할 때 어긋나 <c>meta=null</c>("사유 미확인")로 저장된다 —
+    ///    직원은 분명히 골랐는데 기록에는 사유가 없는 상태가 된다(재검수 중간 M-6).
+    /// </summary>
+    private const int MaxTempReasons = 10;
+    private const int MaxTempReasonLen = 20;
+
+    /// <summary>
     /// 서버 시각에서 이 일수보다 멀리 떨어진 날짜는 버린다.
     ///  · 서버는 오늘·내일 이틀치만 주므로 정상값은 0~1일이다.
     ///  · ⚠️ 왜 필요한가: <c>9999-12-31</c> 같은 값이 들어오면 날짜+분 계산이 넘쳐서
@@ -190,11 +209,16 @@ internal static class PolicySanitizer
         }
         notify.Sort((a, b) => b.CompareTo(a));
 
-        // 일시사용: 음수는 0으로 낮춘다(횟수 제한을 우회하지 못하게 하는 방향).
+        // 일시사용 사유 목록: 빈 값 제거 + 개수·길이 상한(가짜 서버가 거대한 문자열을 화면에 밀어 넣지 못하게).
         var tempReasons = new List<string>();
         foreach (var r in p.TempUse.Reasons)
         {
-            if (!string.IsNullOrWhiteSpace(r)) tempReasons.Add(r.Trim());
+            if (string.IsNullOrWhiteSpace(r)) continue;
+            if (tempReasons.Count >= MaxTempReasons) break;
+
+            var text = r.Trim();
+            if (text.Length > MaxTempReasonLen) continue; // 자르지 않고 버린다(위 설명 참조)
+            tempReasons.Add(text);
         }
 
         var safe = new SafePolicy
@@ -208,8 +232,8 @@ internal static class PolicySanitizer
             WorkDaysCsv = p.Work.WorkDays,   // 표시용만(판정은 Days로 한다)
             Days = [.. days],
             Overtime = [.. windows],
-            TempUseMinutes = Math.Max(0, p.TempUse.Minutes),
-            TempUsePerDay = Math.Max(0, p.TempUse.PerDay),
+            TempUseMinutes = Clamp(p.TempUse.Minutes, MaxTempUseMin),
+            TempUsePerDay = Clamp(p.TempUse.PerDay, MaxTempUsePerDay),
             TempUsedToday = Math.Max(0, p.TempUse.UsedToday),
             TempReasons = [.. tempReasons],
             PolicyVersion = p.PolicyVersion,
@@ -222,6 +246,13 @@ internal static class PolicySanitizer
         }
 
         return safe;
+    }
+
+    /// <summary>0 미만은 0으로, 상한을 넘으면 상한으로(잠그는 쪽이 아니라 <b>안전한 쪽</b>으로 자른다).</summary>
+    private static int Clamp(int value, int max)
+    {
+        if (value < 0) return 0;
+        return value > max ? max : value;
     }
 
     /// <summary>기록에 남길 짧은 문자열로 다듬는다(서버가 보낸 값이 아주 길 수 있다).</summary>

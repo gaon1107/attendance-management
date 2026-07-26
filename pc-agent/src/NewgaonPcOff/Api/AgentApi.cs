@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -129,6 +130,74 @@ internal static class AgentApi
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return await SendAsync<PcOffPolicy>(req, "정책 조회", NormalTimeout, ct).ConfigureAwait(false);
+    }
+
+    // ── 사건 기록 보내기 ────────────────────────────────────────────────────
+    /// <summary>
+    /// 잠금·해제·일시사용 같은 "일어난 일"을 묶어서 보낸다.
+    ///  · ⚠️ 보내는 것은 <b>종류·시각·[일시사용] 사유</b>뿐이다. 화면·입력 내용·앱 목록은 보내지 않는다
+    ///    (그럴 통로가 아예 없다 — <see cref="Core.QueuedEvent"/>가 수집 범위를 못박는다).
+    ///  · 서버는 같은 <c>clientEventId</c>를 두 번 세지 않는다 → 실패하면 그대로 다시 보내면 된다.
+    /// </summary>
+    public static async Task<ApiResult<EventsResponse>> PostEventsAsync(
+        string serverUrl, string token, Core.QueuedEvent[] events, CancellationToken ct = default)
+    {
+        if (events == null || events.Length == 0)
+        {
+            return ApiResult<EventsResponse>.Fail("보낼 기록이 없습니다.");
+        }
+        if (!TryBuildUrl(serverUrl, "api/agent/events", out var url))
+        {
+            return ApiResult<EventsResponse>.Fail("서버 주소가 올바르지 않습니다. [연결 설정]에서 주소를 다시 확인해주세요.");
+        }
+
+        var items = new object[events.Length];
+        for (var i = 0; i < events.Length; i++)
+        {
+            var e = events[i];
+            items[i] = new
+            {
+                type = e.Type,
+                // "o" 형식은 시간대를 함께 담는다(예: 2026-07-27T18:10:00.0000000+09:00).
+                // 시간대를 빼면 서버가 자기 시간대로 해석해 기록이 9시간 어긋난다.
+                at = e.At.ToString("o", CultureInfo.InvariantCulture),
+                meta = e.Meta,
+                clientEventId = e.Id,
+            };
+        }
+
+        var body = JsonSerializer.Serialize(new { events = items, agentVersion = AppInfo.Version });
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return await SendAsync<EventsResponse>(req, "기록 전송", NormalTimeout, ct).ConfigureAwait(false);
+    }
+
+    // ── 연장근무 신청 ───────────────────────────────────────────────────────
+    /// <summary>
+    /// 잠금화면에서 바로 연장근무를 신청한다(PC가 잠겨 브라우저를 열 수 없으므로 필요하다).
+    ///  · 서버가 웹 신청과 <b>같은 규칙·같은 결재선</b>으로 만든다(webapp/app/api/agent/overtime).
+    /// </summary>
+    public static async Task<ApiResult<OvertimeResponse>> PostOvertimeAsync(
+        string serverUrl, string token, string targetDate, string startTime, string endTime, string? reason,
+        CancellationToken ct = default)
+    {
+        if (!TryBuildUrl(serverUrl, "api/agent/overtime", out var url))
+        {
+            return ApiResult<OvertimeResponse>.Fail("서버 주소가 올바르지 않습니다. [연결 설정]에서 주소를 다시 확인해주세요.");
+        }
+
+        var body = JsonSerializer.Serialize(new { targetDate, startTime, endTime, reason });
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return await SendAsync<OvertimeResponse>(req, "연장근무 신청", NormalTimeout, ct).ConfigureAwait(false);
     }
 
     // ── 주소 만들기 ─────────────────────────────────────────────────────────

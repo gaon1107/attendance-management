@@ -29,6 +29,14 @@ internal static class AgentPaths
     /// </summary>
     public static string PolicyFile => Path.Combine(Root, "policy.bin");
 
+    /// <summary>
+    /// 아직 서버로 보내지 못한 사건(잠금·해제·일시사용) 대기줄 — <b>암호화</b>해서 저장한다.
+    ///  · 인터넷이 끊긴 동안 일어난 잠금·해제를 잃지 않기 위해 파일로 남긴다(지시서 §5 시나리오 ④).
+    ///  · ⚠️ 암호화하는 이유: 이 파일에는 "이 사람이 몇 시에 PC를 껐다 켰다"가 시각별로 남는다.
+    ///    근로시간 근거가 되는 값이므로 평문으로 두면 안 된다(정책 캐시와 같은 기준).
+    /// </summary>
+    public static string EventsFile => Path.Combine(Root, "events.bin");
+
     /// <summary>진단 기록 폴더(이 PC 안에만 남는다. 서버로 보내지 않는다).</summary>
     public static string LogDir => Path.Combine(Root, "logs");
 

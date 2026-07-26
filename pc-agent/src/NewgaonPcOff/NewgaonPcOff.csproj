@@ -5,7 +5,8 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <AssemblyName>NewgaonPcOff</AssemblyName>
     <RootNamespace>NewgaonPcOff</RootNamespace>
-    <Version>0.2.0</Version>
+    <!-- 🔴 AppInfo.Version과 항상 같은 값이어야 한다(서버의 미보고 감시가 이 버전을 본다). -->
+    <Version>0.3.0</Version>
 
     <UseWPF>true</UseWPF>
     <!-- 트레이 아이콘(NotifyIcon)은 WinForms에만 있다. 외부 라이브러리(NuGet) 없이 쓰기 위해 함께 켠다. -->

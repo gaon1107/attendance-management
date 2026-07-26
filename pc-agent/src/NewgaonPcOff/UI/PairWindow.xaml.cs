@@ -137,9 +137,6 @@ public partial class PairWindow : Window
         var note = StatusWording.Note(s);
         if (note == null) StatusNote.Visibility = Visibility.Collapsed;
         else ShowNote(note.Value.text, note.Value.color);
-
-        // 잠금 대상이 아니면(회사가 끔·예외자) "잠길 시각" 안내는 뜻이 없으므로 숨긴다.
-        PendingNote.Visibility = s.Policy is { Enabled: true } ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private string WhoText()

@@ -24,6 +24,10 @@ internal sealed class TrayApp : IDisposable
 
     private AgentConfig _config;
     private PolicyService _service;
+
+    /// <summary>판정 결과를 실제 잠금화면·사전알림·기록으로 옮기는 부분.</summary>
+    private readonly LockController _lock;
+
     private PairWindow? _pairWindow;
     private InfoWindow? _infoWindow;
     private bool _checking;
@@ -47,12 +51,16 @@ internal sealed class TrayApp : IDisposable
         _service = new PolicyService(_config);
         _service.Changed += RefreshStatus;
 
+        // 설정은 [연결 설정] 창을 열 때 다시 읽으므로, 값이 아니라 "읽는 방법"을 넘긴다.
+        _lock = new LockController(_service, () => _config);
+
         BuildMenu();
     }
 
     public void Start()
     {
         _tray.Visible = true;
+        _lock.Start();      // 판정이 나오는 즉시 잠금화면에 반영되도록 먼저 붙인다
         _service.Start();   // 저장된 설정으로 즉시 판정 시작 + 서버에 물어보기
         RefreshStatus();
 
@@ -72,6 +80,15 @@ internal sealed class TrayApp : IDisposable
         menu.Items.Add(MenuItem("상태 · 연결 설정...", OpenPairWindow));
         menu.Items.Add(MenuItem("서버 연결 확인", RunCheckServer));
         menu.Items.Add(MenuItem("수집하는 정보", OpenInfoWindow));
+
+        // 테스트 모드로 켰을 때만 보이는 항목 — 잠길 시각을 기다리지 않고 잠금화면을 확인한다.
+        //  · 평소 실행에는 이 항목 자체가 없다(직원이 잠금을 시험 삼아 켜는 통로가 되지 않게).
+        if (AppMode.TestMode)
+        {
+            menu.Items.Add(new WinForms.ToolStripSeparator());
+            menu.Items.Add(MenuItem("[테스트] 잠금화면 미리보기", PreviewLock));
+        }
+
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add(MenuItem("종료", RequestExit));
 
@@ -95,8 +112,30 @@ internal sealed class TrayApp : IDisposable
                 MessageBoxImage.Warning);
             return;
         }
+        // 잠금 시간에는 메뉴로 종료할 수 없다.
+        //  · ⚠️ 완전한 차단이 아니다 — 작업관리자로 끄면 꺼진다(지시서 §0: 워치독은 범위 밖).
+        //    그건 서버의 미보고 감시가 잡는다. 여기서는 "메뉴 한 번으로 풀리는 것"만 막는다.
+        //  · 테스트 모드는 예외다(검증 중에 갇히면 안 된다).
+        if (_lock.IsLocked && !AppMode.TestMode)
+        {
+            Notice("잠금 시간에는 프로그램을 종료할 수 없습니다.\n\n" +
+                   "업무가 남았다면 잠금화면에서 [연장근무 신청] 또는 [일시사용]을 이용해주세요.",
+                MessageBoxImage.Warning);
+            return;
+        }
+
         _exiting = true; // 창이 닫힐 때 "계속 실행 중" 안내가 뜨지 않게
         Application.Current.Shutdown();
+    }
+
+    /// <summary>[테스트] 잠금화면 미리보기 — 테스트 모드에서만 동작한다.</summary>
+    private void PreviewLock()
+    {
+        if (!_lock.TryPreviewLock())
+        {
+            Notice("지금은 미리보기를 열 수 없습니다(이미 잠겨 있거나 테스트 모드가 아닙니다).",
+                MessageBoxImage.Information);
+        }
     }
 
     /// <summary>메뉴 항목 하나. 눌렀을 때 오류가 나도 앱이 죽지 않게 감싼다.</summary>
@@ -129,6 +168,7 @@ internal sealed class TrayApp : IDisposable
 
             var who = Join(_config.PairedCompanyName, _config.PairedUserName);
             var brief = StatusWording.Short(s);
+            if (AppMode.TestMode) brief = "[테스트] " + brief;
 
             _statusItem.Text = s.Paired && who.Length > 0 ? $"{who} — {brief}" : brief;
 
@@ -277,6 +317,8 @@ internal sealed class TrayApp : IDisposable
             sb.AppendLine($"· 판정 기준 시각: {t.ToOffset(Hm.CompanyOffset):yyyy-MM-dd HH:mm:ss} (이 PC 시계와 {gapSec:+0;-0;0}초 차이)");
         }
         if (s.FromCache) sb.AppendLine("· ⚠️ 서버에 못 붙어 마지막으로 받은 설정으로 판단 중입니다.");
+        if (s.PendingEvents > 0) sb.AppendLine($"· 아직 서버로 보내지 못한 기록: {s.PendingEvents}건 (연결되면 자동으로 보냅니다)");
+        if (s.TempUseUntil is { } until) sb.AppendLine($"· 일시사용 중 — {until.ToOffset(Hm.CompanyOffset):HH:mm}까지");
 
         var p = s.Policy;
         if (p == null)
@@ -333,8 +375,42 @@ internal sealed class TrayApp : IDisposable
 
     // ── 도우미 ──────────────────────────────────────────────────────────────
 
-    private static void Notice(string message, MessageBoxImage icon)
-        => MessageBox.Show(message, AppInfo.Name, MessageBoxButton.OK, icon);
+    /// <summary>
+    /// 사용자에게 한마디 알린다.
+    ///  · ⚠️ <b>잠금 중에는 알림창(MessageBox)을 띄우지 않는다.</b> 잠금화면이 최상위로 포커스를
+    ///    계속 되찾기 때문에 알림창이 뒤에 가려져 <b>누를 수 없게</b> 되고,
+    ///    그 창이 닫히기를 기다리는 코드는 그대로 멈춘다(검수 중간 M-5).
+    ///    그 경우에는 트레이 풍선으로 알린다(못 봐도 업무를 막지는 않는다).
+    /// </summary>
+    private void Notice(string message, MessageBoxImage icon)
+    {
+        if (LockController.AnyLocked)
+        {
+            Log.Info($"잠금 중이라 알림창 대신 풍선으로 알립니다: {Truncate(message.Replace("\n", " "), 60)}");
+            Balloon(message, icon);
+            return;
+        }
+
+        MessageBox.Show(message, AppInfo.Name, MessageBoxButton.OK, icon);
+    }
+
+    /// <summary>트레이 풍선 알림(윈도우 알림 설정에 따라 안 보일 수 있다 — 있으면 좋은 것).</summary>
+    private void Balloon(string message, MessageBoxImage icon)
+    {
+        try
+        {
+            _tray.BalloonTipTitle = AppInfo.Name;
+            _tray.BalloonTipText = Truncate(message.Replace("\r", " ").Replace("\n", " "), 240);
+            _tray.BalloonTipIcon = icon == MessageBoxImage.Warning
+                ? WinForms.ToolTipIcon.Warning
+                : WinForms.ToolTipIcon.Info;
+            _tray.ShowBalloonTip(7000);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"트레이 알림 표시 실패: {ex.GetType().Name}");
+        }
+    }
 
     private static string Join(string? a, string? b)
     {
@@ -367,6 +443,9 @@ internal sealed class TrayApp : IDisposable
 
     public void Dispose()
     {
+        // 잠금화면을 먼저 닫는다 — 창이 남아 있으면 종료가 멈춘다.
+        try { _lock.Dispose(); } catch (Exception ex) { Log.Warn($"잠금화면 정리 실패: {ex.GetType().Name}"); }
+
         _service.Changed -= RefreshStatus;
         _service.Dispose();
 

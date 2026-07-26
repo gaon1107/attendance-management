@@ -1,0 +1,47 @@
+<Window x:Class="NewgaonPcOff.UI.ToastWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PC-OFF 알림"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        AllowsTransparency="True"
+        Background="Transparent"
+        SizeToContent="Height"
+        Width="370"
+        FontFamily="{StaticResource UiFont}">
+
+    <!-- 사전알림 — 잠기기 전에 미리 알려 저장하지 못한 작업을 잃지 않게 한다.
+          ⚠️ 포커스를 빼앗지 않는다(ShowActivated=False) — 타이핑 중에 알림이 뜨면
+             글자가 엉뚱한 곳에 들어가 업무를 방해한다. -->
+
+    <Border Background="{StaticResource CardBg}" CornerRadius="12" Margin="10"
+            BorderBrush="{StaticResource BorderLine}" BorderThickness="1"
+            Padding="18,15,18,15">
+        <Border.Effect>
+            <DropShadowEffect Color="#000000" Opacity="0.22" BlurRadius="18" ShadowDepth="3" Direction="270" />
+        </Border.Effect>
+
+        <StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <Border Background="{StaticResource Warning}" Width="8" Height="8" CornerRadius="4"
+                        VerticalAlignment="Center" Margin="0,0,8,0" />
+                <TextBlock FontSize="13" FontWeight="Bold" Foreground="{StaticResource TextMain}"
+                           Text="PC-OFF" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <TextBlock x:Name="BodyText" FontSize="14" FontWeight="Bold" Margin="0,10,0,0"
+                       Foreground="{StaticResource TextMain}" TextWrapping="Wrap" LineHeight="22"
+                       Text="-" />
+
+            <TextBlock x:Name="HintText" FontSize="12" Margin="0,7,0,0"
+                       Foreground="{StaticResource TextSub}" TextWrapping="Wrap" LineHeight="19"
+                       Text="저장하지 않은 작업을 정리해주세요. 업무가 남았다면 연장근무를 신청해주세요." />
+
+            <Button Style="{StaticResource GhostButton}" Height="32" Margin="0,12,0,0"
+                    HorizontalAlignment="Right" Content="확인" Click="CloseButton_Click" />
+        </StackPanel>
+    </Border>
+</Window>
