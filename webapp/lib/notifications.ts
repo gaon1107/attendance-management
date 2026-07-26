@@ -4,6 +4,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { countUncheckedAnomalies } from "@/lib/anomaly";
+import { listPcOffUnreported } from "@/lib/pcoff-alert";
 
 export type AdminNotification = {
   key: string;
@@ -53,6 +54,17 @@ export const listAdminNotifications = cache(async (companyId: string): Promise<{
     console.warn("[notifications] 이상접속 집계 실패(알림센터는 정상 표시):", e);
   }
 
+  // PC-OFF 미보고 — 잠겼어야 하는데 잠금 기록이 안 온 PC(= 앱을 끈 PC).
+  //  · 설치형 앱은 작업관리자로 끌 수 있어(지시서 §0: 워치독 범위 밖) 클라이언트 방어는 뚫린다.
+  //    "기록이 안 왔다"를 서버가 알아채는 이것이 유일한 실질 방어선이다.
+  //  · 이상접속과 같은 방식으로 감싼다 — 부가기능이 실패해도 알림센터 본체는 떠야 한다.
+  let pcOffUnreported = 0;
+  try {
+    pcOffUnreported = (await listPcOffUnreported(companyId)).total;
+  } catch (e) {
+    console.warn("[notifications] PC-OFF 미보고 집계 실패(알림센터는 정상 표시):", e);
+  }
+
   const items: AdminNotification[] = [];
   // 보안이 가장 위(위험). 그다음 결재/요청.
   if (anomalyCount > 0) {
@@ -66,6 +78,14 @@ export const listAdminNotifications = cache(async (companyId: string): Promise<{
     items.push({
       key: "reset", title: "비밀번호 재설정 요청", detail: "직원의 비밀번호 재설정 요청이 있습니다.",
       count: pendingReset, countLabel: `${pendingReset}건`, href: "/employees", cta: "처리", severity: "danger",
+    });
+  }
+  if (pcOffUnreported > 0) {
+    items.push({
+      key: "pcoff-unreported", title: "PC-OFF 미보고",
+      detail: "퇴근 시간이 지났는데 잠금 기록을 보내지 않은 PC가 있습니다. 프로그램이 꺼져 있을 수 있습니다.",
+      count: pcOffUnreported, countLabel: `${pcOffUnreported}대`,
+      href: "/pc-devices", cta: "확인", severity: "warning",
     });
   }
   if (pendingLeave > 0) {

@@ -10,6 +10,7 @@ import { isDeviceOnline } from "@/lib/agent-auth";
 import { revokeAgentDevice, setPcOffExempt } from "@/app/actions/pcoff";
 import { purgeAgentEventsDaily } from "@/lib/pcoff-retention";
 import { RETENTION_WORK_LABEL, RETENTION_SYSTEM_LABEL } from "@/lib/pcoff";
+import { listPcOffUnreported, PCOFF_ALERT_GRACE_MIN } from "@/lib/pcoff-alert";
 
 // 사건 종류 → 사람이 읽는 라벨. ⚠️ app/api/agent/events/route.ts의 ALLOWED_TYPES와 짝이다(늘릴 때 함께).
 const EVENT_LABEL: Record<string, { text: string; bg: string; fg: string }> = {
@@ -39,7 +40,7 @@ export default async function PcDevicesPage() {
   const today = new Date();
   const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
-  const [company, devices, employees, events, tempUseToday] = await Promise.all([
+  const [company, devices, employees, events, tempUseToday, unreported] = await Promise.all([
     prisma.company.findUnique({ where: { id: me.companyId }, select: { pcOffOn: true, workEndTime: true, pcOffDelayMin: true } }),
     prisma.agentDevice.findMany({
       where: { companyId: me.companyId },
@@ -58,6 +59,11 @@ export default async function PcDevicesPage() {
       take: EVENT_LIMIT,
     }),
     prisma.agentEvent.count({ where: { companyId: me.companyId, type: "temp_use", at: { gte: dayStart } } }),
+    // 잠겼어야 하는데 잠금 기록이 안 온 PC(= 프로그램을 끈 PC). 집계가 실패해도 이 화면은 떠야 한다.
+    listPcOffUnreported(me.companyId).catch((e) => {
+      console.warn("[pc-devices] PC-OFF 미보고 집계 실패(화면은 정상 표시):", e);
+      return { items: [], total: 0 };
+    }),
   ]);
 
   const active = devices.filter((d) => !d.revokedAt);
@@ -72,6 +78,28 @@ export default async function PcDevicesPage() {
           <span style={{ fontSize: 14, fontWeight: 700, color: "#B45309", wordBreak: "keep-all" }}>
             PC-OFF가 꺼져 있어 지금은 어떤 PC도 잠기지 않습니다. [설정] 화면의 PC-OFF 카드에서 켤 수 있습니다.
           </span>
+        </div>
+      )}
+
+      {/* 잠겼어야 하는데 기록이 안 온 PC — 설치형 앱은 작업관리자로 끌 수 있으므로(지시서 §0)
+           "기록이 안 왔다"를 알아채는 것이 유일한 실질 방어선이다. */}
+      {unreported.total > 0 && (
+        <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 12, padding: "14px 18px", marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#B91C1C", wordBreak: "keep-all", marginBottom: 8 }}>
+            잠금 기록이 오지 않은 PC {unreported.total}대 — 프로그램이 꺼져 있을 수 있습니다.
+          </div>
+          <ul style={{ margin: "0 0 8px", padding: "0 0 0 18px" }}>
+            {unreported.items.map((u) => (
+              <li key={`${u.deviceId}-${u.date}`} style={{ fontSize: 13, color: "#7F1D1D", lineHeight: 1.7, wordBreak: "keep-all" }}>
+                <b>{u.userName}</b> · {u.deviceName} — {u.date} {fmtHm(u.dueAt)}에 잠겨야 했습니다
+                {u.lastSeenAt ? ` (마지막 연락 ${fmt(u.lastSeenAt)})` : " (연락 기록 없음)"}
+              </li>
+            ))}
+          </ul>
+          <p style={{ fontSize: 12, color: "#991B1B", margin: 0, lineHeight: 1.6, wordBreak: "keep-all" }}>
+            퇴근 기준시각 + 유예가 지난 뒤 {PCOFF_ALERT_GRACE_MIN}분을 더 기다렸는데도 기록이 없을 때만 표시됩니다.
+            해당 직원에게 프로그램 실행을 안내하거나, 계속 반복되면 [연결 해제] 후 다시 설치하게 하세요.
+          </p>
         </div>
       )}
 
@@ -278,4 +306,10 @@ function StatusPill({ revoked, online }: { revoked: boolean; online: boolean }) 
 function fmt(d: Date): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** 시:분만 (날짜는 옆에 이미 쓰여 있다) */
+function fmtHm(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
 }
