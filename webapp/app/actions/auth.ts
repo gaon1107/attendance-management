@@ -6,7 +6,7 @@ import { hashPassword, verifyPassword } from "@/lib/password";
 import { createSession, destroySession, getCurrentUser } from "@/lib/session";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { isBlockedForCompany } from "@/lib/ip-block";
-import { isValidBizRegNoFormat, formatBizRegNo, verifyBizRegNo } from "@/lib/bizreg";
+import { isValidBizRegNoFormat, formatBizRegNo, normalizeBizRegNo, verifyBizRegNo } from "@/lib/bizreg";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -57,7 +57,12 @@ export async function signup(
   // 같은 사업자등록번호로 이미 가입한 회사가 있으면 막는다.
   //  · 한 회사가 둘로 쪼개져 근태 기록이 나뉘는 것이 장난 가입보다 큰 사고이기 때문.
   //  · 지점을 따로 쓰고 싶은 회사는 고객지원으로 처리한다(1차 범위 밖).
-  const dupCompany = await prisma.company.findFirst({ where: { bizRegNo }, select: { id: true } });
+  //  · ⚠️ 하이픈 있는 값과 없는 값을 **둘 다** 본다. [회사정보] 화면에서 하이픈 없이 저장된 옛 값이
+  //    있을 수 있어, 한 형태만 비교하면 중복 검사가 그냥 통과한다(검수 7).
+  const dupCompany = await prisma.company.findFirst({
+    where: { bizRegNo: { in: [bizRegNo, normalizeBizRegNo(bizRegNoRaw)] } },
+    select: { id: true },
+  });
   if (dupCompany) {
     return { error: "이미 가입된 사업자등록번호입니다. 회사 관리자에게 문의해주세요." };
   }
@@ -75,29 +80,47 @@ export async function signup(
   }
 
   const now = new Date();
-  const company = await prisma.company.create({
-    data: {
-      name: companyName,
-      bizRegNo,
-      bizRegNoVerifiedAt: check.state === "verified" ? now : null,
-      managerName,
-      managerPhone,
-      companyEmail: email,
-      termsAgreedAt: now,
-    },
-  });
-  const user = await prisma.user.create({
-    data: {
-      companyId: company.id,
-      email,
-      // 사람이 아니라는 것이 화면에서 바로 보이게 한다(직원 목록·집계에서는 제외된다).
-      name: "회사 계정",
-      phone: managerPhone,
-      passwordHash: hashPassword(password),
-      role: "admin", // 권한은 관리자와 동일 — 권한 검사 117군데를 건드리지 않기 위함
-      isOwner: true, // 🔒 강등·퇴사·삭제 불가. 회사가 잠기지 않게 하는 유일한 장치
-    },
-  });
+  // ⚠️ 회사와 회사 계정은 **반드시 함께** 만들어진다(트랜잭션).
+  //    따로 만들면 계정 생성이 실패했을 때 **로그인할 수 없는 빈 회사**가 남고,
+  //    그 회사가 사업자등록번호를 차지해 같은 회사가 다시는 가입할 수 없게 된다(검수 8).
+  let user: { id: string; name: string };
+  let companyId: string;
+  try {
+    const made = await prisma.$transaction(async (tx) => {
+      const company = await tx.company.create({
+        data: {
+          name: companyName,
+          bizRegNo,
+          bizRegNoVerifiedAt: check.state === "verified" ? now : null,
+          managerName,
+          managerPhone,
+          companyEmail: email,
+          termsAgreedAt: now,
+        },
+      });
+      const u = await tx.user.create({
+        data: {
+          companyId: company.id,
+          email,
+          // 사람이 아니라는 것이 화면에서 바로 보이게 한다(직원 목록·집계에서는 제외된다).
+          name: "회사 계정",
+          phone: managerPhone,
+          passwordHash: hashPassword(password),
+          role: "admin", // 권한은 관리자와 동일 — 권한 검사 117군데를 건드리지 않기 위함
+          isOwner: true, // 🔒 강등·퇴사·삭제 불가. 회사가 잠기지 않게 하는 유일한 장치
+        },
+        select: { id: true, name: true },
+      });
+      return { company, u };
+    });
+    user = made.u;
+    companyId = made.company.id;
+  } catch (e) {
+    // 동시 가입으로 이메일·사업자번호가 겹치는 등 — 아무것도 남기지 않고 다시 시도하게 한다.
+    console.warn("[signup] 회사 생성 실패:", e);
+    return { error: "가입 처리 중 문제가 생겼습니다. 잠시 후 다시 시도해주세요." };
+  }
+  const company = { id: companyId };
 
   await createSession(user.id);
   // 접속기록: 가입 직후 자동 로그인 1건(성공).

@@ -51,6 +51,8 @@ export async function clockIn(
 ): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
+  // 🔒 회사 계정은 사람이 아니다 — 출퇴근을 찍으면 법정 근로시간 기록에 유령 근로자가 생긴다(검수 9).
+  if (me.isOwner) return;
 
   // 이미 근무 중이면 중복 생성 안 함
   const open = await prisma.attendance.findFirst({
@@ -101,6 +103,8 @@ export async function clockIn(
 export async function clockOut(): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
+  // 🔒 회사 계정은 사람이 아니다 — 출퇴근을 찍으면 법정 근로시간 기록에 유령 근로자가 생긴다(검수 9).
+  if (me.isOwner) return;
 
   const open = await prisma.attendance.findFirst({
     where: { userId: me.id, clockOut: null },
@@ -130,6 +134,8 @@ export async function clockOut(): Promise<void> {
 export async function startBreak(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
+  // 🔒 회사 계정은 사람이 아니다 — 출퇴근을 찍으면 법정 근로시간 기록에 유령 근로자가 생긴다(검수 9).
+  if (me.isOwner) return;
 
   const open = await prisma.attendance.findFirst({
     where: { userId: me.id, clockOut: null },
@@ -168,6 +174,8 @@ export async function startBreak(formData: FormData): Promise<void> {
 export async function endBreak(): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
+  // 🔒 회사 계정은 사람이 아니다 — 출퇴근을 찍으면 법정 근로시간 기록에 유령 근로자가 생긴다(검수 9).
+  if (me.isOwner) return;
 
   const open = await prisma.attendance.findFirst({
     where: { userId: me.id, clockOut: null },

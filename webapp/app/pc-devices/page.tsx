@@ -50,8 +50,9 @@ export default async function PcDevicesPage() {
       select: { id: true, deviceName: true, agentVersion: true, pairedAt: true, lastSeenAt: true, revokedAt: true, user: { select: { name: true, email: true, pcOffExempt: true } } },
       orderBy: [{ revokedAt: "asc" }, { lastSeenAt: "desc" }],
     }),
+    // 잠금 예외자로 지정할 수 있는 **사람** 목록. 회사 계정은 PC를 쓰지 않으므로 제외(검수 10).
     prisma.user.findMany({
-      where: { companyId: me.companyId, deactivatedAt: null },
+      where: { companyId: me.companyId, deactivatedAt: null, isOwner: false },
       select: { id: true, name: true, email: true, role: true, pcOffExempt: true },
       orderBy: [{ pcOffExempt: "desc" }, { name: "asc" }],
     }),

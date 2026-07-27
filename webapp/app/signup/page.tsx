@@ -144,6 +144,13 @@ export default function SignupPage() {
             </label>
           </div>
 
+          {/* 회사 계정은 되찾을 방법이 마땅치 않다(자동 메일 발송이 없어 비번찾기가 관리자 승인식이다).
+              가입 첫날엔 승인해 줄 관리자도 없으므로, 잃어버리면 곤란하다는 것을 미리 알린다(검수 치명 3). */}
+          <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "11px 13px", fontSize: 12, color: "#92400E", lineHeight: 1.6, wordBreak: "keep-all" }}>
+            <b>회사 계정 정보를 꼭 보관하세요.</b> 회사의 마스터 열쇠라 분실하면 되찾기 어렵습니다.
+            가입 후 <b>직원 한 명을 관리자로 지정</b>해 두시면 더 안전합니다.
+          </div>
+
           {state?.error && (
             <div style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700 }}>
               {state.error}

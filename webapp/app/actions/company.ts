@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { deleteCompanyDocFile } from "@/lib/company-doc";
+import { isValidBizRegNoFormat, formatBizRegNo } from "@/lib/bizreg";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -40,12 +41,25 @@ export async function saveCompanyInfo(
     return { error: "담당 이메일 형식을 확인해주세요." };
   }
 
+  // 사업자등록번호는 가입 때와 **같은 표기**(123-45-67890)로 맞춰 저장한다.
+  //  · 표기가 제각각이면 가입 시 중복 검사가 그냥 통과한다(검수 7).
+  //  · 🔴 번호가 바뀌면 "국세청 확인됨" 표시를 지운다. 안 그러면 남의 회사 번호로 바꿔도
+  //    초록색 확인 뱃지가 그대로 남아 **거짓 표시**가 된다.
+  const rawBizNo = clean(formData.get("bizRegNo"), 40);
+  const nextBizNo = rawBizNo && isValidBizRegNoFormat(rawBizNo) ? formatBizRegNo(rawBizNo) : rawBizNo;
+  const prev = await prisma.company.findUnique({
+    where: { id: me.companyId },
+    select: { bizRegNo: true },
+  });
+  const bizNoChanged = (prev?.bizRegNo ?? null) !== (nextBizNo ?? null);
+
   await prisma.company.update({
     where: { id: me.companyId }, // 회사 격리: 본인 회사만 수정
     data: {
       name,
       // 기본정보
-      bizRegNo: clean(formData.get("bizRegNo"), 40),
+      bizRegNo: nextBizNo,
+      ...(bizNoChanged ? { bizRegNoVerifiedAt: null } : {}),
       corpRegNo: clean(formData.get("corpRegNo"), 40),
       ceoName: clean(formData.get("ceoName"), 60),
       bizType: clean(formData.get("bizType"), 100),

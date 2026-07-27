@@ -16,9 +16,10 @@ export default async function BiometricsPage() {
   if (!me) redirect("/login");
   if (me.role !== "admin") redirect("/attendance");
 
-  // 회사 소속 전원(관리자 포함) — 생체정보 동의는 누구나 할 수 있으므로 전원 표시
+  // 회사 소속 **사람** 전원(관리자 포함) — 생체정보 동의는 누구나 할 수 있으므로 전원 표시.
+  //  · 사람이 아닌 회사 계정(isOwner)은 뺀다: 얼굴을 등록할 수 없고, 인원 수만 하나 부풀린다(검수 10).
   const users = await prisma.user.findMany({
-    where: { companyId: me.companyId },
+    where: { companyId: me.companyId, isOwner: false },
     orderBy: [{ role: "asc" }, { createdAt: "asc" }],
   });
 

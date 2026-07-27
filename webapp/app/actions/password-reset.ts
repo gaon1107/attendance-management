@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { generateTempPassword } from "@/lib/temp-password";
 import { getCurrentUser } from "@/lib/session";
+import { canManageAccount } from "@/lib/owner-rules";
 import { revalidatePath } from "next/cache";
 
 // ① 직원이 비밀번호 재설정을 요청한다(로그인 화면에서). 이메일만 받는다.
@@ -22,7 +23,11 @@ export async function requestPasswordReset(
   const user = await prisma.user.findUnique({ where: { email } });
 
   // 실제 계정이고, 퇴사(비활성화)된 계정이 아닐 때만 요청을 만든다.
-  if (user && !user.deactivatedAt) {
+  //  · 🔒 회사 계정은 제외한다: 이 요청은 **관리자가 승인해 임시 비번을 발급**하는 구조라,
+  //    회사 계정 요청을 만들어 두면 관리자가 직원 요청인 줄 알고 승인해 **회사 열쇠를 넘겨줄 수 있다**
+  //    (검수 치명 1). 회사 계정 비밀번호는 회사 계정으로 직접 로그인해서만 바꾼다.
+  //  · 응답은 있든 없든 동일하므로 "회사 계정이라 거부됐다"는 사실도 밖으로 새지 않는다.
+  if (user && !user.deactivatedAt && !user.isOwner) {
     const existing = await prisma.passwordResetRequest.findFirst({
       where: { userId: user.id, status: "pending" },
     });
@@ -53,6 +58,12 @@ export async function issueTempPassword(
   });
   if (!req) return { error: "이미 처리되었거나 없는 요청입니다." };
   if (req.user.deactivatedAt) return { error: "퇴사한 직원의 요청입니다." };
+  // 🔒 회사 계정에는 임시 비번을 발급하지 않는다(회사 열쇠 탈취 경로 — 검수 치명 1).
+  //    위 requestPasswordReset이 이미 막지만, 옛 요청이 남아 있을 수 있어 여기서도 검사한다.
+  {
+    const g = canManageAccount(me, req.user);
+    if (!g.ok) return { error: g.reason };
+  }
 
   const tempPassword = generateTempPassword();
 

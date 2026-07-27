@@ -39,6 +39,9 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
     include: { department: { select: { name: true } }, jobGrade: { select: { name: true } } },
   });
   if (!emp) notFound();
+  // 🔒 회사 계정 상세는 열지 않는다 — 이 화면에 [비밀번호 재설정]·[퇴사 처리]가 있어
+  //    다른 관리자가 회사 열쇠를 빼앗는 통로가 된다(검수 치명 1). 서버 액션도 각각 막아 두었다.
+  if (emp.isOwner) notFound();
 
   // 회사 부서 목록(배정 드롭다운용)
   const departments = await prisma.department.findMany({

@@ -164,12 +164,16 @@ export default async function DashboardPage() {
       const weekStart = weekStartMonday(now);
       const weekRecords = await prisma.attendance.findMany({
         where: { companyId: me.companyId, clockIn: { gte: weekStart } },
-        include: { user: { select: { name: true, role: true, deactivatedAt: true } }, breaks: true },
+        include: { user: { select: { name: true, isOwner: true, deactivatedAt: true } }, breaks: true },
       });
       // 직원별 이번 주 실근무 합계(분). 진행 중 기록은 workedMinutes가 now까지 계산.
       const weekMinByUser = new Map<string, { name: string; minutes: number }>();
       for (const r of weekRecords) {
-        if (r.user.deactivatedAt || r.user.role !== "employee") continue; // 퇴사자·관리자 제외(근로자 대상)
+        // 퇴사자·회사 계정 제외(근로자 대상).
+        //  · 2026-07-27: 예전엔 `role !== "employee"`라 **관리자가 주 60시간을 일해도 경보가 안 떴다**
+        //    (같은 화면 위쪽에서는 관리자를 근로자로 세면서 여기만 뺐다 — 검수 치명 5).
+        //    주 52시간은 법정 상한이라 관리자도 대상이다. 사람이 아닌 회사 계정만 뺀다.
+        if (r.user.deactivatedAt || r.user.isOwner) continue;
         const cur = weekMinByUser.get(r.userId) ?? { name: r.user.name, minutes: 0 };
         // 잊은 퇴근이 여러 날로 부풀어 허위 초과경보가 나지 않게 종료시각에 상한(출근일 자정)을 둔다.
         cur.minutes += workedMinutes(r, cappedEnd(r.clockIn, r.clockOut, now));

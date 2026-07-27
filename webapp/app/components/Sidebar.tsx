@@ -8,6 +8,8 @@ type NavUser = {
   companyId?: string;
   name: string;
   role: string;
+  /** 회사 계정(사람 아님)인가. 회사 계정에는 "내 근태" 묶음을 주지 않는다. */
+  isOwner?: boolean;
   company: { name: string; logoName?: string | null; approvalMode?: string | null };
 };
 
@@ -131,14 +133,24 @@ function toItems(keys: NavKey[]): Item[] {
   return keys.map((key) => ({ key, href: HREF[key] ?? `/${key}`, label: LABEL[key], icon: ICON[key] }));
 }
 
-// 관리자 메뉴는 "회사관리"(직원들 것) 한 묶음. 관리자는 본인 출퇴근을 하지 않으므로 "내근태"(출퇴근·인증방식) 묶음은 제공하지 않는다.
+// 관리자 메뉴는 "회사관리"(직원들 것) + "내 근태"(본인 것) 두 묶음.
+//  · 2026-07-27 변경: 예전에는 관리자에게 "내 근태"를 주지 않았다. 그런데 관리자를 여러 명 둘 수 있게 되면서
+//    관리자(총무 담당 등)도 근태 집계 대상에 포함시켰고, **출근 버튼이 없으면 매일 [미출근]으로 뜬다**
+//    (검수 치명 4). 근태에 세는 사람에게는 반드시 찍을 수단을 준다.
+//  · 🔒 회사 계정(isOwner)은 사람이 아니므로 이 묶음을 주지 않는다 — 법정 근로시간 기록에
+//    사람 아닌 계정이 섞이면 안 된다(출퇴근 서버 액션도 따로 막아 두었다).
 // 직원 메뉴는 전부 본인 것이라 한 묶음(제목 없음).
 // showApprovals: [결재함] 메뉴 표시 여부. 결재 라인 구성원(부서장·대결자) 또는 지금 결재 대기가 있는 사람만 true.
 //  → 결재선 켠 회사여도 일반 직원/미지정 관리자에겐 안 보인다(빈 결재함 노출 방지). 판정은 Sidebar에서.
-function groupsFor(role: string, showApprovals: boolean): NavGroup[] {
+function groupsFor(role: string, showApprovals: boolean, isOwner: boolean): NavGroup[] {
   if (role === "admin") {
     const adminKeys: NavKey[] = ["dashboard", "notifications", "live", "employees", "records", "shifts", "schedule", "reports", "overtime-manage", "break-time", "leave-approvals", "outing-approvals", "remote-approvals", "overtime-approvals", "trip-approvals", ...(showApprovals ? (["approvals"] as NavKey[]) : []), "pending-approvals", "approval-history", "leave-summary", "biometrics", "pc-devices", "security", "company", "settings"];
-    return [{ caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(adminKeys) }];
+    const groups: NavGroup[] = [{ caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(adminKeys) }];
+    // 사람인 관리자에게만 본인 근태 묶음을 준다(회사 계정 제외).
+    if (!isOwner) {
+      groups.push({ caption: "내 근태", items: toItems(["attendance", "my-records", "auth-method"]) });
+    }
+    return groups;
   }
   // 직원: 결재 라인에 있는 사람(부서장 등)에게만 [결재함](자기 차례 승인)을 추가.
   const empKeys: NavKey[] = ["attendance", "my-records", "schedule", "leave", "corrections", "outing", "remote", "overtime", "trip", ...(showApprovals ? (["approvals"] as NavKey[]) : []), "auth-method"];
@@ -154,7 +166,7 @@ export async function Sidebar({ user, active }: { user: NavUser; active: NavKey 
   // [결재함] 메뉴: 지금 결재 대기가 있으면(두 모드 공통), 또는 deptline이면 결재 라인 구성원(부서장·대결자)에게 미리 노출.
   //  · custom은 지정 결재자가 고정 조직이 아니므로, 내 차례가 온 시점(approvalWaiting>0)에 메뉴·배지가 뜬다.
   const showApprovals = multiStep && !!user.companyId && !!user.id && (approvalWaiting > 0 || (user.company.approvalMode === "deptline" && (await isApprovalLineMember(user.companyId, user.id))));
-  const groups = groupsFor(user.role, showApprovals);
+  const groups = groupsFor(user.role, showApprovals, !!user.isOwner);
 
   return (
     <aside
