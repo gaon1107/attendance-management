@@ -156,7 +156,7 @@ internal static class StatusWording
         if (s.LastError != null)
         {
             var tail = s.FromCache
-                ? "\n마지막으로 받은 설정으로 판단하고 있습니다."
+                ? "\n마지막으로 받은 설정으로 판단하고 있습니다." + OfflineTempUseHint(s)
                 : "\n설정을 받지 못해 이 PC는 잠기지 않습니다.";
             return (s.LastError + tail, Warn);
         }
@@ -166,10 +166,21 @@ internal static class StatusWording
         }
         if (s.FromCache)
         {
-            return ("서버에 연결되지 않아 마지막으로 받은 설정으로 판단하고 있습니다.", Warn);
+            return ("서버에 연결되지 않아 마지막으로 받은 설정으로 판단하고 있습니다." + OfflineTempUseHint(s), Warn);
         }
         return null;
     }
+
+    /// <summary>
+    /// 인터넷이 끊긴 동안 쓸 수 있는 [일시사용]이 남아 있으면 알려준다(없으면 빈 글자).
+    ///  · 왜 필요한가: 외근·출장지에서 잠겼을 때 <b>[연장근무 신청]은 서버가 없어 되지 않는다</b>.
+    ///    이때 스스로 풀 수 있는 유일한 길이 [일시사용]인데, 그 사실을 모르면 갇혔다고 느낀다.
+    ///  · ⚠️ 여기서 계산하지 않는다 — 남은 횟수는 <see cref="AgentStatus.TempUseLeft"/>가 이미 정한 값이다.
+    /// </summary>
+    private static string OfflineTempUseHint(AgentStatus s)
+        => s.TempUseLeft > 0
+            ? $"\n인터넷이 없는 동안에도 [일시사용]을 {s.TempUseLeft}회 더 쓸 수 있습니다."
+            : "";
 
     /// <summary>
     /// 트레이 도움말·메뉴에 쓰는 아주 짧은 한 줄.

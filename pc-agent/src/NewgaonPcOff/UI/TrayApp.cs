@@ -17,6 +17,9 @@ namespace NewgaonPcOff.UI;
 /// </summary>
 internal sealed class TrayApp : IDisposable
 {
+    /// <summary>[서버 연결 확인] 창에 날짜별 근무일을 몇 줄까지 보여줄지(서버는 한 달치를 준다).</summary>
+    private const int PolicyDaysToShow = 3;
+
     private readonly WinForms.NotifyIcon _tray = new();
     private readonly WinForms.ToolStripMenuItem _statusItem = new() { Enabled = false };
     private readonly System.Drawing.Icon _iconOn;
@@ -340,14 +343,28 @@ internal sealed class TrayApp : IDisposable
             ? "· 사전 알림: 없음"
             : $"· 사전 알림: {string.Join("분 전 · ", p.NotifyMins)}분 전");
         sb.AppendLine($"· 일시사용: {p.TempUseMinutes}분 × 하루 {p.TempUsePerDay}회 (오늘 {p.TempUsedToday}회 사용)");
+        if (_service.IsOffline && _service.TempUsePerDayNow > 0)
+        {
+            sb.AppendLine($"   - 지금은 인터넷이 끊겨 있어 {_service.TempUsePerDayNow}회까지 쓸 수 있습니다 (남은 {s.TempUseLeft}회).");
+        }
         sb.AppendLine(p.TempReasons.Length == 0
             ? "· 일시사용 사유 목록: 없음"
             : $"· 일시사용 사유: {string.Join(" / ", p.TempReasons)}");
 
+        // ⚠️ 근무일 정보는 한 달치(31일)가 온다. 전부 찍으면 이 확인 창이 31줄로 늘어나 정작 볼 것이 안 보인다.
+        //    앞의 며칠만 보여주고, 나머지는 "얼마나 받아 뒀는지"를 한 줄로 요약한다(조용히 감추지 않는다).
+        var shown = 0;
         foreach (var d in p.Days)
         {
+            if (shown >= PolicyDaysToShow) break;
             var kind = d.IsWorkday ? "근무일" : d.OffDayName is { Length: > 0 } name ? $"휴무 ({name})" : "휴무";
             sb.AppendLine($"· {d.Date:yyyy-MM-dd}: {kind}");
+            shown++;
+        }
+        if (p.Days.Length > shown)
+        {
+            sb.AppendLine($"· … 그 밖에 {p.Days.Length - shown}일치를 더 받아 두었습니다 " +
+                          $"({p.Days[^1].Date:yyyy-MM-dd}까지 — 인터넷이 끊겨도 그때까지는 규칙대로 잠깁니다)");
         }
 
         sb.AppendLine($"· 승인된 연장근무: {p.Overtime.Length}건");

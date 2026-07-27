@@ -61,7 +61,12 @@ internal sealed class SafePolicy
     public int TempUsedToday { get; init; }
     public string[] TempReasons { get; init; } = [];
 
-    /// <summary>[일시사용]을 지금 더 쓸 수 있는가.</summary>
+    /// <summary>
+    /// [일시사용]을 지금 더 쓸 수 있는가(서버가 준 값만 본 <b>거친 계산</b>).
+    ///  · ⚠️ <b>화면·판정에 쓰지 말 것.</b> 아직 서버에 닿지 않은 사용분과 <b>인터넷이 끊긴 동안의 별도 한도</b>를
+    ///    모르기 때문에 실제와 어긋난다. 정답은 <c>PolicyService.TempUseLeft</c> 하나뿐이다.
+    ///  · 지금 쓰는 곳은 없다(2026-07-27 확인).
+    /// </summary>
     public bool TempUseAvailable => TempUseMinutes > 0 && TempUsedToday < TempUsePerDay;
 
     public long PolicyVersion { get; init; }

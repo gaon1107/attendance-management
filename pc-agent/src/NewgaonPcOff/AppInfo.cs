@@ -14,8 +14,13 @@ internal static class AppInfo
     ///    · 기록 전송 없이 이 값만 올리면 → 정상 PC가 전부 "미보고"로 뜬다(거짓 경고).
     ///    · 기록 전송을 만들고 이 값을 안 올리면 → 감시 장치가 영원히 침묵한다.
     ///    2-C에서 잠금·해제 기록 전송을 붙이면서 0.3.0으로 올렸다.
+    ///
+    /// 0.4.0 (2026-07-27 오프라인 보완): 근무 정보 한 달치 수용 · 오프라인 [일시사용]과 그 기록 종류 분리.
+    ///  · 감시 기준(0.3.0 이상)은 그대로 만족하므로 미보고 감시 동작은 달라지지 않는다.
+    ///  · ⚠️ 서버(webapp)가 옛 버전이면 새 기록 종류 <c>temp_use_offline</c>을 받아주지 않아 그 기록이 버려진다.
+    ///    → <b>서버를 먼저 배포하고 앱을 배포</b>한다.
     /// </summary>
-    public const string Version = "0.3.0";
+    public const string Version = "0.4.0";
 
     public const string UserAgent = "NewgaonPcOff/" + Version + " (Windows)";
 }

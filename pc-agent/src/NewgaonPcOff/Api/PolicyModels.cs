@@ -45,7 +45,11 @@ internal sealed class PcOffPolicy
     [JsonPropertyName("work")]
     public WorkInfo Work { get => _work ??= new WorkInfo(); set => _work = value; }
 
-    /// <summary>오늘·내일 이틀치(자정 넘김 야근·다음 근무일 해제 계산용).</summary>
+    /// <summary>
+    /// 오늘부터 한 달치(서버 <c>POLICY_DAYS</c>=31).
+    ///  · 자정 넘김 야근·다음 근무일 해제 계산에 쓰고, <b>인터넷이 끊겨도 그 기간은 규칙대로 잠기게</b> 한다.
+    ///  · 상한은 <c>PolicySanitizer.MaxDayDistance</c>가 건다(먼 날짜는 계산 넘침 방지로 버린다).
+    /// </summary>
     [JsonPropertyName("days")]
     public DayInfo[] Days { get => _days ??= []; set => _days = value; }
 

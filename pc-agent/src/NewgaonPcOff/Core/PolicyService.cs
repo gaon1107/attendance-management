@@ -47,6 +47,19 @@ internal sealed class PolicyService : IDisposable
     /// <summary>사건이 생기면 이만큼 뒤에 서버로 보낸다(잠금·해제가 5분 늦게 보고되지 않게).</summary>
     private static readonly TimeSpan EventSendSoon = TimeSpan.FromSeconds(15);
 
+    /// <summary>
+    /// 인터넷이 끊긴 동안의 [일시사용] 하루 한도(회).
+    ///  · 🔴 <c>webapp/lib/pcoff.ts</c>의 <c>OFFLINE_TEMP_USE_PER_DAY</c>와 <b>같은 값</b>이어야 한다.
+    ///  · 왜 넉넉하게 주나(사장님 결정 2026-07-27 B): 인터넷이 없으면 [연장근무 신청]을 할 수 없어
+    ///    회사 한도(예: 2회)를 다 쓴 순간 <b>직원이 다음 근무일까지 PC에 갇힌다</b>(외근·출장).
+    ///  · 왜 무제한이 아닌가: 무제한이면 랜선을 뽑는 것만으로 잠금이 사실상 없어진다.
+    /// </summary>
+    private const int OfflineTempUsePerDay = 6;
+
+    /// <summary>[일시사용] 기록 종류 — 서버의 <c>ALLOWED_TYPES</c>와 같은 글자여야 한다(다르면 기록이 버려진다).</summary>
+    private const string TempUseType = "temp_use";
+    private const string TempUseOfflineType = "temp_use_offline";
+
     private readonly DispatcherTimer _timer = new() { Interval = Tick };
     private readonly ServerClock _clock = new();
 
@@ -85,7 +98,17 @@ internal sealed class PolicyService : IDisposable
     /// </summary>
     private int _tempUsedLocal;
 
-    /// <summary><see cref="_tempUsedLocal"/>이 어느 날짜의 값인지(날이 바뀌면 0으로 되돌린다).</summary>
+    /// <summary>
+    /// 오늘 <b>인터넷이 끊긴 동안</b> 쓴 [일시사용] 횟수.
+    ///  · 서버는 이 사용분을 <b>세지 않는다</b>(일부러 그렇게 뒀다 — 그래야 금요일 밤 사용분이
+    ///    월요일 몫을 잡아먹지 않는다). 그래서 하루 한도는 <b>앱이 끝까지 센다</b>.
+    ///  · <see cref="_tempUsedLocal"/>과 달리 서버 응답으로 <b>줄어들지 않는다</b>.
+    ///    줄이면 랜선을 뽑았다 꽂기를 반복하는 것만으로 한도를 계속 새로 받게 된다.
+    ///  · 앱을 껐다 켤 때는 아직 못 보낸 기록에서 이어서 센다(<see cref="Start"/>).
+    /// </summary>
+    private int _tempUsedOfflineLocal;
+
+    /// <summary>위 두 횟수가 어느 날짜의 값인지(날이 바뀌면 0으로 되돌린다).</summary>
     private DateOnly _tempUsedDate;
 
     private bool _flushing;
@@ -139,8 +162,12 @@ internal sealed class PolicyService : IDisposable
         try
         {
             _tempUsedDate = CompanyToday();
-            _tempUsedLocal = _events.CountOn("temp_use", _tempUsedDate, Hm.CompanyOffset);
-            if (_tempUsedLocal > 0) Log.Info($"아직 서버에 닿지 않은 오늘 일시사용 {_tempUsedLocal}회를 이어서 셉니다.");
+            _tempUsedLocal = _events.CountOn(TempUseType, _tempUsedDate, Hm.CompanyOffset);
+            _tempUsedOfflineLocal = _events.CountOn(TempUseOfflineType, _tempUsedDate, Hm.CompanyOffset);
+            if (_tempUsedLocal + _tempUsedOfflineLocal > 0)
+            {
+                Log.Info($"아직 서버에 닿지 않은 오늘 일시사용 {_tempUsedLocal}회(오프라인 {_tempUsedOfflineLocal}회)를 이어서 셉니다.");
+            }
         }
         catch (Exception ex)
         {
@@ -181,6 +208,7 @@ internal sealed class PolicyService : IDisposable
         _lastServerOkAt = null;
         _tempUseUntil = null;         // A직원이 받은 일시사용이 B직원에게 이어지면 안 된다
         _tempUsedLocal = 0;
+        _tempUsedOfflineLocal = 0;
         _tempUsedDate = default;
         SetPolicy(null, null, fromCache: false);
         _clock.Reset();
@@ -301,14 +329,46 @@ internal sealed class PolicyService : IDisposable
     /// <summary>[일시사용]을 지금 더 쓸 수 있는가(서버가 센 횟수 + 아직 못 보낸 횟수).</summary>
     public bool CanUseTemp => TempUseLeft > 0;
 
-    /// <summary>오늘 남은 [일시사용] 횟수.</summary>
+    /// <summary>
+    /// 지금 <b>인터넷이 끊긴 상태</b>인가.
+    ///  · 판단: 저장된 설정으로 버티는 중(<see cref="_fromCache"/>)이고, 서버 확인이 <b>실제로 실패</b>했다.
+    ///  · ⚠️ <c>_fromCache</c>만 보면 안 된다 — 앱을 막 켠 순간(첫 확인의 응답을 기다리는 몇 초)에도 참이라,
+    ///    멀쩡히 온라인인 PC가 오프라인 한도를 받고 기록도 "오프라인"으로 남는다(없는 사실을 만드는 것).
+    /// </summary>
+    public bool IsOffline => _fromCache && _lastError != null;
+
+    /// <summary>지금 기준의 [일시사용] 하루 한도(화면 표시용). 오프라인이면 넉넉한 쪽을 쓴다.</summary>
+    public int TempUsePerDayNow
+    {
+        get
+        {
+            var p = _policy;
+            if (p == null || !p.Enabled || p.TempUseMinutes <= 0 || p.TempUsePerDay <= 0) return 0;
+            return IsOffline ? Math.Max(p.TempUsePerDay, OfflineTempUsePerDay) : p.TempUsePerDay;
+        }
+    }
+
+    /// <summary>
+    /// 오늘 남은 [일시사용] 횟수.
+    ///
+    /// <b>지갑이 두 개다</b>(온라인 몫 / 오프라인 몫). 나눈 이유는 서버가 오프라인 사용분을 세지 않기 때문이다
+    /// (세면 뒤늦게 올라온 기록이 다음 날 몫을 잡아먹는다). 그래서 각자 자기 한도 안에서만 쓴다.
+    ///  · 온라인 몫 = 회사 설정 − 서버가 센 오늘 사용 − 아직 못 보낸 온라인 사용
+    ///  · 오프라인 몫 = <see cref="OfflineTempUsePerDay"/> − 오늘 오프라인에서 쓴 횟수
+    /// ⚠️ 회사가 일시사용을 아예 안 쓰기로 했으면(<c>TempUsePerDay = 0</c>) 오프라인에서도 주지 않는다 —
+    ///    회사 정책을 앱이 뒤집으면 안 된다. 그 경우 잠금은 [연장근무 신청]으로만 풀린다.
+    /// </summary>
     public int TempUseLeft
     {
         get
         {
             var p = _policy;
-            if (p == null || !p.Enabled || p.TempUseMinutes <= 0) return 0;
-            var left = p.TempUsePerDay - p.TempUsedToday - _tempUsedLocal;
+            if (p == null || !p.Enabled || p.TempUseMinutes <= 0 || p.TempUsePerDay <= 0) return 0;
+
+            var left = IsOffline
+                ? Math.Max(p.TempUsePerDay, OfflineTempUsePerDay) - _tempUsedOfflineLocal
+                : p.TempUsePerDay - p.TempUsedToday - _tempUsedLocal;
+
             return left > 0 ? left : 0;
         }
     }
@@ -333,7 +393,11 @@ internal sealed class PolicyService : IDisposable
         }
         if (TempUseLeft <= 0)
         {
-            error = $"오늘 사용할 수 있는 횟수({p.TempUsePerDay}회)를 모두 썼습니다.";
+            // ⚠️ 회사 설정값이 아니라 **지금 기준의 한도**를 말한다(오프라인이면 넉넉한 쪽).
+            //    그러지 않으면 "2회를 다 썼습니다"라고 하면서 실제로는 6회까지 되던 상태가 되어 화면이 거짓말을 한다.
+            error = IsOffline
+                ? $"인터넷이 끊긴 동안 쓸 수 있는 횟수({TempUsePerDayNow}회)를 모두 썼습니다."
+                : $"오늘 사용할 수 있는 횟수({TempUsePerDayNow}회)를 모두 썼습니다.";
             return false;
         }
 
@@ -360,11 +424,16 @@ internal sealed class PolicyService : IDisposable
             return false;
         }
 
+        // ⚠️ 지갑을 고르는 이 한 줄이 "다음 날 몫 보호"의 전부다 —
+        //    종류를 나눠 기록하면 서버가 오프라인분을 세지 않으므로, 뒤늦게 올라와도 다음 날 한도를 깎지 않는다.
+        //    (여기서 IsOffline을 한 번만 읽는다: 아래 기록과 카운터가 서로 다른 지갑을 가리키면 한도가 새 버린다.)
+        var offline = IsOffline;
         _tempUseUntil = now.Value.AddMinutes(p.TempUseMinutes);
-        _tempUsedLocal++;
-        EnqueueEvent("temp_use", now.Value, picked);
+        if (offline) _tempUsedOfflineLocal++;
+        else _tempUsedLocal++;
+        EnqueueEvent(offline ? TempUseOfflineType : TempUseType, now.Value, picked);
 
-        Log.Info($"일시사용 시작 — {p.TempUseMinutes}분 (오늘 남은 횟수 {TempUseLeft}회).");
+        Log.Info($"일시사용 시작 — {p.TempUseMinutes}분{(offline ? " (인터넷 끊김 상태)" : "")} (남은 횟수 {TempUseLeft}회).");
         Recompute();
 
         // 서버에 곧바로 알린다(횟수를 서버가 세야 앱을 다시 깔아도 우회되지 않는다).
@@ -706,6 +775,7 @@ internal sealed class PolicyService : IDisposable
         {
             _tempUsedDate = today;
             _tempUsedLocal = 0;
+            _tempUsedOfflineLocal = 0; // 오프라인 몫도 새 날에는 새로 시작한다
         }
 
         var paired = IsPaired();
