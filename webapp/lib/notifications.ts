@@ -4,7 +4,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { countUncheckedAnomalies } from "@/lib/anomaly";
-import { listPcOffUnreported } from "@/lib/pcoff-alert";
+import { listPcOffUnreported, listOfflineTempUseOveruse } from "@/lib/pcoff-alert";
 
 export type AdminNotification = {
   key: string;
@@ -65,6 +65,16 @@ export const listAdminNotifications = cache(async (companyId: string): Promise<{
     console.warn("[notifications] PC-OFF 미보고 집계 실패(알림센터는 정상 표시):", e);
   }
 
+  // 오프라인 [일시사용] 한도 초과 — 인터넷이 끊긴 동안 허용치보다 많이 쓴 기록.
+  //  · 왜 알림센터에도 두나: [PC관리] 화면을 열어야만 보이면 관리자가 모른 채 지나간다(검수 M-6).
+  //  · 위 미보고와 같은 방식으로 감싼다 — 부가기능이 실패해도 알림센터 본체는 떠야 한다.
+  let pcOffOveruse = 0;
+  try {
+    pcOffOveruse = (await listOfflineTempUseOveruse(companyId)).total;
+  } catch (e) {
+    console.warn("[notifications] 오프라인 일시사용 초과 집계 실패(알림센터는 정상 표시):", e);
+  }
+
   const items: AdminNotification[] = [];
   // 보안이 가장 위(위험). 그다음 결재/요청.
   if (anomalyCount > 0) {
@@ -85,6 +95,14 @@ export const listAdminNotifications = cache(async (companyId: string): Promise<{
       key: "pcoff-unreported", title: "PC-OFF 미보고",
       detail: "퇴근 시간이 지났는데 잠금 기록을 보내지 않은 PC가 있습니다. 프로그램이 꺼져 있을 수 있습니다.",
       count: pcOffUnreported, countLabel: `${pcOffUnreported}대`,
+      href: "/pc-devices", cta: "확인", severity: "warning",
+    });
+  }
+  if (pcOffOveruse > 0) {
+    items.push({
+      key: "pcoff-overuse", title: "오프라인 일시사용 초과",
+      detail: "인터넷이 끊긴 동안 [일시사용]을 허용 횟수보다 많이 쓴 기록이 있습니다. 설정을 줄였거나 PC를 교체한 경우일 수도 있습니다.",
+      count: pcOffOveruse, countLabel: `${pcOffOveruse}건`,
       href: "/pc-devices", cta: "확인", severity: "warning",
     });
   }

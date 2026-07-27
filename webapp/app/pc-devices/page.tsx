@@ -10,7 +10,7 @@ import { isDeviceOnline } from "@/lib/agent-auth";
 import { revokeAgentDevice, setPcOffExempt } from "@/app/actions/pcoff";
 import { purgeAgentEventsDaily } from "@/lib/pcoff-retention";
 import { RETENTION_WORK_LABEL, RETENTION_SYSTEM_LABEL, isTempUseType, TEMP_USE_TYPE, TEMP_USE_OFFLINE_TYPE } from "@/lib/pcoff";
-import { listPcOffUnreported, PCOFF_ALERT_GRACE_MIN } from "@/lib/pcoff-alert";
+import { listPcOffUnreported, listOfflineTempUseOveruse, PCOFF_ALERT_GRACE_MIN } from "@/lib/pcoff-alert";
 
 // 사건 종류 → 사람이 읽는 라벨. ⚠️ app/api/agent/events/route.ts의 ALLOWED_TYPES와 짝이다(늘릴 때 함께).
 const EVENT_LABEL: Record<string, { text: string; bg: string; fg: string }> = {
@@ -25,6 +25,7 @@ const EVENT_LABEL: Record<string, { text: string; bg: string; fg: string }> = {
 };
 
 const EVENT_LIMIT = 100; // 최근 이 건수만 표시(전체 이력은 DB에 남는다)
+const OVERUSE_SHOW = 20; // 오프라인 일시사용 초과는 이 건수까지만 나열(나머지는 "외 N건")
 
 const th = { textAlign: "left" as const, fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 20px", whiteSpace: "nowrap" as const };
 const td = { padding: "12px 20px", fontSize: 15, verticalAlign: "middle" as const };
@@ -42,7 +43,7 @@ export default async function PcDevicesPage() {
   const today = new Date();
   const dayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
-  const [company, devices, employees, events, tempUseToday, unreported] = await Promise.all([
+  const [company, devices, employees, events, tempUseToday, unreported, overuse] = await Promise.all([
     prisma.company.findUnique({ where: { id: me.companyId }, select: { pcOffOn: true, workEndTime: true, pcOffDelayMin: true } }),
     prisma.agentDevice.findMany({
       where: { companyId: me.companyId },
@@ -68,6 +69,11 @@ export default async function PcDevicesPage() {
     listPcOffUnreported(me.companyId).catch((e) => {
       console.warn("[pc-devices] PC-OFF 미보고 집계 실패(화면은 정상 표시):", e);
       return { items: [], total: 0 };
+    }),
+    // 오프라인 [일시사용]을 하루 허용치보다 많이 쓴 PC. 집계가 실패해도 이 화면은 떠야 한다.
+    listOfflineTempUseOveruse(me.companyId).catch((e) => {
+      console.warn("[pc-devices] 오프라인 일시사용 초과 집계 실패(화면은 정상 표시):", e);
+      return { items: [], total: 0, capped: false };
     }),
   ]);
 
@@ -107,6 +113,45 @@ export default async function PcDevicesPage() {
             <b>인터넷이 끊긴 곳(외근·출장)에서는 기록이 늦게 올라옵니다.</b> 그 PC는 잠금이 정상 동작한 뒤 연결되는 순간
             쌓아둔 기록을 한 번에 보내며, 그때 이 목록에서 사라집니다. 곧바로 부정행위로 보지 마시고,
             며칠째 계속 남아 있는 PC만 확인하세요. 해당 직원에게 프로그램 실행을 안내하거나, 반복되면 [연결 해제] 후 다시 설치하게 하세요.
+          </p>
+        </div>
+      )}
+
+      {/* 오프라인 [일시사용]을 허용치보다 많이 쓴 PC — 인터넷이 끊긴 동안에는 앱이 자기 파일로만 세므로
+           그 파일을 지우면 한도가 되살아난다(설치형 앱의 한계). 막지는 못해도 **드러나게** 한다. */}
+      {overuse.total > 0 && (
+        <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 12, padding: "14px 18px", marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#C2410C", wordBreak: "keep-all", marginBottom: 8 }}>
+            인터넷이 끊긴 동안 [일시사용]을 허용치보다 많이 쓴 날 {overuse.total}건{overuse.capped ? "+" : ""}
+            <span style={{ fontWeight: 400, marginLeft: 4 }}>(직원 × 날짜 기준)</span>
+          </div>
+          <ul style={{ margin: "0 0 8px", padding: "0 0 0 18px" }}>
+            {overuse.items.slice(0, OVERUSE_SHOW).map((o) => (
+              <li key={`${o.userId}-${o.date}`} style={{ fontSize: 13, color: "#7C2D12", lineHeight: 1.7, wordBreak: "keep-all" }}>
+                <b>{o.userName}</b> — {o.date}에 <b>{o.used}회</b> (허용 {o.allowed}회)
+                <span style={{ color: "#9A3412" }}> · {o.deviceNames.length > 1 ? `PC ${o.deviceNames.length}대 합계` : o.deviceNames[0]}</span>
+              </li>
+            ))}
+          </ul>
+          {overuse.total > OVERUSE_SHOW && (
+            <p style={{ fontSize: 12, color: "#9A3412", margin: "0 0 8px" }}>외 {overuse.total - OVERUSE_SHOW}건이 더 있습니다.</p>
+          )}
+          {overuse.capped && (
+            <p style={{ fontSize: 12, color: "#9A3412", margin: "0 0 8px", wordBreak: "keep-all" }}>
+              기록이 너무 많아 <b>일부만 세었습니다</b> — 실제로는 더 있을 수 있습니다.
+            </p>
+          )}
+          <p style={{ fontSize: 12, color: "#9A3412", margin: 0, lineHeight: 1.6, wordBreak: "keep-all" }}>
+            인터넷이 끊긴 곳에서는 프로그램이 <b>자기 PC에 저장된 횟수</b>로만 셉니다. 그 파일을 지우고 프로그램을 다시 켜면
+            횟수가 되살아날 수 있어(설치형 프로그램의 구조적 한계), 다시 연결됐을 때 서버가 세어 여기에 표시합니다.
+            한 직원이 PC 여러 대를 쓰면 <b>합쳐서</b> 셉니다(허용 횟수가 사람 기준이기 때문입니다).
+            <br />
+            <b>바로 부정행위로 보지 마세요.</b> 아래의 경우에도 여기 나타납니다 —
+            최근에 [설정]에서 일시사용 횟수·시간을 <b>줄이신 경우</b>(허용치는 지금 설정 기준으로 계산합니다),
+            직원이 <b>PC를 교체·재설치했거나 Windows 계정이 바뀐 경우</b>(저장해 둔 횟수를 못 읽어 프로그램이 다시 허용합니다).
+            같은 직원이 반복해서 나타날 때만 확인하세요.
+            <br />
+            반대로 <b>여기 없다고 이상이 없는 것도 아닙니다</b> — PC 시계를 앞으로 돌린 경우는 기록 자체가 남지 않아 잡히지 않습니다.
           </p>
         </div>
       )}
