@@ -4,12 +4,16 @@
 //  · 본인 데이터 열람권: 내 PC에서 일어난 일(잠금·해제·일시사용)을 직원 본인도 볼 수 있게 최근 기록을 함께 보여준다.
 import { useState } from "react";
 import { issuePairCode, revokeAgentDevice } from "@/app/actions/pcoff";
+// ⚠️ lib/pcoff는 **순수 모듈**이라 브라우저에서 써도 된다(서버 전용은 lib/pcoff-policy.ts).
+import { isTempUseType } from "@/lib/pcoff";
 
 type Device = { id: string; deviceName: string; pairedAt: string; lastSeenAt: string | null; online: boolean };
 type EventRow = { id: string; type: string; at: string; meta: string | null; deviceName: string };
 
 const EVENT_TEXT: Record<string, string> = {
   lock: "잠금", unlock: "해제", temp_use: "일시사용", notify: "사전알림", offline: "오프라인", paired: "연결",
+  // 인터넷이 끊긴 동안 쓴 일시사용(관리자 [PC관리] 화면과 같은 표기).
+  temp_use_offline: "일시사용(오프라인)",
 };
 
 export function PcLinkCard({ devices, events, pcOffOn, exempt }: {
@@ -105,7 +109,7 @@ export function PcLinkCard({ devices, events, pcOffOn, exempt }: {
                 <span style={{ fontSize: 13, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{fmt(e.at)}</span>
                 <span style={{ fontSize: 13, fontWeight: 700 }}>{EVENT_TEXT[e.type] ?? e.type}</span>
                 <span style={{ fontSize: 12, color: "var(--text-sub)", flex: 1, textAlign: "right", wordBreak: "keep-all" }}>
-                  {e.meta ?? (e.type === "temp_use" ? "(사유 미확인)" : e.deviceName)}
+                  {e.meta ?? (isTempUseType(e.type) ? "(사유 미확인)" : e.deviceName)}
                 </span>
               </div>
             ))}

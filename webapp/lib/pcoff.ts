@@ -13,6 +13,32 @@ export const PCOFF_LIMITS = {
 
 export const MAX_NOTIFY_MINS = 5; // 미리 알림은 최대 5개까지(알림 폭탄 방지)
 
+// ───────────────────────── 오프라인(인터넷이 끊긴 상태) 대응 ─────────────────────────
+// 사장님 결정 2026-07-27 — 전제: PC-OFF는 **회사 지급 PC 전용**.
+//  (A) 근무 정보를 한 달치 미리 내려준다 → 인터넷이 끊겨도 한 달간 규칙대로 잠긴다.
+//      기존(오늘·내일 이틀치)에서는 3일째부터 "오늘 정보 없음"이 되어 잠금이 사라졌다(랜선만 뽑으면 풀리는 구멍).
+//  (B) 오프라인일 때 [일시사용] 한도를 넉넉하게 준다 → 외근지에서 직원이 갇히지 않게.
+//      ⚠️ 무제한이 아니다. 상한이 있어야 "통제 장치"라는 성격이 남는다.
+
+/** 서버가 내려주는 근무일 정보 일수(오늘 포함). ⚠️ 앱의 `PolicySanitizer.MaxDayDistance`와 짝이다 — 한쪽만 늘리면 앱이 잘라 버린다. */
+export const POLICY_DAYS = 31;
+
+/** 오프라인일 때의 [일시사용] 하루 한도(회). 1회 길이가 30분이면 30분 × 6 = 3시간. */
+export const OFFLINE_TEMP_USE_PER_DAY = 6;
+
+// [일시사용] 사건 종류 — 온라인/오프라인을 **다른 종류로 나눠** 기록한다.
+//  · 왜 나누나: 서버가 "오늘 쓴 횟수"를 셀 때 온라인분(temp_use)만 센다.
+//    그래서 금요일 밤 오프라인 사용분이 월요일에 뒤늦게 올라와도 **월요일 몫을 잡아먹지 않는다**
+//    (별도 로직 없이 종류를 나누는 것만으로 해결된다).
+//  · 관리자도 [PC관리]에서 평소 사용과 오프라인 사용을 구분해 볼 수 있다.
+export const TEMP_USE_TYPE = "temp_use";
+export const TEMP_USE_OFFLINE_TYPE = "temp_use_offline";
+
+/** 일시사용 계열인가(사유 저장·KPI 합산·"(사유 미확인)" 표시가 이 판정을 공유한다). */
+export function isTempUseType(type: string): boolean {
+  return type === TEMP_USE_TYPE || type === TEMP_USE_OFFLINE_TYPE;
+}
+
 // 알림 시점 CSV("10,5") → [10,5]. 잘못된 값은 조용히 버리고, 큰 수부터 정렬한다.
 //  · 0 이하·240분(4시간) 초과·숫자 아님은 제외. 중복 제거.
 export function parseNotifyMins(csv: string | null | undefined): number[] {

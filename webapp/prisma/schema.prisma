@@ -833,7 +833,9 @@ model AgentPairCode {
 }
 
 // 에이전트가 보낸 사건 기록(감사·소명용). 관리자 [PC관리] 화면과 직원 본인 열람에 쓴다.
-// type: "lock"(잠금) | "unlock"(해제) | "temp_use"(일시사용) | "notify"(사전알림) | "offline"(오프라인 동작) | "paired"(연결)
+// type: "lock"(잠금) | "unlock"(해제) | "temp_use"(일시사용) | "temp_use_offline"(인터넷 끊긴 동안의 일시사용)
+//     | "notify"(사전알림) | "offline"(오프라인 동작) | "paired"(연결)
+//  ⚠️ 종류를 늘릴 때는 app/api/agent/events/route.ts의 ALLOWED_TYPES + 화면 라벨 2곳(pc-devices·PcLinkCard)을 함께 늘린다.
 model AgentEvent {
   id        String   @id @default(cuid())
   companyId String

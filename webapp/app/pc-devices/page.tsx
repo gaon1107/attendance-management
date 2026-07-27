@@ -9,7 +9,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { isDeviceOnline } from "@/lib/agent-auth";
 import { revokeAgentDevice, setPcOffExempt } from "@/app/actions/pcoff";
 import { purgeAgentEventsDaily } from "@/lib/pcoff-retention";
-import { RETENTION_WORK_LABEL, RETENTION_SYSTEM_LABEL } from "@/lib/pcoff";
+import { RETENTION_WORK_LABEL, RETENTION_SYSTEM_LABEL, isTempUseType, TEMP_USE_TYPE, TEMP_USE_OFFLINE_TYPE } from "@/lib/pcoff";
 import { listPcOffUnreported, PCOFF_ALERT_GRACE_MIN } from "@/lib/pcoff-alert";
 
 // 사건 종류 → 사람이 읽는 라벨. ⚠️ app/api/agent/events/route.ts의 ALLOWED_TYPES와 짝이다(늘릴 때 함께).
@@ -17,6 +17,8 @@ const EVENT_LABEL: Record<string, { text: string; bg: string; fg: string }> = {
   lock: { text: "잠금", bg: "#FEE2E2", fg: "#B91C1C" },
   unlock: { text: "해제", bg: "#DCFCE7", fg: "#15803D" },
   temp_use: { text: "일시사용", bg: "#FEF3C7", fg: "#B45309" },
+  // 인터넷이 끊긴 동안 쓴 일시사용 — 평소 사용과 **구분해서** 보여준다(몰래 푼 것이 아니라 기록된 사용임을 알 수 있게).
+  temp_use_offline: { text: "일시사용(오프라인)", bg: "#FFEDD5", fg: "#C2410C" },
   notify: { text: "사전알림", bg: "#E0E7FF", fg: "#4338CA" },
   offline: { text: "오프라인", bg: "#F3F4F6", fg: "#6B7280" },
   paired: { text: "연결", bg: "#DBEAFE", fg: "#1D4ED8" },
@@ -58,7 +60,10 @@ export default async function PcDevicesPage() {
       orderBy: { at: "desc" },
       take: EVENT_LIMIT,
     }),
-    prisma.agentEvent.count({ where: { companyId: me.companyId, type: "temp_use", at: { gte: dayStart } } }),
+    // 오늘 일시사용 = 평소 + 오프라인 **두 종류를 합산**. 한쪽만 세면 실제보다 적게 나온다.
+    prisma.agentEvent.count({
+      where: { companyId: me.companyId, type: { in: [TEMP_USE_TYPE, TEMP_USE_OFFLINE_TYPE] }, at: { gte: dayStart } },
+    }),
     // 잠겼어야 하는데 잠금 기록이 안 온 PC(= 프로그램을 끈 PC). 집계가 실패해도 이 화면은 떠야 한다.
     listPcOffUnreported(me.companyId).catch((e) => {
       console.warn("[pc-devices] PC-OFF 미보고 집계 실패(화면은 정상 표시):", e);
@@ -98,7 +103,10 @@ export default async function PcDevicesPage() {
           </ul>
           <p style={{ fontSize: 12, color: "#991B1B", margin: 0, lineHeight: 1.6, wordBreak: "keep-all" }}>
             퇴근 기준시각 + 유예가 지난 뒤 {PCOFF_ALERT_GRACE_MIN}분을 더 기다렸는데도 기록이 없을 때만 표시됩니다.
-            해당 직원에게 프로그램 실행을 안내하거나, 계속 반복되면 [연결 해제] 후 다시 설치하게 하세요.
+            <br />
+            <b>인터넷이 끊긴 곳(외근·출장)에서는 기록이 늦게 올라옵니다.</b> 그 PC는 잠금이 정상 동작한 뒤 연결되는 순간
+            쌓아둔 기록을 한 번에 보내며, 그때 이 목록에서 사라집니다. 곧바로 부정행위로 보지 마시고,
+            며칠째 계속 남아 있는 PC만 확인하세요. 해당 직원에게 프로그램 실행을 안내하거나, 반복되면 [연결 해제] 후 다시 설치하게 하세요.
           </p>
         </div>
       )}
@@ -265,7 +273,7 @@ export default async function PcDevicesPage() {
                     </td>
                     {/* 일시사용인데 사유가 비어 있으면 "-"가 아니라 미확인임을 밝힌다(사유를 지어내지 않는다) */}
                     <td style={{ ...td, fontSize: 14, color: "var(--text-sub)", wordBreak: "keep-all" }}>
-                      {e.meta ?? (e.type === "temp_use" ? "(사유 미확인)" : "-")}
+                      {e.meta ?? (isTempUseType(e.type) ? "(사유 미확인)" : "-")}
                     </td>
                   </tr>
                 );

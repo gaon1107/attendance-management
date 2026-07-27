@@ -2,13 +2,18 @@
 //  · ⚠️ 이 파일은 기존 데이터를 **읽기만** 한다. 근무시간·휴일·승인된 연장근무를 새로 만들거나 고치지 않는다.
 //  · 왜 서버가 시각을 함께 주나(serverTime): 직원이 PC 시계를 돌려 잠금을 피하는 것을 막기 위해서다.
 //    앱은 "내 PC 시계"가 아니라 "서버 시각과의 차이"를 기준으로 판단한다.
-//  · 왜 오늘+내일 두 날인가: 자정을 넘기는 야근(예: 22:00~익일 02:00)과 다음 근무일 자동 해제를 앱이 계산해야 하기 때문.
+//  · 왜 여러 날치를 주나: 자정을 넘기는 야근(예: 22:00~익일 02:00)과 다음 근무일 자동 해제를 앱이 계산해야 하고,
+//    **인터넷이 끊긴 뒤에도 계속 잠기려면** 앞으로의 근무일 정보를 미리 갖고 있어야 하기 때문이다.
+//    (2026-07-27 사장님 결정 A: 오늘·내일 이틀치 → 한 달치. 이틀치일 때는 3일째부터 잠금이 사라졌다.)
 //  · ⚠️ 이 파일은 **서버 전용**(prisma·holiday-server import). 브라우저에서 쓰는 규칙은 lib/pcoff.ts(순수)에 있다.
 import { prisma } from "./db";
 import { loadOffDays } from "./holiday-server";
 import { effectiveWorkDays, daysToCsv } from "./workdays";
 import { toISODate } from "./period";
-import { parseNotifyMins, parseTempReasons } from "./pcoff";
+import { parseNotifyMins, parseTempReasons, POLICY_DAYS, TEMP_USE_TYPE } from "./pcoff";
+
+/** 승인된 연장근무를 한 번에 내려주는 최대 건수. 넘으면 잘라내고 **기록을 남긴다**(조용히 버리지 않는다). */
+const MAX_OVERTIME_ROWS = 300;
 
 // 정책 응답(앱이 받는 JSON) — 여기에 없는 항목은 앱이 알 수 없다(수집·전달 범위를 이 타입이 못박는다).
 export type PcOffPolicy = {
@@ -32,7 +37,7 @@ export type PcOffPolicy = {
     endTime: string | null;   // "HH:MM" 회사 표준 퇴근 기준시각 — 잠금 기준선
     workDays: string;         // 이 직원의 근무요일 CSV(직원 예외가 있으면 그 값)
   };
-  days: {                     // 오늘·내일 이틀치. 각 날이 "일하는 날"인지와 쉬는 날 이름.
+  days: {                     // 오늘부터 POLICY_DAYS일치. 각 날이 "일하는 날"인지와 쉬는 날 이름.
     date: string;             // "YYYY-MM-DD"
     isWorkday: boolean;       // 근무요일 ∧ 쉬는날 아님
     offDayName?: string;      // 공휴일·회사휴무일이면 이름(잠금화면에 "오늘은 휴무일입니다"로 표시)
@@ -71,14 +76,16 @@ export async function buildPcOffPolicy(userId: string, companyId: string, now = 
 
   const today = startOfDay(now);
   const tomorrow = addDays(today, 1);
+  // 마지막 날(오늘 포함 POLICY_DAYS일째). 공휴일 로더는 연도 단위로 읽으므로 범위만 넓히면 된다.
+  const horizon = addDays(today, POLICY_DAYS - 1);
 
   // 근무요일 — 직원별 예외가 있으면 그 값, 없으면 회사 기본(기존 판정 규칙과 동일한 헬퍼 사용).
   const workDaySet = effectiveWorkDays(user.workDays, company.workDays);
   // 쉬는 날(공휴일 + 회사 휴무일) — 기존 화면들이 쓰는 것과 같은 로더.
-  const offDays = await loadOffDays(companyId, company.holidayAutoOn, today, tomorrow);
-  const offNames = await loadOffDayNames(companyId, company.holidayAutoOn, today, tomorrow);
+  const offDays = await loadOffDays(companyId, company.holidayAutoOn, today, horizon);
+  const offNames = await loadOffDayNames(companyId, company.holidayAutoOn, today, horizon);
 
-  const days = [today, tomorrow].map((d) => {
+  const days = eachDay(today, horizon).map((d) => {
     const iso = toISODate(d);
     const isOff = offDays.has(iso);
     return {
@@ -92,20 +99,31 @@ export async function buildPcOffPolicy(userId: string, companyId: string, now = 
   //  · ⚠️ **어제 시작분부터** 가져온다: 야근은 자정을 넘길 수 있어(22:00~익일 02:00 = 어제 날짜로 저장)
   //    오늘 새벽 근무가 어제 건에 속한다. 오늘분만 가져오면 자정을 넘기는 순간 승인 사실이 사라져
   //    "승인받고 일하는 중에 잠기는" 사고가 난다.
+  //  · ⚠️ 조회 범위는 **날짜 목록과 반드시 같이** 넓힌다. 날짜만 한 달치로 늘리고 연장근무를 이틀치로 두면,
+  //    오프라인 3일째에 승인받은 야근 시간대가 정책에서 빠져 **승인받고 일하는 중에 잠긴다**.
   const overtimes = await prisma.overtimeRequest.findMany({
     where: {
       companyId, userId, status: "approved",
-      targetDate: { gte: addDays(today, -1), lt: addDays(tomorrow, 1) },
+      targetDate: { gte: addDays(today, -1), lt: addDays(horizon, 1) },
     },
     select: { targetDate: true, startTime: true, endTime: true },
     orderBy: { targetDate: "asc" },
+    take: MAX_OVERTIME_ROWS,
   });
+  if (overtimes.length >= MAX_OVERTIME_ROWS) {
+    // 상한에 걸리면 뒤쪽(먼 미래) 승인분이 빠진다. 조용히 넘기지 않고 남긴다.
+    console.warn(`[pcoff-policy] 승인된 연장근무가 ${MAX_OVERTIME_ROWS}건을 넘어 이후 건은 정책에 담기지 않았습니다(userId=${userId}).`);
+  }
 
   // 오늘 쓴 [일시사용] 횟수 — 서버가 센다(앱을 다시 설치해도 우회되지 않게).
   //  · ⚠️ 기준은 앱이 보낸 `at`이 아니라 **서버가 받은 시각(createdAt)**. `at`은 앱이 정하는 값이라
   //    "어제 일어난 일"이라고 보내면 횟수 제한을 무한히 피할 수 있다.
+  //  · ⚠️ **온라인 사용분(temp_use)만** 센다. 오프라인 사용분(temp_use_offline)은 빼는 것이 의도다 —
+  //    금요일 밤 오프라인에서 쓴 것이 월요일에 뒤늦게 올라와 **월요일 몫을 잡아먹는** 일을 막는다
+  //    (정직하게 일한 직원이 손해 보지 않게. 2026-07-27 오프라인 보완 4번).
+  //    오프라인 사용에도 상한은 있다 — 앱이 OFFLINE_TEMP_USE_PER_DAY로 스스로 센다.
   const usedToday = await prisma.agentEvent.count({
-    where: { companyId, userId, type: "temp_use", createdAt: { gte: today, lt: tomorrow } },
+    where: { companyId, userId, type: TEMP_USE_TYPE, createdAt: { gte: today, lt: tomorrow } },
   });
 
   // 잠금 대상 판정. 하나라도 걸리면 잠그지 않는다(안전한 쪽).
@@ -181,6 +199,13 @@ function startOfDay(d: Date): Date {
 }
 function addDays(d: Date, n: number): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+}
+
+/** start부터 end까지(양끝 포함) 하루씩. ⚠️ 날짜 계산은 반드시 이 방식으로 — 밀리초 덧셈은 서머타임·윤초에서 어긋난다. */
+function eachDay(start: Date, end: Date): Date[] {
+  const out: Date[] = [];
+  for (let d = start; d <= end; d = addDays(d, 1)) out.push(d);
+  return out;
 }
 
 // 문자열 → 32비트 정수 지문(암호 용도 아님, 변경 감지용).

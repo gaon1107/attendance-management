@@ -4,11 +4,13 @@
 import { NextResponse, after } from "next/server";
 import { prisma } from "@/lib/db";
 import { authenticateAgent, touchDevice, tooLarge, MAX_BODY_EVENTS } from "@/lib/agent-auth";
-import { parseTempReasons } from "@/lib/pcoff";
+import { parseTempReasons, isTempUseType, TEMP_USE_TYPE, TEMP_USE_OFFLINE_TYPE } from "@/lib/pcoff";
 import { purgeAgentEventsDaily } from "@/lib/pcoff-retention";
 
 // 허용 종류(화이트리스트) — 모르는 종류는 조용히 버린다. 나중에 늘릴 땐 [PC관리] 화면의 라벨도 함께 늘린다.
-const ALLOWED_TYPES = new Set(["lock", "unlock", "temp_use", "notify", "offline", "paired"]);
+//  · ⚠️ temp_use_offline(인터넷이 끊긴 동안의 일시사용)을 여기 넣지 않으면 **그 기록이 통째로 사라진다.**
+//    앱은 보냈다고 여기고 지우므로 되살릴 방법이 없다(오프라인 보완 3번의 짝).
+const ALLOWED_TYPES = new Set(["lock", "unlock", TEMP_USE_TYPE, TEMP_USE_OFFLINE_TYPE, "notify", "offline", "paired"]);
 const MAX_EVENTS = 100;   // 한 번에 받는 최대 건수(지시서 §4-2)
 const MAX_META_LEN = 200; // 사유 등 부가정보 길이 상한
 
@@ -49,7 +51,8 @@ export async function POST(req: Request) {
   //    (관리자가 사유 목록을 바꾼 직후 앱이 옛 목록으로 보낼 수 있는데, 그걸 임의로 치환하면
   //     직원이 고르지 않은 사유가 기록에 남는다 = 없는 사실을 만드는 것.)
   //  · 사유를 못 알아봐도 사건 자체는 저장한다 — 기록을 잃으면 근로시간 근거가 사라지기 때문.
-  const hasTempUse = raw.some((it) => String(((it ?? {}) as Record<string, unknown>).type ?? "") === "temp_use");
+  //  · 오프라인 일시사용(temp_use_offline)도 **같은 목록**으로 검사한다 — 사유를 고르는 화면이 같기 때문이다.
+  const hasTempUse = raw.some((it) => isTempUseType(String(((it ?? {}) as Record<string, unknown>).type ?? "")));
   let tempReasons: string[] | null = null;
   if (hasTempUse) {
     try {
@@ -80,7 +83,7 @@ export async function POST(req: Request) {
     // ⚠️ meta(부가정보)는 [일시사용] 사유에만 쓴다. 다른 종류는 서버에서 무조건 비운다.
     //    그러지 않으면 앱이 "해제 사유" 같은 자유입력을 붙이는 순간 민감정보 차단이 무력해진다.
     let meta: string | null = null;
-    if (type === "temp_use") {
+    if (isTempUseType(type)) {
       const metaRaw = e.meta == null ? "" : String(e.meta).normalize("NFC").trim();
       const cut = metaRaw ? Array.from(metaRaw).slice(0, MAX_META_LEN).join("") : "";
       // 목록에 있는 값만 저장. 그 외(자유서술 포함)는 null = "사유 미확인"으로 남긴다(치환하지 않는다).
