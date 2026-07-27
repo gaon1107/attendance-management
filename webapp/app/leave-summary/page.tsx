@@ -33,8 +33,9 @@ export default async function LeaveSummaryPage({
   // 올해만 '발생/잔여'가 의미 있다(연도별 발생 이력이 없으므로). 과거 연도는 '사용'만 보여준다.
   const isCurrentYear = year === thisYear;
 
+  // 재직 중인 사람 전부(관리자 포함 — 관리자도 연차를 쓴다). 사람이 아닌 회사 계정만 제외.
   const employees = await prisma.user.findMany({
-    where: { companyId: me.companyId, role: "employee", deactivatedAt: null },
+    where: { companyId: me.companyId, isOwner: false, deactivatedAt: null },
     select: { id: true, name: true, employeeNo: true, hireDate: true, annualLeaveOverride: true, department: { select: { name: true } } },
     orderBy: { createdAt: "asc" },
   });

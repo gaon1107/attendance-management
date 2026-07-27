@@ -45,8 +45,9 @@ export default async function ShiftsPage() {
   // 순환(rotation): 조(A/B/C) 배정 + 순환 규칙
   if (company.scheduleType === "rotation") {
     const [employees, groups, rule] = await Promise.all([
+      // 배정 대상 = 재직 중인 사람 전부(관리자 포함). 사람이 아닌 회사 계정만 제외.
       prisma.user.findMany({
-        where: { companyId: me.companyId, role: "employee", deactivatedAt: null },
+        where: { companyId: me.companyId, isOwner: false, deactivatedAt: null },
         orderBy: { createdAt: "asc" },
         select: { id: true, name: true, employeeNo: true, shiftGroupId: true },
       }),
@@ -79,8 +80,9 @@ export default async function ShiftsPage() {
 
   // 고정 요일패턴
   const [employees, patterns] = await Promise.all([
+    // 배정 대상 = 재직 중인 사람 전부(관리자 포함). 사람이 아닌 회사 계정만 제외.
     prisma.user.findMany({
-      where: { companyId: me.companyId, role: "employee", deactivatedAt: null },
+      where: { companyId: me.companyId, isOwner: false, deactivatedAt: null },
       orderBy: { createdAt: "asc" },
       select: { id: true, name: true, employeeNo: true },
     }),

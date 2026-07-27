@@ -24,6 +24,8 @@ const rowStyle: React.CSSProperties = { display: "flex", gap: 12, flexWrap: "wra
 export type CompanyInitial = {
   name: string;
   bizRegNo: string | null;
+  /** "국세청 확인됨 (날짜)" 또는 "국세청 확인 보류". 사업자번호가 비어 있으면 null. */
+  bizRegVerifiedLabel: string | null;
   corpRegNo: string | null;
   ceoName: string | null;
   bizType: string | null;
@@ -68,7 +70,15 @@ export function CompanyInfoForm({ initial }: { initial: CompanyInitial }) {
         <div style={cardTitle}>기본 정보</div>
         <div style={rowStyle}>
           <Field label="회사명 *" name="name" defaultValue={initial.name} placeholder="㈜하늘테크" />
-          <Field label="사업자등록번호" name="bizRegNo" defaultValue={initial.bizRegNo} placeholder="123-12-12345" />
+          <div>
+            <Field label="사업자등록번호" name="bizRegNo" defaultValue={initial.bizRegNo} placeholder="123-12-12345" />
+            {/* 가입할 때 국세청에 확인한 결과. 확인 서버에 닿지 못했으면 "보류"로 남는다(가입은 막지 않는다). */}
+            {initial.bizRegVerifiedLabel && (
+              <div style={{ fontSize: 12, marginTop: 6, fontWeight: 700, color: initial.bizRegVerifiedLabel.includes("확인됨") ? "#15803D" : "#B45309" }}>
+                {initial.bizRegVerifiedLabel}
+              </div>
+            )}
+          </div>
           <Field label="법인등록번호" name="corpRegNo" defaultValue={initial.corpRegNo} />
         </div>
         <div style={{ ...rowStyle, marginBottom: 0 }}>

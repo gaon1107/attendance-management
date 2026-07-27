@@ -40,6 +40,12 @@ export default async function CompanyPage() {
         initial={{
           name: c.name,
           bizRegNo: c.bizRegNo,
+          // 국세청 확인 여부(가입할 때 확인한다). null이면 "확인 보류" — 확인 서버에 닿지 못한 경우다.
+          bizRegVerifiedLabel: c.bizRegNoVerifiedAt
+            ? `국세청 확인됨 (${c.bizRegNoVerifiedAt.toLocaleDateString("ko-KR")})`
+            : c.bizRegNo
+              ? "국세청 확인 보류"
+              : null,
           corpRegNo: c.corpRegNo,
           ceoName: c.ceoName,
           bizType: c.bizType,

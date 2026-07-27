@@ -89,6 +89,14 @@ model Company {
   // ── 회사 상세정보(관리자 [회사정보] 화면에서 입력·수정). 전부 선택(없어도 무방). ──
   // 기본정보
   bizRegNo      String?  // 사업자등록번호 (예: 123-12-12345)
+  // 국세청 진위확인에 성공한 시각. null = 확인 안 됨(또는 보류).
+  //  · 가입할 때 확인한다. 국세청 서버가 죽어 있으면 **가입을 막지 않고** null로 통과시킨다(fail-open).
+  //    장애로 신규 고객을 놓치는 손해가 더 크기 때문. 보류 건은 [회사정보] 화면에 표시해 나중에 확인한다.
+  bizRegNoVerifiedAt DateTime?
+  // 가입할 때 이용약관·개인정보 수집·이용에 동의한 시각.
+  //  · 개인정보보호법은 동의를 **받았다는 사실을 남길 것**을 요구한다. 체크박스만 두고 기록하지 않으면
+  //    나중에 "동의받았다"를 증명할 수 없다. 그래서 화면 체크와 짝으로 이 시각을 남긴다.
+  termsAgreedAt DateTime?
   corpRegNo     String?  // 법인등록번호
   ceoName       String?  // 대표자 이름
   bizType       String?  // 업태
@@ -166,6 +174,13 @@ model User {
   passwordHash String // 비밀번호 원문은 저장하지 않음(암호화 해시만)
   name         String
   role         String    @default("admin") // "admin" | "employee"
+  // ── 회사 계정(마스터 키). 회원가입 때 만들어지는 단 하나의 계정이며 사람이 아니다. ──
+  //  · 왜 role을 새로 만들지 않았나: 권한 검사(`role === "admin"`)가 66개 파일 117군데에 흩어져 있어
+  //    새 역할을 만들면 그 전부를 고쳐야 하고, 하나만 빠져도 회사 계정이 그 화면에서 튕긴다.
+  //    회사 계정도 role="admin"으로 두고 이 표시만 더한다(저장소 관례인 add-only).
+  //  · 🔒 이 계정은 강등·퇴사·삭제할 수 없다. 관리자가 전원 퇴사해도 회사가 잠기지 않게 하는 유일한 장치다.
+  //  · ⚠️ 근태 집계 대상이 아니다(사람이 아니므로). 집계 화면들은 `isOwner: false`로 거른다.
+  isOwner      Boolean   @default(false)
   createdAt    DateTime  @default(now())
   sessions     Session[]
   attendances  Attendance[]

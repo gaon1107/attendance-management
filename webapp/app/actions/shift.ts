@@ -91,9 +91,10 @@ export async function saveRotation(
   const orderCsv = Array.from({ length: n }, (_, i) => i + 1).join(","); // 표준 고정 순서
 
   const userIds = String(formData.get("userIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  // 회사 소속 + 재직 중 일반직원만 허용(테넌트 격리 + 화면 배정대상과 동일 집합 → 관리자/퇴사자에 배정 방지)
+  // 회사 소속 + 재직 중인 **사람**만 허용(테넌트 격리 + 화면 배정대상과 동일 집합 → 퇴사자 배정 방지)
+  //  · 2026-07-27: 관리자도 근로자이므로 배정 대상에 포함한다. 사람이 아닌 **회사 계정만** 뺀다(isOwner).
   const employees = await prisma.user.findMany({
-    where: { id: { in: userIds }, companyId: me.companyId, role: "employee", deactivatedAt: null },
+    where: { id: { in: userIds }, companyId: me.companyId, isOwner: false, deactivatedAt: null },
     select: { id: true },
   });
   const allowed = new Set(employees.map((e) => e.id));

@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { parseDays, daysToCsv } from "@/lib/workdays";
 import { parseProfile, employeeNoTaken } from "@/lib/employee-profile";
+import { canDeactivate } from "@/lib/owner-rules";
 
 export async function addEmployee(
   _prev: { error?: string; ok?: boolean },
@@ -127,12 +128,15 @@ export async function deactivateEmployee(formData: FormData): Promise<void> {
 
   const id = String(formData.get("id") ?? "");
   const target = await prisma.user.findFirst({ where: { id, companyId: me.companyId } });
-  // 본인·관리자 계정은 퇴사 처리 대상이 아니다(방어).
-  if (!target || target.id === me.id || target.role === "admin") return;
+  // 퇴사시킬 수 없는 대상(본인·🔒회사 계정)은 lib/owner-rules.ts가 판단한다 — 관리자 지정과 같은 규칙.
+  //  · 2026-07-27: 예전엔 **관리자 전체**를 막았다. 그래서 관리자가 실제로 퇴사해도 계정을 정리할 방법이
+  //    없었고, 그 사람이 유일한 관리자면 회사가 잠겼다. 이제 관리자도 퇴사 처리할 수 있다.
+  const rule = canDeactivate(me, target);
+  if (!rule.ok) return;
 
-  await prisma.user.update({ where: { id: target.id }, data: { deactivatedAt: new Date() } });
+  await prisma.user.update({ where: { id: rule.target.id }, data: { deactivatedAt: new Date() } });
   // 이미 로그인해 있던 세션도 즉시 무효화
-  await prisma.session.deleteMany({ where: { userId: target.id } });
+  await prisma.session.deleteMany({ where: { userId: rule.target.id } });
 
   revalidatePath(`/employees/${id}`);
   revalidatePath("/employees");

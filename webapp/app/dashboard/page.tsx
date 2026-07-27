@@ -31,9 +31,11 @@ export default async function DashboardPage() {
     include: { user: true, breaks: true },
     orderBy: { clockIn: "asc" },
   });
-  // 직원 목록(근무요일·미출근 계산용) — 재직중(퇴사 안 한) 직원만
+  // 직원 목록(근무요일·미출근 계산용) — 재직중(퇴사 안 한) 사람만.
+  //  · 2026-07-27: 예전엔 role="employee"만 세어 **관리자의 출퇴근이 현황에서 통째로 빠졌다**.
+  //    관리자도 근로자이므로 포함하고, 사람이 아닌 회사 계정만 뺀다(isOwner).
   const employees = await prisma.user.findMany({
-    where: { companyId: me.companyId, role: "employee", deactivatedAt: null },
+    where: { companyId: me.companyId, isOwner: false, deactivatedAt: null },
     select: { id: true, name: true, workDays: true, shiftGroupId: true },
   });
   const employeeCount = employees.length;

@@ -6,24 +6,60 @@ import { hashPassword, verifyPassword } from "@/lib/password";
 import { createSession, destroySession, getCurrentUser } from "@/lib/session";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { isBlockedForCompany } from "@/lib/ip-block";
+import { isValidBizRegNoFormat, formatBizRegNo, verifyBizRegNo } from "@/lib/bizreg";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-// 회사 회원가입 — 회사 + 관리자 계정을 함께 만든다.
+// 회사 회원가입 — 회사 + **회사 계정**(마스터 키)을 함께 만든다.
+//
+// 2026-07-27 사장님 결정으로 방식이 바뀌었다.
+//  · [전]  가입한 사람이 곧 관리자 → 그 사람이 퇴사하면 회사에 아무도 들어갈 수 없었다.
+//  · [후]  가입으로 만드는 것은 **사람이 아니라 회사 계정**이다. 실무 관리자는 가입 후 직원 중에서
+//         지정한다(app/actions/owner.ts). 관리자가 전원 나가도 회사 계정이 남아 잠기지 않는다.
+//  · 담당자 이름·연락처는 사람 계정이 아니라 **회사 정보**로 저장한다(Company.managerName/Phone).
 export async function signup(
   _prev: { error?: string },
   formData: FormData
 ): Promise<{ error?: string }> {
   const companyName = String(formData.get("companyName") ?? "").trim();
-  const name = String(formData.get("name") ?? "").trim();
+  const bizRegNoRaw = String(formData.get("bizRegNo") ?? "").trim();
+  const managerName = String(formData.get("managerName") ?? "").trim();
+  const managerPhone = String(formData.get("managerPhone") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
+  const agreeTerms = formData.get("agreeTerms") != null;
+  const agreePrivacy = formData.get("agreePrivacy") != null;
 
-  if (!companyName || !name || !email || !password) {
+  if (!companyName || !bizRegNoRaw || !managerName || !managerPhone || !email || !password) {
     return { error: "모든 항목을 입력해주세요." };
   }
   if (password.length < 8) {
     return { error: "비밀번호는 8자 이상이어야 합니다." };
+  }
+  if (!email.includes("@") || email.length < 5) {
+    return { error: "이메일 형식이 올바르지 않습니다." };
+  }
+  // 연락처는 숫자만 남겨 9~11자리인지만 본다(하이픈·공백 자유). 실제 소유 확인은 문자 인증 도입 시(2차).
+  if (!/^\d{9,11}$/.test(managerPhone.replace(/[^0-9]/g, ""))) {
+    return { error: "담당자 연락처를 올바르게 입력해주세요." };
+  }
+  // 동의는 법적 필수 — 체크하지 않으면 가입시키지 않는다(개인정보보호법 제15조·제22조).
+  if (!agreeTerms || !agreePrivacy) {
+    return { error: "이용약관과 개인정보 수집·이용에 동의해주세요." };
+  }
+
+  // 사업자등록번호: 먼저 계산으로 걸러내고(국세청에 물을 필요도 없는 가짜), 그다음 국세청에 묻는다.
+  if (!isValidBizRegNoFormat(bizRegNoRaw)) {
+    return { error: "사업자등록번호가 올바르지 않습니다. 10자리 숫자를 확인해주세요." };
+  }
+  const bizRegNo = formatBizRegNo(bizRegNoRaw);
+
+  // 같은 사업자등록번호로 이미 가입한 회사가 있으면 막는다.
+  //  · 한 회사가 둘로 쪼개져 근태 기록이 나뉘는 것이 장난 가입보다 큰 사고이기 때문.
+  //  · 지점을 따로 쓰고 싶은 회사는 고객지원으로 처리한다(1차 범위 밖).
+  const dupCompany = await prisma.company.findFirst({ where: { bizRegNo }, select: { id: true } });
+  if (dupCompany) {
+    return { error: "이미 가입된 사업자등록번호입니다. 회사 관리자에게 문의해주세요." };
   }
 
   const existing = await prisma.user.findUnique({ where: { email } });
@@ -31,14 +67,35 @@ export async function signup(
     return { error: "이미 가입된 이메일입니다." };
   }
 
-  const company = await prisma.company.create({ data: { name: companyName } });
+  // 국세청 확인. 🔴 확인하지 못하면(키 없음·장애·시간초과) **가입을 막지 않는다**(fail-open).
+  //    확인된 건만 시각을 남기고, 나머지는 [회사정보]에 "확인 보류"로 뜬다.
+  const check = await verifyBizRegNo(bizRegNo);
+  if (check.state === "invalid" || check.state === "closed") {
+    return { error: `사업자등록번호를 확인할 수 없습니다 — ${check.detail}` };
+  }
+
+  const now = new Date();
+  const company = await prisma.company.create({
+    data: {
+      name: companyName,
+      bizRegNo,
+      bizRegNoVerifiedAt: check.state === "verified" ? now : null,
+      managerName,
+      managerPhone,
+      companyEmail: email,
+      termsAgreedAt: now,
+    },
+  });
   const user = await prisma.user.create({
     data: {
       companyId: company.id,
       email,
-      name,
+      // 사람이 아니라는 것이 화면에서 바로 보이게 한다(직원 목록·집계에서는 제외된다).
+      name: "회사 계정",
+      phone: managerPhone,
       passwordHash: hashPassword(password),
-      role: "admin", // 회원가입한 사람은 관리자
+      role: "admin", // 권한은 관리자와 동일 — 권한 검사 117군데를 건드리지 않기 위함
+      isOwner: true, // 🔒 강등·퇴사·삭제 불가. 회사가 잠기지 않게 하는 유일한 장치
     },
   });
 

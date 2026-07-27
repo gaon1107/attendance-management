@@ -20,8 +20,10 @@ export default async function EmployeesPage() {
   if (!me) redirect("/login");
   if (me.role !== "admin") redirect("/attendance");
 
+  // 목록에는 **관리자도 함께** 나온다(2026-07-27) — 여기서 관리자를 지정·해제하기 때문.
+  //  · 사람이 아닌 회사 계정(isOwner)만 제외한다.
   const allEmployees = await prisma.user.findMany({
-    where: { companyId: me.companyId, role: "employee" },
+    where: { companyId: me.companyId, isOwner: false },
     orderBy: { createdAt: "asc" },
     include: { department: { select: { name: true } } },
   });
@@ -104,10 +106,13 @@ export default async function EmployeesPage() {
   const activeRows: EmpRow[] = employees.map((emp) => {
     const authLabel = emp.authMethod === "face" ? "얼굴인증" : emp.authMethod === "gps" ? "GPS" : "미설정";
     const dept = emp.department?.name ?? "미배정";
+    const isAdmin = emp.role === "admin";
     return {
       id: emp.id, name: emp.name, employeeNo: emp.employeeNo, initial: emp.name.slice(0, 1), dept, deptSet: !!emp.department,
       email: emp.email, authLabel, hasAuth: !!emp.authMethod, consented: !!emp.faceConsentAt,
-      joinLabel: ymd(emp.createdAt), search: [emp.name, emp.employeeNo ?? "", emp.email, dept, authLabel].join(" ").toLowerCase(),
+      joinLabel: ymd(emp.createdAt), isAdmin, isMe: emp.id === me.id,
+      // 검색어에 "관리자"를 넣어 두면 관리자만 골라 보기가 쉬워진다.
+      search: [emp.name, emp.employeeNo ?? "", emp.email, dept, authLabel, isAdmin ? "관리자" : "직원"].join(" ").toLowerCase(),
     };
   });
   const retiredRows: RetiredRow[] = retired.map((emp) => ({

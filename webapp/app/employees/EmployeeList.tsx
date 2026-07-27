@@ -6,8 +6,9 @@ import { SearchBox } from "@/app/components/SearchBox";
 import { TablePagination } from "@/app/components/TablePagination";
 import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
+import { AdminToggle } from "./AdminToggle";
 
-export type EmpRow = { id: string; name: string; employeeNo: string | null; initial: string; dept: string; deptSet: boolean; email: string; authLabel: string; hasAuth: boolean; consented: boolean; joinLabel: string; search: string };
+export type EmpRow = { id: string; name: string; employeeNo: string | null; initial: string; dept: string; deptSet: boolean; email: string; authLabel: string; hasAuth: boolean; consented: boolean; joinLabel: string; search: string; isAdmin: boolean; isMe: boolean };
 export type RetiredRow = { id: string; name: string; employeeNo: string | null; initial: string; email: string; retireLabel: string; search: string };
 
 const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 20px" };
@@ -41,12 +42,13 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
                 <th style={th}>생체동의</th>
                 <th style={th}>가입일</th>
                 <th style={th}>상태</th>
+                <th style={th}>권한</th>
               </tr>
             </thead>
             <tbody>
               {pgA.view.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={9} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {q.trim() ? "검색 결과가 없습니다." : "아직 등록된 직원이 없습니다. 위에서 첫 직원을 추가해보세요."}
                   </td>
                 </tr>
@@ -57,6 +59,9 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
                       <Link href={`/employees/${emp.id}`} style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "var(--text)" }}>
                         <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#EEF2F7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#374151", flexShrink: 0 }}>{emp.initial}</div>
                         <span style={{ fontWeight: 700 }}>{emp.name}</span>
+                        {emp.isAdmin && (
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "#B45309", background: "#FEF3C7", borderRadius: 5, padding: "2px 6px", flexShrink: 0 }}>관리자</span>
+                        )}
                       </Link>
                     </td>
                     <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{emp.employeeNo || "—"}</td>
@@ -70,6 +75,9 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
                         <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--success)" }} />
                         <span style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>재직중</span>
                       </span>
+                    </td>
+                    <td style={td}>
+                      <AdminToggle userId={emp.id} isAdmin={emp.isAdmin} isMe={emp.isMe} name={emp.name} />
                     </td>
                   </tr>
                 ))

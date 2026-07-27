@@ -24,9 +24,9 @@ export async function GET(request: Request): Promise<Response> {
   const year = Number.isInteger(yParam) && yParam <= thisYear && yParam >= startYear ? yParam : thisYear;
   const isCurrentYear = year === thisYear;
 
-  // 화면(page.tsx)과 동일한 집계 — 회사 격리 + 재직 직원만.
+  // 화면(page.tsx)과 동일한 집계 — 회사 격리 + 재직 중인 사람만(회사 계정 제외).
   const employees = await prisma.user.findMany({
-    where: { companyId: me.companyId, role: "employee", deactivatedAt: null },
+    where: { companyId: me.companyId, isOwner: false, deactivatedAt: null },
     select: { id: true, name: true, hireDate: true, annualLeaveOverride: true, department: { select: { name: true } } },
     orderBy: { createdAt: "asc" },
   });
