@@ -881,6 +881,11 @@ internal sealed class PolicyService : IDisposable
         _tempUsedLocal = 0;
         _tempUsedOfflineLocal = 0;
         OfflineUsageStore.Save(today, 0);
+
+        // 날짜 어긋남 경고를 하루 한 번으로 되돌린다.
+        //  · ⚠️ 이 줄이 없으면 자정 직전에 만들어진 응답을 자정 직후에 받는 **정상 상황 한 번**으로
+        //    경고가 소진되어, 그 뒤로는 진짜 서버 시간대 오배포가 생겨도 영영 알리지 않는다(3차 검수 F-1).
+        _dateMismatchLogged = false;
     }
 
     // ── 판정 다시 계산 ──────────────────────────────────────────────────────
