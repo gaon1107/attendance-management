@@ -58,6 +58,8 @@ function hadBiometric(u: { authMethod: string | null; faceConsentAt: Date | null
 export async function chooseGps(): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
+  // 🔒 회사 계정은 사람이 아니다 — 얼굴·인증방식을 가질 수 없다(검수 2차 3).
+  if (me.isOwner) return;
   const had = hadBiometric(me); // update 전에 판단해야 함(뒤에 보면 항상 없음으로 나옴)
   const wasEnrolled = me.faceEnrolledAt !== null; // update 전에 캡처(얼굴서버에 지울 원본이 있는지)
   // 얼굴서버 원본을 먼저 지운다 — 실패하면 로컬 등록표시(faceEnrolledAt)를 남겨 재시도 경로를 유지한다.
@@ -81,6 +83,8 @@ export async function chooseGps(): Promise<void> {
 export async function agreeBiometric(): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
+  // 🔒 회사 계정은 사람이 아니다 — 얼굴·인증방식을 가질 수 없다(검수 2차 3).
+  if (me.isOwner) return;
   const 재동의 = me.faceConsentAt !== null; // 처음 동의인지 재동의인지 — 감사에서 구분되어야 함
   await prisma.user.update({
     where: { id: me.id },
@@ -99,6 +103,8 @@ export async function agreeBiometric(): Promise<void> {
 export async function withdrawBiometric(): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
+  // 🔒 회사 계정은 사람이 아니다 — 얼굴·인증방식을 가질 수 없다(검수 2차 3).
+  if (me.isOwner) return;
   const had = hadBiometric(me); // update 전에 판단
   const wasEnrolled = me.faceEnrolledAt !== null; // update 전에 캡처(얼굴서버에 지울 원본이 있는지)
   // 얼굴서버 원본을 먼저 지운다 — 실패하면 등록표시를 남겨 재시도 경로를 유지(chooseGps와 동일 규칙).

@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { parseYmd } from "@/lib/leave";
 import { OUTING_KIND_KEYS, isValidHm } from "@/lib/outing";
-import { createApprovalStepsIfNeeded, advanceApproval, deleteApprovalSteps } from "@/lib/approval-server";
+import { createApprovalStepsIfNeeded, advanceApproval, deleteApprovalSteps, isSelfApprovalBlocked } from "@/lib/approval-server";
 import { deleteAttachmentsForRequest } from "@/lib/request-attachment-server";
 
 // 직원: 외출/외근 신청. 종류·날짜·시각·장소·사유를 받아 대기 상태로 만든다.
@@ -74,6 +74,8 @@ export async function approveOuting(formData: FormData): Promise<void> {
   const comment = raw ? Array.from(raw).slice(0, 500).join("") : undefined; // 승인 사유는 선택, 코드포인트 기준 상한
   const o = await prisma.outingRequest.findFirst({ where: { id, companyId: me.companyId, status: "pending" } });
   if (!o) return;
+  // 🔴 자기 신청을 자기가 승인하지 못하게 막는다(다른 관리자가 없으면 허용 — lib/approval-server.ts 설명).
+  if (await isSelfApprovalBlocked(me, o.userId)) return;
   const result = await advanceApproval(me, "outing", o.id, "approve", comment);
   if (result === "denied") return;
   if (result === "approved") {

@@ -1,13 +1,17 @@
 "use client";
 // 직원 퇴사(비활성화)/복직 버튼 — 관리자만. 실수 방지를 위해 확인창을 띄운다.
 // 퇴사해도 과거 근태 기록은 리포트에 그대로 남고, 언제든 복직할 수 있다.
+import { useActionState } from "react";
 import { deactivateEmployee, reactivateEmployee } from "@/app/actions/employees";
 
 export function EmployeeStatusActions({ id, name, active }: { id: string; name: string; active: boolean }) {
+  // 퇴사 처리는 실패할 수 있다(마지막 관리자·회사 계정). 그 이유를 화면에 띄운다 — 검수 2차 5.
+  const [state, formAction] = useActionState<{ error?: string; ok?: boolean }, FormData>(deactivateEmployee, {});
+
   if (active) {
     return (
       <form
-        action={deactivateEmployee}
+        action={formAction}
         onSubmit={(e) => {
           if (!confirm(`${name} 님을 퇴사 처리할까요?\n\n로그인이 막히고 직원 목록에서 내려갑니다.\n과거 근태 기록은 리포트에 그대로 보존되며, 나중에 복직할 수 있습니다.`)) {
             e.preventDefault();
@@ -21,6 +25,11 @@ export function EmployeeStatusActions({ id, name, active }: { id: string; name: 
         >
           퇴사 처리(비활성화)
         </button>
+        {state.error && (
+          <div style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700, marginTop: 8, wordBreak: "keep-all", lineHeight: 1.5 }}>
+            {state.error}
+          </div>
+        )}
       </form>
     );
   }

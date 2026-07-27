@@ -62,12 +62,12 @@ export async function updateEmployeeName(
   if (!name) return { error: "이름을 입력해주세요." };
 
   const target = await prisma.user.findFirst({ where: { id, companyId: me.companyId } });
+  if (!target) return { error: "직원을 찾을 수 없습니다." };
   // 🔒 회사 계정은 남이 손댈 수 없다(검수 치명 1 — 비밀번호 바꿔치기로 회사 열쇠를 빼앗는 경로 차단).
   {
     const g = canManageAccount(me, target);
     if (!g.ok) return { error: g.reason };
   }
-  if (!target) return { error: "직원을 찾을 수 없습니다." };
 
   await prisma.user.update({ where: { id: target.id }, data: { name } });
 
@@ -89,12 +89,12 @@ export async function updateEmployeeProfile(
 
   const id = String(formData.get("id") ?? "");
   const target = await prisma.user.findFirst({ where: { id, companyId: me.companyId } });
+  if (!target) return { error: "직원을 찾을 수 없습니다." };
   // 🔒 회사 계정은 남이 손댈 수 없다(검수 치명 1 — 비밀번호 바꿔치기로 회사 열쇠를 빼앗는 경로 차단).
   {
     const g = canManageAccount(me, target);
     if (!g.ok) return { error: g.reason };
   }
-  if (!target) return { error: "직원을 찾을 수 없습니다." };
 
   const parsed = parseProfile(formData);
   if (!parsed.ok) return { error: parsed.error };
@@ -132,9 +132,12 @@ export async function updateEmployeeProfile(
 
 // 직원 퇴사(비활성화) — 관리자만. 계정을 막되 과거 근태 기록은 보존한다(법정 3년 보존).
 // 비활성화하면 로그인 불가 + 즉시 로그아웃(세션 삭제) + 직원 수 집계 제외.
-export async function deactivateEmployee(formData: FormData): Promise<void> {
+export async function deactivateEmployee(
+  _prev: { error?: string; ok?: boolean },
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean }> {
   const me = await getCurrentUser();
-  if (!me || me.role !== "admin") return;
+  if (!me || me.role !== "admin") return { error: "권한이 없습니다." };
 
   const id = String(formData.get("id") ?? "");
   // 퇴사시킬 수 없는 대상(본인·🔒회사 계정·마지막 관리자)은 lib/owner-rules.ts가 판단한다.
@@ -142,25 +145,25 @@ export async function deactivateEmployee(formData: FormData): Promise<void> {
   //    없었고, 그 사람이 유일한 관리자면 회사가 잠겼다. 이제 관리자도 퇴사 처리할 수 있다.
   //  · ⚠️ 읽기와 쓰기를 한 트랜잭션으로 묶는다 — 따로 하면 관리자 둘을 동시에 퇴사시켜
   //    **관리자 0명**이 될 수 있다(검수 치명 2).
-  await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const target = await tx.user.findFirst({ where: { id, companyId: me.companyId } });
-    const [otherActiveAdmins, ownerCount] = await Promise.all([
-      tx.user.count({
-        where: { companyId: me.companyId, role: "admin", isOwner: false, deactivatedAt: null, id: { not: id } },
-      }),
-      tx.user.count({ where: { companyId: me.companyId, isOwner: true } }),
-    ]);
+    const otherActiveAdmins = await tx.user.count({
+      where: { companyId: me.companyId, role: "admin", isOwner: false, deactivatedAt: null, id: { not: id } },
+    });
 
-    const rule = canDeactivate(me, target, { otherActiveAdmins, hasOwner: ownerCount > 0 });
-    if (!rule.ok) return;
+    const rule = canDeactivate(me, target, { otherActiveAdmins });
+    // 실패하면 **이유를 화면에 돌려준다** — 예전에는 아무 반응이 없어 "버튼이 고장났다"로 보였다(검수 2차 5).
+    if (!rule.ok) return { error: rule.reason };
 
     await tx.user.update({ where: { id: rule.target.id }, data: { deactivatedAt: new Date() } });
     // 이미 로그인해 있던 세션도 즉시 무효화
     await tx.session.deleteMany({ where: { userId: rule.target.id } });
+    return { ok: true };
   });
 
   revalidatePath(`/employees/${id}`);
   revalidatePath("/employees");
+  return result;
 }
 
 // 복직(재활성화) — 관리자만. 다시 로그인 가능하게 하고 로그인 잠금도 초기화한다.
@@ -170,9 +173,9 @@ export async function reactivateEmployee(formData: FormData): Promise<void> {
 
   const id = String(formData.get("id") ?? "");
   const target = await prisma.user.findFirst({ where: { id, companyId: me.companyId } });
+  if (!target) return;
   // 🔒 회사 계정은 남이 손댈 수 없다(검수 치명 1 — 비밀번호 바꿔치기로 회사 열쇠를 빼앗는 경로 차단).
   if (!canManageAccount(me, target).ok) return;
-  if (!target) return;
 
   await prisma.user.update({
     where: { id: target.id },
@@ -197,12 +200,12 @@ export async function resetEmployeePassword(
   if (password.length < 8) return { error: "새 비밀번호는 8자 이상이어야 합니다." };
 
   const target = await prisma.user.findFirst({ where: { id, companyId: me.companyId } });
+  if (!target) return { error: "직원을 찾을 수 없습니다." };
   // 🔒 회사 계정은 남이 손댈 수 없다(검수 치명 1 — 비밀번호 바꿔치기로 회사 열쇠를 빼앗는 경로 차단).
   {
     const g = canManageAccount(me, target);
     if (!g.ok) return { error: g.reason };
   }
-  if (!target) return { error: "직원을 찾을 수 없습니다." };
 
   await prisma.user.update({
     where: { id: target.id },
@@ -228,12 +231,12 @@ export async function updateEmployeeWorkDays(
   const raw = String(formData.get("workDays") ?? "").trim();
 
   const target = await prisma.user.findFirst({ where: { id, companyId: me.companyId } });
+  if (!target) return { error: "직원을 찾을 수 없습니다." };
   // 🔒 회사 계정은 남이 손댈 수 없다(검수 치명 1 — 비밀번호 바꿔치기로 회사 열쇠를 빼앗는 경로 차단).
   {
     const g = canManageAccount(me, target);
     if (!g.ok) return { error: g.reason };
   }
-  if (!target) return { error: "직원을 찾을 수 없습니다." };
 
   // 빈 값 = 회사 기본 따름(null). 값이 있으면 정규화해서 저장.
   const value = raw ? daysToCsv(parseDays(raw)) : null;

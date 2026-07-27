@@ -15,6 +15,8 @@ function ymd(d: Date): string {
 export default async function FaceEnrollPage() {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
+  // 🔒 회사 계정은 사람이 아니다 — 본인 근태·생체정보 화면에 들어갈 이유가 없다(검수 2차 3·9).
+  if (me.isOwner) redirect("/dashboard");
 
   const ready = isFaceConfigured();
   const needConsent = me.authMethod !== "face" || !me.faceConsentAt;

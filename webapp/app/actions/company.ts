@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { deleteCompanyDocFile } from "@/lib/company-doc";
-import { isValidBizRegNoFormat, formatBizRegNo } from "@/lib/bizreg";
+import { isValidBizRegNoFormat, formatBizRegNo, normalizeBizRegNo } from "@/lib/bizreg";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -46,12 +46,26 @@ export async function saveCompanyInfo(
   //  · 🔴 번호가 바뀌면 "국세청 확인됨" 표시를 지운다. 안 그러면 남의 회사 번호로 바꿔도
   //    초록색 확인 뱃지가 그대로 남아 **거짓 표시**가 된다.
   const rawBizNo = clean(formData.get("bizRegNo"), 40);
-  const nextBizNo = rawBizNo && isValidBizRegNoFormat(rawBizNo) ? formatBizRegNo(rawBizNo) : rawBizNo;
+  if (rawBizNo && !isValidBizRegNoFormat(rawBizNo)) {
+    // 형식(체크섬)부터 막는다 — 예전에는 아무 문자열이나 40자까지 저장됐다(검수 2차 2-B).
+    return { error: "사업자등록번호가 올바르지 않습니다. 10자리 숫자를 확인해주세요." };
+  }
+  const nextBizNo = rawBizNo ? formatBizRegNo(rawBizNo) : rawBizNo;
   const prev = await prisma.company.findUnique({
     where: { id: me.companyId },
     select: { bizRegNo: true },
   });
-  const bizNoChanged = (prev?.bizRegNo ?? null) !== (nextBizNo ?? null);
+  // ⚠️ 비교는 **숫자만 남겨서** 한다. 표기만 다른 같은 번호(1234567890 ↔ 123-45-67890)를
+  //    "바뀌었다"로 보면 저장 버튼만 눌러도 국세청 확인 표시가 지워진다(검수 2차 4).
+  const bizNoChanged = normalizeBizRegNo(prev?.bizRegNo) !== normalizeBizRegNo(nextBizNo);
+  // 다른 회사가 이미 쓰는 번호면 거부 — 여기가 뚫리면 남의 회사 번호를 선점해 그 회사의 가입을 막을 수 있다.
+  if (nextBizNo && bizNoChanged) {
+    const taken = await prisma.company.findFirst({
+      where: { bizRegNo: { in: [nextBizNo, normalizeBizRegNo(nextBizNo)] }, id: { not: me.companyId } },
+      select: { id: true },
+    });
+    if (taken) return { error: "다른 회사가 사용 중인 사업자등록번호입니다." };
+  }
 
   await prisma.company.update({
     where: { id: me.companyId }, // 회사 격리: 본인 회사만 수정

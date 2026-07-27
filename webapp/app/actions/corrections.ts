@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { parseYmd } from "@/lib/leave";
 import { isValidHm, hmToDate } from "@/lib/corrections";
-import { createApprovalStepsIfNeeded, advanceApproval, deleteApprovalSteps } from "@/lib/approval-server";
+import { createApprovalStepsIfNeeded, advanceApproval, deleteApprovalSteps, isSelfApprovalBlocked } from "@/lib/approval-server";
 
 // 직원: 근태 정정 요청. 날짜 + (출근/퇴근 중 하나 이상) + 사유.
 export async function requestCorrection(
@@ -15,6 +15,9 @@ export async function requestCorrection(
 ): Promise<{ error?: string; ok?: boolean }> {
   const me = await getCurrentUser();
   if (!me) return { error: "로그인이 필요합니다." };
+  // 🔒 회사 계정은 근태 기록을 가질 수 없다 — 정정이 승인되면 근태 기록이 만들어져
+  //    출퇴근 차단을 우회한다(검수 2차 15).
+  if (me.isOwner) return { error: "회사 계정은 근태 정정을 신청할 수 없습니다." };
 
   const targetDate = parseYmd(String(formData.get("targetDate") ?? ""));
   if (!targetDate) return { error: "정정할 날짜를 선택해주세요." };
@@ -71,6 +74,8 @@ export async function approveCorrection(formData: FormData): Promise<void> {
   const c = await prisma.attendanceCorrection.findFirst({ where: { id, companyId: me.companyId, status: "pending" } });
   if (!c) return;
 
+  // 🔴 자기 신청을 자기가 승인하지 못하게 막는다(다른 관리자가 없으면 허용 — lib/approval-server.ts 설명).
+  if (await isSelfApprovalBlocked(me, c.userId)) return;
   const result = await advanceApproval(me, "correction", c.id, "approve", comment);
   if (result === "denied") return;
   if (result !== "approved") {

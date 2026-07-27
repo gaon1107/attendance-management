@@ -41,14 +41,11 @@ export async function setAdminRole(
       });
 
       // 대상을 뺀 "살아있는 관리자" 수 + 회사 계정 유무 → 관리자 0명이 되는 변경을 막는다.
-      const [otherActiveAdmins, ownerCount] = await Promise.all([
-        tx.user.count({
-          where: { companyId: me.companyId, role: "admin", isOwner: false, deactivatedAt: null, id: { not: id } },
-        }),
-        tx.user.count({ where: { companyId: me.companyId, isOwner: true } }),
-      ]);
+      const otherActiveAdmins = await tx.user.count({
+        where: { companyId: me.companyId, role: "admin", isOwner: false, deactivatedAt: null, id: { not: id } },
+      });
 
-      const rule = canChangeRole(me, target, makeAdmin, { otherActiveAdmins, hasOwner: ownerCount > 0 });
+      const rule = canChangeRole(me, target, makeAdmin, { otherActiveAdmins });
       if (!rule.ok) return { error: rule.reason };
 
       await tx.user.update({
@@ -62,6 +59,6 @@ export async function setAdminRole(
     return { error: "권한을 바꾸지 못했습니다. 잠시 후 다시 시도해주세요." };
   } finally {
     revalidatePath("/employees");
-    revalidatePath(`/employees/${id}`);
+    if (id) revalidatePath(`/employees/${id}`);
   }
 }

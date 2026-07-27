@@ -70,8 +70,16 @@ export default function ForgotPasswordPage() {
         }}
       >
         <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 6 }}>비밀번호 찾기</div>
-        <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 28, lineHeight: 1.6 }}>
+        <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
           가입한 이메일을 입력하면 재설정 요청이 접수됩니다. 관리자가 확인 후 임시 비밀번호를 전달해 드립니다.
+        </div>
+        {/* 회사 계정(가입할 때 만든 마스터 열쇠)은 이 경로로 되찾을 수 없다 — 관리자가 승인해 주는 방식이라
+            회사 계정 비번을 관리자가 바꿀 수 있으면 열쇠를 빼앗는 통로가 되기 때문. 잃어버린 사람이 실제로
+            보는 화면은 여기이므로, 여기서 안내한다(검수 2차 치명 1). */}
+        <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "11px 13px", fontSize: 12, color: "#92400E", lineHeight: 1.6, marginBottom: 24, wordBreak: "keep-all" }}>
+          <b>회사 계정(가입할 때 만든 계정)</b>은 보안상 이 방법으로 되찾을 수 없습니다.
+          회사에 <b>관리자로 지정된 직원</b>이 있으면 그분이 계속 관리할 수 있고,
+          회사 계정 자체를 되찾으셔야 하면 <b>고객지원으로 사업자등록증을 확인한 뒤</b> 처리해 드립니다.
         </div>
 
         {state?.ok ? (

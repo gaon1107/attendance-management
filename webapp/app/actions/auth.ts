@@ -80,6 +80,9 @@ export async function signup(
   }
 
   const now = new Date();
+  // 비밀번호 해시는 **트랜잭션 밖에서** 미리 만든다 — scrypt는 동기·무거워서 안에서 돌리면
+  // 그동안 DB 쓰기 잠금을 잡고 있게 된다(검수 2차 16).
+  const passwordHash = hashPassword(password);
   // ⚠️ 회사와 회사 계정은 **반드시 함께** 만들어진다(트랜잭션).
   //    따로 만들면 계정 생성이 실패했을 때 **로그인할 수 없는 빈 회사**가 남고,
   //    그 회사가 사업자등록번호를 차지해 같은 회사가 다시는 가입할 수 없게 된다(검수 8).
@@ -105,7 +108,7 @@ export async function signup(
           // 사람이 아니라는 것이 화면에서 바로 보이게 한다(직원 목록·집계에서는 제외된다).
           name: "회사 계정",
           phone: managerPhone,
-          passwordHash: hashPassword(password),
+          passwordHash,
           role: "admin", // 권한은 관리자와 동일 — 권한 검사 117군데를 건드리지 않기 위함
           isOwner: true, // 🔒 강등·퇴사·삭제 불가. 회사가 잠기지 않게 하는 유일한 장치
         },

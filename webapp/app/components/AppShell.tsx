@@ -6,7 +6,9 @@ import { Sidebar, type NavKey } from "@/app/components/Sidebar";
 import { LogoutButton } from "@/app/components/LogoutButton";
 import { NotificationBell } from "@/app/components/NotificationBell";
 
-type ShellUser = { id?: string; name: string; role: string; companyId?: string; company: { name: string; logoName?: string | null; approvalMode?: string | null } };
+// ⚠️ isOwner를 여기 적어 두는 이유: 사이드바가 이 값으로 "내 근태" 묶음을 줄지 정한다.
+//    타입에 없으면 어느 화면에서 user를 줄여 넘겨도 tsc가 통과해, 회사 계정에 근태 메뉴가 조용히 되살아난다(검수 2차 10).
+type ShellUser = { id?: string; name: string; role: string; isOwner?: boolean; companyId?: string; company: { name: string; logoName?: string | null; approvalMode?: string | null } };
 
 export function AppShell({
   user,

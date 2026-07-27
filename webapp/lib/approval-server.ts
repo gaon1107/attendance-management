@@ -505,3 +505,26 @@ export async function getApprovalProgressMap(
   }
   return map;
 }
+
+/**
+ * 🔴 "자기 신청을 자기가 승인"을 막는다.
+ *
+ * 왜 지금 필요한가 (2026-07-27 가입 개편)
+ *  · 예전에는 관리자가 회사에 사실상 1명뿐이라 관리자가 신청자가 되는 일이 거의 없었다.
+ *    이제 관리자를 여러 명 둘 수 있고 관리자도 근로자로 집계되므로, **관리자가 자기 휴가를
+ *    자기가 승인 확정**하는 경로가 실사용 경로가 됐다. 근로시간 기록의 신뢰성이 제품의 차별점이라 막는다.
+ *  · 단, **다른 관리자가 아무도 없으면 허용한다.** 안 그러면 관리자 1명인 회사에서 그 사람의 휴가를
+ *    영원히 승인할 수 없다(막는 것이 오히려 업무를 멈춘다).
+ *
+ * @returns true면 이 승인을 막아야 한다.
+ */
+export async function isSelfApprovalBlocked(
+  me: { id: string; companyId: string },
+  requesterId: string
+): Promise<boolean> {
+  if (requesterId !== me.id) return false;
+  const otherAdmins = await prisma.user.count({
+    where: { companyId: me.companyId, role: "admin", isOwner: false, deactivatedAt: null, id: { not: me.id } },
+  });
+  return otherAdmins > 0;
+}

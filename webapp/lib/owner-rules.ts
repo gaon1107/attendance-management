@@ -10,19 +10,21 @@
 //     ⚠️ 검수 치명 1: 처음에는 강등·퇴사만 막았는데, [비밀번호 재설정]·[임시 비번 발급]에는 검사가 없어
 //     **관리자로 지정된 직원이 회사 계정의 비밀번호를 바꿔 열쇠를 통째로 빼앗을 수 있었다.**
 //     그래서 "계정을 손대는 모든 경로"가 canManageAccount를 지나가게 했다.
-//  ② **이 변경으로 회사에 관리자가 0명이 되면 안 된다.**
+//  ② **이 변경으로 회사에 사람 관리자가 0명이 되면 안 된다.**
 //     ⚠️ 검수 치명 2: 관리자 두 명이 서로를 동시에 해제·퇴사시키면 0명이 될 수 있었다.
-//     회사 계정이 있으면 0명이어도 복구할 수 있으므로 허용하고, 회사 계정이 없으면 마지막 관리자를 지킨다.
+//     ⚠️ 2차 검수: 처음에는 "회사 계정이 있으면 0명이어도 된다"고 봤는데, **회사 계정 비밀번호를 잃으면
+//     되찾을 방법이 없다**(자동 메일 발송이 없어 비번찾기가 관리자 승인식이다). 열쇠가 있어도 못 쓰는 상태를
+//     "안전하다"고 보면 회사가 영구히 잠긴다. 그래서 **회사 계정 유무와 무관하게 마지막 관리자를 지킨다.**
+//     (가입 직후 사람 관리자가 0명인 것은 정상 — 이 검사는 관리자를 줄일 때만 작동한다.)
 
 export type ActorLite = { id: string; role: string };
 export type TargetLite = { id: string; role: string; isOwner: boolean; deactivatedAt: Date | null };
 
 /**
  * 회사의 현재 상태 — 관리자 0명이 되는 것을 막기 위해 호출 측이 세어 넘긴다.
- *  · `otherActiveAdmins`: 대상(target)을 뺀, 재직 중이며 회사 계정이 아닌 관리자 수
- *  · `hasOwner`: 이 회사에 회사 계정이 있는가(있으면 관리자가 0명이어도 들어갈 길이 남는다)
+ *  · `otherActiveAdmins`: 대상(target)을 뺀, 재직 중이며 회사 계정이 아닌 **사람 관리자** 수
  */
-export type CompanyState = { otherActiveAdmins: number; hasOwner: boolean };
+export type CompanyState = { otherActiveAdmins: number };
 
 /**
  * 통과하면 `target`을 함께 돌려준다.
@@ -107,9 +109,8 @@ export function canDeactivate(me: ActorLite, target: TargetLite | null, company:
  *  · 회사 계정이 없는 회사(2026-07-27 개편 이전에 가입한 회사)는 마지막 관리자를 반드시 지킨다.
  */
 function lastAdminGuard(t: TargetLite, company: CompanyState): { ok: false; reason: string } | null {
-  if (t.role !== "admin") return null;          // 대상이 관리자가 아니면 관리자 수가 줄지 않는다
-  if (company.hasOwner) return null;            // 회사 계정이 있으면 잠기지 않는다
-  if (company.otherActiveAdmins > 0) return null; // 다른 관리자가 남는다
+  if (t.role !== "admin") return null;            // 대상이 관리자가 아니면 관리자 수가 줄지 않는다
+  if (company.otherActiveAdmins > 0) return null; // 다른 사람 관리자가 남는다
   return {
     ok: false,
     reason: "이 회사의 마지막 관리자입니다. 다른 직원을 먼저 관리자로 지정한 뒤에 진행해주세요.",

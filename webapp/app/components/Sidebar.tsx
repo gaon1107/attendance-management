@@ -148,7 +148,10 @@ function groupsFor(role: string, showApprovals: boolean, isOwner: boolean): NavG
     const groups: NavGroup[] = [{ caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(adminKeys) }];
     // 사람인 관리자에게만 본인 근태 묶음을 준다(회사 계정 제외).
     if (!isOwner) {
-      groups.push({ caption: "내 근태", items: toItems(["attendance", "my-records", "auth-method"]) });
+      // ⚠️ 신청 메뉴(휴가·정정)도 함께 준다. 없으면 관리자가 연차를 써도 승인된 휴가가 없어
+      //    대시보드 [미출근]에 계속 뜨고, [연차 현황]의 사용일수가 영원히 0이 되어
+      //    미사용 연차수당 산정 근거가 틀어진다(검수 2차 7).
+      groups.push({ caption: "내 근태", items: toItems(["attendance", "my-records", "leave", "corrections", "auth-method"]) });
     }
     return groups;
   }

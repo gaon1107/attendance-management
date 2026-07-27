@@ -46,9 +46,9 @@ export function AdminToggle({ userId, isAdmin, isMe, name }: {
       >
         {isAdmin ? "관리자 해제" : "관리자로 지정"}
       </button>
-      {state.error && (
-        <div style={{ fontSize: 11, color: "var(--danger)", fontWeight: 700, marginTop: 5, maxWidth: 210, wordBreak: "keep-all", lineHeight: 1.4 }}>
-          {state.error}
+      {(state.error || state.ok) && (
+        <div style={{ fontSize: 11, color: state.error ? "var(--danger)" : "#15803D", fontWeight: 700, marginTop: 5, maxWidth: 210, wordBreak: "keep-all", lineHeight: 1.4 }}>
+          {state.error ?? state.ok}
         </div>
       )}
     </form>

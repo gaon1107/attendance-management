@@ -53,6 +53,8 @@ function faceTooSmall(
 export async function enrollMyFace(formData: FormData): Promise<ActionResult> {
   const me = await getCurrentUser();
   if (!me) return { ok: false, message: "로그인이 필요합니다." };
+  // 🔒 회사 계정은 사람이 아니다 — 얼굴이 등록되면 [생체정보] 목록에 안 떠 파기할 수 없다(검수 2차 3).
+  if (me.isOwner) return { ok: false, message: "회사 계정은 이 기능을 사용할 수 없습니다." };
   if (!isFaceConfigured()) return { ok: false, message: "얼굴서버 설정이 없습니다. 관리자에게 문의하세요." };
   // 얼굴인증을 선택하고 생체정보에 동의한 사람만 등록 가능(강제 아님·동의 우선)
   if (me.authMethod !== "face" || !me.faceConsentAt) {
@@ -303,6 +305,8 @@ async function recordClockPhoto(
 export async function faceClockIn(formData: FormData): Promise<ActionResult> {
   const me = await getCurrentUser();
   if (!me) return { ok: false, message: "로그인이 필요합니다." };
+  // 🔒 회사 계정은 사람이 아니다 — 얼굴이 등록되면 [생체정보] 목록에 안 떠 파기할 수 없다(검수 2차 3).
+  if (me.isOwner) return { ok: false, message: "회사 계정은 이 기능을 사용할 수 없습니다." };
 
   const verified = await verifyMyFace(me, formData);
   if (!verified.ok) return { ok: false, message: verified.message };
@@ -327,6 +331,8 @@ export async function faceClockIn(formData: FormData): Promise<ActionResult> {
 export async function faceClockOut(formData: FormData): Promise<ActionResult> {
   const me = await getCurrentUser();
   if (!me) return { ok: false, message: "로그인이 필요합니다." };
+  // 🔒 회사 계정은 사람이 아니다 — 얼굴이 등록되면 [생체정보] 목록에 안 떠 파기할 수 없다(검수 2차 3).
+  if (me.isOwner) return { ok: false, message: "회사 계정은 이 기능을 사용할 수 없습니다." };
 
   const verified = await verifyMyFace(me, formData);
   if (!verified.ok) return { ok: false, message: verified.message };
@@ -342,6 +348,8 @@ export async function faceClockOut(formData: FormData): Promise<ActionResult> {
 export async function deleteMyFace(): Promise<ActionResult> {
   const me = await getCurrentUser();
   if (!me) return { ok: false, message: "로그인이 필요합니다." };
+  // 🔒 회사 계정은 사람이 아니다 — 얼굴이 등록되면 [생체정보] 목록에 안 떠 파기할 수 없다(검수 2차 3).
+  if (me.isOwner) return { ok: false, message: "회사 계정은 이 기능을 사용할 수 없습니다." };
   if (me.faceEnrolledAt) {
     await unenrollFace(me.id, me.companyId).catch(() => null); // 서버 삭제 실패해도 우리 표시는 해제(재시도 가능)
   }

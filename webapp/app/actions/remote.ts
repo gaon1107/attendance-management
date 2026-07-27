@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { parseYmd } from "@/lib/leave";
 import { MAX_REMOTE_DAYS } from "@/lib/remote";
-import { createApprovalStepsIfNeeded, advanceApproval, deleteApprovalSteps } from "@/lib/approval-server";
+import { createApprovalStepsIfNeeded, advanceApproval, deleteApprovalSteps, isSelfApprovalBlocked } from "@/lib/approval-server";
 import { deleteAttachmentsForRequest } from "@/lib/request-attachment-server";
 
 // 직원: 재택근무 신청. 기간(시작~종료)·사유를 받아 대기 상태로 만든다.
@@ -68,6 +68,8 @@ export async function approveRemote(formData: FormData): Promise<void> {
   const comment = raw ? Array.from(raw).slice(0, 500).join("") : undefined; // 승인 사유는 선택, 코드포인트 기준 상한
   const r = await prisma.remoteWorkRequest.findFirst({ where: { id, companyId: me.companyId, status: "pending" } });
   if (!r) return;
+  // 🔴 자기 신청을 자기가 승인하지 못하게 막는다(다른 관리자가 없으면 허용 — lib/approval-server.ts 설명).
+  if (await isSelfApprovalBlocked(me, r.userId)) return;
   const result = await advanceApproval(me, "remote", r.id, "approve", comment);
   if (result === "denied") return;
   if (result === "approved") {
