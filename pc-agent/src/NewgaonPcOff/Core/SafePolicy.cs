@@ -64,8 +64,14 @@ internal sealed class SafePolicy
     /// <summary>인터넷이 끊긴 동안의 하루 한도(회). <b>0이면 오프라인 확장 없음</b>(옛 서버 포함).</summary>
     public int OfflineTempUsePerDay { get; init; }
 
-    /// <summary>서버가 센 "오늘 오프라인 사용 횟수". 앱이 스스로 센 값과 <b>큰 쪽</b>을 쓴다(우회 차단).</summary>
+    /// <summary>서버가 센 "그 날짜의 오프라인 사용 횟수". 앱이 스스로 센 값과 <b>큰 쪽</b>을 쓴다(우회 차단).</summary>
     public int OfflineTempUsedToday { get; init; }
+
+    /// <summary>
+    /// 위 횟수가 <b>어느 날짜의 것인지</b>. 읽을 수 없으면 <c>null</c>.
+    ///  · 🔴 오늘이 아니면 그 숫자를 쓰지 않는다 — 어제 숫자로 오늘 한도를 깎으면 직원이 갇힌다(재검수 N-1).
+    /// </summary>
+    public DateOnly? OfflineTempUsedDate { get; init; }
 
     /// <summary>
     /// [일시사용]을 지금 더 쓸 수 있는가(서버가 준 값만 본 <b>거친 계산</b>).

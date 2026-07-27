@@ -243,6 +243,8 @@ internal static class PolicySanitizer
             // 사실상 잠금을 없애는 길을 막는다(온라인 한도와 같은 방어).
             OfflineTempUsePerDay = Clamp(p.TempUse.OfflinePerDay, MaxTempUsePerDay),
             OfflineTempUsedToday = Math.Max(0, p.TempUse.OfflineUsedToday),
+            // 날짜를 못 읽으면 null → 그 숫자는 쓰지 않는다(옛 서버·형식 오류에서 오늘 것으로 오해하지 않게).
+            OfflineTempUsedDate = Hm.ToDate(p.TempUse.OfflineUsedDate),
             TempReasons = [.. tempReasons],
             PolicyVersion = p.PolicyVersion,
         };

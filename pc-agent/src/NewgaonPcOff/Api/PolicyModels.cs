@@ -64,6 +64,7 @@ internal sealed class PcOffPolicy
 internal sealed class TempUseInfo
 {
     private string[]? _reasons;
+    private string? _offlineUsedDate;
 
     /// <summary>[일시사용] 1회 길이(분).</summary>
     [JsonPropertyName("minutes")] public int Minutes { get; set; }
@@ -91,6 +92,14 @@ internal sealed class TempUseInfo
     ///  · 이 값이 있어야 앱을 껐다 켜거나 다시 깔아도 오프라인 한도가 되살아나지 않는다.
     /// </summary>
     [JsonPropertyName("offlineUsedToday")] public int OfflineUsedToday { get; set; }
+
+    /// <summary>
+    /// 위 숫자가 <b>어느 날짜의 것인지</b>("YYYY-MM-DD", 회사 기준).
+    ///  · 🔴 이 날짜가 없으면 인터넷이 끊긴 PC가 자정을 넘겨도 <b>어제 숫자를 오늘 것으로 알고</b> 계속 깎는다
+    ///    → 한 번도 안 쓴 날에 "다 썼습니다"가 되어 직원이 최대 한 달간 갇힌다(재검수 치명 N-1).
+    /// </summary>
+    [JsonPropertyName("offlineUsedDate")]
+    public string OfflineUsedDate { get => _offlineUsedDate ??= ""; set => _offlineUsedDate = value; }
 }
 
 internal sealed class WorkInfo

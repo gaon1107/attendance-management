@@ -37,6 +37,14 @@ internal static class AgentPaths
     /// </summary>
     public static string EventsFile => Path.Combine(Root, "events.bin");
 
+    /// <summary>
+    /// 오늘 <b>인터넷이 끊긴 동안</b> 쓴 [일시사용] 횟수 — <b>암호화</b>해서 저장한다.
+    ///  · 왜 대기줄(<see cref="EventsFile"/>)과 따로 두나: 대기줄은 서버로 보내는 데 성공하면 지워진다.
+    ///    거기에 기대어 세면 <b>재연결 직후 앱을 껐다 켜는 것만으로 한도가 되살아난다</b>(재검수 치명 N-2).
+    ///  · 파일을 지우면 이 숫자는 0이 되지만, 그때는 <b>서버가 센 값</b>이 막는다(두 출처 설계).
+    /// </summary>
+    public static string UsageFile => Path.Combine(Root, "usage.bin");
+
     /// <summary>진단 기록 폴더(이 PC 안에만 남는다. 서버로 보내지 않는다).</summary>
     public static string LogDir => Path.Combine(Root, "logs");
 

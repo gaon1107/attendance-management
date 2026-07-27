@@ -39,6 +39,11 @@ export type PcOffPolicy = {
     //  · 그래야 뒤늦게 올라온 기록이 "오늘 쓴 것"으로 둔갑하지 않는다(= 다음 날 몫 보호의 짝).
     //  · 이 값이 있어야 앱을 껐다 켜거나 다시 깔아도 오프라인 한도가 되살아나지 않는다(검수 치명 C-1).
     offlineUsedToday: number;
+    // 🔴 위 숫자가 **어느 날짜의 것인지**. "YYYY-MM-DD"(회사 기준).
+    //  · 없으면: 인터넷이 끊긴 PC가 자정을 넘겨도 어제 숫자를 오늘 것으로 알고 계속 깎아,
+    //    한 번도 안 쓴 날에도 "다 썼습니다"가 되어 **직원이 최대 한 달간 갇힌다**(재검수 치명 N-1).
+    //    앱은 이 날짜가 오늘과 같을 때만 위 숫자를 쓴다.
+    offlineUsedDate: string;
   };
   work: {
     startTime: string | null; // "HH:MM" 회사 표준 출근 기준시각
@@ -165,6 +170,7 @@ export async function buildPcOffPolicy(userId: string, companyId: string, now = 
       reasons: parseTempReasons(company.pcOffTempReasons),
       offlinePerDay: offlineTempUsePerDay(company.pcOffTempUseMin, company.pcOffTempUsePerDay),
       offlineUsedToday,
+      offlineUsedDate: toISODate(today), // 위 숫자가 어느 날짜의 것인지(앱이 자정을 넘겨 오해하지 않게)
     },
     work: {
       startTime: company.workStartTime,
@@ -191,7 +197,7 @@ function emptyPolicy(serverTime: string, reason: string): PcOffPolicy {
   return {
     serverTime, enabled: false, disabledReason: reason,
     mode: "lock", delayMin: 10, notifyMins: [],
-    tempUse: { minutes: 0, perDay: 0, usedToday: 0, reasons: [], offlinePerDay: 0, offlineUsedToday: 0 },
+    tempUse: { minutes: 0, perDay: 0, usedToday: 0, reasons: [], offlinePerDay: 0, offlineUsedToday: 0, offlineUsedDate: "" },
     work: { startTime: null, endTime: null, workDays: "" },
     days: [], approvedOvertime: [], policyVersion: 0,
   };

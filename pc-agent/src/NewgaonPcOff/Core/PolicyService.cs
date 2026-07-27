@@ -168,7 +168,11 @@ internal sealed class PolicyService : IDisposable
         {
             _tempUsedDate = CompanyToday();
             _tempUsedLocal = _events.CountOn(TempUseType, _tempUsedDate, Hm.CompanyOffset);
-            _tempUsedOfflineLocal = _events.CountOn(TempUseOfflineType, _tempUsedDate, Hm.CompanyOffset);
+            // ⚠️ 오프라인 횟수는 대기줄만 세면 안 된다 — 서버로 보낸 순간 지워져 한도가 되살아난다(재검수 N-2).
+            //    따로 보관해 둔 값과 대기줄 값 중 **큰 쪽**을 쓴다(둘 중 하나만 남아 있어도 이어서 센다).
+            _tempUsedOfflineLocal = Math.Max(
+                OfflineUsageStore.Load(_tempUsedDate),
+                _events.CountOn(TempUseOfflineType, _tempUsedDate, Hm.CompanyOffset));
             if (_tempUsedLocal + _tempUsedOfflineLocal > 0)
             {
                 Log.Info($"아직 서버에 닿지 않은 오늘 일시사용 {_tempUsedLocal}회(오프라인 {_tempUsedOfflineLocal}회)를 이어서 셉니다.");
@@ -220,6 +224,7 @@ internal sealed class PolicyService : IDisposable
         _clock.Reset();
         PolicyCache.Clear();          // 남의 회사 설정을 이 PC에 남겨두지 않는다
         _events.Clear();              // 남의 계정으로 남의 기록을 올리지 않는다
+        OfflineUsageStore.Clear();    // A직원이 쓴 오프라인 횟수를 B직원이 물려받지 않는다
         InvalidatePairedCache();
 
         // ⚠️ 아래 Recompute()는 잠금화면을 닫게 만들고, 그 과정에서 "해제" 기록이 생긴다.
@@ -320,6 +325,12 @@ internal sealed class PolicyService : IDisposable
             var v = res.Value;
             Log.Info($"기록 {batch.Length}건 전송 (저장 {v.Saved} · 중복 {v.Duplicated} · 제외 {v.Dropped}).");
 
+            // 방금 보낸 기록은 **이번 정책 응답에는 반영돼 있지 않다**(서버가 답할 때는 아직 도착 전이었다).
+            //  · 그대로 두면 다음 확인(최대 5분)까지 서버가 센 오프라인 횟수가 옛 값(대개 0)으로 남는다.
+            //    그 틈에 앱을 껐다 켜면 한도가 되살아난다(재검수 N-2). 곧바로 다시 물어 최신 값을 받아 둔다.
+            var soon = DateTimeOffset.Now + TimeSpan.FromSeconds(5);
+            if (_nextPollAt == null || _nextPollAt.Value > soon) _nextPollAt = soon;
+
             // ⚠️ "제외"는 서버가 그 기록을 **버렸다**는 뜻이고, 우리는 방금 그것을 지웠다 = 영원히 사라졌다.
             //    옛 서버로 되돌아갔거나(모르는 종류) 시각이 너무 오래된 경우인데, 잠금·해제는 근로시간 근거다.
             //    조용히 넘기면 아무도 모르므로 경고로 남긴다(검수 지적 M-8).
@@ -361,10 +372,22 @@ internal sealed class PolicyService : IDisposable
     /// <summary>
     /// 오늘 오프라인에서 쓴 횟수. <b>서버가 센 값과 앱이 센 값 중 큰 쪽</b>을 쓴다.
     ///  · 🔴 앱이 센 값만 쓰면, 기록을 서버로 보낸 뒤 앱을 껐다 켜는 것만으로 한도가 되살아난다
-    ///    (대기줄이 비면 셀 근거가 사라지기 때문 — 검수 치명 C-1). 그래서 서버가 함께 센다.
+    ///    (검수 치명 C-1). 그래서 서버가 함께 센다.
     ///  · 서버 값만 쓰면 오프라인 중에는 갱신이 없어 무제한이 된다. 그래서 <b>큰 쪽</b>이다.
+    ///  · 🔴 서버 값은 <b>그 날짜가 오늘일 때만</b> 쓴다. 인터넷이 끊긴 채 자정을 넘기면 서버 값은
+    ///    어제 것으로 굳어 있는데, 그걸 오늘 것으로 알고 깎으면 <b>한 번도 안 쓴 날에 "다 썼습니다"</b>가 되어
+    ///    직원이 최대 한 달간 갇힌다(재검수 치명 N-1).
     /// </summary>
-    private int OfflineUsedToday => Math.Max(_policy?.OfflineTempUsedToday ?? 0, _tempUsedOfflineLocal);
+    private int OfflineUsedToday
+    {
+        get
+        {
+            var p = _policy;
+            var serverSaysToday = p != null && p.OfflineTempUsedDate == CompanyToday();
+            var server = serverSaysToday ? p!.OfflineTempUsedToday : 0;
+            return Math.Max(server, _tempUsedOfflineLocal);
+        }
+    }
 
     /// <summary>
     /// 지금 <b>오프라인 몫</b>을 쓰는 상황인가.
@@ -467,7 +490,12 @@ internal sealed class PolicyService : IDisposable
         //    (여기서 IsOffline을 한 번만 읽는다: 아래 기록과 카운터가 서로 다른 지갑을 가리키면 한도가 새 버린다.)
         var offline = UsingOfflineQuota;
         _tempUseUntil = now.Value.AddMinutes(p.TempUseMinutes);
-        if (offline) _tempUsedOfflineLocal++;
+        if (offline)
+        {
+            _tempUsedOfflineLocal++;
+            // 대기줄과 별개로 즉시 남긴다 — 전송에 성공해 대기줄이 비어도 오늘 쓴 횟수는 남아야 한다.
+            OfflineUsageStore.Save(_tempUsedDate, _tempUsedOfflineLocal);
+        }
         else _tempUsedLocal++;
         EnqueueEvent(offline ? TempUseOfflineType : TempUseType, now.Value, picked);
 
@@ -584,9 +612,12 @@ internal sealed class PolicyService : IDisposable
             if (!res.Ok || res.Value == null)
             {
                 _lastError = Trim(res.Error) ?? "서버에 연결하지 못했습니다.";
-                // 상태 0 = 서버에 닿지도 못했다(연결 불가·응답 없음) = 진짜 오프라인.
+                // 상태 0 = 서버에 닿지도 못했다(연결 불가) = 진짜 오프라인.
                 //  · 4xx·5xx는 서버가 대답한 것이므로 오프라인이 아니다(그때 오프라인 한도를 열면 안 된다).
-                _noContact = res.Status == 0;
+                //  · ⚠️ **시간 초과는 제외한다** — "서버에 닿았는데 느린 것"이므로 인터넷은 멀쩡하다.
+                //    이걸 오프라인으로 보면 서버가 무거운 날 사무실 PC들이 일제히 오프라인 판정이 되어,
+                //    책상에서 누른 일시사용이 "오프라인 사용"으로 기록된다(재검수 N-3).
+                _noContact = res.Status == 0 && !res.TimedOut;
 
                 // 서버에 못 붙었을 뿐이다 → 저장된 설정으로 계속 판정한다(오프라인 요구사항).
                 //  ⚠️ 이미 유효한 정책을 들고 있어도 **"저장된 설정으로 판단 중"으로 표시**해야 한다.
@@ -644,7 +675,9 @@ internal sealed class PolicyService : IDisposable
         catch (Exception ex)
         {
             _lastError = $"확인 중 오류가 발생했습니다. ({ex.GetType().Name})";
-            _noContact = true; // 응답을 받지 못한 채 끝났다 → 서버에 닿지 못한 것으로 본다
+            // ⚠️ 여기 오는 것은 통신 실패가 아니다 — AgentApi가 통신 예외를 이미 다 처리하므로,
+            //    이 catch는 **응답을 받은 뒤** 처리(검증·시계·캐시)에서 터진 경우다. 오프라인이 아니다(재검수 N-3).
+            _noContact = false;
             Log.Error($"정책 받기 중 오류({why})", ex);
             if (_policy == null) LoadFromCache();
             else SetPolicy(_policy, _policyProblem, fromCache: true);
@@ -819,7 +852,10 @@ internal sealed class PolicyService : IDisposable
         {
             _tempUsedDate = today;
             _tempUsedLocal = 0;
-            _tempUsedOfflineLocal = 0; // 오프라인 몫도 새 날에는 새로 시작한다
+            // 오프라인 몫도 새 날에는 새로 시작한다. 저장된 값도 오늘 날짜로 0을 남겨,
+            // 껐다 켰을 때 어제 숫자를 다시 읽지 않게 한다(저장 실패해도 Load가 날짜로 걸러낸다).
+            _tempUsedOfflineLocal = 0;
+            OfflineUsageStore.Save(today, 0);
         }
 
         var paired = IsPaired();
