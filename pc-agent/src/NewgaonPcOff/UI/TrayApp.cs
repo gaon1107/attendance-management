@@ -343,7 +343,7 @@ internal sealed class TrayApp : IDisposable
             ? "· 사전 알림: 없음"
             : $"· 사전 알림: {string.Join("분 전 · ", p.NotifyMins)}분 전");
         sb.AppendLine($"· 일시사용: {p.TempUseMinutes}분 × 하루 {p.TempUsePerDay}회 (오늘 {p.TempUsedToday}회 사용)");
-        if (_service.IsOffline && _service.TempUsePerDayNow > 0)
+        if (s.UsingOfflineQuota && _service.TempUsePerDayNow > 0)
         {
             sb.AppendLine($"   - 지금은 인터넷이 끊겨 있어 {_service.TempUsePerDayNow}회까지 쓸 수 있습니다 (남은 {s.TempUseLeft}회).");
         }

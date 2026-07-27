@@ -77,6 +77,20 @@ internal sealed class TempUseInfo
     /// <summary>잠금화면에서 <b>고르기만</b> 하는 사유 목록. ⚠️ 자유입력 칸은 만들지 않는다(민감정보 유입 차단).</summary>
     [JsonPropertyName("reasons")]
     public string[] Reasons { get => _reasons ??= []; set => _reasons = value; }
+
+    /// <summary>
+    /// 인터넷이 끊긴 동안의 하루 한도(회). <b>서버가 정한다</b> — 앱에 같은 숫자를 또 적어 두지 않는다.
+    ///  · 옛 서버는 이 항목을 주지 않는다 → 0 → 앱은 오프라인 확장을 하지 않는다(안전한 쪽, 옛 동작 그대로).
+    ///  · 새 종류(<c>temp_use_offline</c>)를 받아주는 서버인지 판별하는 표시로도 쓴다
+    ///    (옛 서버에 그 종류를 보내면 조용히 버려져 기록이 사라진다).
+    /// </summary>
+    [JsonPropertyName("offlinePerDay")] public int OfflinePerDay { get; set; }
+
+    /// <summary>
+    /// 오늘 오프라인에서 이미 쓴 횟수 — <b>서버가 센다</b>(앱이 보낸 시각 기준).
+    ///  · 이 값이 있어야 앱을 껐다 켜거나 다시 깔아도 오프라인 한도가 되살아나지 않는다.
+    /// </summary>
+    [JsonPropertyName("offlineUsedToday")] public int OfflineUsedToday { get; set; }
 }
 
 internal sealed class WorkInfo

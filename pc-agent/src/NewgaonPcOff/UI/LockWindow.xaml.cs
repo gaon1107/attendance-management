@@ -185,8 +185,10 @@ public partial class LockWindow : Window
             //    인터넷이 끊기면 한도가 넓어지는데(갇히지 않게), 회사 설정값을 그대로 쓰면
             //    "오늘 2회 중 6회 남았습니다" 같은 앞뒤가 안 맞는 문장이 된다.
             var perDayNow = _service.TempUsePerDayNow;
-            TempInfoText.Text = p.TempUseMinutes > 0
-                ? _service.IsOffline
+            // ⚠️ "허용하지 않음" 판정은 1회 시간(TempUseMinutes)만이 아니라 **하루 횟수**도 함께 본다.
+            //    횟수가 0인 회사에서 "오늘 0회 중 0회 남았습니다"라는 이상한 문장이 나오던 것을 막는다(검수 지적 M-6).
+            TempInfoText.Text = p.TempUseMinutes > 0 && p.TempUsePerDay > 0
+                ? s.UsingOfflineQuota
                     ? $"{p.TempUseMinutes}분 동안 잠금을 풉니다. 인터넷이 끊긴 동안에는 {perDayNow}회까지 쓸 수 있고, {s.TempUseLeft}회 남았습니다."
                     : $"{p.TempUseMinutes}분 동안 잠금을 풉니다. 오늘 {perDayNow}회 중 {s.TempUseLeft}회 남았습니다."
                 : "회사가 일시사용을 허용하지 않았습니다.";
@@ -228,10 +230,19 @@ public partial class LockWindow : Window
         // ⚠️ 오프라인일 때 "신청은 연결이 되면 보내집니다"는 **사실이 아니다** —
         //    연장근무 신청은 서버가 있어야 하고, 실패하면 그 자리에서 오류로 끝난다(쌓아두지 않는다).
         //    잠긴 채 인터넷이 없는 직원에게 실제로 남은 길은 [일시사용]뿐이므로 그쪽을 안내한다.
-        GuideText.Text = s.FromCache || s.LastError != null
-            ? "지금 서버에 연결되지 않아, 마지막으로 받은 회사 설정으로 판단하고 있습니다. "
-              + "연장근무 신청은 인터넷이 연결되어야 보낼 수 있습니다. 급하면 아래 [일시사용]으로 잠깐 풀 수 있습니다."
-            : "업무가 남았다면 아래에서 연장근무를 신청해주세요. 관리자가 승인하면 1분 안에 자동으로 풀립니다.";
+        //    단, 남은 횟수가 0이면 그 길도 없다 — 있다고 말하지 않는다(검수 지적 M-6).
+        if (s.FromCache || s.LastError != null)
+        {
+            var head = "지금 서버에 연결되지 않아, 마지막으로 받은 회사 설정으로 판단하고 있습니다. "
+                     + "연장근무 신청은 인터넷이 연결되어야 보낼 수 있습니다. ";
+            GuideText.Text = head + (s.TempUseLeft > 0
+                ? "급하면 아래 [일시사용]으로 잠깐 풀 수 있습니다."
+                : "지금은 스스로 풀 수 있는 수단이 없습니다. 관리자에게 연락해주세요.");
+        }
+        else
+        {
+            GuideText.Text = "업무가 남았다면 아래에서 연장근무를 신청해주세요. 관리자가 승인하면 1분 안에 자동으로 풀립니다.";
+        }
     }
 
     /// <summary>

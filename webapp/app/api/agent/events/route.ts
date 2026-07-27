@@ -4,7 +4,7 @@
 import { NextResponse, after } from "next/server";
 import { prisma } from "@/lib/db";
 import { authenticateAgent, touchDevice, tooLarge, MAX_BODY_EVENTS } from "@/lib/agent-auth";
-import { parseTempReasons, isTempUseType, TEMP_USE_TYPE, TEMP_USE_OFFLINE_TYPE } from "@/lib/pcoff";
+import { parseTempReasons, isTempUseType, TEMP_USE_TYPE, TEMP_USE_OFFLINE_TYPE, EVENT_MAX_AGE_DAYS } from "@/lib/pcoff";
 import { purgeAgentEventsDaily } from "@/lib/pcoff-retention";
 
 // 허용 종류(화이트리스트) — 모르는 종류는 조용히 버린다. 나중에 늘릴 땐 [PC관리] 화면의 라벨도 함께 늘린다.
@@ -74,11 +74,13 @@ export async function POST(req: Request) {
     if (!ALLOWED_TYPES.has(type)) { dropped++; continue; }
 
     // 시각: 앱이 보낸 값을 쓰되(오프라인 후 뒤늦게 올 수 있어서), 말이 안 되는 값은 버린다.
-    //  · 미래 5분 초과 = PC 시계가 앞서 있거나 조작. 30일보다 오래된 것 = 의미 없는 과거.
+    //  · 미래 5분 초과 = PC 시계가 앞서 있거나 조작.
+    //  · 과거 한계는 EVENT_MAX_AGE_DAYS(정책 일수 + 여유). ⚠️ 정책 일수(31일)보다 짧으면
+    //    한 달 오프라인이던 PC의 첫날 기록이 버려진다 — 200을 주므로 앱은 그대로 지운다(복구 불가).
     const at = new Date(String(e.at ?? ""));
     if (Number.isNaN(at.getTime())) { dropped++; continue; }
     const diff = at.getTime() - now;
-    if (diff > 5 * 60 * 1000 || diff < -30 * 24 * 60 * 60 * 1000) { dropped++; continue; }
+    if (diff > 5 * 60 * 1000 || diff < -EVENT_MAX_AGE_DAYS * 24 * 60 * 60 * 1000) { dropped++; continue; }
 
     // ⚠️ meta(부가정보)는 [일시사용] 사유에만 쓴다. 다른 종류는 서버에서 무조건 비운다.
     //    그러지 않으면 앱이 "해제 사유" 같은 자유입력을 붙이는 순간 민감정보 차단이 무력해진다.

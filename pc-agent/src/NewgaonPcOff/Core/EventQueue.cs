@@ -16,7 +16,7 @@ internal sealed class QueuedEvent
     /// <summary>이 사건의 고유번호. 재전송해도 서버가 <b>두 번 세지 않게</b> 하는 열쇠다.</summary>
     [JsonPropertyName("id")] public string Id { get; set; } = "";
 
-    /// <summary>lock / unlock / temp_use / notify — 서버가 받는 종류만 쓴다.</summary>
+    /// <summary>lock / unlock / temp_use / temp_use_offline / notify — 서버가 받는 종류만 쓴다(서버 ALLOWED_TYPES와 짝).</summary>
     [JsonPropertyName("type")] public string Type { get; set; } = "";
 
     /// <summary>일어난 시각(회사 기준). ⚠️ PC 시계가 아니라 <b>서버 시각 기준</b>으로 계산된 값이다.</summary>
@@ -51,8 +51,20 @@ internal sealed class EventQueue
     /// <summary>파일 형식 번호. 형식을 바꾸면 올린다(옛 파일은 조용히 버려진다).</summary>
     private const int CurrentVersion = 1;
 
-    /// <summary>보관 상한. 하루에 생기는 사건은 몇 건뿐이라 이 정도면 몇 달 치 오프라인도 버틴다.</summary>
-    private const int MaxKeep = 300;
+    /// <summary>
+    /// 보관 상한.
+    ///  · 계산 근거(2026-07-27): 하루 최대 = 잠금 1 + 해제 1 + 사전알림 5 + 일시사용 1회당 3건.
+    ///    일시사용을 하루 6회 쓰면 ≈ 25건 → 한 달(31일) 오프라인이면 ≈ 775건.
+    ///  · 🔴 예전 값(300)으로 두면 <b>가장 먼저 잠긴 날의 기록부터 사라진다</b> — 근로시간 근거(3년 보존 대상)다.
+    ///    오프라인 보장 기간을 이틀 → 한 달로 늘렸으므로 이 값도 함께 올려야 한다(검수 지적 M-3).
+    /// </summary>
+    private const int MaxKeep = 1200;
+
+    /// <summary>
+    /// 상한을 넘겼을 때 <b>먼저 버리는</b> 종류(장비 상태 기록 — 임금과 무관).
+    ///  · 잠금·해제·일시사용은 근로시간 근거라 마지막까지 지킨다.
+    /// </summary>
+    private static readonly string[] LowPriorityTypes = ["notify", "offline", "paired"];
 
     /// <summary>한 번에 보내는 최대 건수. ⚠️ 서버 상한(100건)을 넘으면 통째로 거부당한다.</summary>
     public const int BatchSize = 50;
@@ -93,8 +105,26 @@ internal sealed class EventQueue
         if (_items.Count > MaxKeep)
         {
             var over = _items.Count - MaxKeep;
-            _items.RemoveRange(0, over);
-            Log.Warn($"보내지 못한 기록이 {MaxKeep}건을 넘어 오래된 {over}건을 버렸습니다.");
+
+            // ① 먼저 "장비 상태 기록"을 오래된 것부터 버린다(사전알림·오프라인·연결).
+            var droppedLow = 0;
+            for (var i = 0; i < _items.Count && droppedLow < over; )
+            {
+                if (Array.IndexOf(LowPriorityTypes, _items[i].Type) >= 0)
+                {
+                    _items.RemoveAt(i);
+                    droppedLow++;
+                    continue;
+                }
+                i++;
+            }
+
+            // ② 그래도 넘치면 어쩔 수 없이 오래된 것부터 버린다(근로 기록이 포함될 수 있다 → 경고를 나눠 남긴다).
+            var droppedWork = over - droppedLow;
+            if (droppedWork > 0) _items.RemoveRange(0, droppedWork);
+
+            Log.Warn($"보내지 못한 기록이 {MaxKeep}건을 넘어 {over}건을 버렸습니다" +
+                     $"(장비기록 {droppedLow}건{(droppedWork > 0 ? $" · ⚠️ 근로기록 포함 {droppedWork}건" : "")}).");
         }
 
         Save();

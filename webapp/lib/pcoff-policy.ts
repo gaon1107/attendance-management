@@ -10,7 +10,7 @@ import { prisma } from "./db";
 import { loadOffDays } from "./holiday-server";
 import { effectiveWorkDays, daysToCsv } from "./workdays";
 import { toISODate } from "./period";
-import { parseNotifyMins, parseTempReasons, POLICY_DAYS, TEMP_USE_TYPE } from "./pcoff";
+import { parseNotifyMins, parseTempReasons, POLICY_DAYS, TEMP_USE_TYPE, TEMP_USE_OFFLINE_TYPE, offlineTempUsePerDay } from "./pcoff";
 
 /** 승인된 연장근무를 한 번에 내려주는 최대 건수. 넘으면 잘라내고 **기록을 남긴다**(조용히 버리지 않는다). */
 const MAX_OVERTIME_ROWS = 300;
@@ -31,6 +31,14 @@ export type PcOffPolicy = {
     perDay: number;          // 하루 허용 횟수
     usedToday: number;       // 오늘 이미 쓴 횟수(서버가 센다 — 앱을 다시 깔아도 초기화되지 않는다)
     reasons: string[];       // 잠금화면에서 고를 사유 목록. ⚠️ 앱은 자유입력을 주지 않는다(민감정보 유입 차단).
+    // 인터넷이 끊긴 동안의 하루 한도. 0이면 오프라인 추가 허용 없음.
+    //  · 🔴 이 값을 **서버가 내려주는 것**이 핵심이다. 앱에 같은 숫자를 또 적어 두면 언젠가 어긋난다.
+    //  · 옛 서버는 이 항목을 주지 않는다 → 앱은 0으로 읽고 오프라인 확장을 아예 하지 않는다(안전한 쪽).
+    offlinePerDay: number;
+    // 오늘 오프라인에서 쓴 횟수. ⚠️ 기준은 **앱이 말한 시각(at)** 이다(수신시각이 아니라).
+    //  · 그래야 뒤늦게 올라온 기록이 "오늘 쓴 것"으로 둔갑하지 않는다(= 다음 날 몫 보호의 짝).
+    //  · 이 값이 있어야 앱을 껐다 켜거나 다시 깔아도 오프라인 한도가 되살아나지 않는다(검수 치명 C-1).
+    offlineUsedToday: number;
   };
   work: {
     startTime: string | null; // "HH:MM" 회사 표준 출근 기준시각
@@ -126,6 +134,14 @@ export async function buildPcOffPolicy(userId: string, companyId: string, now = 
     where: { companyId, userId, type: TEMP_USE_TYPE, createdAt: { gte: today, lt: tomorrow } },
   });
 
+  // 오늘 오프라인에서 쓴 횟수 — **일어난 시각(at)** 기준.
+  //  · 왜 at인가: 오프라인 기록은 며칠 뒤에 올라온다. 수신시각으로 세면 그 날 몫을 잡아먹는다(고치려던 문제 그대로).
+  //  · 왜 세는가: 앱이 스스로 세는 값은 앱을 껐다 켜거나 대기줄이 비워지면 사라진다.
+  //    서버가 함께 세어 내려줘야 "랜선 뽑았다 꽂고 재시작" 반복으로 한도를 새로 받는 길이 막힌다(검수 치명 C-1).
+  const offlineUsedToday = await prisma.agentEvent.count({
+    where: { companyId, userId, type: TEMP_USE_OFFLINE_TYPE, at: { gte: today, lt: tomorrow } },
+  });
+
   // 잠금 대상 판정. 하나라도 걸리면 잠그지 않는다(안전한 쪽).
   //  · 교대근무 회사는 1차 미지원 — 표준 퇴근시각으로 판단하면 야간조 근무 중에 잠긴다.
   //    조별 시각 해석(lib/shift-server.ts)을 태우는 건 2차 범위이므로, 그때까지는 아예 동작시키지 않는다.
@@ -147,6 +163,8 @@ export async function buildPcOffPolicy(userId: string, companyId: string, now = 
     tempUse: {
       minutes: company.pcOffTempUseMin, perDay: company.pcOffTempUsePerDay, usedToday,
       reasons: parseTempReasons(company.pcOffTempReasons),
+      offlinePerDay: offlineTempUsePerDay(company.pcOffTempUseMin, company.pcOffTempUsePerDay),
+      offlineUsedToday,
     },
     work: {
       startTime: company.workStartTime,
@@ -173,7 +191,7 @@ function emptyPolicy(serverTime: string, reason: string): PcOffPolicy {
   return {
     serverTime, enabled: false, disabledReason: reason,
     mode: "lock", delayMin: 10, notifyMins: [],
-    tempUse: { minutes: 0, perDay: 0, usedToday: 0, reasons: [] },
+    tempUse: { minutes: 0, perDay: 0, usedToday: 0, reasons: [], offlinePerDay: 0, offlineUsedToday: 0 },
     work: { startTime: null, endTime: null, workDays: "" },
     days: [], approvedOvertime: [], policyVersion: 0,
   };

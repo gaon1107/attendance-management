@@ -159,7 +159,7 @@ internal static class PolicySanitizer
         if (droppedDays > 0) Log.Warn($"정책의 날짜 {droppedDays}건을 읽을 수 없어 건너뜁니다.");
         if (days.Count == 0)
         {
-            why = "오늘·내일 근무일 정보가 없습니다";
+            why = "근무일 정보가 없습니다";
             Log.Warn("정책 검증 실패: 쓸 수 있는 날짜가 하나도 없습니다 → 잠그지 않습니다.");
             return null;
         }
@@ -239,6 +239,10 @@ internal static class PolicySanitizer
             TempUseMinutes = Clamp(p.TempUse.Minutes, MaxTempUseMin),
             TempUsePerDay = Clamp(p.TempUse.PerDay, MaxTempUsePerDay),
             TempUsedToday = Math.Max(0, p.TempUse.UsedToday),
+            // 오프라인 한도도 같은 상한으로 자른다 — 가짜 서버가 "하루 9999회"를 내려보내
+            // 사실상 잠금을 없애는 길을 막는다(온라인 한도와 같은 방어).
+            OfflineTempUsePerDay = Clamp(p.TempUse.OfflinePerDay, MaxTempUsePerDay),
+            OfflineTempUsedToday = Math.Max(0, p.TempUse.OfflineUsedToday),
             TempReasons = [.. tempReasons],
             PolicyVersion = p.PolicyVersion,
         };

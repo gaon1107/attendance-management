@@ -26,6 +26,33 @@ export const POLICY_DAYS = 31;
 /** 오프라인일 때의 [일시사용] 하루 한도(회). 1회 길이가 30분이면 30분 × 6 = 3시간. */
 export const OFFLINE_TEMP_USE_PER_DAY = 6;
 
+/**
+ * 오프라인 [일시사용]으로 하루에 풀 수 있는 **총 시간** 상한(분).
+ *  · 왜 시간으로도 막나: 1회 길이를 회사가 240분까지 정할 수 있어(PCOFF_LIMITS), 횟수만 막으면
+ *    240분 × 6회 = **24시간** = 그 회사는 랜선만 뽑으면 PC-OFF가 사실상 없는 것이 된다(검수 지적 M-5).
+ */
+export const OFFLINE_TEMP_USE_MAX_MIN = 180;
+
+/**
+ * 이 회사의 오프라인 [일시사용] 하루 한도(회)를 계산한다. **서버·앱이 이 값 하나만 쓴다**
+ * (서버가 정책에 실어 내려주므로 앱에 같은 숫자를 또 적어 두지 않는다 = 짝이 어긋날 수 없다).
+ *  · 회사가 일시사용을 안 쓰면(0회) 오프라인에서도 0 — 회사 정책을 앱이 뒤집지 않는다.
+ *  · 평소 한도보다 줄지 않는다(온라인보다 오프라인이 빡빡하면 갇히는 것을 못 막는다).
+ */
+export function offlineTempUsePerDay(tempUseMinutes: number, perDay: number): number {
+  if (!(perDay > 0) || !(tempUseMinutes > 0)) return 0;
+  const byTime = Math.max(1, Math.floor(OFFLINE_TEMP_USE_MAX_MIN / tempUseMinutes));
+  return Math.max(perDay, Math.min(OFFLINE_TEMP_USE_PER_DAY, byTime));
+}
+
+/**
+ * 앱이 보낸 사건을 받아 줄 수 있는 **과거 한계**(일).
+ *  · 🔴 정책 일수(POLICY_DAYS)보다 넉넉해야 한다. 30일로 두면 한 달간 오프라인이던 PC가 돌아왔을 때
+ *    **첫날의 잠금·해제 기록이 버려지고**, 서버가 200을 주므로 앱은 지워 버려 되살릴 수 없다(검수 지적 M-2).
+ *    잠금·해제는 근로시간 근거(3년 보존 대상)라 잃으면 안 된다.
+ */
+export const EVENT_MAX_AGE_DAYS = POLICY_DAYS + 14;
+
 // [일시사용] 사건 종류 — 온라인/오프라인을 **다른 종류로 나눠** 기록한다.
 //  · 왜 나누나: 서버가 "오늘 쓴 횟수"를 셀 때 온라인분(temp_use)만 센다.
 //    그래서 금요일 밤 오프라인 사용분이 월요일에 뒤늦게 올라와도 **월요일 몫을 잡아먹지 않는다**

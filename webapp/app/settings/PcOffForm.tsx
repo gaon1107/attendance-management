@@ -8,7 +8,7 @@ import { savePcOffSettings } from "@/app/actions/pcoff";
 //    (서버 전용 파일을 화면에서 import하면 DB 관련 코드가 브라우저로 딸려간다)
 import {
   parseNotifyMins, PCOFF_LIMITS, parseTempReasons,
-  RETENTION_WORK_LABEL, RETENTION_SYSTEM_LABEL,
+  RETENTION_WORK_LABEL, RETENTION_SYSTEM_LABEL, offlineTempUsePerDay,
 } from "@/lib/pcoff";
 
 type Props = {
@@ -53,6 +53,8 @@ export function PcOffForm({ initial }: Props) {
 
   const notifyPreview = parseNotifyMins(notify);
   const reasonPreview = parseTempReasons(reasons);
+  // 지금 입력값 기준의 오프라인 한도(서버가 정책에 실어 보내는 값과 **같은 함수**로 계산 = 화면과 실제가 어긋나지 않는다).
+  const offlinePerDayNow = offlineTempUsePerDay(Number(tempUseMin) || 0, Number(perDay) || 0);
   const delayNum = Number(delayMin);
   // 잠금 예정 시각 미리보기 — 퇴근 기준시각 + 유예. 실제 판정은 설치 앱이 서버시각 기준으로 한다.
   const lockAt = initial.workEndTime && Number.isFinite(delayNum) ? addMinutes(initial.workEndTime, delayNum) : null;
@@ -139,6 +141,14 @@ export function PcOffForm({ initial }: Props) {
         <p style={{ fontSize: 12, color: "var(--text-sub)", marginTop: -4, lineHeight: 1.5, wordBreak: "keep-all" }}>
           결재자가 자리에 없어 연장근무 승인을 못 받을 때, 직원이 <b>사유를 골라</b> 잠금을 잠시 푸는 기능입니다.
           사용 내역은 [PC관리] 화면에 남습니다. 횟수를 <b>0</b>으로 두면 사용할 수 없습니다.
+          <br />
+          {/* ⚠️ 이 안내가 없으면 관리자는 "하루 N회"만 보고 실제 최대치를 오해한다(검수 지적 M-5). */}
+          <b>인터넷이 끊긴 곳(외근·출장)에서는 하루 {offlinePerDayNow}회까지 별도로 허용됩니다.</b>{" "}
+          인터넷이 없으면 연장근무 신청을 보낼 수 없어, 그대로 두면 직원이 다음 근무일까지 PC를 못 씁니다.
+          이때 쓴 것은 [PC관리]에 <b>일시사용(오프라인)</b>으로 구분되어 남습니다.
+          {offlinePerDayNow === 0
+            ? " 지금 설정(횟수 0회)에서는 오프라인에서도 풀 수 없습니다 — 외근이 있는 회사라면 1회 이상을 권합니다."
+            : ` 하루 최대 ${offlinePerDayNow * (Number(tempUseMin) || 0)}분까지 풀릴 수 있습니다.`}
         </p>
 
         {/* 일시사용 사유 — 직원은 이 목록에서만 고른다(자유 서술 없음) */}

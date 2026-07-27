@@ -51,6 +51,17 @@ internal sealed class AgentStatus
     /// <summary>오늘 남은 [일시사용] 횟수.</summary>
     public int TempUseLeft { get; init; }
 
+    /// <summary>
+    /// 인터넷이 끊긴 상태인가(= 서버에 닿지도 못한다).
+    ///  · ⚠️ <see cref="FromCache"/>와 다르다. 저장된 설정을 쓰는 중이어도 서버가 401·5xx로 <b>대답은 한</b>
+    ///    경우가 있는데, 그때는 인터넷이 멀쩡하므로 "오프라인"이라고 말하면 안 된다.
+    ///  · 화면은 이 값으로 오프라인 안내를 켠다(<see cref="FromCache"/>로 켜면 없는 사실을 말하게 된다).
+    /// </summary>
+    public bool Offline { get; init; }
+
+    /// <summary>지금 [일시사용]이 <b>오프라인 몫</b>에서 나가는가(서버가 오프라인 한도를 준 경우에만 참).</summary>
+    public bool UsingOfflineQuota { get; init; }
+
     /// <summary>아직 서버로 보내지 못한 기록 건수(오프라인이었을 때 쌓인다).</summary>
     public int PendingEvents { get; init; }
 }

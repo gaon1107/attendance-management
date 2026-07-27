@@ -178,9 +178,15 @@ internal static class StatusWording
     ///  · ⚠️ 여기서 계산하지 않는다 — 남은 횟수는 <see cref="AgentStatus.TempUseLeft"/>가 이미 정한 값이다.
     /// </summary>
     private static string OfflineTempUseHint(AgentStatus s)
-        => s.TempUseLeft > 0
+    {
+        // ⚠️ 조건은 FromCache가 아니라 **Offline**이다. 401·서버 장애로 저장된 설정을 쓰는 중일 때
+        //    "인터넷이 없는 동안"이라고 말하면 사실과 다르다(검수 지적 M-1·m-1).
+        if (!s.Offline) return "";
+        if (s.TempUseLeft <= 0) return "\n지금은 [일시사용]을 더 쓸 수 없습니다. 관리자에게 연락해주세요.";
+        return s.UsingOfflineQuota
             ? $"\n인터넷이 없는 동안에도 [일시사용]을 {s.TempUseLeft}회 더 쓸 수 있습니다."
-            : "";
+            : $"\n[일시사용]은 오늘 {s.TempUseLeft}회 더 쓸 수 있습니다.";
+    }
 
     /// <summary>
     /// 트레이 도움말·메뉴에 쓰는 아주 짧은 한 줄.
