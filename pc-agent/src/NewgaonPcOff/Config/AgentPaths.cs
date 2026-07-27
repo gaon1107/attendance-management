@@ -41,7 +41,8 @@ internal static class AgentPaths
     /// 오늘 <b>인터넷이 끊긴 동안</b> 쓴 [일시사용] 횟수 — <b>암호화</b>해서 저장한다.
     ///  · 왜 대기줄(<see cref="EventsFile"/>)과 따로 두나: 대기줄은 서버로 보내는 데 성공하면 지워진다.
     ///    거기에 기대어 세면 <b>재연결 직후 앱을 껐다 켜는 것만으로 한도가 되살아난다</b>(재검수 치명 N-2).
-    ///  · 파일을 지우면 이 숫자는 0이 되지만, 그때는 <b>서버가 센 값</b>이 막는다(두 출처 설계).
+    ///  · ⚠️ 파일을 지우면 이 숫자는 0이 된다. <b>오프라인 중에는 이것을 막을 방법이 없고</b>,
+    ///    온라인으로 돌아온 뒤에야 서버가 센 값이 막는다(자세한 설명은 <c>Core/OfflineUsageStore.cs</c>).
     /// </summary>
     public static string UsageFile => Path.Combine(Root, "usage.bin");
 

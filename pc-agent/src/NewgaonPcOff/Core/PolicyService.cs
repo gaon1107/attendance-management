@@ -128,6 +128,9 @@ internal sealed class PolicyService : IDisposable
     /// </summary>
     private bool _noContact;
 
+    /// <summary>서버·앱의 날짜가 어긋난다는 경고를 이미 남겼는가(5분마다 같은 줄을 쌓지 않기 위해).</summary>
+    private bool _dateMismatchLogged;
+
     private DateTimeOffset? _lastServerOkAt;
     private DateTimeOffset? _lastTryAt;
     private DateTimeOffset? _nextPollAt;
@@ -224,7 +227,6 @@ internal sealed class PolicyService : IDisposable
         _clock.Reset();
         PolicyCache.Clear();          // 남의 회사 설정을 이 PC에 남겨두지 않는다
         _events.Clear();              // 남의 계정으로 남의 기록을 올리지 않는다
-        OfflineUsageStore.Clear();    // A직원이 쓴 오프라인 횟수를 B직원이 물려받지 않는다
         InvalidatePairedCache();
 
         // ⚠️ 아래 Recompute()는 잠금화면을 닫게 만들고, 그 과정에서 "해제" 기록이 생긴다.
@@ -236,6 +238,12 @@ internal sealed class PolicyService : IDisposable
         try { Recompute(); }
         catch (Exception ex) { Log.Error("연결 변경 후 판정 계산 실패 — 잠그지 않고 계속합니다", ex); }
         finally { _suppressEvents = false; }
+
+        // ⚠️ 오프라인 사용 횟수 파일은 **Recompute 뒤에** 지운다.
+        //    앞에서 지우면 Recompute의 날짜 정리(EnsureToday)가 곧바로 파일을 다시 만들어,
+        //    "연결을 바꾸면 지워진다"는 말이 거짓이 된다(재검수 R-4).
+        //    A직원이 쓴 오프라인 횟수를 B직원이 물려받지 않게 하는 것이 목적이다.
+        OfflineUsageStore.Clear();
 
         if (IsPaired()) _ = PollAsync("연결 변경");
     }
@@ -328,8 +336,13 @@ internal sealed class PolicyService : IDisposable
             // 방금 보낸 기록은 **이번 정책 응답에는 반영돼 있지 않다**(서버가 답할 때는 아직 도착 전이었다).
             //  · 그대로 두면 다음 확인(최대 5분)까지 서버가 센 오프라인 횟수가 옛 값(대개 0)으로 남는다.
             //    그 틈에 앱을 껐다 켜면 한도가 되살아난다(재검수 N-2). 곧바로 다시 물어 최신 값을 받아 둔다.
-            var soon = DateTimeOffset.Now + TimeSpan.FromSeconds(5);
-            if (_nextPollAt == null || _nextPollAt.Value > soon) _nextPollAt = soon;
+            //  · ⚠️ **오프라인 일시사용이 들어 있는 묶음일 때만** 당긴다. 모든 묶음에 걸면 한 달치 백로그를
+            //    비울 때 정책 조회가 수십 번 몰린다(연휴 뒤 아침에 여러 대가 동시에 돌아오면 부담 — 재검수 R-5).
+            if (Array.Exists(batch, e => string.Equals(e.Type, TempUseOfflineType, StringComparison.Ordinal)))
+            {
+                var soon = DateTimeOffset.Now + TimeSpan.FromSeconds(5);
+                if (_nextPollAt == null || _nextPollAt.Value > soon) _nextPollAt = soon;
+            }
 
             // ⚠️ "제외"는 서버가 그 기록을 **버렸다**는 뜻이고, 우리는 방금 그것을 지웠다 = 영원히 사라졌다.
             //    옛 서버로 되돌아갔거나(모르는 종류) 시각이 너무 오래된 경우인데, 잠금·해제는 근로시간 근거다.
@@ -441,6 +454,9 @@ internal sealed class PolicyService : IDisposable
     public bool TryStartTempUse(string? reason, out string error)
     {
         error = "";
+
+        // 자정을 막 넘겼을 수 있다 — 아래 판정과 저장이 **같은 날짜**를 쓰도록 먼저 맞춘다(재검수 R-3).
+        EnsureToday();
         var p = _policy;
         if (p == null || !p.Enabled)
         {
@@ -655,6 +671,17 @@ internal sealed class PolicyService : IDisposable
             var safe = PolicySanitizer.Sanitize(policy, out var problem);
             SetPolicy(safe, problem, fromCache: false);
 
+            // ⚠️ 서버가 말하는 "오늘"과 앱이 보는 "오늘"이 다르면, 오프라인 사용 횟수 방어가 조용히 꺼진다
+            //    (그 숫자는 날짜가 오늘일 때만 쓰기 때문). 가장 흔한 원인은 **서버를 UTC로 배포한 것**이다.
+            //    강제로 고칠 수는 없으니, 무증상으로 넘어가지 않게 한 번은 남긴다(재검수 R-2).
+            if (safe != null && safe.OfflineTempUsedDate != null && safe.OfflineTempUsedDate != CompanyToday()
+                && !_dateMismatchLogged)
+            {
+                _dateMismatchLogged = true;
+                Log.Warn($"서버가 말하는 날짜({safe.OfflineTempUsedDate:yyyy-MM-dd})와 앱이 보는 날짜({CompanyToday():yyyy-MM-dd})가 다릅니다. " +
+                         "서버 시간대(Asia/Seoul) 설정을 확인해야 합니다.");
+            }
+
             // 판정에 쓸 수 없는 정책이면 캐시에 넣지 않는다 — 못 쓰는 값을 오프라인에서 다시 꺼내도 소용없다.
             if (safe != null)
             {
@@ -837,6 +864,25 @@ internal sealed class PolicyService : IDisposable
     private DateOnly CompanyToday()
         => DateOnly.FromDateTime((_clock.Now ?? DateTimeOffset.Now).ToOffset(Hm.CompanyOffset).DateTime);
 
+    /// <summary>
+    /// 날이 바뀌었으면 오늘치 사용 횟수를 0으로 되돌린다(새 날 = 새 허용량).
+    ///  · ⚠️ 판정(<see cref="Recompute"/>)과 실제 사용(<see cref="TryStartTempUse"/>) <b>양쪽 첫머리</b>에서 부른다.
+    ///    한쪽만 부르면 자정 직후 10초 사이에 "판정은 새 날, 저장은 어제 날짜"로 갈려
+    ///    방금 쓴 1회가 파일에서 사라진다(재검수 R-3).
+    ///  · 저장된 값도 오늘 날짜로 0을 남겨, 껐다 켰을 때 어제 숫자를 다시 읽지 않게 한다
+    ///    (저장에 실패해도 <see cref="OfflineUsageStore.Load"/>가 날짜로 한 번 더 걸러낸다).
+    /// </summary>
+    private void EnsureToday()
+    {
+        var today = CompanyToday();
+        if (today == _tempUsedDate) return;
+
+        _tempUsedDate = today;
+        _tempUsedLocal = 0;
+        _tempUsedOfflineLocal = 0;
+        OfflineUsageStore.Save(today, 0);
+    }
+
     // ── 판정 다시 계산 ──────────────────────────────────────────────────────
 
     private void Recompute()
@@ -846,17 +892,7 @@ internal sealed class PolicyService : IDisposable
         //    예외로 죽는다(2-C 실기기 검증에서 실제로 발생). 전제를 코드로 못박아 재발을 막는다.
         _timer.Dispatcher.VerifyAccess();
 
-        // 날이 바뀌면 앱이 따로 세던 [일시사용] 횟수는 0으로 되돌린다(새 날 = 새 허용량).
-        var today = CompanyToday();
-        if (today != _tempUsedDate)
-        {
-            _tempUsedDate = today;
-            _tempUsedLocal = 0;
-            // 오프라인 몫도 새 날에는 새로 시작한다. 저장된 값도 오늘 날짜로 0을 남겨,
-            // 껐다 켰을 때 어제 숫자를 다시 읽지 않게 한다(저장 실패해도 Load가 날짜로 걸러낸다).
-            _tempUsedOfflineLocal = 0;
-            OfflineUsageStore.Save(today, 0);
-        }
+        EnsureToday();
 
         var paired = IsPaired();
 
