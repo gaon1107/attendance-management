@@ -11,8 +11,18 @@
 /** 국세청 사업자등록정보 상태조회(공공데이터포털). 인증키는 .env의 BIZREG_API_KEY. */
 const STATUS_URL = "https://api.odcloud.kr/api/nts-businessman/v1/status";
 
-/** 국세청 응답을 기다리는 최대 시간(ms). 넘으면 "확인 보류"로 넘어간다 — 가입을 막지 않는다. */
-const TIMEOUT_MS = 5000;
+/** 응답 형식을 JSON으로 못박는다(미지정 시 기본값이 바뀌면 파싱이 깨진다). */
+const RETURN_TYPE = "JSON";
+
+/**
+ * 한 번 호출에 기다리는 시간(ms)과 최대 시도 횟수.
+ *
+ * 🔴 **국세청 API는 자주 죽는다**(2026-07-29 실측). 같은 요청이 몇 분 사이에 성공 → `{"code":-5}` →
+ * 무응답으로 오갔다. 새벽 시간대에 특히 심했다. 한 번 더 시도하면 정상 사업자가 "확인 보류"로
+ * 빠지는 일이 줄어든다. 2회 × 2.5초 = **최악 5초**로, 가입 화면이 기다리는 시간은 예전과 같다.
+ */
+const ATTEMPT_TIMEOUT_MS = 2500;
+const MAX_ATTEMPTS = 2;
 
 /** 숫자만 남긴다. "123-45-67890" → "1234567890" */
 export function normalizeBizRegNo(raw: string | null | undefined): string {
@@ -74,36 +84,64 @@ export async function verifyBizRegNo(raw: string): Promise<BizRegCheck> {
     return { state: "unknown", detail: "확인 키가 설정되지 않았습니다." };
   }
 
+  let lastWhy = "연결 실패";
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const got = await callNtsStatus(key, b_no);
+    if (got.ok) return judgeRow(got.row);
+    lastWhy = got.why;
+    // 일시적 장애로 보이면 한 번 더. 마지막 시도였다면 그대로 빠져나간다.
+  }
+  console.warn(`[bizreg] 국세청 확인 실패(${lastWhy}) — 확인 보류로 처리합니다.`);
+  return { state: "unknown", detail: "국세청 확인 서버에 연결하지 못했습니다." };
+}
+
+/** 국세청 응답 한 줄을 우리 판정으로 옮긴다. */
+function judgeRow(row: NtsRow): BizRegCheck {
+  // b_stt_cd: "01"=계속사업자 "02"=휴업자 "03"=폐업자. 미등록 번호는 이 값이 비어 있다.
+  if (row.b_stt_cd === "01") return { state: "verified", detail: "정상 사업자" };
+  if (row.b_stt_cd === "02" || row.b_stt_cd === "03") {
+    return { state: "closed", detail: row.b_stt_cd === "03" ? "폐업한 사업자입니다." : "휴업 중인 사업자입니다." };
+  }
+  return { state: "invalid", detail: "국세청에 등록되지 않은 번호입니다." };
+}
+
+type NtsRow = { b_stt_cd?: string; tax_type?: string };
+
+/**
+ * 국세청에 한 번 물어본다.
+ *  · 성공하면 응답 한 줄을, 실패하면 이유를 돌려준다(예외를 밖으로 던지지 않는다).
+ *  · 🔴 국세청은 **오류도 HTTP 200**으로 준다(`{"code":-5}`). 상태코드만 보면 오류를 정상으로 오인하므로
+ *    본문의 `code` 필드를 반드시 확인한다.
+ */
+async function callNtsStatus(
+  key: string,
+  b_no: string,
+): Promise<{ ok: true; row: NtsRow } | { ok: false; why: string }> {
   const timer = new AbortController();
-  const cut = setTimeout(() => timer.abort(), TIMEOUT_MS);
+  const cut = setTimeout(() => timer.abort(), ATTEMPT_TIMEOUT_MS);
   try {
-    const res = await fetch(`${STATUS_URL}?serviceKey=${encodeURIComponent(key)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ b_no: [b_no] }),
-      signal: timer.signal,
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      console.warn(`[bizreg] 국세청 응답 오류 ${res.status} — 확인 보류로 처리합니다.`);
-      return { state: "unknown", detail: "국세청 확인 서버에 연결하지 못했습니다." };
-    }
+    const res = await fetch(
+      `${STATUS_URL}?serviceKey=${encodeURIComponent(key)}&returnType=${RETURN_TYPE}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ b_no: [b_no] }),
+        signal: timer.signal,
+        cache: "no-store",
+      },
+    );
+    if (!res.ok) return { ok: false, why: `HTTP ${res.status}` };
 
-    const json = (await res.json()) as { data?: { b_stt_cd?: string; tax_type?: string }[] };
+    const json = (await res.json()) as { code?: number; msg?: string; data?: NtsRow[] };
+    // 오류 응답(HTTP 200 + code 필드). 원인을 로그에 남겨야 "왜 확인이 안 되나"를 추적할 수 있다.
+    if (typeof json.code === "number") return { ok: false, why: `국세청 오류 code=${json.code}` };
+
     const row = json.data?.[0];
-    if (!row) return { state: "unknown", detail: "국세청 응답을 읽지 못했습니다." };
-
-    // b_stt_cd: "01"=계속사업자 "02"=휴업자 "03"=폐업자. 미등록 번호는 이 값이 비어 있다.
-    if (row.b_stt_cd === "01") return { state: "verified", detail: "정상 사업자" };
-    if (row.b_stt_cd === "02" || row.b_stt_cd === "03") {
-      return { state: "closed", detail: row.b_stt_cd === "03" ? "폐업한 사업자입니다." : "휴업 중인 사업자입니다." };
-    }
-    return { state: "invalid", detail: "국세청에 등록되지 않은 번호입니다." };
+    if (!row) return { ok: false, why: "응답에 결과가 없음" };
+    return { ok: true, row };
   } catch (e) {
     // 시간 초과·네트워크 장애 — 가입을 막지 않는다.
-    const why = e instanceof Error && e.name === "AbortError" ? "응답 시간 초과" : "연결 실패";
-    console.warn(`[bizreg] 국세청 확인 실패(${why}) — 확인 보류로 처리합니다.`);
-    return { state: "unknown", detail: "국세청 확인 서버에 연결하지 못했습니다." };
+    return { ok: false, why: e instanceof Error && e.name === "AbortError" ? "응답 시간 초과" : "연결 실패" };
   } finally {
     clearTimeout(cut);
   }
