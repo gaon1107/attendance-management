@@ -63,7 +63,8 @@ export default async function LeavePage() {
     ...(balance.pending > 0
       ? [{ label: "결재 대기", value: balance.pending, color: "var(--warning)" }]
       : []),
-    { label: "잔여", value: balance.remaining, color: balance.remaining > 0 ? "var(--primary)" : "var(--danger)" },
+    // 0일은 "다 썼다"는 정상 상태다 — 마이너스일 때만 경고색.
+    { label: "잔여", value: balance.remaining, color: balance.remaining < 0 ? "var(--danger)" : "var(--primary)" },
   ];
 
   const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 16px", whiteSpace: "nowrap" };
@@ -73,7 +74,8 @@ export default async function LeavePage() {
     <AppShell user={me} active="leave" title="휴가" subtitle={`${me.name} 님`}>
       {isCustom && <ApprovalLineEditor requestType="leave" typeLabel="휴가" candidates={candidates} current={currentLine} />}
       {/* 잔여 연차 */}
-      <div className="kpi-grid-3" style={{ marginBottom: 20 }}>
+      {/* 결재 대기가 있으면 칸이 4개가 되므로 4열 그리드로 — 3열이면 "잔여"만 둘째 줄로 떨어진다 */}
+      <div className={balance.pending > 0 ? "kpi-grid" : "kpi-grid-3"} style={{ marginBottom: 20 }}>
         {kpis.map((k) => (
           <div key={k.label} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px" }}>
             <div style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700, marginBottom: 8 }}>{k.label}</div>

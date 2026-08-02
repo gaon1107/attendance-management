@@ -320,7 +320,10 @@ export async function faceClockIn(formData: FormData): Promise<ActionResult> {
   const lng = lngRaw === null ? NaN : Number(lngRaw);
   const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
 
-  await clockIn(mode, hasCoords ? lat : undefined, hasCoords ? lng : undefined);
+  // 실제 출근 처리 결과를 그대로 전한다 — 처리되지 않았는데 "출근 처리되었습니다"라고
+  // 말하면 직원이 출근한 줄 알고 넘어간다(검수 지적).
+  const done = await clockIn(mode, hasCoords ? lat : undefined, hasCoords ? lng : undefined);
+  if (!done.ok) return { ok: false, message: done.reason };
   // 후처리(조용한 표시): 사진 저장 + 위조 판독 — 응답을 보낸 뒤(after) 실행해 화면을 붙잡지 않는다.
   const buffers = verified.buffers;
   if (buffers?.length) after(() => recordClockPhoto(me, "in", buffers, verified.faceRect));

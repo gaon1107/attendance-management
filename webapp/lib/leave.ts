@@ -113,6 +113,10 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10; // 반차 0.5 누적 시 부동소수 오차 방지
 }
 
+// ⚠️ asOf(발생일수를 언제 기준으로 셀지)는 **반드시 기본값(지금)을 쓴다.**
+//    화면은 "지금", 신청 검증은 "휴가 시작일"처럼 기준이 갈리면 입사 1년 미만 직원에서
+//    "화면엔 4일 남았는데 신청은 0일이라 거부" 같은 모순이 생긴다(후속 검수 지적).
+//    특별한 이유로 다른 시점이 필요하면, 화면·검증 **네 곳 모두** 같이 바꾼다.
 export function leaveBalanceInYear(
   user: { hireDate: Date | null; annualLeaveOverride: number | null },
   requests: LeaveBalanceInput[],

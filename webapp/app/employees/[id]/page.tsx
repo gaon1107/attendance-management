@@ -190,7 +190,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
           발생 <b>{leaveGranted}일</b> · 사용 <b>{leaveUsed}일</b>
           {leavePending > 0 && <> · 결재 대기 <b style={{ color: "var(--warning)" }}>{leavePending}일</b></>}
-          {" · "}잔여 <b style={{ color: leaveRemaining > 0 ? "var(--primary)" : "var(--danger)" }}>{leaveRemaining}일</b>. (올해 기준. 입사일 기준으로 자동 발생하며, 신청·승인한 연차·반차가 사용에 반영됩니다. 결재 대기 중인 연차도 미리 잔여에서 빼둡니다.)
+          {" · "}잔여 <b style={{ color: leaveRemaining < 0 ? "var(--danger)" : "var(--primary)" }}>{leaveRemaining}일</b>. (올해 기준. 입사일 기준으로 자동 발생하며, 신청·승인한 연차·반차가 사용에 반영됩니다. 결재 대기 중인 연차도 미리 잔여에서 빼둡니다.)
         </p>
         <AnnualLeaveForm id={emp.id} autoDays={leaveAutoDays} override={emp.annualLeaveOverride} hasHireDate={!!emp.hireDate} />
       </div>

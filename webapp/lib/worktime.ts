@@ -5,6 +5,18 @@ type BreakLike = { startAt: Date; endAt: Date | null };
 type AttendanceLike = { clockIn: Date; clockOut: Date | null; breaks: BreakLike[] };
 
 // 실근무 시간을 분(minute) 단위로 반환
+// ── [검수 C-4] "지금 근무 중"으로 볼 열린 출근 기록의 시간 범위 ──────────────
+// 퇴근을 안 찍은 기록이 하나라도 있으면 그 뒤 출근이 전부 막히던 문제를 고치면서 도입.
+//   · 24시간 안에 시작된 열린 기록 = 지금 근무 중(야간 교대 포함)
+//   · 그보다 오래된 열린 기록 = 퇴근을 못 찍고 넘어간 것 → "근무 중"으로 보지 않는다.
+//     (그 기록을 임의로 닫지는 않는다. 실제 퇴근 시각은 사람만 알기 때문 — 관리자가 [근태 정정]으로 바로잡는다)
+// ⚠️ 서버 액션(app/actions/attendance.ts)과 화면이 **같은 기준**을 써야 한다. 바꿀 땐 양쪽을 함께 본다.
+export const OPEN_SESSION_MS = 24 * 60 * 60 * 1000;
+
+export function openSessionSince(now: Date = new Date()): Date {
+  return new Date(now.getTime() - OPEN_SESSION_MS);
+}
+
 export function workedMinutes(att: AttendanceLike, now: Date = new Date()): number {
   const end = att.clockOut ?? now;
   const totalMs = end.getTime() - att.clockIn.getTime();

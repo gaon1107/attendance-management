@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { clockOut, startBreak, endBreak } from "@/app/actions/attendance";
-import { workedMinutes, formatMinutes } from "@/lib/worktime";
+import { workedMinutes, formatMinutes, openSessionSince } from "@/lib/worktime";
 import { workModeLabel, locationStatusLabel } from "@/lib/location";
 import { clockOutText } from "@/lib/labels";
 import { PHOTO_CONSENT_SINCE } from "@/lib/clock-photo";
@@ -26,12 +26,22 @@ export default async function AttendancePage() {
   if (me.mustChangePassword) redirect("/change-password");
 
   // 퇴근 안 한(=근무 중) 기록 + 외출 내역
+  //  ⚠️ 24시간 안에 시작한 것만 "근무 중"으로 본다 — 서버 액션(clockIn/clockOut)과 같은 기준(검수 C-4).
+  //     예전엔 며칠 전 미퇴근 기록 하나 때문에 화면이 계속 "근무 중"으로 굳어 출근 버튼이 아예 사라졌다.
   const open = await prisma.attendance.findFirst({
-    where: { userId: me.id, clockOut: null },
+    where: { userId: me.id, clockOut: null, clockIn: { gte: openSessionSince() } },
     orderBy: { clockIn: "desc" },
     include: { breaks: true },
   });
   const openBreak = open?.breaks.find((b) => !b.endAt) ?? null;
+
+  // 24시간이 지나도록 퇴근이 안 찍힌 기록 — 직원에게 알려 [근태 정정]으로 바로잡게 한다.
+  //  (우리가 임의로 퇴근 시각을 지어내지 않는다. 실제 퇴근 시각은 본인만 안다)
+  const staleOpen = await prisma.attendance.findFirst({
+    where: { userId: me.id, clockOut: null, clockIn: { lt: openSessionSince() } },
+    orderBy: { clockIn: "desc" },
+    select: { clockIn: true },
+  });
 
   // 오늘 기록
   const startOfToday = new Date();
@@ -172,6 +182,27 @@ export default async function AttendancePage() {
             </div>
           )}
         </div>
+
+        {/* 퇴근을 못 찍고 하루가 넘어간 기록이 있으면 알려준다. 출근은 정상적으로 할 수 있다(검수 C-4). */}
+        {staleOpen && (
+          <div
+            style={{
+              background: "#FEF3C7",
+              border: "1px solid #FCD34D",
+              borderRadius: 12,
+              padding: "12px 14px",
+              marginBottom: 12,
+              fontSize: 13,
+              color: "#92400E",
+              lineHeight: 1.6,
+            }}
+          >
+            <b>퇴근 기록이 없는 날이 있어요.</b>
+            <br />
+            {staleOpen.clockIn.toLocaleDateString("ko-KR", { month: "long", day: "numeric" })} 출근 기록에 퇴근 시각이
+            비어 있습니다. <b>[근태 정정]</b>에서 그날 퇴근 시각을 신청해주세요. (오늘 출근·퇴근은 그대로 하시면 됩니다)
+          </div>
+        )}
 
         {!working && (faceUser ? <FaceClockPanel action="in" minPercent={faceMinPercent} /> : <ClockInPanel />)}
 

@@ -100,11 +100,14 @@ export default async function LeaveApprovalsPage({
       for (const r of pendingReqs) {
         if (!leaveTypeDeducts(r.type)) continue;
         const year = r.startDate.getFullYear();
-        const bal = leaveBalanceInYear(r.user, byUser.get(r.userId) ?? [], year, r.startDate);
-        // 이 건은 대기라 이미 잔여에서 빠져 있다 → 되돌려 더한 값이 "이 건에 쓸 수 있는 몫".
-        const availableForThis = Math.round((bal.remaining + r.days) * 10) / 10;
+        const bal = leaveBalanceInYear(r.user, byUser.get(r.userId) ?? [], year);
+        // approveLeave와 **같은 공식**을 쓴다: 발생 − 확정 사용분(승인). 대기건은 빼지 않는다.
+        const availableForThis = Math.round((bal.granted - bal.used) * 10) / 10;
         if (r.days > availableForThis) {
-          shortageById.set(r.id, `잔여 부족 — 쓸 수 있는 연차 ${availableForThis}일 / 신청 ${r.days}일`);
+          shortageById.set(
+            r.id,
+            `잔여 부족 — 승인 가능한 연차 ${availableForThis}일 / 신청 ${r.days}일 (발생 ${bal.granted}일 − 사용 ${bal.used}일). 승인되지 않습니다.`
+          );
         }
       }
     }

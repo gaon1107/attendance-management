@@ -86,10 +86,10 @@ export async function GET(request: Request): Promise<Response> {
     c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
     c.border = { bottom: { style: "thin", color: { argb: "FFD1D5DB" } } };
   });
-  ws.autoFilter = { from: "A1", to: "F1" };
+  ws.autoFilter = { from: "A1", to: "G1" }; // 결재대기 열이 늘어 A~G. 범위가 짧으면 필터 정렬 시 값이 어긋난다.
 
   for (const r of filtered) {
-    ws.addRow({ name: r.name, dept: r.dept, hireDate: r.hireDate, granted: r.granted, used: r.used, remain: r.remain });
+    ws.addRow({ name: r.name, dept: r.dept, hireDate: r.hireDate, granted: r.granted, used: r.used, pending: r.pending, remain: r.remain });
   }
 
   // 숫자 열 우측 정렬

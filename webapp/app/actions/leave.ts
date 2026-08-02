@@ -72,16 +72,22 @@ export async function requestLeave(
       toISODate(conflict.startDate) === toISODate(conflict.endDate)
         ? toISODate(conflict.startDate)
         : `${toISODate(conflict.startDate)} ~ ${toISODate(conflict.endDate)}`;
+    // 안내는 상태에 따라 다르게 — 승인된 휴가는 직원이 스스로 취소할 수 없다(관리자 문의 필요).
+    const guide =
+      conflict.status === "approved"
+        ? "이미 확정된 휴가라 직접 취소할 수 없습니다. 날짜를 바꾸시거나, 기존 휴가를 되돌려야 하면 관리자에게 문의해주세요."
+        : "기존 신청을 취소하거나 다른 날짜를 선택해주세요.";
     const state = conflict.status === "approved" ? "승인된" : "결재 대기 중인";
     return {
-      error: `이미 ${state} ${leaveTypeLabel(conflict.type)}(${when})와 날짜가 겹칩니다. 기존 신청을 취소하거나 다른 날짜를 선택해주세요.`,
+      error: `이미 ${state} ${leaveTypeLabel(conflict.type)}(${when})와 날짜가 겹칩니다. ${guide}`,
     };
   }
 
   // ② 연차·반차는 잔여를 넘을 수 없다(병가·경조·공가·특별·조퇴는 차감 안 함).
   //    잔여 = 그 해 발생 − 승인분 − 대기분. 대기분까지 빼는 이유는 lib/leave.ts 설명 참고(검수 C-2).
   if (leaveTypeDeducts(type)) {
-    const balance = leaveBalanceInYear(me, mine, start.getFullYear(), start);
+    // asOf는 기본값(지금) — 화면에 보이는 잔여와 반드시 같은 숫자여야 한다(lib/leave.ts 주의사항 참고).
+    const balance = leaveBalanceInYear(me, mine, start.getFullYear());
     if (days > balance.remaining) {
       const detail =
         balance.pending > 0
@@ -96,6 +102,29 @@ export async function requestLeave(
   const created = await prisma.leaveRequest.create({
     data: { companyId: me.companyId, userId: me.id, type, startDate: start, endDate: end, days, reason },
   });
+
+  // 🔒 동시 요청 방어 — 위 겹침 검사와 생성 사이에 다른 요청이 끼어들면 둘 다 통과해
+  //    같은 기간 신청이 2건 만들어진다(새 탭 두 개·폼 재제출·더블클릭).
+  //    만든 직후 같은 종류·같은 기간의 대기 건을 세어, 먼저 만들어진 것만 남기고 내 것을 지운다.
+  //    (출퇴근에서 쓴 방식과 같다 — 두 요청이 같은 정렬을 보므로 결과가 하나로 수렴한다)
+  const twins = await prisma.leaveRequest.findMany({
+    where: {
+      userId: me.id,
+      companyId: me.companyId,
+      type,
+      startDate: start,
+      endDate: end,
+      status: "pending",
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true },
+  });
+  if (twins.length > 1 && twins[0].id !== created.id) {
+    await prisma.leaveRequest.delete({ where: { id: created.id } }); // 결재단계 생성 전이라 딸린 자료 없음
+    revalidatePath("/leave");
+    return { error: "이미 같은 기간으로 신청되었습니다." };
+  }
+
   // 부서장 결재선을 켠 회사면 결재 단계를 생성(비결재선/결재자 없음이면 만들지 않음=관리자 단일 승인).
   await createApprovalStepsIfNeeded(company, me.companyId, me.id, me.departmentId, "leave", created.id);
 
@@ -143,11 +172,14 @@ export async function approveLeave(formData: FormData): Promise<void> {
       select: { type: true, days: true, status: true, startDate: true },
     });
     const year = lv.startDate.getFullYear();
-    // 이 건은 아직 대기 상태로 잔여에서 빠져 있다 → 되돌려 더한 뒤 "이 건을 승인해도 되는지"를 본다.
-    const balance = leaveBalanceInYear(applicant, theirs, year, lv.startDate);
-    const availableForThis = Math.round((balance.remaining + lv.days) * 10) / 10;
+    // 승인 판단 기준 = 발생 − **확정 사용분(승인)**.
+    //   대기 중인 다른 건은 빼지 않는다. 빼면 대기 2건이 서로를 영구 차단해
+    //   둘 다 승인할 수 없는 막다른 길이 생긴다(후속 검수 지적).
+    //   먼저 승인한 건이 '사용'으로 잡히므로, 두 번째 건은 그때 정상적으로 걸린다.
+    const balance = leaveBalanceInYear(applicant, theirs, year);
+    const availableForThis = Math.round((balance.granted - balance.used) * 10) / 10;
     if (lv.days > availableForThis) {
-      return; // 잔여 초과 → 승인하지 않는다(화면은 대기 상태 그대로 유지)
+      return; // 잔여 초과 → 승인하지 않는다(화면은 대기 상태 그대로 유지 + 승인화면에 사유 표시)
     }
   }
 

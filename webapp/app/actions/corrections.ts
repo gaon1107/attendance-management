@@ -32,6 +32,23 @@ export async function requestCorrection(
   if (inRaw && outRaw && outRaw <= inRaw) return { error: "퇴근 시각이 출근 시각보다 빠르거나 같습니다." };
   if (!reason) return { error: "정정 사유를 입력해주세요." };
 
+  // 🔒 미래 날짜 정정 금지 — 아직 오지 않은 날의 출근 기록을 미리 만들 수 없다(검수 M-6).
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  if (targetDate > todayStart) return { error: "미래 날짜는 정정할 수 없습니다." };
+
+  // 🔒 그날 기록이 없다면 출근·퇴근을 **둘 다** 받아야 한다(검수 C-5).
+  //    퇴근 없는 과거 기록이 만들어지면 그 직원은 "계속 근무 중" 상태가 되어
+  //    이후 출근이 막히거나 나중에 수십 시간짜리 근무로 닫힌다.
+  const dayEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1);
+  const existing = await prisma.attendance.findFirst({
+    where: { userId: me.id, companyId: me.companyId, clockIn: { gte: targetDate, lt: dayEnd } },
+    select: { id: true, clockOut: true },
+  });
+  if (!existing && !(inRaw && outRaw)) {
+    return { error: "그날 출퇴근 기록이 없습니다. 새로 만들려면 출근·퇴근 시각을 모두 입력해주세요." };
+  }
+
   const created = await prisma.attendanceCorrection.create({
     data: {
       companyId: me.companyId,
@@ -109,17 +126,49 @@ export async function approveCorrection(formData: FormData): Promise<void> {
     });
     if (existing) {
       // 기존 기록 수정: 입력된 값만 반영(안 준 값은 그대로).
+      const finalIn = newIn ?? existing.clockIn;
+      const finalOut = newOut ?? existing.clockOut;
+      // 🔒 합쳐진 결과가 "퇴근이 출근보다 빠른" 모순 기록이 되면 반영하지 않는다(검수 M-3/3-D).
+      //    예) 기존 09:00~12:00 기록에 "출근 14:00"만 정정하면 14:00 출근 / 12:00 퇴근이 된다.
+      //    신청 단계 검사(출근·퇴근을 함께 낸 경우)만으로는 이 조합을 걸러낼 수 없다.
+      if (finalOut && finalOut <= finalIn) {
+        throw new Error("CORRECTION_TIME_INVERTED"); // 트랜잭션 전체 롤백 → 신청은 대기 상태로 남는다
+      }
       await tx.attendance.update({
         where: { id: existing.id },
         data: { ...(newIn ? { clockIn: newIn } : {}), ...(newOut ? { clockOut: newOut } : {}) },
       });
-    } else if (newIn) {
-      // 기록이 없던 날 = 새로 만든다(출근 시각이 있어야 만들 수 있음).
+      // 🔒 퇴근 시각을 채웠는데 열린 외출이 남아 있으면 함께 닫는다(검수 H-5).
+      //    안 닫으면 그 외출은 "아직 안 돌아온 상태"라 실근무 계산에서 시간이 계속 늘어나
+      //    그날 실근무가 조회할 때마다 줄다가 0이 된다.
+      if (finalOut) {
+        await tx.break.updateMany({
+          where: { attendanceId: existing.id, endAt: null },
+          data: { endAt: finalOut },
+        });
+      }
+    } else if (newIn && newOut) {
+      // 기록이 없던 날 = 새로 만든다.
+      // 🔒 **출근·퇴근을 모두 받았을 때만** 만든다(검수 C-5).
+      //    퇴근 없는 과거 기록을 만들면 그 직원은 "계속 근무 중" 상태가 되어
+      //    이후 출근이 막히거나, 나중에 퇴근을 누를 때 수십 시간짜리 근무로 닫힌다.
       await tx.attendance.create({
         data: { userId: c.userId, companyId: c.companyId, clockIn: newIn, clockOut: newOut, workMode: "office" },
       });
+    } else {
+      // 반영할 대상이 없다(기록도 없고 출근·퇴근 둘 다 갖추지 못함) → 승인해도 바뀌는 게 없으므로
+      // "승인·반영됨"이라고 잘못 표시되지 않게 아예 확정하지 않는다(검수 M-4).
+      throw new Error("CORRECTION_NOTHING_TO_APPLY");
     }
-    // (기록도 없고 출근 시각도 안 준 경우는 반영할 대상이 없어 상태만 승인 처리)
+  }).catch((e: unknown) => {
+    // 위 두 가지 거부 사유는 예상된 상황이라 에러 화면 대신 조용히 대기 상태로 남긴다.
+    //  (관리자에게는 승인 화면의 안내 문구로 이유를 알린다 — page.tsx 참고)
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "CORRECTION_TIME_INVERTED" || msg === "CORRECTION_NOTHING_TO_APPLY") {
+      console.warn(`[approveCorrection] 반영 거부(${msg}) correction=${c.id}`);
+      return;
+    }
+    throw e;
   });
 
   revalidatePath("/corrections/approvals");

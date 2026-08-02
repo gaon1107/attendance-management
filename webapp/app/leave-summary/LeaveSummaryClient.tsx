@@ -97,7 +97,8 @@ export function LeaveSummaryClient({
       </div>
 
       {/* KPI 3개 */}
-      <div className="kpi-grid-3" style={{ marginBottom: 16 }}>
+      {/* 결재 대기가 있으면 칸이 4개 — 3열 그리드면 마지막 칸이 둘째 줄로 떨어진다 */}
+      <div className={pendingSum > 0 ? "kpi-grid" : "kpi-grid-3"} style={{ marginBottom: 16 }}>
         {kpis.map((k) => (
           <div key={k.label} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px" }}>
             <div style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700, marginBottom: 8 }}>{k.label}</div>
@@ -111,7 +112,7 @@ export function LeaveSummaryClient({
       {/* 안내: 발생일수의 의미(오해 방지) + 재직자 집계 고지 */}
       <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
         {isCurrentYear ? (
-          <>‘발생’은 각 직원의 <b>입사일 기준 자동 발생 연차</b>(관리자가 직원 상세에서 예외 조정 가능)이며, ‘사용’은 <b>{year}년에 시작한</b> 승인된 연차·반차 합계입니다.</>
+          <>‘발생’은 각 직원의 <b>입사일 기준 자동 발생 연차</b>(관리자가 직원 상세에서 예외 조정 가능)이며, ‘사용’은 <b>{year}년에 시작한</b> 승인된 연차·반차 합계입니다. <b>‘결재대기’는 아직 승인 전이지만 잔여에서 미리 빼둔 몫</b>입니다(같은 연차를 두 번 쓰지 못하게). 즉 <b>잔여 = 발생 − 사용 − 결재대기</b>.</>
         ) : (
           <><b>{year}년</b> 이력 조회 — ‘사용’은 그 해에 시작한 승인 연차·반차 합계입니다. 연도별 <b>발생 이력이 없어 발생·잔여는 표시하지 않습니다</b>(현재 설정값과 달라 오해를 부를 수 있어 생략).</>
         )}{" "}
