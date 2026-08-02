@@ -174,8 +174,11 @@ export default async function ReportsPage({
       overtime: overtimeMinutesOf(u.dayMinutes),
       absent: absentCountFor(u.id, u.workDays, u.shiftGroupId, u.days, leaveByUser.get(u.id) ?? new Set(), u.hireDate, u.deactivatedAt),
       breaks: u.breaks,
-      // 화면에 "(퇴사)"가 보이는데 "퇴사"로 검색되지 않으면 없는 줄 안다(검수 3차 N-1)
-      search: [u.name, u.employeeNo ?? "", u.role === "admin" ? "관리자" : "직원", u.deactivatedAt && u.deactivatedAt < end ? "퇴사" : "재직"].join(" ").toLowerCase(),
+      // ⚠️ 검색 대상에 "퇴사/재직"을 넣지 않는다(잠깐 넣었다가 되돌림 — 검수 4차).
+      //    ① 화면 검색어 q는 그대로 엑셀·PDF로 넘어가는데 서버는 이 두 낱말을 모르니 **빈 법정문서**가 만들어졌다.
+      //    ② 부분일치라 "재" 한 글자가 재직자 전원을 잡아, 이름·사번으로 좁히려는 검색이 망가졌다.
+      //    퇴사자는 이름 옆 (퇴사) 표시와 엑셀 [직원별 요약]의 재직상태 칸으로 구분한다.
+      search: [u.name, u.employeeNo ?? "", u.role === "admin" ? "관리자" : "직원"].join(" ").toLowerCase(),
     }))
     .sort((a, b) => b.minutes - a.minutes);
 

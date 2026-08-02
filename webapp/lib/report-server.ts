@@ -134,12 +134,14 @@ export async function buildReportBlocks(opts: {
       cur.setDate(cur.getDate() + 1);
     }
   };
-  // 종류를 그대로 적는다 — "조퇴 결재 대기"를 "휴가 결재 대기"로 적으면 종일 무단결근이 휴가처럼 보인다(검수 2차 M-5).
-  for (const l of pendingLeaves) addNote(l.userId, l.startDate, l.endDate, `${leaveTypeLabel(l.type)} 결재 대기`);
+  // ⚠️ 넣는 순서 = 우선순위(먼저 잡힌 사유가 남는다). **확정된 사실(승인)을 미확정(결재 대기)보다 앞에** 둔다 —
+  //    승인된 조퇴가 있는 날에 다른 신청이 대기 중이라고 "결재 대기"로 적으면 확정 사실이 묻힌다(검수 4차 M-2).
+  //  · 승인된 조퇴는 휴가일이 아니라 결근으로 남는다(무단결근을 숨기지 않기 위함) — 이유만 적어 준다.
+  for (const l of leaves) if (l.type === "early_leave") addNote(l.userId, l.startDate, l.endDate, "조퇴 승인");
   for (const t of trips) addNote(t.userId, t.startDate, t.endDate, "출장 승인");
   for (const r of remotes) addNote(r.userId, r.startDate, r.endDate, "재택 승인");
-  // 승인된 조퇴는 휴가일이 아니라 결근으로 남는다(무단결근을 숨기지 않기 위함) — 이유는 적어 준다(검수 3차 N-6).
-  for (const l of leaves) if (l.type === "early_leave") addNote(l.userId, l.startDate, l.endDate, "조퇴 승인");
+  // 종류를 그대로 적는다 — "조퇴 결재 대기"를 "휴가 결재 대기"로 적으면 종일 무단결근이 휴가처럼 보인다(검수 2차 M-5).
+  for (const l of pendingLeaves) addNote(l.userId, l.startDate, l.endDate, `${leaveTypeLabel(l.type)} 결재 대기`);
 
   type Acc = {
     id: string; name: string; employeeNo: string | null; role: string;
@@ -228,11 +230,14 @@ export async function buildReportBlocks(opts: {
     //    대신 그날 출근도 했다는 것을 라벨에 함께 적어, 근무일수와 휴가가 같은 날 겹친 이유를 알 수 있게 한다.
     const onLeaveSet = new Set(onLeave);
     for (const iso of leaveAll) {
+      // "(출근 기록 있음)"은 **종일 휴가인데 출근 기록이 있는** 이상한 날에만 붙인다.
+      //  반차는 그날 출근하는 것이 정상이라 매번 붙으면 정상 근무가 이상 징후처럼 보인다(검수 4차 경미).
       const attendedThatDay = !onLeaveSet.has(iso);
+      const hasFullDay = coversOf(iso).some((sp) => !sp.half);
       u.rows.push({
         date: iso,
         kind: "leave",
-        kindLabel: `휴가 · ${labelsOf(iso)}${attendedThatDay ? " (출근 기록 있음)" : ""}`,
+        kindLabel: `휴가 · ${labelsOf(iso)}${attendedThatDay && hasFullDay ? " (출근 기록 있음)" : ""}`,
         ...blank,
       });
     }
