@@ -1,20 +1,16 @@
-// 법정 근로기록 엑셀(.xlsx) 내보내기 — 관리자만. 기간 내 날짜별 상세(출근·퇴근·실근무).
+// 법정 근로기록 엑셀(.xlsx) 내보내기 — 관리자만.
+//  · 1번 시트 "근태기록": 날짜별 상세(출근·퇴근·실근무) + **결근·휴가 줄**
+//  · 2번 시트 "직원별 요약": 리포트 화면 표와 같은 인원·같은 숫자(급여 정산용)
+//  ※ 대상자·결근/휴가 판정은 lib/report-server.ts(→ lib/report-days.ts) 한 곳에서 만든다.
+//    예전엔 이 파일이 출근 기록만 읽어 **한 달 내내 결근한 직원이 통째로 빠졌다**(검수 H-7).
 import ExcelJS from "exceljs";
 import { getCurrentUser } from "@/lib/session";
-import { prisma } from "@/lib/db";
-import { workedMinutes, effectiveEnd, isUnclosed } from "@/lib/worktime";
-import { workModeLabel, locationStatusLabel } from "@/lib/location";
-import { clockOutText } from "@/lib/labels";
+import { formatMinutes } from "@/lib/worktime";
 import { parseAnchor, toISODate } from "@/lib/period";
-import { queryTerms, matchesTerms } from "@/lib/search";
+import { buildReportBlocks } from "@/lib/report-server";
 
 // exceljs는 Node 런타임(스트림) 필요 — Edge 런타임으로 실행되지 않도록 고정.
 export const runtime = "nodejs";
-
-function hhmm(d: Date | null): string {
-  if (!d) return "";
-  return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
-}
 
 export async function GET(request: Request): Promise<Response> {
   const me = await getCurrentUser();
@@ -55,29 +51,36 @@ export async function GET(request: Request): Promise<Response> {
     toISO = toISODate(capEnd);
   }
 
-  const all = await prisma.attendance.findMany({
-    where: { companyId: me.companyId, clockIn: { gte: start, lt: end } },
-    include: { user: true, breaks: true },
-    orderBy: [{ clockIn: "asc" }],
+  // 대상자·결근/휴가 판정은 공용 조립기가 만든다(리포트 화면과 같은 규칙·같은 인원).
+  //  통합검색어(q)도 같은 규칙(이름·사번·역할)으로 여기서 적용된다 — 사번을 포함해야 동명이인이 구분된다.
+  const standardMin = Math.round((me.company.standardWorkHours ?? 8) * 60);
+  const people = await buildReportBlocks({
+    companyId: me.companyId, start, end, q: url.searchParams.get("q") ?? "", now, standardMin,
   });
-
-  // 통합검색어(q)가 있으면 화면(ReportsClient)·PDF와 동일한 OR 규칙으로 직원(이름·사번·역할)을 거른다.
-  // → "화면에 보이는 직원만" 엑셀에 담긴다. q가 없으면 기간 전체.
-  //   ※ 사번(employeeNo)을 반드시 포함해야 화면·PDF·엑셀 세 산출물이 같은 검색 결과를 낸다(동명이인 구분).
-  const terms = queryTerms(url.searchParams.get("q") ?? "");
-  const rows = terms.length
-    ? all.filter((r) => matchesTerms([r.user.name, r.user.employeeNo ?? "", r.user.role === "admin" ? "관리자" : "직원"].join(" ").toLowerCase(), terms))
-    : all;
 
   // ── 엑셀 워크북 만들기 ────────────────────────────────────────────────
   const wb = new ExcelJS.Workbook();
   wb.creator = "근태관리";
-  const ws = wb.addWorksheet("근태기록", { views: [{ state: "frozen", ySplit: 1 }] }); // 헤더 행 고정
 
+  // 헤더 행 공통 서식: 굵게 + 회색 배경 + 가운데 정렬
+  const styleHeader = (ws: ExcelJS.Worksheet) => {
+    const headerRow = ws.getRow(1);
+    headerRow.font = { bold: true, color: { argb: "FF374151" } };
+    headerRow.alignment = { vertical: "middle", horizontal: "center" };
+    headerRow.eachCell((c) => {
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
+      c.border = { bottom: { style: "thin", color: { argb: "FFD1D5DB" } } };
+    });
+  };
+
+  // 1번 시트: 날짜별 상세(출근 + 결근 + 휴가)
+  const ws = wb.addWorksheet("근태기록", { views: [{ state: "frozen", ySplit: 1 }] }); // 헤더 행 고정
   ws.columns = [
     { header: "이름", key: "name", width: 12 },
+    { header: "사번", key: "employeeNo", width: 10 },
     { header: "역할", key: "role", width: 8 },
     { header: "날짜", key: "date", width: 13 },
+    { header: "구분", key: "kind", width: 14 }, // 출근 · 결근 · 휴가 · 연차
     { header: "근무형태", key: "workMode", width: 12 },
     { header: "위치확인", key: "location", width: 12 },
     { header: "출근", key: "in", width: 8 },
@@ -85,36 +88,67 @@ export async function GET(request: Request): Promise<Response> {
     { header: "실근무(분)", key: "worked", width: 12 },
     { header: "외출(회)", key: "breaks", width: 10 },
   ];
+  styleHeader(ws);
+  ws.autoFilter = { from: "A1", to: "K1" };
 
-  // 헤더 행 서식: 굵게 + 회색 배경 + 가운데 정렬 + 자동 필터
-  const headerRow = ws.getRow(1);
-  headerRow.font = { bold: true, color: { argb: "FF374151" } };
-  headerRow.alignment = { vertical: "middle", horizontal: "center" };
-  headerRow.eachCell((c) => {
-    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
-    c.border = { bottom: { style: "thin", color: { argb: "FFD1D5DB" } } };
-  });
-  ws.autoFilter = { from: "A1", to: "I1" };
-
-  for (const r of rows) {
-    ws.addRow({
-      name: r.user.name,
-      role: r.user.role === "admin" ? "관리자" : "직원",
-      date: toISODate(r.clockIn),
-      workMode: workModeLabel(r.workMode),
-      location: r.workMode === "office" ? locationStatusLabel(r.locationStatus) : "-",
-      in: hhmm(r.clockIn),
-      // 퇴근 시각이 비어 있으면 "미퇴근"임을 글자로 남긴다 — 빈칸이면 증빙에서 오해를 부른다(검수 C-6).
-      out: r.clockOut ? clockOutText(r.clockIn, r.clockOut) : isUnclosed(r.clockOut, r.clockIn, now) ? "미퇴근" : "근무중",
-      // 퇴근을 안 찍은 기록이 수백 시간으로 부풀어 법정 증빙 숫자에 들어가지 않게 상한 적용.
-      worked: workedMinutes(r, effectiveEnd(r.clockIn, r.clockOut, now)), // 숫자 셀(엑셀에서 합계 가능)
-      breaks: r.breaks.length, // 숫자 셀
-    });
+  for (const p of people) {
+    const roleLabel = p.role === "admin" ? "관리자" : "직원";
+    for (const r of p.rows) {
+      ws.addRow({
+        name: p.name,
+        employeeNo: p.employeeNo ?? "",
+        role: roleLabel,
+        date: r.date,
+        kind: r.kindLabel, // "출근" · "결근" · "휴가 · 연차"
+        workMode: r.workMode,
+        location: r.location,
+        in: r.in,
+        // 퇴근 시각이 비어 있으면 "미퇴근"임을 글자로 남긴다 — 빈칸이면 증빙에서 오해를 부른다(검수 C-6).
+        out: r.kind === "work" ? (r.out || (r.unclosed ? "미퇴근" : "근무중")) : "",
+        worked: r.worked, // 숫자 셀(엑셀에서 합계 가능)
+        breaks: r.breaks, // 숫자 셀
+      });
+    }
   }
-
-  // 숫자 열 우측 정렬
   ws.getColumn("worked").alignment = { horizontal: "right" };
   ws.getColumn("breaks").alignment = { horizontal: "right" };
+
+  // 2번 시트: 직원별 요약 — **재직 전원**이 한 줄씩(출근이 0건이어도 결근과 함께 나온다).
+  //  급여 담당자가 실제로 쓰는 표라, 여기서 사람이 빠지면 급여가 잘못 나간다.
+  const ws2 = wb.addWorksheet("직원별 요약", { views: [{ state: "frozen", ySplit: 1 }] });
+  ws2.columns = [
+    { header: "이름", key: "name", width: 12 },
+    { header: "사번", key: "employeeNo", width: 10 },
+    { header: "역할", key: "role", width: 8 },
+    { header: "재직상태", key: "state", width: 10 },
+    { header: "근무일수", key: "days", width: 10 },
+    { header: "실근무(분)", key: "worked", width: 12 },
+    { header: "실근무", key: "workedText", width: 12 },
+    { header: "초과근무(분)", key: "overtime", width: 13 },
+    { header: "휴가(일)", key: "leave", width: 10 },
+    { header: "결근(일)", key: "absent", width: 10 },
+    { header: "외출(회)", key: "breaks", width: 10 },
+  ];
+  styleHeader(ws2);
+  ws2.autoFilter = { from: "A1", to: "K1" };
+  for (const p of people) {
+    ws2.addRow({
+      name: p.name,
+      employeeNo: p.employeeNo ?? "",
+      role: p.role === "admin" ? "관리자" : "직원",
+      state: p.resigned ? "퇴사" : "재직",
+      days: p.workedDays,
+      worked: p.totalWorked,
+      workedText: formatMinutes(p.totalWorked),
+      overtime: p.overtime,
+      leave: p.leaveDays,
+      absent: p.absentDays,
+      breaks: p.totalBreaks,
+    });
+  }
+  for (const key of ["days", "worked", "overtime", "leave", "absent", "breaks"]) {
+    ws2.getColumn(key).alignment = { horizontal: "right" };
+  }
 
   const buf = await wb.xlsx.writeBuffer();
   const filename = `attendance_${fromISO}_${toISO}.xlsx`;

@@ -7,11 +7,11 @@ import { AppShell } from "@/app/components/AppShell";
 import { ReportsClient, type ReportRow } from "./ReportsClient";
 import { workedMinutes, effectiveEnd } from "@/lib/worktime";
 import { parseAnchor, toISODate } from "@/lib/period";
-import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
+import { effectiveWorkDays } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
 import { leaveDateSet } from "@/lib/leave";
 import { loadShiftContext } from "@/lib/shift-server";
-import { resolveShift } from "@/lib/shift";
+import { absentCount } from "@/lib/report-days";
 
 export default async function ReportsPage({
   searchParams,
@@ -137,6 +137,8 @@ export default async function ReportsPage({
   // 🔴 [후속 검수 치명 6] 결근은 **그 사람이 실제로 재직한 기간**만 센다.
   //    입사일·퇴사일을 안 보면 7/28 입사자의 7월 리포트가 "출근 2일 · 결근 18일"이 된다.
   //    이 숫자가 월 마감·급여 연동에 쓰이므로 틀리면 급여가 잘못 깎인다.
+  //  ⚠️ 판정 규칙 자체는 lib/report-days.ts로 옮겼다(2026-08-03) — 엑셀·PDF가 같은 규칙을 쓰게 하기 위함.
+  //     여기서 규칙을 다시 쓰지 말 것. 규칙을 바꾸려면 그 파일 하나만 고친다.
   function absentCountFor(
     userId: string,
     userWorkDays: string | null,
@@ -146,26 +148,11 @@ export default async function ReportsPage({
     hireDate: Date | null,
     deactivatedAt: Date | null
   ): number {
-    const wd = effectiveWorkDays(userWorkDays, company?.workDays);
-    // 시작: 조회 기간 시작과 입사일 중 늦은 쪽 / 끝: 조회 상한과 퇴사일 중 이른 쪽
-    let from = new Date(start);
-    if (hireDate) {
-      const hire = new Date(hireDate.getFullYear(), hireDate.getMonth(), hireDate.getDate());
-      if (hire > from) from = hire;
-    }
-    let to = new Date(absLimit);
-    if (deactivatedAt) {
-      const left = new Date(deactivatedAt.getFullYear(), deactivatedAt.getMonth(), deactivatedAt.getDate());
-      if (left < to) to = left; // 퇴사일 당일은 세지 않는다(그날은 근무했을 수 있어 기록으로 판단)
-    }
-    let n = 0;
-    for (let cur = new Date(from); cur < to; cur = new Date(cur.getTime() + 86400000)) {
-      const iso = toISODate(cur);
-      // 근무요일 + 쉬는날(공휴일·회사휴무일) 제외는 공통. 교대제는 추가로 그날 조 배정(≠휴무)까지 있어야 근무예정.
-      const isWork = isEffectiveWorkDay(cur, wd, offDays) && (!shiftCtx || resolveShift(shiftCtx, userId, shiftGroupId, iso) !== null);
-      if (isWork && !attended.has(iso) && !leaveDays.has(iso)) n++;
-    }
-    return n;
+    return absentCount({
+      start, absLimit,
+      workDays: effectiveWorkDays(userWorkDays, company?.workDays),
+      offDays, shiftCtx, userId, shiftGroupId, attended, leaveDays, hireDate, deactivatedAt,
+    });
   }
 
   // 클라이언트로 넘길 직원별 요약(직렬화 가능한 순수 객체). 검색은 이름 기준.

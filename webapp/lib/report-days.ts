@@ -1,0 +1,65 @@
+// [단일 출처] 리포트 3형제(화면·엑셀·PDF)의 "그날이 결근인가 / 휴가인가" 판정.
+//
+// 왜 만들었나 (2026-08-03, 검수 H-7 후속):
+//  · 결근 판정 규칙이 리포트 **화면에만** 있었다. 그래서 급여에 쓰는 **엑셀·근로기록부(PDF)에는
+//    결근이 아예 없었고**, 한 달 내내 결근한 직원은 두 산출물에서 통째로 빠졌다.
+//  · 세 곳에 같은 규칙을 복사하면 다음에 또 어긋난다 → 규칙을 여기 하나로 모으고 셋이 같이 쓴다.
+//
+// 규칙(리포트 화면이 쓰던 것 그대로):
+//  · 근무예정일 = 근무요일 ∧ 쉬는날(공휴일·회사휴무일) 아님 ∧ (교대제면 그날 조 배정 ≠ 휴무)
+//  · 결근 = 근무예정일 ∧ 출근기록 없음 ∧ 승인된 휴가일 아님
+//  · 세는 구간 = [조회시작 ↔ 입사일 중 늦은 쪽, 상한(오늘/조회끝 중 이른 쪽) ↔ 퇴사일 중 이른 쪽)
+//    (오늘과 퇴사일 당일은 세지 않는다 — 아직 근무 중일 수 있으므로)
+import { toISODate } from "@/lib/period";
+import { isEffectiveWorkDay } from "@/lib/workdays";
+import { resolveShift, type ShiftContext } from "@/lib/shift";
+
+export type DayBreakdownInput = {
+  start: Date; // 조회 시작(자정)
+  absLimit: Date; // 세는 구간의 끝(미포함) — 보통 min(조회끝, 오늘 자정)
+  workDays: Set<number>; // 그 직원의 실제 근무요일(회사 기본 또는 개인 예외)
+  offDays: Set<string>; // 쉬는 날(공휴일 + 회사휴무일) ISO 집합
+  shiftCtx: ShiftContext | null; // 교대제 회사면 컨텍스트, 비교대면 null(기존 경로)
+  userId: string;
+  shiftGroupId: string | null;
+  attended: Set<string>; // 출근 기록이 있는 날(ISO)
+  leaveDays: Set<string>; // 승인된 휴가일(ISO) — 조퇴는 제외됨(lib/leave.ts leaveDateSet)
+  hireDate: Date | null;
+  deactivatedAt: Date | null;
+};
+
+// 그 직원의 기간을 하루씩 훑어 "결근한 날"과 "휴가로 쉰 날"을 각각 돌려준다.
+//  · onLeave = 근무예정일인데 출근 없이 승인 휴가로 쉰 날(엑셀·PDF에 '휴가' 줄로 남긴다)
+//  · 반차처럼 출근도 한 날은 출근 기록이 있으므로 여기 들어오지 않는다(중복 줄 방지)
+export function dayBreakdown(i: DayBreakdownInput): { absent: string[]; onLeave: string[] } {
+  const absent: string[] = [];
+  const onLeave: string[] = [];
+
+  let from = new Date(i.start);
+  if (i.hireDate) {
+    const hire = new Date(i.hireDate.getFullYear(), i.hireDate.getMonth(), i.hireDate.getDate());
+    if (hire > from) from = hire;
+  }
+  let to = new Date(i.absLimit);
+  if (i.deactivatedAt) {
+    const left = new Date(i.deactivatedAt.getFullYear(), i.deactivatedAt.getMonth(), i.deactivatedAt.getDate());
+    if (left < to) to = left; // 퇴사일 당일은 세지 않는다(그날은 근무했을 수 있어 기록으로 판단)
+  }
+
+  for (let cur = new Date(from); cur < to; cur = new Date(cur.getTime() + 86400000)) {
+    const iso = toISODate(cur);
+    const isWork =
+      isEffectiveWorkDay(cur, i.workDays, i.offDays) &&
+      (!i.shiftCtx || resolveShift(i.shiftCtx, i.userId, i.shiftGroupId, iso) !== null);
+    if (!isWork) continue;
+    if (i.attended.has(iso)) continue;
+    if (i.leaveDays.has(iso)) onLeave.push(iso);
+    else absent.push(iso);
+  }
+  return { absent, onLeave };
+}
+
+// 결근 일수만 필요할 때(리포트 화면).
+export function absentCount(i: DayBreakdownInput): number {
+  return dayBreakdown(i).absent.length;
+}

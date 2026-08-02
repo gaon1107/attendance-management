@@ -3,29 +3,17 @@
 // 데이터·기간·검색 규칙은 엑셀 내보내기(reports/export)와 동일하게 맞춰 두 산출물이 어긋나지 않게 한다.
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
-import { prisma } from "@/lib/db";
-import { workedMinutes, formatMinutes, effectiveEnd, isUnclosed } from "@/lib/worktime";
-import { workModeLabel, locationStatusLabel } from "@/lib/location";
-import { clockOutText } from "@/lib/labels";
+import { formatMinutes } from "@/lib/worktime";
 import { parseAnchor, toISODate } from "@/lib/period";
-import { queryTerms, matchesTerms } from "@/lib/search";
 import { DAY_LABELS } from "@/lib/workdays";
+import { buildReportBlocks } from "@/lib/report-server";
 import { PrintButton } from "./PrintButton";
 
-function hhmm(d: Date | null): string {
-  if (!d) return "";
-  return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
+// 요일 라벨 — 결근·휴가 줄은 출근 기록이 없어 날짜 문자열에서 요일을 구한다.
+function dowOf(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return DAY_LABELS[new Date(y, m - 1, d).getDay()];
 }
-
-type DayRow = { date: string; dow: string; workMode: string; location: string; in: string; out: string; breaks: number; worked: number; open: boolean; unclosed: boolean };
-type UserBlock = {
-  id: string; name: string; role: string; employeeNo: string | null;
-  rows: DayRow[];
-  days: Set<string>;
-  totalWorked: number;
-  totalBreaks: number;
-  dayMinutes: Map<string, number>; // 초과근무(연장) 소계용: 날짜별 실근무 합
-};
 
 export default async function ReportPrintPage({
   searchParams,
@@ -79,56 +67,9 @@ export default async function ReportPrintPage({
   // 초과근무 기준 = 기준 일 근무시간(분). 세션에 이미 로드된 회사 정보를 재사용(중복 조회 안 함).
   const standardMin = Math.round((me.company.standardWorkHours ?? 8) * 60);
 
-  const all = await prisma.attendance.findMany({
-    where: { companyId: me.companyId, clockIn: { gte: start, lt: end } },
-    include: { user: true, breaks: true },
-    orderBy: [{ clockIn: "asc" }],
-  });
-
-  // 통합검색어(q) — 엑셀·화면과 동일한 OR 규칙으로 직원(이름·역할)을 거른다. 없으면 기간 전체.
-  const terms = queryTerms(qParam);
-  const rows = terms.length
-    ? all.filter((r) => matchesTerms([r.user.name, r.user.employeeNo ?? "", r.user.role === "admin" ? "관리자" : "직원"].join(" ").toLowerCase(), terms))
-    : all;
-
-  // 직원별로 묶기(출근 시각 오름차순 유지)
-  const byUser = new Map<string, UserBlock>();
-  for (const r of rows) {
-    const cur = byUser.get(r.userId) ?? {
-      id: r.userId, name: r.user.name, role: r.user.role, employeeNo: r.user.employeeNo,
-      rows: [], days: new Set<string>(), totalWorked: 0, totalBreaks: 0, dayMinutes: new Map<string, number>(),
-    };
-    const iso = toISODate(r.clockIn);
-    // 퇴근을 안 찍은 기록이 수백 시간으로 부풀어 법정 증빙에 인쇄되지 않게 상한 적용(검수 C-6).
-    const wm = workedMinutes(r, effectiveEnd(r.clockIn, r.clockOut, now));
-    cur.rows.push({
-      date: iso,
-      dow: DAY_LABELS[r.clockIn.getDay()],
-      workMode: workModeLabel(r.workMode),
-      location: r.workMode === "office" ? locationStatusLabel(r.locationStatus) : "-",
-      in: hhmm(r.clockIn),
-      out: r.clockOut ? clockOutText(r.clockIn, r.clockOut) : "",
-      breaks: r.breaks.length,
-      worked: wm,
-      open: !r.clockOut, // 퇴근 시각 없음 — 확정되지 않은 기록임을 표시
-      // 하루가 지나도록 퇴근이 안 찍힌 기록 = "근무 중"이 아니라 **퇴근 누락**이다.
-      // 법정 증빙에 근무 중으로 인쇄되면 오해를 부르므로 구분해 표시한다(검수 C-6).
-      unclosed: isUnclosed(r.clockOut, r.clockIn, now),
-    });
-    cur.days.add(iso);
-    cur.totalWorked += wm;
-    cur.totalBreaks += r.breaks.length;
-    cur.dayMinutes.set(iso, (cur.dayMinutes.get(iso) ?? 0) + wm);
-    byUser.set(r.userId, cur);
-  }
-  // 초과근무(연장) 소계 = 날짜별 (실근무 − 기준 일 근무시간) 양수 합. 리포트 화면과 같은 정의.
-  const overtimeOf = (dm: Map<string, number>): number => {
-    let ot = 0;
-    for (const v of dm.values()) ot += Math.max(0, v - standardMin);
-    return ot;
-  };
-
-  const blocks = [...byUser.values()].sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  // 대상자·결근/휴가 판정은 공용 조립기가 만든다(엑셀·리포트 화면과 같은 규칙·같은 인원).
+  //  예전엔 출근 기록이 있는 사람만 인쇄돼, 한 달 내내 결근한 직원이 근로기록부에서 통째로 빠졌다(검수 H-7).
+  const blocks = await buildReportBlocks({ companyId: me.companyId, start, end, q: qParam, now, standardMin });
   const issuedLabel = now.toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" });
   const periodLabel = `${fromISO} ~ ${toISO}`;
   const docTitle = `근로기록부_${me.company.name}_${fromISO}_${toISO}`;
@@ -188,14 +129,22 @@ export default async function ReportPrintPage({
             {/* 직원 머리말 */}
             <div style={{ display: "flex", alignItems: "baseline", gap: 10, borderBottom: "1px solid #111", paddingBottom: 6, marginBottom: 8 }}>
               <span style={{ fontSize: 15, fontWeight: 800 }}>{b.name}</span>
-              <span style={{ fontSize: 12, color: "#555" }}>{b.role === "admin" ? "관리자" : "직원"}{b.employeeNo ? ` · 사번 ${b.employeeNo}` : ""}</span>
+              <span style={{ fontSize: 12, color: "#555" }}>
+                {b.role === "admin" ? "관리자" : "직원"}{b.employeeNo ? ` · 사번 ${b.employeeNo}` : ""}{b.resigned ? " · 퇴사" : ""}
+              </span>
             </div>
 
+            {b.rows.length === 0 ? (
+              <div style={{ padding: "10px 0", fontSize: 11.5, color: "#666" }}>
+                이 기간에 출근 기록이 없고, 결근으로 셀 근무예정일도 없습니다.
+              </div>
+            ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
                   <th style={th}>날짜</th>
                   <th style={th}>요일</th>
+                  <th style={th}>구분</th>
                   <th style={th}>근무형태</th>
                   <th style={th}>위치확인</th>
                   <th style={th}>출근(시업)</th>
@@ -208,23 +157,34 @@ export default async function ReportPrintPage({
                 {b.rows.map((r, i) => (
                   <tr key={i}>
                     <td style={td}>{r.date}</td>
-                    <td style={td}>{r.dow}</td>
+                    <td style={td}>{dowOf(r.date)}</td>
+                    {/* 결근은 눈에 띄어야 한다(급여·노무에서 가장 먼저 확인하는 줄) */}
+                    <td style={{ ...td, fontWeight: r.kind === "work" ? 400 : 700, color: r.kind === "absent" ? "#b91c1c" : r.kind === "leave" ? "#1d4ed8" : "#111" }}>
+                      {r.kindLabel}
+                    </td>
                     <td style={td}>{r.workMode}</td>
                     <td style={td}>{r.location}</td>
-                    <td style={td}>{r.in}</td>
+                    <td style={td}>{r.in || "—"}</td>
                     <td style={td}>{r.out || "—"}</td>
-                    <td style={tdNum}>{r.breaks}</td>
-                    <td style={tdNum}>{formatMinutes(r.worked)}{r.unclosed ? " (미퇴근·미확정)" : r.open ? " (근무중)" : ""}</td>
+                    <td style={tdNum}>{r.kind === "work" ? r.breaks : "—"}</td>
+                    <td style={tdNum}>
+                      {r.kind === "work"
+                        ? `${formatMinutes(r.worked)}${r.unclosed ? " (미퇴근·미확정)" : r.open ? " (근무중)" : ""}`
+                        : "—"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            )}
 
             {/* 직원 소계 */}
             <div style={{ display: "flex", gap: 20, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 6, fontSize: 12, fontWeight: 700 }}>
-              <span>근무일수 <b style={{ color: "#1d4ed8" }}>{b.days.size}</b>일</span>
+              <span>근무일수 <b style={{ color: "#1d4ed8" }}>{b.workedDays}</b>일</span>
               <span>실근무 합계 <b style={{ color: "#1d4ed8" }}>{formatMinutes(b.totalWorked)}</b></span>
-              <span>초과근무 합계 <b style={{ color: "#b45309" }}>{formatMinutes(overtimeOf(b.dayMinutes))}</b></span>
+              <span>초과근무 합계 <b style={{ color: "#b45309" }}>{formatMinutes(b.overtime)}</b></span>
+              <span>휴가 <b style={{ color: "#1d4ed8" }}>{b.leaveDays}</b>일</span>
+              <span>결근 <b style={{ color: b.absentDays > 0 ? "#b91c1c" : "#111" }}>{b.absentDays}</b>일</span>
               <span>외출 합계 <b>{b.totalBreaks}</b>회</span>
             </div>
           </div>
@@ -234,6 +194,8 @@ export default async function ReportPrintPage({
         <div style={{ marginTop: 22, paddingTop: 10, borderTop: "1px solid #ccc", fontSize: 10.5, color: "#666", lineHeight: 1.6 }}>
           · 실근무 = (퇴근−출근) − 외출. 근무 중(미퇴근) 기록은 현재 시각까지로 계산됩니다.
           · 초과근무 = 하루 실근무가 기준 일 근무시간({(standardMin / 60)}시간)을 넘은 날의 초과분 합계.
+          · <b>결근</b> = 근무예정일(근무요일 · 공휴일/휴무일 제외 · 교대제면 배정된 날)인데 출근 기록도 승인된 휴가도 없는 날.
+          오늘과 미래, 입사 전·퇴사 후는 세지 않습니다. <b>휴가</b> = 승인된 휴가로 쉰 날(조퇴는 제외).
           · 본 기록은 근로기준법상 근로시간 기록 보존(3년) 증빙용으로 출력할 수 있습니다.
         </div>
       </div>
