@@ -23,6 +23,7 @@ export type CorrectionRow = {
   status: string;
   statusLabel: string;
   progress?: string; // 부서장 결재선 진행상황(대기 건에만)
+  blocked?: string; // 승인해도 반영할 수 없는 사유(대기 건에만). 있으면 승인 버튼이 동작하지 않는다.
   search: string;
 };
 
@@ -108,6 +109,12 @@ export function CorrectionApprovalsClient({
                     <td style={{ ...td, color: "var(--text-sub)", maxWidth: 220 }}>
                       <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.reason}</div>
                       {r.progress && <div style={{ fontSize: 12, color: "var(--warning)", marginTop: 3, fontWeight: 700 }}>{r.progress}</div>}
+                      {/* 승인해도 반영할 수 없는 건 — 이유를 보여줘 "눌러도 아무 일이 없는" 상황을 막는다 */}
+                      {r.blocked && (
+                        <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 3, fontWeight: 700, whiteSpace: "normal" }}>
+                          ⚠ 승인할 수 없습니다 — {r.blocked} 직원에게 다시 신청하도록 안내하거나 반려해주세요.
+                        </div>
+                      )}
                     </td>
                     <td style={{ ...td, textAlign: "right" }}>
                       <div style={{ display: "inline-flex", gap: 8 }}>

@@ -25,6 +25,10 @@ export function ClockInPanel() {
         if (!res.ok) setError(res.reason); // 조용히 무시하지 않고 이유를 보여준다
         else setError("");
         router.refresh();
+      } catch {
+        // 네트워크 끊김·서버 오류 — 아무 표시 없이 끝나면 출근된 줄 오해한다.
+        setMsg("");
+        setError("출근 처리에 실패했습니다. 인터넷 연결을 확인하고 다시 눌러주세요.");
       } finally {
         setBusy(false);
       }

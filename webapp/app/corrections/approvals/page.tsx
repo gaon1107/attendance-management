@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { CorrectionApprovalsClient, type CorrectionRow } from "./CorrectionApprovalsClient";
-import { correctionStatusLabel } from "@/lib/corrections";
+import { correctionStatusLabel, checkApplicable, hmToDate } from "@/lib/corrections";
 import { parseAnchor, toISODate } from "@/lib/period";
 import { getApprovalProgressMap } from "@/lib/approval-server";
 
@@ -80,6 +80,35 @@ export default async function CorrectionApprovalsPage({
     return `부서장 결재 ${p.approvedCount}/${p.total}${p.nextApproverName ? ` · 다음 ${p.nextApproverName}` : ""}`;
   };
 
+  // 대기 건 중 "승인해도 반영할 수 없는" 것을 미리 알려준다(후속 검수 지적).
+  //  · 서버가 승인을 진행하지 않으므로, 이유를 모른 채 버튼만 계속 누르는 일이 없게 한다.
+  //  · 승인 처리와 **같은 함수(checkApplicable)** 를 써서 판단이 어긋나지 않는다.
+  const blockedById = new Map<string, string>();
+  if (pendingReqs.length) {
+    const days = pendingReqs.map((r) => r.targetDate);
+    const minDay = new Date(Math.min(...days.map((d) => d.getTime())));
+    const maxDayEnd = new Date(Math.max(...days.map((d) => d.getTime())));
+    maxDayEnd.setDate(maxDayEnd.getDate() + 1);
+    const atts = await prisma.attendance.findMany({
+      where: {
+        companyId: me.companyId,
+        userId: { in: [...new Set(pendingReqs.map((r) => r.userId))] },
+        clockIn: { gte: minDay, lt: maxDayEnd },
+      },
+      select: { userId: true, clockIn: true, clockOut: true },
+      orderBy: { clockIn: "asc" },
+    });
+    for (const r of pendingReqs) {
+      const dayEnd = new Date(r.targetDate.getFullYear(), r.targetDate.getMonth(), r.targetDate.getDate() + 1);
+      const existing =
+        atts.find((a) => a.userId === r.userId && a.clockIn >= r.targetDate && a.clockIn < dayEnd) ?? null;
+      const newIn = r.requestedIn ? hmToDate(r.targetDate, r.requestedIn) : null;
+      const newOut = r.requestedOut ? hmToDate(r.targetDate, r.requestedOut) : null;
+      const reason = checkApplicable(existing, newIn, newOut);
+      if (reason) blockedById.set(r.id, reason);
+    }
+  }
+
   const toRow = (r: (typeof pendingReqs)[number]): CorrectionRow => {
     const dateText = ymd(r.targetDate);
     const timeText = timeReq(r.requestedIn, r.requestedOut);
@@ -95,6 +124,7 @@ export default async function CorrectionApprovalsPage({
       status: r.status,
       statusLabel,
       progress: progressLabel(r.id),
+      blocked: blockedById.get(r.id),
       search: [r.user.name, r.user.employeeNo ?? "", dateText, timeText, r.reason, statusLabel].join(" ").toLowerCase(),
     };
   };

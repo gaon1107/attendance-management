@@ -397,6 +397,14 @@ model AttendanceCorrection {
   decisionComment String? // 승인/반려 사유(선택 저장). 신청자에게 표시.
   decidedById     String? // 처리한 결재자/관리자 userId(표시용, 관계 없이 id만 보관)
   createdAt    DateTime  @default(now())
+
+  // 조회 색인(2026-08-02 검수 P-2). 데이터·결과는 그대로, 찾는 속도만 빨라진다.
+  //  다른 신청 모델(휴가·외출 등)에는 있는데 여기만 색인이 하나도 없어, 정정 건이 쌓이면
+  //  대시보드의 "승인 대기 건수"와 정정 승인 화면이 매번 표 전체를 훑게 된다.
+  //  · [companyId, status] — 대기 목록·대기 건수(대시보드가 화면 열 때마다 조회)
+  //  · [userId, targetDate] — 그 직원의 그 날짜 정정 이력
+  @@index([companyId, status])
+  @@index([userId, targetDate])
 }
 
 // 외출/외근 신청 — 직원이 사전 신청하고 결재자(관리자 또는 부서장 결재선)가 승인/반려한다.

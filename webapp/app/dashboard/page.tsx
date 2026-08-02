@@ -227,7 +227,8 @@ export default async function DashboardPage() {
   const onBreakNow = todays.filter((r) => !r.clockOut && r.breaks.some((b) => !b.endAt)).length;
   const avgMinutes =
     todays.length > 0
-      ? Math.round(todays.reduce((sum, r) => sum + workedMinutes(r), 0) / todays.length)
+      // 같은 화면 안에서도 기준이 달라지지 않게 상한을 함께 적용(검수 C-6).
+      ? Math.round(todays.reduce((sum, r) => sum + workedMinutes(r, cappedEnd(r.clockIn, r.clockOut, now)), 0) / todays.length)
       : 0;
 
   const todayLabel = new Date().toLocaleDateString("ko-KR", {

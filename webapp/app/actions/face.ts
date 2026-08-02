@@ -7,7 +7,8 @@ import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { enrollFace, unenrollFace, recognizeFace, detectFaces, isFaceConfigured, type FaceRect } from "@/lib/face";
-import { clockIn, clockOut } from "@/app/actions/attendance";
+import { clockIn, performClockOut } from "@/app/actions/attendance";
+import { openSessionSince } from "@/lib/worktime";
 import { analyzeFace } from "@/lib/liveness";
 import { faceBrightness } from "@/lib/quality";
 import { saveClockPhoto, purgeExpiredPhotos, PHOTO_CONSENT_SINCE } from "@/lib/clock-photo";
@@ -196,7 +197,7 @@ async function recordClockPhoto(
     // 방금 처리된 출퇴근 기록 찾기 — 출근=열려있는 기록, 퇴근=가장 최근 닫힌 기록
     const attendance =
       kind === "in"
-        ? await prisma.attendance.findFirst({ where: { userId: me.id, clockOut: null }, orderBy: { clockIn: "desc" } })
+        ? await prisma.attendance.findFirst({ where: { userId: me.id, clockOut: null, clockIn: { gte: openSessionSince() } }, orderBy: { clockIn: "desc" } })
         : await prisma.attendance.findFirst({ where: { userId: me.id, clockOut: { not: null } }, orderBy: { clockOut: "desc" } });
     if (!attendance) return; // 기록이 없으면(중복 클릭 등) 남길 곳이 없음
     // 방금(2분 이내) 생긴 기록이 아니면 저장하지 않는다 — clockIn/clockOut이 중복 클릭 등으로
@@ -340,7 +341,10 @@ export async function faceClockOut(formData: FormData): Promise<ActionResult> {
   const verified = await verifyMyFace(me, formData);
   if (!verified.ok) return { ok: false, message: verified.message };
 
-  await clockOut();
+  // 실제 퇴근 처리 결과를 그대로 전한다 — 처리되지 않았는데 "퇴근 처리되었습니다"라고 말하면
+  // 직원이 퇴근한 줄 알고 넘어간다(후속 검수 지적).
+  const done = await performClockOut();
+  if (!done.ok) return { ok: false, message: done.reason };
   // 후처리(조용한 표시): 사진 저장 + 위조 판독 — 응답을 보낸 뒤(after) 실행해 화면을 붙잡지 않는다.
   const buffers = verified.buffers;
   if (buffers?.length) after(() => recordClockPhoto(me, "out", buffers, verified.faceRect));

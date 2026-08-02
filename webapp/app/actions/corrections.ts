@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { parseYmd } from "@/lib/leave";
-import { isValidHm, hmToDate } from "@/lib/corrections";
+import { isValidHm, hmToDate, checkApplicable } from "@/lib/corrections";
 import { createApprovalStepsIfNeeded, advanceApproval, deleteApprovalSteps, isSelfApprovalBlocked } from "@/lib/approval-server";
 
 // 직원: 근태 정정 요청. 날짜 + (출근/퇴근 중 하나 이상) + 사유.
@@ -36,6 +36,13 @@ export async function requestCorrection(
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   if (targetDate > todayStart) return { error: "미래 날짜는 정정할 수 없습니다." };
+  // 오늘을 정정할 때는 아직 오지 않은 시각도 막는다(오늘 10시에 "퇴근 23시"를 신청하는 것 방지).
+  if (targetDate.getTime() === todayStart.getTime()) {
+    const now = new Date();
+    if ((inRaw && hmToDate(targetDate, inRaw) > now) || (outRaw && hmToDate(targetDate, outRaw) > now)) {
+      return { error: "아직 오지 않은 시각은 신청할 수 없습니다." };
+    }
+  }
 
   // 🔒 그날 기록이 없다면 출근·퇴근을 **둘 다** 받아야 한다(검수 C-5).
   //    퇴근 없는 과거 기록이 만들어지면 그 직원은 "계속 근무 중" 상태가 되어
@@ -93,6 +100,29 @@ export async function approveCorrection(formData: FormData): Promise<void> {
 
   // 🔴 자기 신청을 자기가 승인하지 못하게 막는다(다른 관리자가 없으면 허용 — lib/approval-server.ts 설명).
   if (await isSelfApprovalBlocked(me, c.userId)) return;
+
+  // 그 날짜 범위 [자정, 다음날 자정)
+  const dayStart = c.targetDate;
+  const dayEnd = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate() + 1);
+  const newIn = c.requestedIn ? hmToDate(dayStart, c.requestedIn) : null;
+  const newOut = c.requestedOut ? hmToDate(dayStart, c.requestedOut) : null;
+
+  // 🔒 **결재를 진행하기 전에** 반영 가능한지 먼저 본다(후속 검수 지적).
+  //   결재 단계 승인(advanceApproval)은 별도로 커밋되기 때문에, 나중에 반영이 실패하면
+  //   "결재는 전원 승인인데 신청은 대기"인 모순이 남고, 재시도해도 같은 곳에서 막혀
+  //   **관리자가 몇 번을 눌러도 영원히 승인되지 않는** 상태가 된다.
+  //   그래서 반영 불가 사유는 여기서 미리 걸러 결재 자체를 진행하지 않는다.
+  const preExisting = await prisma.attendance.findFirst({
+    where: { userId: c.userId, companyId: c.companyId, clockIn: { gte: dayStart, lt: dayEnd } },
+    orderBy: { clockIn: "asc" },
+    select: { clockIn: true, clockOut: true },
+  });
+  const blockReason = checkApplicable(preExisting, newIn, newOut);
+  if (blockReason) {
+    console.warn(`[approveCorrection] 반영 불가로 승인 진행 중단(${blockReason}) correction=${c.id}`);
+    return; // 승인 화면에 "승인할 수 없는 신청" 안내가 표시된다(app/corrections/approvals/page.tsx)
+  }
+
   const result = await advanceApproval(me, "correction", c.id, "approve", comment);
   if (result === "denied") return;
   if (result !== "approved") {
@@ -104,11 +134,6 @@ export async function approveCorrection(formData: FormData): Promise<void> {
   }
 
   // 여기부터는 체인 완료(최종 승인) → 실제 기록 반영.
-  // 그 날짜 범위 [자정, 다음날 자정)
-  const dayStart = c.targetDate;
-  const dayEnd = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate() + 1);
-  const newIn = c.requestedIn ? hmToDate(dayStart, c.requestedIn) : null;
-  const newOut = c.requestedOut ? hmToDate(dayStart, c.requestedOut) : null;
 
   // 상태 선점 + 기록 반영을 한 트랜잭션으로 원자화 →
   //  ① 동시 최종승인/재시도에도 status:"pending" 가드로 정확히 1회만 반영(출근레코드 이중 생성 방지)
@@ -124,16 +149,14 @@ export async function approveCorrection(formData: FormData): Promise<void> {
       where: { userId: c.userId, companyId: c.companyId, clockIn: { gte: dayStart, lt: dayEnd } },
       orderBy: { clockIn: "asc" },
     });
+    // 위에서 이미 반영 가능 여부를 확인했지만, 그 사이 기록이 바뀌었을 수 있어 한 번 더 본다.
+    // (여기서 걸리면 트랜잭션 전체가 롤백되어 신청은 대기 상태로 남는다 — 잘못된 기록을 만드는 것보다 안전)
+    const reason = checkApplicable(existing, newIn, newOut);
+    if (reason) throw new Error(`CORRECTION_NOT_APPLICABLE: ${reason}`);
+
     if (existing) {
       // 기존 기록 수정: 입력된 값만 반영(안 준 값은 그대로).
-      const finalIn = newIn ?? existing.clockIn;
       const finalOut = newOut ?? existing.clockOut;
-      // 🔒 합쳐진 결과가 "퇴근이 출근보다 빠른" 모순 기록이 되면 반영하지 않는다(검수 M-3/3-D).
-      //    예) 기존 09:00~12:00 기록에 "출근 14:00"만 정정하면 14:00 출근 / 12:00 퇴근이 된다.
-      //    신청 단계 검사(출근·퇴근을 함께 낸 경우)만으로는 이 조합을 걸러낼 수 없다.
-      if (finalOut && finalOut <= finalIn) {
-        throw new Error("CORRECTION_TIME_INVERTED"); // 트랜잭션 전체 롤백 → 신청은 대기 상태로 남는다
-      }
       await tx.attendance.update({
         where: { id: existing.id },
         data: { ...(newIn ? { clockIn: newIn } : {}), ...(newOut ? { clockOut: newOut } : {}) },
@@ -142,29 +165,31 @@ export async function approveCorrection(formData: FormData): Promise<void> {
       //    안 닫으면 그 외출은 "아직 안 돌아온 상태"라 실근무 계산에서 시간이 계속 늘어나
       //    그날 실근무가 조회할 때마다 줄다가 0이 된다.
       if (finalOut) {
+        // ① 퇴근 시각 이전에 시작한 외출 → 퇴근 시각에 복귀한 것으로 본다.
         await tx.break.updateMany({
-          where: { attendanceId: existing.id, endAt: null },
+          where: { attendanceId: existing.id, endAt: null, startAt: { lte: finalOut } },
           data: { endAt: finalOut },
         });
+        // ② 퇴근 시각보다 **늦게** 시작한 외출 → 그대로 퇴근시각을 넣으면 외출시간이 음수가 되어
+        //    실근무가 오히려 늘어난다(후속 검수 지적). 길이 0으로 닫는다.
+        const late = await tx.break.findMany({
+          where: { attendanceId: existing.id, endAt: null, startAt: { gt: finalOut } },
+          select: { id: true, startAt: true },
+        });
+        for (const b of late) {
+          await tx.break.update({ where: { id: b.id }, data: { endAt: b.startAt } });
+        }
       }
-    } else if (newIn && newOut) {
-      // 기록이 없던 날 = 새로 만든다.
-      // 🔒 **출근·퇴근을 모두 받았을 때만** 만든다(검수 C-5).
-      //    퇴근 없는 과거 기록을 만들면 그 직원은 "계속 근무 중" 상태가 되어
-      //    이후 출근이 막히거나, 나중에 퇴근을 누를 때 수십 시간짜리 근무로 닫힌다.
-      await tx.attendance.create({
-        data: { userId: c.userId, companyId: c.companyId, clockIn: newIn, clockOut: newOut, workMode: "office" },
-      });
     } else {
-      // 반영할 대상이 없다(기록도 없고 출근·퇴근 둘 다 갖추지 못함) → 승인해도 바뀌는 게 없으므로
-      // "승인·반영됨"이라고 잘못 표시되지 않게 아예 확정하지 않는다(검수 M-4).
-      throw new Error("CORRECTION_NOTHING_TO_APPLY");
+      // 기록이 없던 날 = 새로 만든다. (출근·퇴근이 모두 있는지는 checkApplicable이 이미 보장)
+      await tx.attendance.create({
+        data: { userId: c.userId, companyId: c.companyId, clockIn: newIn!, clockOut: newOut!, workMode: "office" },
+      });
     }
   }).catch((e: unknown) => {
-    // 위 두 가지 거부 사유는 예상된 상황이라 에러 화면 대신 조용히 대기 상태로 남긴다.
-    //  (관리자에게는 승인 화면의 안내 문구로 이유를 알린다 — page.tsx 참고)
+    // 예상된 거부 사유는 에러 화면 대신 대기 상태로 남긴다(승인 화면에 사유가 표시된다).
     const msg = e instanceof Error ? e.message : String(e);
-    if (msg === "CORRECTION_TIME_INVERTED" || msg === "CORRECTION_NOTHING_TO_APPLY") {
+    if (msg.startsWith("CORRECTION_NOT_APPLICABLE")) {
       console.warn(`[approveCorrection] 반영 거부(${msg}) correction=${c.id}`);
       return;
     }

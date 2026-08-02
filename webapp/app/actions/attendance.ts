@@ -131,11 +131,20 @@ export async function clockIn(
 
 // 퇴근 — 열려있는(퇴근 안 한) 가장 최근 출근 기록에 퇴근 시각을 채운다.
 // 외출 중에 퇴근을 누르면 외출도 함께 종료한다.
+// 폼(<form action={clockOut}>)에서 쓰는 형태 — 결과를 돌려주지 않는다.
 export async function clockOut(): Promise<void> {
+  await performClockOut();
+}
+
+// 실제 퇴근 처리. 결과가 필요한 곳(얼굴 퇴근)은 이 함수를 쓴다.
+//  얼굴 퇴근이 "처리되지 않았는데 퇴근되었습니다"라고 답하던 문제를 막기 위함(후속 검수 지적).
+export type ClockOutResult = { ok: true } | { ok: false; reason: string };
+
+export async function performClockOut(): Promise<ClockOutResult> {
   const me = await getCurrentUser();
-  if (!me) return;
+  if (!me) return { ok: false, reason: "로그인이 풀렸습니다. 다시 로그인해주세요." };
   // 🔒 회사 계정은 사람이 아니다 — 출퇴근을 찍으면 법정 근로시간 기록에 유령 근로자가 생긴다(검수 9).
-  if (me.isOwner) return;
+  if (me.isOwner) return { ok: false, reason: "회사 계정은 출퇴근을 기록하지 않습니다." };
 
   // 닫을 대상 고르기 — 두 경우를 모두 올바르게 처리해야 한다.
   //  ① 이번 근무 세션(24시간 안에 시작)에 열린 기록이 있으면 **그것들을 전부** 닫는다.
@@ -146,36 +155,47 @@ export async function clockOut(): Promise<void> {
   //     ※ 어제 퇴근을 깜빡한 경우라면 오늘 출근을 먼저 찍었을 것이므로 ①에 걸린다.
   //       그때 어제 기록은 건드리지 않고 [근태 정정] 안내 배너로 남긴다(퇴근 시각을 지어내지 않는다).
   const since = openSessionSince();
-  let openList = await prisma.attendance.findMany({
+  const openList = await prisma.attendance.findMany({
     where: { userId: me.id, clockOut: null, clockIn: { gte: since } },
     orderBy: { clockIn: "desc" },
   });
+
   if (openList.length === 0) {
-    openList = await prisma.attendance.findMany({
+    // 지금 근무 중인 기록이 없다. 오래된 미퇴근 기록이 있는지 보고 안내를 다르게 준다.
+    //  ⚠️ 오래된 기록을 "지금" 시각으로 닫지 않는다 — 며칠 전 출근이 수백 시간짜리 근무로
+    //     확정되어 법정 기록이 오염된다. 실제 퇴근 시각은 [근태 정정]으로만 넣을 수 있다.
+    const stale = await prisma.attendance.findFirst({
       where: { userId: me.id, clockOut: null },
       orderBy: { clockIn: "desc" },
-      take: 1,
+      select: { clockIn: true },
     });
+    if (stale) {
+      const when = stale.clockIn.toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
+      return {
+        ok: false,
+        reason: `퇴근할 근무 기록이 없습니다. ${when} 출근 기록의 퇴근 시각이 비어 있으니 [근태 정정]에서 그날 퇴근 시각을 신청해주세요.`,
+      };
+    }
+    return { ok: false, reason: "출근 기록이 없어 퇴근할 수 없습니다." };
   }
-  if (openList.length) {
-    const now = new Date();
-    const ids = openList.map((a) => a.id);
-    // 열린 외출이 있으면 먼저 복귀 처리
-    await prisma.break.updateMany({
-      where: { attendanceId: { in: ids }, endAt: null },
-      data: { endAt: now },
-    });
-    await prisma.attendance.updateMany({
-      where: { id: { in: ids }, clockOut: null }, // 동시 퇴근 요청에도 한 번만 확정(멱등)
-      data: { clockOut: now },
-    });
-  }
+
+  const now = new Date();
+  const ids = openList.map((a) => a.id);
+  // 열린 외출이 있으면 먼저 복귀 처리
+  await prisma.break.updateMany({
+    where: { attendanceId: { in: ids }, endAt: null },
+    data: { endAt: now },
+  });
+  await prisma.attendance.updateMany({
+    where: { id: { in: ids }, clockOut: null }, // 동시 퇴근 요청에도 한 번만 확정(멱등)
+    data: { clockOut: now },
+  });
 
   revalidatePath("/attendance");
   revalidatePath("/dashboard");
 
-  // [접속기록] 실제로 퇴근 처리된 경우에만(열린 출근 기록이 있었을 때).
-  if (openList.length) await logClockAccess(me, "clock_out", openList[0].workMode);
+  await logClockAccess(me, "clock_out", openList[0].workMode);
+  return { ok: true };
 }
 
 // 외출 시작 — 근무 중(출근했고 외출 안 한 상태)일 때만. 사유는 드롭다운에서 받는다.
@@ -185,8 +205,10 @@ export async function startBreak(formData: FormData): Promise<void> {
   // 🔒 회사 계정은 사람이 아니다 — 출퇴근을 찍으면 법정 근로시간 기록에 유령 근로자가 생긴다(검수 9).
   if (me.isOwner) return;
 
+  // 지금 근무 중인 기록에만 외출을 붙인다 — 며칠 전 미퇴근 기록에 오늘 외출이 붙으면
+  // 나중에 그날을 정정할 때 외출 시간이 음수가 되는 등 계산이 꼬인다(후속 검수 지적).
   const open = await prisma.attendance.findFirst({
-    where: { userId: me.id, clockOut: null },
+    where: { userId: me.id, clockOut: null, clockIn: { gte: openSessionSince() } },
     orderBy: { clockIn: "desc" },
   });
   if (!open) return; // 출근 상태가 아니면 무시
@@ -236,8 +258,9 @@ export async function endBreak(): Promise<void> {
   // 🔒 회사 계정은 사람이 아니다 — 출퇴근을 찍으면 법정 근로시간 기록에 유령 근로자가 생긴다(검수 9).
   if (me.isOwner) return;
 
+  // 외출 시작과 같은 기준(지금 근무 중인 기록)을 쓴다.
   const open = await prisma.attendance.findFirst({
-    where: { userId: me.id, clockOut: null },
+    where: { userId: me.id, clockOut: null, clockIn: { gte: openSessionSince() } },
     orderBy: { clockIn: "desc" },
   });
   if (!open) return;
