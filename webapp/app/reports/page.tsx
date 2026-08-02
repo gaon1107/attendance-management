@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { ReportsClient, type ReportRow } from "./ReportsClient";
-import { workedMinutes } from "@/lib/worktime";
+import { workedMinutes, effectiveEnd } from "@/lib/worktime";
 import { parseAnchor, toISODate } from "@/lib/period";
 import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
@@ -78,7 +78,8 @@ export default async function ReportsPage({
   const byUser = new Map<string, { id: string; name: string; employeeNo: string | null; role: string; minutes: number; breaks: number; days: Set<string>; workDays: string | null; shiftGroupId: string | null; dayMinutes: Map<string, number> }>();
   for (const r of records) {
     const cur = byUser.get(r.userId) ?? { id: r.userId, name: r.user.name, employeeNo: r.user.employeeNo, role: r.user.role, minutes: 0, breaks: 0, days: new Set<string>(), workDays: r.user.workDays, shiftGroupId: r.user.shiftGroupId, dayMinutes: new Map<string, number>() };
-    const wm = workedMinutes(r);
+    // 퇴근을 안 찍은 기록이 수백 시간으로 부풀지 않게 상한 적용(검수 C-6 — 대시보드·초과근무 화면과 같은 기준).
+    const wm = workedMinutes(r, effectiveEnd(r.clockIn, r.clockOut, now));
     const iso = toISODate(r.clockIn);
     cur.minutes += wm;
     cur.breaks += r.breaks.length;
@@ -156,7 +157,7 @@ export default async function ReportsPage({
       <ReportsClient rows={rows} from={fromISO} to={toISO} todayISO={todayISO} standardWorkHours={standardWorkHours} exportBase={exportBase} />
 
       <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 12, lineHeight: 1.6 }}>
-        실근무 = (퇴근−출근) − 외출. 근무 중인 기록은 현재 시각까지로 계산됩니다.
+        실근무 = (퇴근−출근) − 외출. 근무 중인 기록은 현재 시각까지로 계산되며, <b>퇴근을 찍지 않은 채 하루가 지난 기록은 출근일 자정까지만</b> 계산합니다(기록이 며칠씩 부풀지 않도록 — 대시보드·초과근무 화면과 같은 기준). 그런 날은 [근태 정정]으로 실제 퇴근 시각을 반영해주세요.
         초과근무 = 하루 실근무가 [설정 → 기준 일 근무시간]({standardWorkHours}시간)을 넘은 날의 초과분 합계입니다.
         엑셀 내보내기는 날짜별 상세(출근·퇴근·근무형태)를 담아 법정 근로기록 증빙에 쓸 수 있습니다.
       </div>

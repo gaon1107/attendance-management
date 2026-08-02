@@ -137,16 +137,26 @@ export async function clockOut(): Promise<void> {
   // 🔒 회사 계정은 사람이 아니다 — 출퇴근을 찍으면 법정 근로시간 기록에 유령 근로자가 생긴다(검수 9).
   if (me.isOwner) return;
 
-  // 이번 근무 세션(24시간 안에 시작)의 열린 기록을 **전부** 닫는다.
-  //  · 예전엔 가장 최근 1건만 닫아서, 중복으로 생긴 나머지가 영영 열린 채 남았고
-  //    그 때문에 이후 출근이 전부 막혔다(검수 C-4).
-  //  · 24시간보다 오래된 열린 기록은 건드리지 않는다 — 실제 퇴근 시각을 우리가 지어낼 수 없다.
-  //    그런 기록은 관리자가 [근태 정정]으로 바로잡는다.
+  // 닫을 대상 고르기 — 두 경우를 모두 올바르게 처리해야 한다.
+  //  ① 이번 근무 세션(24시간 안에 시작)에 열린 기록이 있으면 **그것들을 전부** 닫는다.
+  //     예전엔 가장 최근 1건만 닫아서, 중복으로 생긴 나머지가 영영 열린 채 남았다(검수 C-4).
+  //  ② 세션 안에 열린 기록이 하나도 없는데 더 오래된 열린 기록이 있으면 → **그 한 건을 닫는다.**
+  //     이 경우는 "24시간을 넘겨 일하고 이제 퇴근을 누른 것"(장기 당직 등)으로 봐야 한다.
+  //     여기서 안 닫으면 그 사람은 퇴근 버튼을 눌러도 아무 일이 안 일어난다.
+  //     ※ 어제 퇴근을 깜빡한 경우라면 오늘 출근을 먼저 찍었을 것이므로 ①에 걸린다.
+  //       그때 어제 기록은 건드리지 않고 [근태 정정] 안내 배너로 남긴다(퇴근 시각을 지어내지 않는다).
   const since = openSessionSince();
-  const openList = await prisma.attendance.findMany({
+  let openList = await prisma.attendance.findMany({
     where: { userId: me.id, clockOut: null, clockIn: { gte: since } },
     orderBy: { clockIn: "desc" },
   });
+  if (openList.length === 0) {
+    openList = await prisma.attendance.findMany({
+      where: { userId: me.id, clockOut: null },
+      orderBy: { clockIn: "desc" },
+      take: 1,
+    });
+  }
   if (openList.length) {
     const now = new Date();
     const ids = openList.map((a) => a.id);

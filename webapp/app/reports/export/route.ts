@@ -2,7 +2,7 @@
 import ExcelJS from "exceljs";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
-import { workedMinutes } from "@/lib/worktime";
+import { workedMinutes, effectiveEnd, isUnclosed } from "@/lib/worktime";
 import { workModeLabel, locationStatusLabel } from "@/lib/location";
 import { clockOutText } from "@/lib/labels";
 import { parseAnchor, toISODate } from "@/lib/period";
@@ -104,8 +104,10 @@ export async function GET(request: Request): Promise<Response> {
       workMode: workModeLabel(r.workMode),
       location: r.workMode === "office" ? locationStatusLabel(r.locationStatus) : "-",
       in: hhmm(r.clockIn),
-      out: r.clockOut ? clockOutText(r.clockIn, r.clockOut) : "",
-      worked: workedMinutes(r), // 숫자 셀(엑셀에서 합계 가능)
+      // 퇴근 시각이 비어 있으면 "미퇴근"임을 글자로 남긴다 — 빈칸이면 증빙에서 오해를 부른다(검수 C-6).
+      out: r.clockOut ? clockOutText(r.clockIn, r.clockOut) : isUnclosed(r.clockOut, r.clockIn, now) ? "미퇴근" : "근무중",
+      // 퇴근을 안 찍은 기록이 수백 시간으로 부풀어 법정 증빙 숫자에 들어가지 않게 상한 적용.
+      worked: workedMinutes(r, effectiveEnd(r.clockIn, r.clockOut, now)), // 숫자 셀(엑셀에서 합계 가능)
       breaks: r.breaks.length, // 숫자 셀
     });
   }

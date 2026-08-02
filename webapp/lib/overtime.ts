@@ -24,18 +24,10 @@ export function weekStartMonday(now: Date): Date {
 }
 
 // 주간 합산에서 기록 1건의 "종료 시각"을 정한다.
-//  · 퇴근했으면 그 시각 그대로.
-//  · 미퇴근이면 현재(now)까지 — 단 출근한 날의 자정을 넘지 못하게 막는다.
-// 이유: 직원이 퇴근 버튼을 잊으면 그 기록이 며칠씩 열려 있게 되는데(자동 마감 없음),
-//   주간 합산에서 이를 now까지 세면 한 건이 수십 시간으로 부풀어 허위 "초과(빨강)" 경보가 난다.
-//   자정을 넘기지 않는 사무직 주간근무를 가정하는 기존 지각·조퇴 판정과 같은 전제.
-// ※ 오늘 진행 중인 정상 기록은 now가 아직 그 날 자정 이전이라 영향받지 않는다(실시간 정확).
-export function cappedEnd(clockIn: Date, clockOut: Date | null, now: Date): Date {
-  if (clockOut) return clockOut;
-  const nextMidnight = new Date(clockIn);
-  nextMidnight.setHours(24, 0, 0, 0); // 출근일 바로 다음 자정
-  return now < nextMidnight ? now : nextMidnight;
-}
+// 2026-08-02 검수 C-6: 이 상한이 일부 화면에만 있어 같은 데이터의 근무시간이 화면마다 달랐다.
+//   계산 규칙 자체를 lib/worktime.ts의 effectiveEnd 하나로 모으고, 여기서는 그대로 위임한다.
+//   (야간 교대가 실제보다 적게 계산되던 문제도 그쪽에서 함께 해결됨 — 설명은 worktime.ts 참고)
+export { effectiveEnd as cappedEnd } from "@/lib/worktime";
 
 export type OvertimeLevel = "ok" | "warn" | "over";
 

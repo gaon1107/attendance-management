@@ -1,7 +1,7 @@
 // 근태 상세 표(직원별/내근태 공용) — KPI(근무일수·실근무·지각·결근) + 날짜별 표(출퇴근·결근·휴일근무).
 // showLiveness(기본 꺼짐): 관리자 화면에서만 켜는 "본인 확인" 열 — 출퇴근 사진 판독 결과·사진 열람.
 //   직원 본인 화면(내근태)에는 절대 켜지 않는다(조용한 표시 원칙 — 직원에게 판독 사실을 노출하지 않음).
-import { formatMinutes } from "@/lib/worktime";
+import { formatMinutes, isUnclosed } from "@/lib/worktime";
 import { workModeLabel, locationLabel, hhmm, clockOutText, monthDayDow } from "@/lib/labels";
 import type { DayDetail, ClockPhotoLite } from "@/lib/dayentries";
 
@@ -156,7 +156,12 @@ export function DetailTable({ detail, showLiveness = false }: { detail: DayDetai
                       <td style={{ ...td, color: "var(--text-sub)" }}>{locationLabel(r.locationStatus)}</td>
                       <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{hhmm(r.clockIn)}</td>
                       <td style={{ ...td, fontVariantNumeric: "tabular-nums", color: r.clockOut ? "var(--text)" : "var(--text-sub)" }}>
-                        {r.clockOut ? clockOutText(r.clockIn, r.clockOut) : "근무 중"}
+                        {/* 하루가 지나도록 퇴근이 안 찍힌 기록은 "근무 중"이 아니라 퇴근 누락(검수 C-6) */}
+                        {r.clockOut
+                          ? clockOutText(r.clockIn, r.clockOut)
+                          : isUnclosed(r.clockOut, r.clockIn)
+                            ? "미퇴근"
+                            : "근무 중"}
                       </td>
                       <td style={td}>
                         {e.holiday ? (

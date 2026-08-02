@@ -4,7 +4,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
-import { workedMinutes, formatMinutes } from "@/lib/worktime";
+import { workedMinutes, formatMinutes, effectiveEnd, isUnclosed } from "@/lib/worktime";
 import { workModeLabel, locationStatusLabel } from "@/lib/location";
 import { clockOutText } from "@/lib/labels";
 import { parseAnchor, toISODate } from "@/lib/period";
@@ -17,7 +17,7 @@ function hhmm(d: Date | null): string {
   return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
-type DayRow = { date: string; dow: string; workMode: string; location: string; in: string; out: string; breaks: number; worked: number; open: boolean };
+type DayRow = { date: string; dow: string; workMode: string; location: string; in: string; out: string; breaks: number; worked: number; open: boolean; unclosed: boolean };
 type UserBlock = {
   id: string; name: string; role: string; employeeNo: string | null;
   rows: DayRow[];
@@ -99,7 +99,8 @@ export default async function ReportPrintPage({
       rows: [], days: new Set<string>(), totalWorked: 0, totalBreaks: 0, dayMinutes: new Map<string, number>(),
     };
     const iso = toISODate(r.clockIn);
-    const wm = workedMinutes(r);
+    // 퇴근을 안 찍은 기록이 수백 시간으로 부풀어 법정 증빙에 인쇄되지 않게 상한 적용(검수 C-6).
+    const wm = workedMinutes(r, effectiveEnd(r.clockIn, r.clockOut, now));
     cur.rows.push({
       date: iso,
       dow: DAY_LABELS[r.clockIn.getDay()],
@@ -109,7 +110,10 @@ export default async function ReportPrintPage({
       out: r.clockOut ? clockOutText(r.clockIn, r.clockOut) : "",
       breaks: r.breaks.length,
       worked: wm,
-      open: !r.clockOut, // 미퇴근(근무 중) — 확정되지 않은 기록임을 표시
+      open: !r.clockOut, // 퇴근 시각 없음 — 확정되지 않은 기록임을 표시
+      // 하루가 지나도록 퇴근이 안 찍힌 기록 = "근무 중"이 아니라 **퇴근 누락**이다.
+      // 법정 증빙에 근무 중으로 인쇄되면 오해를 부르므로 구분해 표시한다(검수 C-6).
+      unclosed: isUnclosed(r.clockOut, r.clockIn, now),
     });
     cur.days.add(iso);
     cur.totalWorked += wm;
@@ -210,7 +214,7 @@ export default async function ReportPrintPage({
                     <td style={td}>{r.in}</td>
                     <td style={td}>{r.out || "—"}</td>
                     <td style={tdNum}>{r.breaks}</td>
-                    <td style={tdNum}>{formatMinutes(r.worked)}{r.open ? " (근무중)" : ""}</td>
+                    <td style={tdNum}>{formatMinutes(r.worked)}{r.unclosed ? " (미퇴근·미확정)" : r.open ? " (근무중)" : ""}</td>
                   </tr>
                 ))}
               </tbody>

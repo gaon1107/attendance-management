@@ -17,6 +17,33 @@ export function openSessionSince(now: Date = new Date()): Date {
   return new Date(now.getTime() - OPEN_SESSION_MS);
 }
 
+// ── [검수 C-6] 미퇴근 기록의 "계산상 종료 시각" ────────────────────────────
+// 퇴근 버튼을 잊으면 그 기록이 며칠씩 열려 있는데(자동 마감 없음), 이를 "지금"까지로 세면
+// 한 건이 수백 시간으로 부풀어 리포트·법정 증빙 엑셀에 그대로 인쇄된다.
+// 예전엔 이 상한이 대시보드·초과근무·휴게시간 3곳에만 있고 리포트·엑셀·근로기록부·근태현황·
+// 내근태 5곳에는 없어서, **같은 주인데 화면마다 근무시간이 달랐다.**
+//
+// 규칙:
+//   ① 퇴근을 찍었으면 그 시각 그대로.
+//   ② 아직 24시간이 안 지난 열린 기록 = **진행 중인 근무** → 지금까지 사실대로 센다.
+//      (밤 10시 출근→새벽 2시 같은 야간 교대도 여기 해당해 정확히 잡힌다.
+//       예전 방식은 출근일 자정에서 잘라 야간근무를 실제보다 적게 셌다.)
+//   ③ 24시간이 넘도록 안 닫힌 기록 = **퇴근을 잊은 것** → 출근일 자정까지만 센다.
+//      (사무직 주간근무를 전제한 기존 지각·조퇴 판정과 같은 가정)
+export function effectiveEnd(clockIn: Date, clockOut: Date | null, now: Date = new Date()): Date {
+  if (clockOut) return clockOut;
+  const sessionEnd = new Date(clockIn.getTime() + OPEN_SESSION_MS);
+  if (now <= sessionEnd) return now; // 진행 중인 근무 — 사실대로
+  const nextMidnight = new Date(clockIn);
+  nextMidnight.setHours(24, 0, 0, 0); // 출근일 바로 다음 자정
+  return nextMidnight;
+}
+
+// 퇴근을 안 찍어 "계산상 잘라낸" 기록인지 — 화면에 (미퇴근)으로 표시할 때 쓴다.
+export function isUnclosed(clockOut: Date | null, clockIn: Date, now: Date = new Date()): boolean {
+  return !clockOut && now > new Date(clockIn.getTime() + OPEN_SESSION_MS);
+}
+
 export function workedMinutes(att: AttendanceLike, now: Date = new Date()): number {
   const end = att.clockOut ?? now;
   const totalMs = end.getTime() - att.clockIn.getTime();

@@ -1,5 +1,5 @@
 // 근태 상세(직원별/내근태)용 계산 — 출퇴근 기록 + 결근(과거 근무일 무기록)을 날짜별로 합치고 집계한다.
-import { workedMinutes, isLate, isEarlyLeave } from "@/lib/worktime";
+import { workedMinutes, isLate, isEarlyLeave, effectiveEnd } from "@/lib/worktime";
 import { toISODate } from "@/lib/period";
 import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
 import { leaveTypeLabel, leaveSuppressesLate, leaveSuppressesEarly } from "@/lib/leave";
@@ -60,6 +60,7 @@ export function buildDayEntries(
   //  안 넘기면(비교대) 아래 로직 전부 기존 그대로 = 회귀 0. (호출부가 loadShiftContext+resolveShift로 만든다)
   shiftResolver?: (dateISO: string) => ResolvedShift | null
 ): DayDetail {
+  const nowForCalc = new Date(); // 미퇴근 기록의 근무시간 상한 계산 기준(검수 C-6)
   const wd = effectiveWorkDays(userWorkDays, company?.workDays);
   // 교대제면 조가 시각을 정하므로 지각·조퇴 판정이 항상 가능. 비교대면 회사 기준시각 유무.
   const hasRule = shiftResolver ? true : !!company?.workStartTime;
@@ -92,7 +93,9 @@ export function buildDayEntries(
     if (lt && leaveSuppressesLate(lt)) late = null;
     if (lt && leaveSuppressesEarly(lt)) early = null;
     const approvedLeave = lt ? leaveTypeLabel(lt) : null;
-    return { type: "att", date: r.clockIn, rec: r, holiday: !onWorkDay, late, early, approvedLeave, minutes: workedMinutes(r) };
+    // 퇴근을 안 찍은 기록이 수백 시간으로 부풀지 않게 상한 적용(검수 C-6 — 리포트·근태현황과 같은 기준).
+    const minutes = workedMinutes(r, effectiveEnd(r.clockIn, r.clockOut, nowForCalc));
+    return { type: "att", date: r.clockIn, rec: r, holiday: !onWorkDay, late, early, approvedLeave, minutes };
   });
 
   // 결근 = 과거(오늘 이전) 근무일 중 출근 기록이 없는 날. 단, 승인된 휴가일은 결근이 아니라 "휴가".

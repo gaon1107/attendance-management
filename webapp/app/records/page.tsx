@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { RecordsClient, type RecordRow } from "./RecordsClient";
-import { workedMinutes, formatMinutes, isLate, isEarlyLeave } from "@/lib/worktime";
+import { workedMinutes, formatMinutes, isLate, isEarlyLeave, effectiveEnd, isUnclosed } from "@/lib/worktime";
 import { parseAnchor, toISODate } from "@/lib/period";
 import { workModeLabel, locationLabel, hhmm, clockOutText, monthDayDow } from "@/lib/labels";
 import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
@@ -32,7 +32,8 @@ export default async function RecordsPage({
 
   const sp = await searchParams;
   // 기본 기간: 오늘 하루. from/to는 "YYYY-MM-DD"(달력 값)만 허용 — 이상값은 오늘로 대체(URL 조작·오타 방어).
-  const todayISO = toISODate(new Date());
+  const nowForCalc = new Date(); // 근무시간 상한 계산 기준(검수 C-6)
+  const todayISO = toISODate(nowForCalc);
   const normISO = (s: string | undefined): string => {
     if (s && /^\d{4}-\d{2}-\d{2}$/.test(s)) {
       const d = new Date(s + "T00:00:00");
@@ -126,7 +127,13 @@ export default async function RecordsPage({
     const workMode = workModeLabel(r.workMode);
     const location = locationLabel(r.locationStatus);
     const inText = hhmm(r.clockIn);
-    const outText = r.clockOut ? clockOutText(r.clockIn, r.clockOut) : "근무 중";
+    // 하루가 지나도록 퇴근이 안 찍힌 기록은 "근무 중"이 아니라 **퇴근 누락**이다(검수 C-6).
+    //  2주 전 기록이 "근무 중"으로 보이면 관리자가 실제 상황을 오해한다.
+    const outText = r.clockOut
+      ? clockOutText(r.clockIn, r.clockOut)
+      : isUnclosed(r.clockOut, r.clockIn, nowForCalc)
+        ? "미퇴근"
+        : "근무 중";
     // 검색·표시용 텍스트: 휴일근무 우선, 승인 반차/조퇴 라벨 + 자동 지각/조퇴, 아무 문제 없으면 정상.
     const lateText = holiday
       ? "휴일근무"
@@ -135,7 +142,8 @@ export default async function RecordsPage({
         : late === null && early === null
           ? ""
           : "정상";
-    const worked = formatMinutes(workedMinutes(r));
+    // 퇴근을 안 찍은 기록이 수백 시간으로 부풀지 않게 상한 적용(검수 C-6 — 다른 화면과 같은 기준).
+    const worked = formatMinutes(workedMinutes(r, effectiveEnd(r.clockIn, r.clockOut, nowForCalc)));
     const badge = suspect ? "위조 의심" : review ? "확인 필요" : "";
     // "근무 중"은 지금 이 순간 기준 — 오늘 출근했고 아직 퇴근 안 한 사람만(과거 미퇴근 기록이 부풀리지 않게)
     const isWorkingNow = !r.clockOut && toISODate(r.clockIn) === todayISO;
