@@ -138,6 +138,8 @@ export async function buildReportBlocks(opts: {
   for (const l of pendingLeaves) addNote(l.userId, l.startDate, l.endDate, `${leaveTypeLabel(l.type)} 결재 대기`);
   for (const t of trips) addNote(t.userId, t.startDate, t.endDate, "출장 승인");
   for (const r of remotes) addNote(r.userId, r.startDate, r.endDate, "재택 승인");
+  // 승인된 조퇴는 휴가일이 아니라 결근으로 남는다(무단결근을 숨기지 않기 위함) — 이유는 적어 준다(검수 3차 N-6).
+  for (const l of leaves) if (l.type === "early_leave") addNote(l.userId, l.startDate, l.endDate, "조퇴 승인");
 
   type Acc = {
     id: string; name: string; employeeNo: string | null; role: string;
@@ -204,20 +206,35 @@ export async function buildReportBlocks(opts: {
     });
 
     const blank = { workMode: "-", location: "-", in: "", out: "", breaks: 0, worked: 0, open: false, unclosed: false };
+    // 승인 휴가를 날짜 문자열 구간으로 한 번만 펼쳐 둔다(같은 계산을 날마다 되풀이하지 않도록).
+    const spans = mine
+      .filter((l) => l.type !== "early_leave") // 조퇴는 "휴가로 쉰 날"이 아니다(lib/leave.ts와 같은 기준)
+      .map((l) => ({ s: toISODate(l.startDate), e: toISODate(l.endDate), type: l.type, half: HALF_DAY_TYPES.has(l.type) }));
+    const coversOf = (iso: string) => spans.filter((sp) => iso >= sp.s && iso <= sp.e);
+
     // 그날에 걸린 휴가 종류를 **전부** 적는다 — 오전 반차 + 오후 반차를 쓴 날이 "오후 반차"로만 보이면
     // 법정 문서에서 반나절만 쉰 것처럼 읽힌다(날짜→라벨 맵은 하나만 남긴다).
     const labelsOf = (iso: string): string => {
       const seen: string[] = [];
-      for (const l of mine) {
-        if (l.type === "early_leave") continue;
-        if (iso < toISODate(l.startDate) || iso > toISODate(l.endDate)) continue;
-        const label = leaveTypeLabel(l.type);
+      for (const sp of coversOf(iso)) {
+        const label = leaveTypeLabel(sp.type);
         if (!seen.includes(label)) seen.push(label);
       }
       return seen.length ? seen.join(" · ") : labelByDate.get(iso) ?? "휴가";
     };
-    for (const iso of onLeave) {
-      u.rows.push({ date: iso, kind: "leave", kindLabel: `휴가 · ${labelsOf(iso)}`, ...blank });
+    // 🔴 승인된 휴가는 **출근 기록이 있어도 반드시 한 줄 남긴다**(검수 3차 C-1).
+    //    "출근한 날은 휴가를 세지 않는다"로 했더니, 자정에 잘못 눌린 출근 한 건 때문에
+    //    승인된 연차가 근로기록부에서 통째로 사라졌다(연차는 차감된 채로). 법정 기록에서 사실을 지우면 안 된다.
+    //    대신 그날 출근도 했다는 것을 라벨에 함께 적어, 근무일수와 휴가가 같은 날 겹친 이유를 알 수 있게 한다.
+    const onLeaveSet = new Set(onLeave);
+    for (const iso of leaveAll) {
+      const attendedThatDay = !onLeaveSet.has(iso);
+      u.rows.push({
+        date: iso,
+        kind: "leave",
+        kindLabel: `휴가 · ${labelsOf(iso)}${attendedThatDay ? " (출근 기록 있음)" : ""}`,
+        ...blank,
+      });
     }
     for (const iso of absent) {
       const note = noteByUserDate.get(`${u.id}|${iso}`);
@@ -232,31 +249,24 @@ export async function buildReportBlocks(opts: {
     let overtime = 0;
     for (const v of u.dayMinutes.values()) overtime += Math.max(0, v - standardMin);
 
-    // 휴가 일수 = "그날 휴가로 쉰 정도"의 합. 반차는 0.5일, 하루 최대 1일.
+    // 휴가 일수 = "그날 승인된 휴가의 크기"의 합. 반차는 0.5일, 하루 최대 1일.
     //  · 그날의 승인건을 **전부 더한다** — 오전 반차 + 오후 반차로 하루를 통째로 쉬면 0.5+0.5 = 1일(검수 2차 C-1).
     //    (날짜→종류 맵으로 하나만 보면 반차 2건이 0.5일로 반토막 나고, DB 행 순서에 따라 값이 흔들렸다)
-    //  · 출근 기록이 있는 날은 **반차 몫만** 센다 — 그날은 이미 근무일수로 세었으므로, 종일 휴가까지 더하면
-    //    근무일수+휴가가 실제 날짜 수를 넘는다(검수 2차 C-2). 연차 소진량은 [연차정산] 화면이 단일 출처다.
-    const dayLeaveWeight = (iso: string, attendedThatDay: boolean): number => {
+    //  · 출근 기록이 있는 날도 **그대로 센다** — 승인된 휴가를 숫자에서 빼면 [연차정산]과 어긋나고,
+    //    "연차는 차감됐는데 근로기록부엔 없다"가 된다(검수 3차 C-1). 그래서 근무일수와 휴가 일수는
+    //    같은 날 겹칠 수 있다 — 이 사실을 두 산출물의 안내문에 명시했다.
+    const dayLeaveWeight = (iso: string): number => {
       let w = 0;
-      for (const l of mine) {
-        if (l.type === "early_leave") continue; // 조퇴는 휴가로 쉰 날이 아니다(lib/leave.ts와 같은 기준)
-        const s = toISODate(l.startDate);
-        const e = toISODate(l.endDate);
-        if (iso < s || iso > e) continue;
-        const half = HALF_DAY_TYPES.has(l.type);
-        if (attendedThatDay && !half) continue; // 출근한 날의 종일 휴가는 세지 않는다
-        w += half ? 0.5 : 1;
-      }
+      for (const sp of coversOf(iso)) w += sp.half ? 0.5 : 1;
       return Math.min(1, w);
     };
-    const onLeaveSet = new Set(onLeave);
-    const leaveDaysCount =
-      Math.round(leaveAll.reduce((s, iso) => s + dayLeaveWeight(iso, !onLeaveSet.has(iso)), 0) * 10) / 10;
+    const leaveDaysCount = Math.round(leaveAll.reduce((s, iso) => s + dayLeaveWeight(iso), 0) * 10) / 10;
 
     out.push({
       id: u.id, name: u.name, employeeNo: u.employeeNo, role: u.role,
-      resigned: !!u.deactivatedAt,
+      // "이 기간 안에 이미 퇴사한 사람"만 퇴사로 적는다 — 조회 기간 뒤에 퇴사한 사람의 지난 기록부에
+      // "퇴사"가 찍히면 그 기간에도 퇴사자였던 것처럼 읽힌다(검수 3차 N-2).
+      resigned: !!u.deactivatedAt && u.deactivatedAt < end,
       rows: u.rows,
       workedDays: u.attended.size,
       totalWorked: u.totalWorked,

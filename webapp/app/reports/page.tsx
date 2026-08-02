@@ -98,6 +98,8 @@ export default async function ReportsPage({
     });
   }
   for (const r of records) {
+    // 회사 계정(사람이 아님)은 집계에서 뺀다 — 엑셀·PDF(lib/report-server.ts)와 기준을 맞춘다.
+    if (r.user.isOwner) continue;
     // 재직자 목록에 없는데 기록이 있는 경우 = 기간 중 퇴사한 직원. 그 사람의 기록도 빠뜨리지 않는다.
     const cur = byUser.get(r.userId) ?? { id: r.userId, name: r.user.name, employeeNo: r.user.employeeNo, role: r.user.role, minutes: 0, breaks: 0, days: new Set<string>(), workDays: r.user.workDays, shiftGroupId: r.user.shiftGroupId, dayMinutes: new Map<string, number>(), hireDate: r.user.hireDate, deactivatedAt: r.user.deactivatedAt };
     // 퇴근을 안 찍은 기록이 수백 시간으로 부풀지 않게 상한 적용(검수 C-6 — 대시보드·초과근무 화면과 같은 기준).
@@ -165,13 +167,15 @@ export default async function ReportsPage({
       employeeNo: u.employeeNo,
       initial: u.name.slice(0, 1),
       isAdmin: u.role === "admin",
-      resigned: !!u.deactivatedAt,
+      // 이 기간 안에 이미 퇴사한 사람만 "(퇴사)"로 표시(엑셀·PDF와 같은 기준)
+      resigned: !!u.deactivatedAt && u.deactivatedAt < end,
       days: u.days.size,
       minutes: u.minutes,
       overtime: overtimeMinutesOf(u.dayMinutes),
       absent: absentCountFor(u.id, u.workDays, u.shiftGroupId, u.days, leaveByUser.get(u.id) ?? new Set(), u.hireDate, u.deactivatedAt),
       breaks: u.breaks,
-      search: [u.name, u.employeeNo ?? "", u.role === "admin" ? "관리자" : "직원"].join(" ").toLowerCase(),
+      // 화면에 "(퇴사)"가 보이는데 "퇴사"로 검색되지 않으면 없는 줄 안다(검수 3차 N-1)
+      search: [u.name, u.employeeNo ?? "", u.role === "admin" ? "관리자" : "직원", u.deactivatedAt && u.deactivatedAt < end ? "퇴사" : "재직"].join(" ").toLowerCase(),
     }))
     .sort((a, b) => b.minutes - a.minutes);
 
@@ -190,6 +194,7 @@ export default async function ReportsPage({
 
       <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 12, lineHeight: 1.6 }}>
         실근무 = (퇴근−출근) − 외출. 근무 중인 기록은 현재 시각까지로 계산되며, <b>퇴근을 찍지 않은 채 하루가 지난 기록은 출근일 자정까지만</b> 계산합니다(기록이 며칠씩 부풀지 않도록 — 대시보드·초과근무 화면과 같은 기준). 그런 날은 [근태 정정]으로 실제 퇴근 시각을 반영해주세요.
+        <b>이 기간에 퇴사한 직원도 함께 집계</b>합니다(이름 옆 (퇴사) 표시) — 그래서 집계 인원·1인 평균에 퇴사자가 포함됩니다.
         초과근무 = 하루 실근무가 [설정 → 기준 일 근무시간]({standardWorkHours}시간)을 넘은 날의 초과분 합계입니다.
         엑셀 내보내기는 날짜별 상세(출근·퇴근·근무형태)를 담아 법정 근로기록 증빙에 쓸 수 있습니다.
       </div>
