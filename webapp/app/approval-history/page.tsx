@@ -28,7 +28,7 @@ export default async function ApprovalHistoryPage({
 
   const sp = await searchParams;
   const typeF: RequestType | "all" = TYPES.includes(sp.type as RequestType) ? (sp.type as RequestType) : "all";
-  const statusF: HistoryStatus | "all" = ["pending", "approved", "rejected"].includes(sp.status ?? "") ? (sp.status as HistoryStatus) : "all";
+  const statusF: HistoryStatus | "all" = ["pending", "approved", "rejected", "cancelled"].includes(sp.status ?? "") ? (sp.status as HistoryStatus) : "all";
   const normISO = (s?: string): string => {
     if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
     const d = new Date(s + "T00:00:00");

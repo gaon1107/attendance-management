@@ -23,6 +23,7 @@ const STATUS_STYLE: Record<string, { bg: string; dot: string; color: string }> =
   pending: { bg: "#FEF3C7", dot: "#B45309", color: "#B45309" },
   approved: { bg: "#DCFCE7", dot: "#15803D", color: "#15803D" },
   rejected: { bg: "#FEE2E2", dot: "#B91C1C", color: "#B91C1C" },
+  cancelled: { bg: "#F3F4F6", dot: "#6B7280", color: "#4B5563" }, // 관리자가 승인을 되돌린 건(효력 없음, 연차 복원됨)
 };
 
 export default async function LeavePage() {
@@ -40,8 +41,8 @@ export default async function LeavePage() {
       ? await getApprovalProgressMap(me.companyId, "leave", requests.filter((r) => r.status === "pending").map((r) => r.id))
       : new Map();
 
-  // 처리(승인/반려)된 신청의 처리자 이름 — 결정사유와 함께 "누가" 표시. (한 번에 조회)
-  const deciderIds = [...new Set(requests.map((r) => r.decidedById).filter((v): v is string => !!v))];
+  // 처리(승인/반려/승인취소)한 사람의 이름 — 결정사유와 함께 "누가" 표시. (한 번에 조회)
+  const deciderIds = [...new Set(requests.flatMap((r) => [r.decidedById, r.cancelledById]).filter((v): v is string => !!v))];
   const deciderName = new Map<string, string>(
     deciderIds.length
       ? (await prisma.user.findMany({ where: { companyId: me.companyId, id: { in: deciderIds } }, select: { id: true, name: true } })).map((u) => [u.id, u.name])
@@ -143,6 +144,17 @@ export default async function LeavePage() {
                             {r.status === "rejected" ? "반려 사유" : "승인 메모"}: {r.decisionComment}
                             {r.decidedById && deciderName.get(r.decidedById) && <span style={{ color: "var(--text-sub)" }}> · {deciderName.get(r.decidedById)}</span>}
                             {r.decidedAt && <span style={{ color: "var(--text-sub)" }}> · {ymd(r.decidedAt)}</span>}
+                          </div>
+                        )}
+                        {/* 승인 취소(M-2) — 관리자가 승인을 되돌린 건. 왜·누가·언제를 신청자에게 그대로 보여준다. */}
+                        {r.status === "cancelled" && (
+                          <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 4, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", fontWeight: 700 }}>
+                            승인 취소 사유: {r.cancelReason ?? "—"}
+                            {r.cancelledById && deciderName.get(r.cancelledById) && <span> · {deciderName.get(r.cancelledById)}</span>}
+                            {r.cancelledAt && <span> · {ymd(r.cancelledAt)}</span>}
+                            <div style={{ fontWeight: 400, color: "var(--text-sub)", marginTop: 2 }}>
+                              이 휴가는 취소되어 그날은 휴가로 처리되지 않습니다. 차감됐던 연차는 되돌아왔습니다.
+                            </div>
                           </div>
                         )}
                       </td>

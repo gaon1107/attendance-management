@@ -213,6 +213,49 @@ export async function rejectLeave(formData: FormData): Promise<void> {
   revalidatePath("/approvals");
 }
 
+// 관리자: **이미 승인된 휴가를 되돌린다**(검수 M-2). 회사 격리.
+//
+// 왜 필요한가: 잘못 승인한 휴가를 되돌릴 방법이 없어, 그 날짜가 영구히 막히고(겹침 검사) 연차도 돌아오지 않았다.
+//
+// 어떻게 되돌리나: **기록은 지우지 않고 상태만 "cancelled"로 바꾼다.**
+//  · 소비처(대시보드·근태현황·직원상세·내근태·리포트·연차정산·잔여계산·겹침검사)는 전부 status="approved"만
+//    골라 쓰므로, 상태가 바뀌는 순간 그 날은 휴가가 아니게 되고 연차 잔여도 자동 복원된다.
+//  · 지우지 않는 이유: 근로기준법 보존·감사 추적. 누가·왜·언제 취소했는지(cancelledById·cancelReason·cancelledAt)가 남는다.
+//  · 승인 시점 정보(decidedAt·decisionComment·decidedById)는 **덮어쓰지 않는다** — "언제 승인됐는지"도 기록이다.
+//    (그래서 [휴가 승인]의 처리 내역에서 이 건은 승인했던 그 기간에 그대로 남아 "승인 취소"로 보인다)
+//
+// ⚠️ 이미 지난 날짜의 휴가를 취소하면 **그날이 휴가가 아니게 되어 결근으로 바뀐다**(의도된 동작).
+//    되돌리기 전에 화면에서 경고하고, 사유를 반드시 받는다.
+export async function cancelApprovedLeave(formData: FormData): Promise<void> {
+  const me = await getCurrentUser();
+  if (!me || me.role !== "admin") return; // 관리자(회사 계정 포함)만
+  const id = String(formData.get("id") ?? "");
+  const raw = String(formData.get("comment") ?? "").trim();
+  if (!raw) return; // 취소 사유 필수 — 서버에서도 강제(반려와 같은 규칙)
+  const reason = Array.from(raw).slice(0, 500).join(""); // 코드포인트 기준 상한(이모지 깨짐 방지)
+
+  const lv = await prisma.leaveRequest.findFirst({ where: { id, companyId: me.companyId, status: "approved" } });
+  if (!lv) return; // 이미 취소됐거나 다른 회사 건
+  // 🔴 자기 휴가를 자기가 되돌려 연차를 되살리지 못하게 막는다(승인과 같은 규칙 — 다른 관리자가 없으면 허용).
+  if (await isSelfApprovalBlocked(me, lv.userId)) return;
+
+  // status:"approved" 가드 → 두 관리자가 동시에 눌러도 한 번만 취소된다(멱등).
+  await prisma.leaveRequest.updateMany({
+    where: { id: lv.id, companyId: me.companyId, status: "approved" },
+    data: { status: "cancelled", cancelledAt: new Date(), cancelReason: reason, cancelledById: me.id },
+  });
+
+  // 승인 취소는 여러 화면의 숫자를 되돌린다 — 휴가일·결근·연차 잔여를 쓰는 화면을 함께 갱신.
+  revalidatePath("/leave/approvals");
+  revalidatePath("/leave");
+  revalidatePath("/leave-summary");
+  revalidatePath("/dashboard");
+  revalidatePath("/records");
+  revalidatePath("/my-records");
+  revalidatePath("/reports");
+  revalidatePath("/approval-history");
+}
+
 // 관리자: 직원 연차 수동조정(override) 설정/해제(직원 상세). 회사 격리.
 //  · auto=1  → override를 null로 지워 입사일 기준 자동계산으로 되돌린다.
 //  · 그 외    → 입력한 일수를 override로 저장(특별부여/감액). 자동값보다 우선.

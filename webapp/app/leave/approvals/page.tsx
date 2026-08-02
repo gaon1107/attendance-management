@@ -6,7 +6,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { LeaveApprovalsClient, type LeaveRow } from "./LeaveApprovalsClient";
 import { leaveTypeLabel, leaveStatusLabel, leaveTypeDeducts, leaveBalanceInYear } from "@/lib/leave";
 import { parseAnchor, toISODate } from "@/lib/period";
-import { getApprovalProgressMap, approvalProgressLabel } from "@/lib/approval-server";
+import { getApprovalProgressMap, approvalProgressLabel, isSelfApprovalBlocked } from "@/lib/approval-server";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
@@ -111,11 +111,26 @@ export default async function LeaveApprovalsPage({
     }
   }
 
+  // 승인 취소(M-2) 표시용 준비.
+  //  · 자기 휴가는 자기가 되돌릴 수 없다(서버 액션과 같은 규칙). 회사에 다른 관리자가 있을 때만 막으므로
+  //    한 번만 계산해 두고, 내 신청 줄에서만 버튼을 감춘다(눌러도 안 되는 버튼을 보여주지 않기 위함).
+  const selfCancelBlocked = await isSelfApprovalBlocked(me, me.id);
+  // 취소한 관리자 이름(처리 내역에 "누가 취소했는지" 표시) — 한 번에 조회.
+  const cancellerIds = [...new Set(decidedReqs.map((r) => r.cancelledById).filter((v): v is string => !!v))];
+  const cancellerName = new Map<string, string>(
+    cancellerIds.length
+      ? (await prisma.user.findMany({ where: { companyId: me.companyId, id: { in: cancellerIds } }, select: { id: true, name: true } })).map((u) => [u.id, u.name])
+      : []
+  );
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+
   const toRow = (r: (typeof pendingReqs)[number]): LeaveRow => {
     const typeLabel = leaveTypeLabel(r.type);
     const rl = rangeLabel(r.startDate, r.endDate);
     const statusLabel = leaveStatusLabel(r.status);
     const reason = r.reason || "";
+    const canceller = r.cancelledById ? cancellerName.get(r.cancelledById) : undefined;
     return {
       id: r.id,
       name: r.user.name,
@@ -129,6 +144,14 @@ export default async function LeaveApprovalsPage({
       statusLabel,
       progress: progressLabel(r.id),
       shortage: shortageById.get(r.id),
+      // 승인된 건만 되돌릴 수 있고, 내 휴가는 다른 관리자가 있으면 내가 못 되돌린다.
+      canCancel: r.status === "approved" && !(selfCancelBlocked && r.userId === me.id),
+      selfBlocked: r.status === "approved" && selfCancelBlocked && r.userId === me.id,
+      hasPastDate: r.startDate < startOfToday, // 지난 날짜가 섞이면 "결근으로 바뀜" 경고를 띄운다
+      cancelNote:
+        r.status === "cancelled"
+          ? `취소 사유: ${r.cancelReason ?? "—"}${canceller ? ` · ${canceller}` : ""}${r.cancelledAt ? ` · ${ymd(r.cancelledAt)}` : ""}`
+          : undefined,
       search: [r.user.name, r.user.employeeNo ?? "", typeLabel, rl, reason, statusLabel].join(" ").toLowerCase(),
     };
   };

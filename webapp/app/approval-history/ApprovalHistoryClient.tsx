@@ -36,11 +36,12 @@ const TYPE_BADGE: Record<RequestType, { bg: string; color: string }> = {
   overtime: { bg: "#FFE4E6", color: "#BE123C" },
   trip: { bg: "#E0F2FE", color: "#0369A1" },
 };
-const STATUS_LABEL: Record<string, string> = { pending: "대기", approved: "승인", rejected: "반려" };
+const STATUS_LABEL: Record<string, string> = { pending: "대기", approved: "승인", rejected: "반려", cancelled: "승인 취소" };
 const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
   pending: { bg: "#FEF3C7", color: "#B45309" },
   approved: { bg: "#DCFCE7", color: "#15803D" },
   rejected: { bg: "#FEE2E2", color: "#B91C1C" },
+  cancelled: { bg: "#F3F4F6", color: "#4B5563" }, // 승인을 되돌린 건(효력 없음) — 회색
 };
 
 const TYPE_OPTS: { value: string; label: string }[] = [
@@ -124,6 +125,7 @@ export function ApprovalHistoryClient({
             <option value="pending">대기</option>
             <option value="approved">승인</option>
             <option value="rejected">반려</option>
+            <option value="cancelled">승인 취소</option>
           </select>
         </label>
 

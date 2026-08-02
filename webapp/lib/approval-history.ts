@@ -10,7 +10,8 @@ import { remoteRangeLabel } from "@/lib/remote";
 import { overtimeTimeLabel } from "@/lib/overtime-request";
 import { tripRangeLabel } from "@/lib/trip";
 
-export type HistoryStatus = "pending" | "approved" | "rejected";
+// "cancelled"(승인 취소)는 지금 휴가에만 있다 — 관리자가 잘못 승인한 휴가를 되돌린 상태(2026-08-03).
+export type HistoryStatus = "pending" | "approved" | "rejected" | "cancelled";
 
 // 이력 표 한 줄(정규화).
 export type HistoryRow = {
@@ -106,7 +107,18 @@ export async function listApprovalHistory(
   ]);
 
   const raws: Raw[] = [];
-  for (const r of leaves) raws.push(toRaw("leave", r, `${leaveTypeLabel(r.type)} (${rangeLabel(r.startDate, r.endDate)}) · ${r.days}일`, r.reason));
+  for (const r of leaves) {
+    const raw = toRaw("leave", r, `${leaveTypeLabel(r.type)} (${rangeLabel(r.startDate, r.endDate)}) · ${r.days}일`, r.reason);
+    // 승인 취소된 휴가는 **마지막 처리(취소)**를 보여준다 — 이력 표의 처리자·처리시각·사유는 "가장 최근 결정"을 뜻하므로,
+    // 승인 메모가 남아 있으면 이미 취소된 건이 아직 유효한 승인처럼 읽힌다.
+    // (승인 시점 정보는 DB와 [휴가 승인] 화면에 그대로 남아 있다)
+    if (r.status === "cancelled") {
+      raw.decisionComment = `승인 취소 사유: ${r.cancelReason ?? "—"}`;
+      raw.decidedById = r.cancelledById;
+      raw.decidedAt = r.cancelledAt;
+    }
+    raws.push(raw);
+  }
   for (const r of corrs) {
     const parts = [r.requestedIn ? `출근 ${r.requestedIn}` : "", r.requestedOut ? `퇴근 ${r.requestedOut}` : ""].filter(Boolean).join(" · ");
     raws.push(toRaw("correction", r, `근태정정 (${mdHm(r.targetDate)})${parts ? ` ${parts}` : ""}`, r.reason));

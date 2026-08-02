@@ -54,6 +54,7 @@ export function leaveSuppressesEarly(type: string): boolean {
 export function leaveStatusLabel(status: string): string {
   if (status === "approved") return "승인";
   if (status === "rejected") return "반려";
+  if (status === "cancelled") return "승인 취소"; // 관리자가 승인을 되돌린 건(연차 복원됨)
   return "대기";
 }
 

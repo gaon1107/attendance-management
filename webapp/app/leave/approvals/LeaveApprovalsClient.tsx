@@ -8,9 +8,10 @@ import { SearchBox } from "@/app/components/SearchBox";
 import { TablePagination } from "@/app/components/TablePagination";
 import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
-import { approveLeave, rejectLeave } from "@/app/actions/leave";
+import { approveLeave, rejectLeave, cancelApprovedLeave } from "@/app/actions/leave";
 import { RejectButton } from "@/app/components/RejectButton";
 import { ConfirmApproveButton } from "@/app/components/ConfirmApproveButton";
+import { CancelLeaveButton } from "./CancelLeaveButton";
 
 export type LeaveRow = {
   id: string;
@@ -25,12 +26,17 @@ export type LeaveRow = {
   statusLabel: string;
   progress?: string; // 부서장 결재선 진행상황(대기 건에만). 예: "부서장 결재 1/2 · 다음 홍길동"
   shortage?: string; // 잔여 연차를 넘어 승인할 수 없는 건(대기 건에만). 예: "잔여 부족 — 쓸 수 있는 연차 2일 / 신청 5일"
+  canCancel?: boolean; // 승인 취소 버튼을 보여줄지(승인된 건 + 내 휴가가 아닐 때)
+  selfBlocked?: boolean; // 내 휴가라 내가 못 되돌리는 건(안내 문구 표시)
+  hasPastDate?: boolean; // 지난 날짜 포함 — 취소 시 결근으로 바뀐다는 경고를 모달에 띄운다
+  cancelNote?: string; // 취소된 건의 "취소 사유 · 취소한 사람 · 날짜"
   search: string;
 };
 
 const STATUS_STYLE: Record<string, { bg: string; dot: string; color: string }> = {
   approved: { bg: "#DCFCE7", dot: "#15803D", color: "#15803D" },
   rejected: { bg: "#FEE2E2", dot: "#B91C1C", color: "#B91C1C" },
+  cancelled: { bg: "#F3F4F6", dot: "#6B7280", color: "#4B5563" }, // 승인 취소 — 회색(효력 없음)
 };
 
 const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 20px", whiteSpace: "nowrap" };
@@ -137,9 +143,15 @@ export function LeaveApprovalsClient({
 
       {/* 처리 내역 */}
       <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", fontSize: 16, fontWeight: 700, color: "var(--text-sub)" }}>처리 내역</div>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", fontSize: 16, fontWeight: 700, color: "var(--text-sub)" }}>
+          처리 내역
+          {/* 승인 취소(M-2) 안내 — 잘못 승인한 휴가는 여기서 되돌린다. 지난 달 건은 위 기간을 옮겨 찾는다. */}
+          <span style={{ fontSize: 12, fontWeight: 400, color: "var(--text-sub)", marginLeft: 8 }}>
+            잘못 승인한 휴가는 <b>[승인 취소]</b>로 되돌릴 수 있습니다(연차 자동 복원). 지난 달 건은 위 기간을 옮겨 찾으세요.
+          </span>
+        </div>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
             <thead>
               <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                 <th style={th}>신청자</th>
@@ -148,12 +160,13 @@ export function LeaveApprovalsClient({
                 <th style={th}>기간</th>
                 <th style={{ ...th, textAlign: "right" }}>일수</th>
                 <th style={th}>상태</th>
+                <th style={{ ...th, textAlign: "right" }}>처리</th>
               </tr>
             </thead>
             <tbody>
               {pgD.view.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: "24px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={7} style={{ padding: "24px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {q.trim() ? "검색 결과가 없습니다." : "이 기간에 처리한 휴가가 없습니다."}
                   </td>
                 </tr>
@@ -172,6 +185,27 @@ export function LeaveApprovalsClient({
                           <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.dot }} />
                           <span style={{ fontSize: 13, fontWeight: 700, color: s.color }}>{r.statusLabel}</span>
                         </span>
+                        {/* 취소된 건: 왜·누가·언제 되돌렸는지 함께 보여준다(기록은 지우지 않는다) */}
+                        {r.cancelNote && (
+                          <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 4, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                            {r.cancelNote}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ ...td, textAlign: "right" }}>
+                        {r.canCancel && (
+                          <CancelLeaveButton
+                            action={cancelApprovedLeave}
+                            requestId={r.id}
+                            name={r.name}
+                            summary={`${r.typeLabel} (${r.rangeLabel}) · ${r.days}일`}
+                            hasPastDate={!!r.hasPastDate}
+                          />
+                        )}
+                        {/* 자기 휴가는 자기가 못 되돌린다 — 눌러도 안 되는 버튼 대신 이유를 적는다 */}
+                        {r.selfBlocked && (
+                          <span style={{ fontSize: 12, color: "var(--text-sub)", whiteSpace: "nowrap" }}>본인 휴가 — 다른 관리자만 취소 가능</span>
+                        )}
                       </td>
                     </tr>
                   );

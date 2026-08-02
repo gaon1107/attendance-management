@@ -351,13 +351,22 @@ model LeaveRequest {
   endDate    DateTime  // 종료일(자정 기준, 포함)
   days       Float     // 사용 일수(신청 시 근무요일 기준으로 계산해 저장). 연차/반차만 잔여에서 차감.
   reason     String?
-  // 상태: "pending"(대기) | "approved"(승인) | "rejected"(반려)
+  // 상태: "pending"(대기) | "approved"(승인) | "rejected"(반려) | "cancelled"(승인 취소)
+  //  · "cancelled" = 관리자가 잘못 승인한 휴가를 되돌린 상태(2026-08-03).
+  //    소비처는 전부 status="approved"만 골라 쓰므로, 이 상태가 되면 그 날은 휴가가 아니게 되고
+  //    연차 잔여도 자동 복원된다(lib/leave.ts leaveBalanceInYear는 승인·대기만 센다).
+  //    기록은 지우지 않는다 — 근로기준법 보존·감사 추적(누가·왜·언제 취소했는지 아래 3칸에 남는다).
   status     String    @default("pending")
   decidedAt  DateTime? // 승인/반려 처리 시각
   // 결재선 2차: 결재자 결정 사유·처리자. add-only(nullable) — 기존 행·판정 로직 무영향.
   // single 모드는 여기 직접 저장, deptline 모드는 단계별 ApprovalStep.comment + 최종 결정을 여기 미러.
   decisionComment String? // 승인/반려 사유(선택 저장). 신청자에게 표시.
   decidedById     String? // 처리한 결재자/관리자 userId(표시용, 관계 없이 id만 보관)
+  // 승인 취소(M-2). add-only(nullable) — 기존 행은 전부 null이라 판정·화면 무영향.
+  //  ※ decidedAt/decisionComment(승인 시점 정보)를 덮어쓰지 않는다. "언제 승인됐는지"도 기록으로 남아야 한다.
+  cancelledAt     DateTime? // 승인 취소 시각
+  cancelReason    String?   // 취소 사유(필수 입력). 신청자에게 그대로 표시.
+  cancelledById   String?   // 취소한 관리자 userId(표시용, 관계 없이 id만 보관)
   createdAt  DateTime  @default(now())
 
   // 조회 색인. 다른 신청 모델(OutingRequest 등)의 [companyId, status]와 같은 관례.
