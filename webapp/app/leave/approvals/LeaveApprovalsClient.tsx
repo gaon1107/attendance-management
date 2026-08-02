@@ -29,6 +29,7 @@ export type LeaveRow = {
   canCancel?: boolean; // 승인 취소 버튼을 보여줄지(승인된 건 + 내 휴가가 아닐 때)
   selfBlocked?: boolean; // 내 휴가라 내가 못 되돌리는 건(안내 문구 표시)
   hasPastDate?: boolean; // 지난 날짜 포함 — 취소 시 결근으로 바뀐다는 경고를 모달에 띄운다
+  startISO?: string; // 휴가 시작일 "YYYY-MM-DD"(모달에서 오늘과 다시 비교)
   deducts?: boolean; // 연차를 깎는 종류인가(취소 안내 문구 분기)
   leaveYear?: number; // 이 휴가가 귀속되는 해(=시작일 연도). 올해가 아니면 안내 문구가 달라진다
   cancelNote?: string; // 취소된 건의 "취소 사유 · 취소한 사람 · 날짜"
@@ -205,6 +206,7 @@ export function LeaveApprovalsClient({
                             name={r.name}
                             summary={`${r.typeLabel} (${r.rangeLabel}) · ${r.days}일`}
                             hasPastDate={!!r.hasPastDate}
+                            startISO={r.startISO ?? ""}
                             deducts={!!r.deducts}
                             leaveYear={r.leaveYear ?? serverYear}
                             serverYear={serverYear}

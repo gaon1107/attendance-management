@@ -160,9 +160,11 @@ export default async function LeavePage() {
                               {/* 연차 복원 안내는 사실이 갈린다 — 무차감 종류·지난 해 휴가에 거짓 안내를 하지 않는다(검수 C-1·C-2) */}
                               {!leaveTypeDeducts(r.type)
                                 ? "이 종류는 연차를 깎지 않아 잔여 연차는 변하지 않습니다."
-                                : r.startDate.getFullYear() !== thisYear
-                                  ? `${r.startDate.getFullYear()}년 몫이라 그 해 사용일수에서만 빠집니다. 올해 쓸 수 있는 연차는 늘지 않습니다.`
-                                  : "차감됐던 연차는 되돌아왔습니다."}
+                                : r.startDate.getFullYear() > thisYear
+                                  ? `차감됐던 연차는 ${r.startDate.getFullYear()}년 잔여로 되돌아갔습니다(올해 잔여는 그대로입니다).`
+                                  : r.startDate.getFullYear() < thisYear
+                                    ? `${r.startDate.getFullYear()}년 몫이라 그 해 사용일수에서 빠집니다. 올해 쓸 수 있는 연차는 늘지 않습니다.`
+                                    : "차감됐던 연차는 되돌아왔습니다."}
                             </div>
                           </div>
                         )}

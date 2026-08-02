@@ -15,6 +15,7 @@ export function CancelLeaveButton({
   name,
   summary,
   hasPastDate,
+  startISO,
   deducts,
   leaveYear,
   serverYear,
@@ -23,7 +24,8 @@ export function CancelLeaveButton({
   requestId: string;
   name: string; // 신청자 이름(누구 휴가를 되돌리는지 확인용)
   summary: string; // 예: "연차 (08/01 ~ 08/03) · 3일"
-  hasPastDate: boolean; // 휴가 기간에 오늘 이전 날짜가 들어있는가(결근 전환 경고용)
+  hasPastDate: boolean; // 화면을 그린 시점 기준 "지난 날짜 포함"(대비용 기본값)
+  startISO: string; // 휴가 시작일 "YYYY-MM-DD" — 모달을 열 때 오늘과 다시 비교한다(자정 넘김 대비)
   deducts: boolean; // 연차에서 깎이는 종류인가(연차·반차만 true)
   leaveYear: number; // 이 휴가가 귀속되는 해(=시작일 연도). 잔여 계산이 이 기준이다
   serverYear: number; // 화면을 그릴 때의 연도(대비용 기본값)
@@ -31,14 +33,16 @@ export function CancelLeaveButton({
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [nowYear, setNowYear] = useState<number | null>(null); // 모달을 열 때 다시 잰다
+  const [todayISO, setTodayISO] = useState<string | null>(null); // 모달을 열 때 "오늘"을 다시 잰다
   const [pending, startTransition] = useTransition();
   const canSubmit = reason.trim().length > 0 && !pending;
 
-  // 화면을 밤새 열어둔 채 자정을 넘기면 서버가 준 연도가 어제 것이 된다 → 모달을 열 때 지금 연도를 다시 잰다(검수 M-N3).
+  // 화면을 밤새 열어둔 채 자정을 넘기면 서버가 준 "오늘"이 어제 것이 된다 → 모달을 열 때 다시 잰다(검수 M-N3·m-2).
   const openModal = () => {
-    setNowYear(new Date().getFullYear());
-    setError(null); // 지난 시도의 오류가 새 시도에 남아 오해를 주지 않게(검수 M-N2)
+    const n = new Date();
+    setTodayISO(`${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`);
+    setError(null); // 지난 시도의 오류·사유가 새 시도에 남아 오해를 주지 않게(검수 M-N2)
+    setReason("");
     setOpen(true);
   };
   // 처리 중에는 닫지 않는다 — 닫아버리면 뒤늦게 온 실패 메시지가 사라져 "닫혔으니 됐겠지"가 된다(검수 C-N2).
@@ -51,7 +55,14 @@ export function CancelLeaveButton({
     startTransition(async () => {
       setError(null);
       try {
-        const res = await action({}, formData);
+        // ⏱ 응답이 영영 안 오는 경우(네트워크 단절·절전 복귀)에도 화면이 잠기지 않게 시간 제한을 둔다(검수 M-1).
+        //    서버는 멱등(status="approved" 가드)이라, 실제로 처리됐더라도 새로고침으로 확인하면 된다.
+        const res = await Promise.race([
+          action({}, formData),
+          new Promise<{ error: string }>((resolve) =>
+            setTimeout(() => resolve({ error: "응답이 없습니다. 화면을 새로고침해 취소가 됐는지 확인해주세요(중복 취소는 일어나지 않습니다)." }), 45000)
+          ),
+        ]);
         if (res?.error) setError(res.error);
         else {
           setReason("");
@@ -65,14 +76,20 @@ export function CancelLeaveButton({
   };
 
   // 연차 복원 안내는 종류·연도에 따라 사실이 달라진다 — 거짓 안내를 하지 않도록 문장을 갈라 쓴다.
-  //  ⚠️ 지난 해 휴가: 이 제품에 "지난 해 잔여"라는 값은 없다(연차정산은 과거 연도의 잔여를 '—'로 둔다).
-  //     되살아나는 것은 그 해 '사용일수'뿐이고, 올해 쓸 수 있는 연차는 늘지 않는다 — 그대로 말한다(검수 C-N1).
-  const isOtherYear = leaveYear !== (nowYear ?? serverYear);
+  //  · 다음 해 휴가(미리 신청·승인분): 취소하면 그 해 잔여로 **되살아난다** → 다시 쓸 수 있다.
+  //  · 지난 해 휴가: 이 제품에 "지난 해 잔여"라는 값 자체가 없다(연차정산은 과거 연도 잔여를 '—'로 둔다).
+  //    되돌아가는 것은 그 해 '사용일수'뿐이고, 올해 쓸 수 있는 연차는 늘지 않는다.
+  //  ⚠️ "다시 쓸 수 없다"고는 말하지 않는다 — 과거 날짜 재신청을 막는 코드가 없어 사실이 아니다(검수 3차 C-1).
+  const baseYear = todayISO ? Number(todayISO.slice(0, 4)) : serverYear;
   const restoreText = !deducts
     ? "이 종류는 연차를 깎지 않으므로 잔여 연차는 변하지 않습니다."
-    : isOtherYear
-      ? `이 휴가는 ${leaveYear}년 몫이라 ${leaveYear}년 사용일수에서만 빠집니다. 올해 쓸 수 있는 연차는 늘지 않고, 그 연차를 다시 쓸 수도 없습니다.`
-      : "차감됐던 연차는 자동으로 돌아옵니다.";
+    : leaveYear > baseYear
+      ? `이 휴가는 ${leaveYear}년 몫이라 ${leaveYear}년 잔여로 돌아갑니다(올해 쓸 수 있는 연차는 늘지 않습니다).`
+      : leaveYear < baseYear
+        ? `이 휴가는 ${leaveYear}년 몫이라 ${leaveYear}년 사용일수에서 빠집니다. 올해 쓸 수 있는 연차는 늘지 않습니다.`
+        : "차감됐던 연차는 자동으로 돌아옵니다.";
+  // 지난 날짜 경고도 "오늘"을 다시 잰 값으로 판단한다(자정을 넘기면 어제 신청분이 과거가 된다).
+  const showPastWarning = todayISO ? startISO < todayISO : hasPastDate;
 
   return (
     <>
@@ -105,7 +122,7 @@ export function CancelLeaveButton({
           이 휴가의 승인을 되돌립니다. {restoreText} 그 날짜에 다시 휴가를 신청할 수 있게 되고, 기록은 지워지지 않고{" "}
           <b>&ldquo;승인 취소&rdquo;</b>로 남습니다. <b>되돌릴 수 없습니다</b> — 다시 살리려면 직원이 새로 신청하고 다시 승인해야 합니다.
         </p>
-        {hasPastDate && (
+        {showPastWarning && (
           <p
             style={{
               fontSize: 13,
@@ -150,6 +167,11 @@ export function CancelLeaveButton({
             취소 사유는 <b>신청자에게 그대로 표시</b>됩니다 · {reason.length}/500
           </div>
           {/* 서버가 거부한 이유 — 저장되지 않았다는 사실을 반드시 보여준다 */}
+          {pending && (
+            <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-sub)", lineHeight: 1.5, wordBreak: "keep-all" }}>
+              처리 중입니다. 오래 걸리면 화면을 새로고침해 확인하세요 — 중복 취소는 일어나지 않습니다.
+            </div>
+          )}
           {error && (
             <div style={{ marginTop: 8, fontSize: 13, color: "var(--danger)", fontWeight: 700, lineHeight: 1.5, wordBreak: "keep-all" }}>
               {error}

@@ -153,6 +153,7 @@ export default async function LeaveApprovalsPage({
       canCancel: r.status === "approved" && !(selfCancelBlocked && r.userId === me.id),
       selfBlocked: r.status === "approved" && selfCancelBlocked && r.userId === me.id,
       hasPastDate: r.startDate < startOfToday, // 지난 날짜가 섞이면 "결근으로 바뀜" 경고를 띄운다
+      startISO: toISODate(r.startDate), // 모달을 열 때 오늘과 다시 비교(자정 넘김 대비)
       deducts: leaveTypeDeducts(r.type), // 연차를 깎는 종류인가 — 취소 안내 문구가 달라진다(검수 C-2)
       // 잔여 연차는 "휴가 시작일의 연도"로 귀속된다 → 지난 해 휴가를 취소해도 올해 잔여는 안 는다(검수 C-1).
       //  연도 비교는 화면(모달 열 때)에서 다시 하므로 여기선 두 연도를 그대로 넘긴다(자정 넘김 대비 — 검수 M-N3).
