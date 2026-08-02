@@ -6,7 +6,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { PaginatedTable } from "@/app/components/PaginatedTable";
 import { LeaveRequestForm } from "./LeaveRequestForm";
 import { cancelLeave } from "@/app/actions/leave";
-import { leaveTypeLabel, leaveStatusLabel, leaveBalanceInYear } from "@/lib/leave";
+import { leaveTypeLabel, leaveStatusLabel, leaveBalanceInYear, leaveTypeDeducts } from "@/lib/leave";
 import { getApprovalProgressMap, type ApprovalProgress, listApprovalCandidates, resolveCustomApprovers } from "@/lib/approval-server";
 import { ApprovalLineEditor } from "@/app/components/ApprovalLineEditor";
 
@@ -139,7 +139,8 @@ export default async function LeavePage() {
                             </div>
                           );
                         })()}
-                        {r.status !== "pending" && r.decisionComment && (
+                        {/* 취소된 건은 아래 "승인 취소" 안내만 보여준다 — 승인 메모와 나란히 뜨면 아직 유효한 승인처럼 읽힌다(검수 M-4) */}
+                        {r.status !== "pending" && r.status !== "cancelled" && r.decisionComment && (
                           <div style={{ fontSize: 12, color: r.status === "rejected" ? "var(--danger)" : "var(--text-sub)", marginTop: 4, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                             {r.status === "rejected" ? "반려 사유" : "승인 메모"}: {r.decisionComment}
                             {r.decidedById && deciderName.get(r.decidedById) && <span style={{ color: "var(--text-sub)" }}> · {deciderName.get(r.decidedById)}</span>}
@@ -153,7 +154,13 @@ export default async function LeavePage() {
                             {r.cancelledById && deciderName.get(r.cancelledById) && <span> · {deciderName.get(r.cancelledById)}</span>}
                             {r.cancelledAt && <span> · {ymd(r.cancelledAt)}</span>}
                             <div style={{ fontWeight: 400, color: "var(--text-sub)", marginTop: 2 }}>
-                              이 휴가는 취소되어 그날은 휴가로 처리되지 않습니다. 차감됐던 연차는 되돌아왔습니다.
+                              이 휴가는 취소되어 그날은 휴가로 처리되지 않습니다.{" "}
+                              {/* 연차 복원 안내는 사실이 갈린다 — 무차감 종류·지난 해 휴가에 거짓 안내를 하지 않는다(검수 C-1·C-2) */}
+                              {!leaveTypeDeducts(r.type)
+                                ? "이 종류는 연차를 깎지 않아 잔여 연차는 변하지 않습니다."
+                                : r.startDate.getFullYear() !== new Date().getFullYear()
+                                  ? `차감됐던 연차는 ${r.startDate.getFullYear()}년 잔여로 되돌아갔습니다(올해 잔여는 그대로입니다).`
+                                  : "차감됐던 연차는 되돌아왔습니다."}
                             </div>
                           </div>
                         )}

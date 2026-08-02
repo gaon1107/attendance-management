@@ -51,7 +51,8 @@ function rangeLabel(a: Date, b: Date): string {
 // 각 신청 공통 필드(정규화 원천). type/summary는 유형별로 채운다.
 type Applicant = { name: string; employeeNo: string | null; department: { name: string } | null };
 type CommonReq = { id: string; user: Applicant; status: string; decisionComment: string | null; decidedById: string | null; decidedAt: Date | null; createdAt: Date };
-type Raw = Omit<HistoryRow, "decidedByName"> & { decidedById: string | null };
+// origApprover*는 승인 취소된 휴가에만 채운다 — "누가 언제 승인했다가 누가 왜 취소했나"를 한 줄로 남기기 위함(검수 M-5).
+type Raw = Omit<HistoryRow, "decidedByName"> & { decidedById: string | null; origApproverId?: string | null; origApprovedAt?: Date | null };
 
 const userSelect = { select: { name: true, employeeNo: true, department: { select: { name: true } } } } as const;
 
@@ -116,6 +117,9 @@ export async function listApprovalHistory(
       raw.decisionComment = `승인 취소 사유: ${r.cancelReason ?? "—"}`;
       raw.decidedById = r.cancelledById;
       raw.decidedAt = r.cancelledAt;
+      // 원래 승인 정보는 지우지 않고 의견 칸 끝에 덧붙인다(아래에서 이름을 붙인다).
+      raw.origApproverId = r.decidedById;
+      raw.origApprovedAt = r.decidedAt;
     }
     raws.push(raw);
   }
@@ -132,13 +136,23 @@ export async function listApprovalHistory(
   raws.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const limited = raws.slice(0, limit);
 
-  // 처리자 이름 일괄 해석(회사격리).
-  const deciderIds = [...new Set(limited.map((r) => r.decidedById).filter((v): v is string => !!v))];
+  // 처리자 이름 일괄 해석(회사격리). 승인 취소 건은 "원래 승인자"까지 함께 해석한다.
+  const deciderIds = [...new Set(limited.flatMap((r) => [r.decidedById, r.origApproverId ?? null]).filter((v): v is string => !!v))];
   const nameOf = new Map<string, string>();
   if (deciderIds.length) {
     const users = await prisma.user.findMany({ where: { companyId, id: { in: deciderIds } }, select: { id: true, name: true } });
     for (const u of users) nameOf.set(u.id, u.name);
   }
 
-  return limited.map(({ decidedById, ...r }) => ({ ...r, decidedByName: decidedById ? nameOf.get(decidedById) ?? null : null }));
+  return limited.map(({ decidedById, origApproverId, origApprovedAt, ...r }) => {
+    // 승인 취소 건: "승인 취소 사유: … (원래 승인: 홍길동 · 2026-08-03)" — 감사 추적이 반쪽이 되지 않게.
+    let comment = r.decisionComment;
+    if (origApprovedAt || origApproverId) {
+      const who = origApproverId ? nameOf.get(origApproverId) ?? null : null;
+      const when = origApprovedAt ? origApprovedAt.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" }) : null;
+      const parts = [who, when].filter(Boolean).join(" · ");
+      if (parts) comment = `${comment ?? ""} (원래 승인: ${parts})`.trim();
+    }
+    return { ...r, decisionComment: comment, decidedByName: decidedById ? nameOf.get(decidedById) ?? null : null };
+  });
 }

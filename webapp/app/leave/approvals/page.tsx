@@ -11,6 +11,10 @@ import { getApprovalProgressMap, approvalProgressLabel, isSelfApprovalBlocked } 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
 }
+// 취소 시각은 해를 넘긴 건도 있어 연도까지 적는다(검수 경미-1).
+function ymdFull(d: Date): string {
+  return d.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
+}
 function rangeLabel(start: Date, end: Date): string {
   const s = ymd(start);
   const e = ymd(end);
@@ -124,6 +128,7 @@ export default async function LeaveApprovalsPage({
   );
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
+  const thisYear = startOfToday.getFullYear();
 
   const toRow = (r: (typeof pendingReqs)[number]): LeaveRow => {
     const typeLabel = leaveTypeLabel(r.type);
@@ -148,11 +153,14 @@ export default async function LeaveApprovalsPage({
       canCancel: r.status === "approved" && !(selfCancelBlocked && r.userId === me.id),
       selfBlocked: r.status === "approved" && selfCancelBlocked && r.userId === me.id,
       hasPastDate: r.startDate < startOfToday, // 지난 날짜가 섞이면 "결근으로 바뀜" 경고를 띄운다
+      deducts: leaveTypeDeducts(r.type), // 연차를 깎는 종류인가 — 취소 안내 문구가 달라진다(검수 C-2)
+      // 잔여 연차는 "휴가 시작일의 연도"로 귀속된다 → 작년 휴가를 취소해도 올해 잔여는 안 는다(검수 C-1)
+      otherYear: r.startDate.getFullYear() !== thisYear ? r.startDate.getFullYear() : undefined,
       cancelNote:
         r.status === "cancelled"
-          ? `취소 사유: ${r.cancelReason ?? "—"}${canceller ? ` · ${canceller}` : ""}${r.cancelledAt ? ` · ${ymd(r.cancelledAt)}` : ""}`
+          ? `취소 사유: ${r.cancelReason ?? "—"}${canceller ? ` · ${canceller}` : ""}${r.cancelledAt ? ` · ${ymdFull(r.cancelledAt)}` : ""}`
           : undefined,
-      search: [r.user.name, r.user.employeeNo ?? "", typeLabel, rl, reason, statusLabel].join(" ").toLowerCase(),
+      search: [r.user.name, r.user.employeeNo ?? "", typeLabel, rl, reason, statusLabel, r.cancelReason ?? ""].join(" ").toLowerCase(),
     };
   };
 

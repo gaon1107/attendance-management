@@ -1,9 +1,12 @@
 "use client";
 // 승인 취소 버튼 — 이미 승인된 휴가를 되돌린다(검수 M-2). [휴가 승인] 화면의 "처리 내역"에서만 쓴다.
 //  · 반려 버튼(RejectButton)과 같은 형식: 클릭 → 사유 입력 모달 → 사유를 적어야 확정.
-//  · 다른 점: 이미 확정된 근태를 되돌리는 일이라 **무엇이 바뀌는지 먼저 보여주고** 확인을 받는다.
-//    특히 지난 날짜면 그날이 휴가에서 **결근으로 바뀌므로** 빨간 경고를 띄운다.
-import { useState } from "react";
+//  · 다른 점 ①: 이미 확정된 근태를 되돌리는 일이라 **무엇이 바뀌는지 먼저 정확히 보여주고** 확인을 받는다.
+//    - 연차를 깎지 않는 종류(병가·경조·공가·특별·조퇴)는 "연차가 돌아온다"고 말하면 거짓말이 된다(검수 C-2).
+//    - 작년 휴가는 **올해 잔여가 늘지 않는다** — 잔여는 "휴가 시작일의 연도"로 귀속되기 때문(검수 C-1, lib/leave.ts).
+//    - 지난 날짜는 결근으로 바뀌고, 출근한 날이면 지각·조퇴 면제가 풀린다(검수 M-1).
+//  · 다른 점 ②: 되돌릴 수 없는 작업이라 **실패를 조용히 넘기지 않는다** — 서버가 거부하면 모달을 닫지 않고 이유를 보여준다.
+import { useState, useTransition } from "react";
 import { Modal } from "@/app/components/Modal";
 
 export function CancelLeaveButton({
@@ -12,16 +15,41 @@ export function CancelLeaveButton({
   name,
   summary,
   hasPastDate,
+  deducts,
+  otherYear,
 }: {
-  action: (formData: FormData) => void | Promise<void>;
+  action: (prev: { error?: string; ok?: boolean }, formData: FormData) => Promise<{ error?: string; ok?: boolean }>;
   requestId: string;
   name: string; // 신청자 이름(누구 휴가를 되돌리는지 확인용)
   summary: string; // 예: "연차 (08/01 ~ 08/03) · 3일"
   hasPastDate: boolean; // 휴가 기간에 오늘 이전 날짜가 들어있는가(결근 전환 경고용)
+  deducts: boolean; // 연차에서 깎이는 종류인가(연차·반차만 true)
+  otherYear?: number; // 올해가 아닌 해의 휴가면 그 연도(그 해 잔여로 돌아가므로 올해 잔여는 안 늘어난다)
 }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
-  const canSubmit = reason.trim().length > 0;
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const canSubmit = reason.trim().length > 0 && !pending;
+
+  // 성공했을 때만 닫는다. 실패하면 적어둔 사유를 그대로 둔 채 이유를 보여준다(저장 안 됐다는 사실을 알려야 한다).
+  const submit = (formData: FormData) => {
+    startTransition(async () => {
+      const res = await action({}, formData);
+      if (res?.error) setError(res.error);
+      else {
+        setError(null);
+        setOpen(false);
+      }
+    });
+  };
+
+  // 연차 복원 안내는 종류·연도에 따라 사실이 달라진다 — 거짓 안내를 하지 않도록 문장을 갈라 쓴다.
+  const restoreText = !deducts
+    ? "이 종류는 연차를 깎지 않으므로 잔여 연차는 변하지 않습니다."
+    : otherYear
+      ? `이 휴가는 ${otherYear}년 몫이라 ${otherYear}년 잔여로 돌아갑니다. 올해 잔여 연차는 늘어나지 않습니다.`
+      : "차감됐던 연차는 자동으로 돌아옵니다.";
 
   return (
     <>
@@ -50,8 +78,8 @@ export function CancelLeaveButton({
           {name} · {summary}
         </div>
         <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 12, lineHeight: 1.6, wordBreak: "keep-all" }}>
-          이 휴가의 승인을 되돌립니다. <b>차감됐던 연차는 자동으로 돌아오고</b>, 그 날짜에 다시 휴가를 신청할 수 있게 됩니다.
-          기록은 지워지지 않고 <b>&ldquo;승인 취소&rdquo;</b>로 남습니다.
+          이 휴가의 승인을 되돌립니다. {restoreText} 그 날짜에 다시 휴가를 신청할 수 있게 되고, 기록은 지워지지 않고{" "}
+          <b>&ldquo;승인 취소&rdquo;</b>로 남습니다. <b>되돌릴 수 없습니다</b> — 다시 살리려면 직원이 새로 신청하고 다시 승인해야 합니다.
         </p>
         {hasPastDate && (
           <p
@@ -68,11 +96,11 @@ export function CancelLeaveButton({
               marginBottom: 12,
             }}
           >
-            ⚠ 이미 지난 날짜가 들어 있습니다. 취소하면 그날은 휴가가 아니게 되어 <b>출근 기록이 없으면 결근으로 바뀝니다.</b>{" "}
-            근태현황·리포트의 숫자도 함께 바뀝니다.
+            ⚠ 이미 지난 날짜가 들어 있습니다. 취소하면 그날은 휴가가 아니게 되어 <b>출근 기록이 없으면 결근</b>,{" "}
+            <b>출근했다면 지각·조퇴 면제가 풀립니다.</b> 근태현황·리포트의 지난 숫자도 함께 바뀝니다.
           </p>
         )}
-        <form action={action} onSubmit={() => setOpen(false)}>
+        <form action={submit}>
           <input type="hidden" name="id" value={requestId} />
           <textarea
             name="comment"
@@ -97,6 +125,12 @@ export function CancelLeaveButton({
           <div style={{ textAlign: "right", fontSize: 11, color: "var(--text-sub)", marginTop: 4 }}>
             취소 사유는 <b>신청자에게 그대로 표시</b>됩니다 · {reason.length}/500
           </div>
+          {/* 서버가 거부한 이유 — 저장되지 않았다는 사실을 반드시 보여준다 */}
+          {error && (
+            <div style={{ marginTop: 8, fontSize: 13, color: "var(--danger)", fontWeight: 700, lineHeight: 1.5, wordBreak: "keep-all" }}>
+              {error}
+            </div>
+          )}
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
             <button
               type="button"
@@ -121,7 +155,7 @@ export function CancelLeaveButton({
                 cursor: canSubmit ? "pointer" : "default",
               }}
             >
-              승인 취소 확정
+              {pending ? "처리 중…" : "승인 취소 확정"}
             </button>
           </div>
         </form>

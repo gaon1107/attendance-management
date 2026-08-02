@@ -29,6 +29,8 @@ export type LeaveRow = {
   canCancel?: boolean; // 승인 취소 버튼을 보여줄지(승인된 건 + 내 휴가가 아닐 때)
   selfBlocked?: boolean; // 내 휴가라 내가 못 되돌리는 건(안내 문구 표시)
   hasPastDate?: boolean; // 지난 날짜 포함 — 취소 시 결근으로 바뀐다는 경고를 모달에 띄운다
+  deducts?: boolean; // 연차를 깎는 종류인가(취소 안내 문구 분기)
+  otherYear?: number; // 올해가 아닌 해의 휴가면 그 연도(올해 잔여는 안 늘어난다는 안내용)
   cancelNote?: string; // 취소된 건의 "취소 사유 · 취소한 사람 · 날짜"
   search: string;
 };
@@ -145,10 +147,11 @@ export function LeaveApprovalsClient({
       <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", fontSize: 16, fontWeight: 700, color: "var(--text-sub)" }}>
           처리 내역
-          {/* 승인 취소(M-2) 안내 — 잘못 승인한 휴가는 여기서 되돌린다. 지난 달 건은 위 기간을 옮겨 찾는다. */}
-          <span style={{ fontSize: 12, fontWeight: 400, color: "var(--text-sub)", marginLeft: 8 }}>
-            잘못 승인한 휴가는 <b>[승인 취소]</b>로 되돌릴 수 있습니다(연차 자동 복원). 지난 달 건은 위 기간을 옮겨 찾으세요.
-          </span>
+          {/* 승인 취소(M-2) 안내 — 잘못 승인한 휴가는 여기서 되돌린다. 지난 달 건은 위 기간을 옮겨 찾는다.
+              (제목 줄이 밀리지 않도록 아랫줄로 분리 — 검수 경미-4) */}
+          <div style={{ fontSize: 12, fontWeight: 400, color: "var(--text-sub)", marginTop: 4, lineHeight: 1.5 }}>
+            잘못 승인한 휴가는 <b>[승인 취소]</b>로 되돌릴 수 있습니다. 지난 달 건은 위 기간을 옮겨 찾으세요.
+          </div>
         </div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
@@ -176,7 +179,7 @@ export function LeaveApprovalsClient({
                   return (
                     <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                       <td style={td}><NameCell name={r.name} initial={r.initial} /></td>
-                    <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.employeeNo || "—"}</td>
+                      <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.employeeNo || "—"}</td>
                       <td style={{ ...td, fontWeight: 700 }}>{r.typeLabel}</td>
                       <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.rangeLabel}</td>
                       <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{r.days}일</td>
@@ -200,6 +203,8 @@ export function LeaveApprovalsClient({
                             name={r.name}
                             summary={`${r.typeLabel} (${r.rangeLabel}) · ${r.days}일`}
                             hasPastDate={!!r.hasPastDate}
+                            deducts={!!r.deducts}
+                            otherYear={r.otherYear}
                           />
                         )}
                         {/* 자기 휴가는 자기가 못 되돌린다 — 눌러도 안 되는 버튼 대신 이유를 적는다 */}

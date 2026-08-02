@@ -226,24 +226,33 @@ export async function rejectLeave(formData: FormData): Promise<void> {
 //
 // ⚠️ 이미 지난 날짜의 휴가를 취소하면 **그날이 휴가가 아니게 되어 결근으로 바뀐다**(의도된 동작).
 //    되돌리기 전에 화면에서 경고하고, 사유를 반드시 받는다.
-export async function cancelApprovedLeave(formData: FormData): Promise<void> {
+//
+// ⚠️ 실패를 조용히 삼키지 않는다(검수 M-2). 되돌릴 수 없는 작업이라, 거부되면 화면에 이유를 보여줘야 한다.
+//    (승인/반려와 달리 결과를 돌려주는 형태 — useActionState로 받는다)
+export async function cancelApprovedLeave(
+  _prev: { error?: string; ok?: boolean },
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean }> {
   const me = await getCurrentUser();
-  if (!me || me.role !== "admin") return; // 관리자(회사 계정 포함)만
+  if (!me || me.role !== "admin") return { error: "권한이 없습니다." }; // 관리자(회사 계정 포함)만
   const id = String(formData.get("id") ?? "");
   const raw = String(formData.get("comment") ?? "").trim();
-  if (!raw) return; // 취소 사유 필수 — 서버에서도 강제(반려와 같은 규칙)
+  if (!raw) return { error: "취소 사유를 입력해주세요." }; // 서버에서도 강제(반려와 같은 규칙)
   const reason = Array.from(raw).slice(0, 500).join(""); // 코드포인트 기준 상한(이모지 깨짐 방지)
 
   const lv = await prisma.leaveRequest.findFirst({ where: { id, companyId: me.companyId, status: "approved" } });
-  if (!lv) return; // 이미 취소됐거나 다른 회사 건
+  // 이미 취소됐거나(다른 관리자가 먼저 눌렀거나) 다른 회사 건 — 내 사유는 저장되지 않았음을 알려준다.
+  if (!lv) return { error: "이미 취소되었거나 승인 상태가 아닌 휴가입니다. 화면을 새로고침해 확인해주세요." };
   // 🔴 자기 휴가를 자기가 되돌려 연차를 되살리지 못하게 막는다(승인과 같은 규칙 — 다른 관리자가 없으면 허용).
-  if (await isSelfApprovalBlocked(me, lv.userId)) return;
+  if (await isSelfApprovalBlocked(me, lv.userId)) return { error: "본인 휴가는 다른 관리자만 취소할 수 있습니다." };
 
   // status:"approved" 가드 → 두 관리자가 동시에 눌러도 한 번만 취소된다(멱등).
-  await prisma.leaveRequest.updateMany({
+  const done = await prisma.leaveRequest.updateMany({
     where: { id: lv.id, companyId: me.companyId, status: "approved" },
     data: { status: "cancelled", cancelledAt: new Date(), cancelReason: reason, cancelledById: me.id },
   });
+  // 0건 = 조회와 갱신 사이에 다른 관리자가 먼저 취소했다. 내 사유는 저장되지 않았다.
+  if (done.count === 0) return { error: "다른 관리자가 먼저 취소했습니다. 화면을 새로고침해 확인해주세요." };
 
   // 승인 취소는 여러 화면의 숫자를 되돌린다 — 휴가일·결근·연차 잔여를 쓰는 화면을 함께 갱신.
   revalidatePath("/leave/approvals");
@@ -254,6 +263,7 @@ export async function cancelApprovedLeave(formData: FormData): Promise<void> {
   revalidatePath("/my-records");
   revalidatePath("/reports");
   revalidatePath("/approval-history");
+  return { ok: true };
 }
 
 // 관리자: 직원 연차 수동조정(override) 설정/해제(직원 상세). 회사 격리.
