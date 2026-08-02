@@ -5,7 +5,7 @@
 // ※ 지금은 관리자가 임시 비밀번호를 직접 직원에게 전달한다. 자동 메일 발송·문자 인증은 2차.
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
-import { generateTempPassword } from "@/lib/temp-password";
+import { generateTempPassword, TEMP_PASSWORD_TTL_MS } from "@/lib/temp-password";
 import { getCurrentUser } from "@/lib/session";
 import { canManageAccount } from "@/lib/owner-rules";
 import { revalidatePath } from "next/cache";
@@ -73,6 +73,10 @@ export async function issueTempPassword(
     data: {
       passwordHash: hashPassword(tempPassword),
       mustChangePassword: true,
+      // 임시 비밀번호는 48시간 안에만 쓸 수 있다(검수 H-4).
+      //  문자로 전달되는 값이라 유출 위험이 있어 무기한으로 두면 안 된다.
+      //  기한이 지나면 직원이 다시 재설정을 요청하면 된다.
+      tempPasswordExpiresAt: new Date(Date.now() + TEMP_PASSWORD_TTL_MS),
       failedLoginCount: 0,
       lockedUntil: null,
     },

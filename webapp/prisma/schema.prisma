@@ -215,6 +215,10 @@ model User {
   annualLeaveOverride Float?
   // 임시 비밀번호로 로그인한 경우 true → 로그인 직후 새 비밀번호를 정하도록 강제한다. 변경하면 false로 되돌린다.
   mustChangePassword Boolean @default(false)
+  // 임시 비밀번호 만료 시각(2026-08-02 검수 H-4). 이 시각이 지나면 그 임시 비밀번호로 로그인할 수 없다.
+  //  예전엔 만료가 없어, 문자로 보낸 임시 비밀번호가 몇 달 뒤에도 그대로 통했다(문자 유출 = 계정 탈취).
+  //  add-only(nullable) — 기존 계정은 null이라 만료 검사를 하지 않는다(기존 동작 유지).
+  tempPasswordExpiresAt DateTime?
   // 소속 부서(선택). null이면 부서 미배정. 부서가 삭제되면 소속 직원은 자동으로 null(미배정)이 된다.
   departmentId   String?
   department     Department? @relation(fields: [departmentId], references: [id])

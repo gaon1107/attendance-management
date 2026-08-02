@@ -2,13 +2,17 @@
 // 모든 로그인 화면이 이걸 통해 같은 레이아웃 기준(폭·여백·반응형)을 쓴다.
 // (구 narrow 옵션=640px 중앙정렬은 2026-07-09 전 화면 전체 폭 규칙으로 폐지됨.)
 import type { ReactNode } from "react";
+import { redirect } from "next/navigation";
 import { Sidebar, type NavKey } from "@/app/components/Sidebar";
 import { LogoutButton } from "@/app/components/LogoutButton";
 import { NotificationBell } from "@/app/components/NotificationBell";
 
 // ⚠️ isOwner를 여기 적어 두는 이유: 사이드바가 이 값으로 "내 근태" 묶음을 줄지 정한다.
 //    타입에 없으면 어느 화면에서 user를 줄여 넘겨도 tsc가 통과해, 회사 계정에 근태 메뉴가 조용히 되살아난다(검수 2차 10).
-type ShellUser = { id?: string; name: string; role: string; isOwner?: boolean; companyId?: string; company: { name: string; logoName?: string | null; approvalMode?: string | null } };
+// ⚠️ mustChangePassword를 여기 두는 이유(검수 H-4): 임시 비밀번호로 들어온 사람이
+//    주소창에 다른 주소를 직접 쳐서 강제 변경 화면을 건너뛰던 문제를 한 곳에서 막기 위함.
+//    예전엔 [출퇴근]·[대시보드] 두 화면에서만 막아, 그 외 화면은 전부 통과했다.
+type ShellUser = { id?: string; name: string; role: string; isOwner?: boolean; companyId?: string; mustChangePassword?: boolean; company: { name: string; logoName?: string | null; approvalMode?: string | null } };
 
 export function AppShell({
   user,
@@ -25,6 +29,10 @@ export function AppShell({
   right?: ReactNode; // 상단바 오른쪽(버튼·날짜 등)
   children: ReactNode;
 }) {
+  // 🔒 임시 비밀번호로 로그인한 상태면 어떤 화면도 열지 않고 새 비밀번호 설정으로 보낸다(검수 H-4).
+  //    이 컴포넌트를 로그인 화면 46개가 모두 거치므로, 새 화면을 만들어도 자동으로 보호된다.
+  if (user.mustChangePassword) redirect("/change-password");
+
   return (
     <div className="app-row">
       <Sidebar user={user} active={active} />

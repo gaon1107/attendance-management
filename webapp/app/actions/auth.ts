@@ -197,6 +197,14 @@ export async function login(
     return { error: "이메일 또는 비밀번호가 올바르지 않습니다." };
   }
 
+  // 🔒 임시 비밀번호 만료 검사(검수 H-4).
+  //   문자로 받은 임시 비밀번호를 며칠 뒤에도 계속 쓸 수 있으면, 문자 유출이 곧 계정 탈취가 된다.
+  //   만료됐으면 로그인시키지 않고 다시 재설정을 요청하도록 안내한다.
+  if (user.mustChangePassword && user.tempPasswordExpiresAt && user.tempPasswordExpiresAt < new Date()) {
+    await recordAccess({ companyId: user.companyId, userId: user.id, actorName: user.name, emailTried: email, kind: "login_fail", result: "fail", ip, userAgent, meta: "temp_password_expired" });
+    return { error: "임시 비밀번호의 사용 기한(48시간)이 지났습니다. 비밀번호 재설정을 다시 요청해주세요." };
+  }
+
   // 성공 시: 실패 기록·잠금 초기화.
   if (user.failedLoginCount !== 0 || user.lockedUntil) {
     await prisma.user.update({
