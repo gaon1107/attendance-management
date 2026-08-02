@@ -16,6 +16,7 @@
 
 import type { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/session";
+import { isKiccTestEnabled } from "@/lib/kicc-test-flag";
 
 // 정소장님이 준 기본 호출 주소 (화면에서 바꿀 수 있음)
 const DEFAULT_URL = "http://tapprsys.ione24.com/_appr/card_appr.ashx?pkind=appr";
@@ -31,6 +32,8 @@ const ALLOWED_HOSTS = [
 ];
 
 // 목적지 주소가 허용 목록에 있는지 확인한다. 통과 못 하면 사유를 돌려준다.
+// ※ 이름(호스트)만 검사하며, 그 이름이 실제로 어떤 IP로 풀리는지는 검사하지 않는다.
+//   결제사 도메인만 허용하므로 실무상 충분하지만, DNS가 오염된 환경에서는 완전하지 않다.
 function checkTarget(raw: string): { ok: true; url: URL } | { ok: false; reason: string } {
   let url: URL;
   try {
@@ -47,6 +50,10 @@ function checkTarget(raw: string): { ok: true; url: URL } | { ok: false; reason:
       ok: false,
       reason: `허용하지 않는 주소입니다.(${host}) — 결제사 주소만 호출할 수 있습니다. 목록: ${ALLOWED_HOSTS.join(", ")}`,
     };
+  }
+  // 포트도 막는다 — 허용 호스트라도 임의 포트를 열어주면 결제사 서버 포트 스캔 도구가 된다.
+  if (url.port && url.port !== "80" && url.port !== "443") {
+    return { ok: false, reason: `허용하지 않는 포트입니다.(${url.port}) — 기본 포트만 사용할 수 있습니다.` };
   }
   return { ok: true, url };
 }
@@ -65,6 +72,12 @@ function charsetOf(contentType: string | null): string {
 export async function POST(request: NextRequest) {
   const started = Date.now();
 
+  // 🔒 운영 빌드에서는 이 도구를 아예 없는 것으로 취급한다(화면 layout.tsx와 동일 기준).
+  //    누구나 가입하면 자기 회사 관리자가 되는 구조라 role 검사만으로는 잠금이 되지 않는다.
+  if (!isKiccTestEnabled()) {
+    return Response.json({ ok: false, error: "사용할 수 없는 기능입니다." }, { status: 404 });
+  }
+
   // 🔒 관리자만 사용할 수 있는 테스트 도구다. (로그인 없이 열려 있으면 외부 공격 통로가 된다)
   const me = await getCurrentUser();
   if (!me) {
@@ -75,21 +88,43 @@ export async function POST(request: NextRequest) {
   }
 
   // 화면에서 보낸 요청 정보 읽기
-  let input: {
-    url?: string;
-    method?: string;
-    contentType?: string;
-    authorization?: string;
-    body?: string;
-  };
+  let raw: unknown;
   try {
-    input = await request.json();
+    raw = await request.json();
   } catch {
     return Response.json(
       { ok: false, error: "요청 형식이 올바르지 않습니다.(JSON 아님)" },
       { status: 400 },
     );
   }
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return Response.json({ ok: false, error: "요청 내용이 올바르지 않습니다." }, { status: 400 });
+  }
+
+  // 각 항목이 "글자"인지 실제로 확인한다. (숫자·객체가 오면 .trim() 등에서 서버 오류 500이 나고,
+  //  개발 모드 500 화면은 내부 파일 경로까지 노출한다 — 그래서 여기서 400으로 막는다)
+  const rec = raw as Record<string, unknown>;
+  const strField = (key: string): { ok: true; value: string | undefined } | { ok: false } => {
+    const v = rec[key];
+    if (v === undefined || v === null) return { ok: true, value: undefined };
+    if (typeof v !== "string") return { ok: false };
+    return { ok: true, value: v };
+  };
+  const fields: Record<string, string | undefined> = {};
+  for (const key of ["url", "method", "contentType", "authorization", "body"]) {
+    const f = strField(key);
+    if (!f.ok) {
+      return Response.json({ ok: false, error: `${key} 값은 글자여야 합니다.` }, { status: 400 });
+    }
+    fields[key] = f.value;
+  }
+  const input = fields as {
+    url?: string;
+    method?: string;
+    contentType?: string;
+    authorization?: string;
+    body?: string;
+  };
 
   const targetUrl = (input.url || DEFAULT_URL).trim();
 
@@ -119,7 +154,7 @@ export async function POST(request: NextRequest) {
   const timer = setTimeout(() => controller.abort(), 30_000);
 
   try {
-    const res = await fetch(targetUrl, {
+    const res = await fetch(target.url.toString(), {
       method,
       headers,
       body: method === "GET" || method === "HEAD" ? undefined : bodyText,
@@ -161,6 +196,9 @@ export async function POST(request: NextRequest) {
       method,
       httpStatus: res.status,
       httpStatusText: res.statusText,
+      // 결제사가 "다른 주소로 가라(30x)"고 답하는 경우, 자동으로 따라가지 않는 대신
+      // 어디로 가라고 했는지를 그대로 보여준다. (자동 추적은 내부망 우회 통로가 되므로 금지)
+      redirectedTo: res.headers.get("location"),
       responseContentType: resContentType,
       charset,
       json,
@@ -179,6 +217,6 @@ export async function POST(request: NextRequest) {
         ? "응답이 30초 안에 오지 않아 중단했습니다.(서버 무응답/네트워크 문제)"
         : `호출 실패: ${e instanceof Error ? e.message : String(e)}`,
       durationMs: Date.now() - started,
-    });
+    }, { status: aborted ? 504 : 502 }); // 우리 서버는 정상이고 상대 서버 호출이 실패한 것
   }
 }
