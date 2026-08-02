@@ -235,8 +235,16 @@ export async function advanceApproval(
 
   const cur = nextPendingStep(steps);
   if (!cur) {
-    // 대기 단계 없음 + 반려 없음 = 전 단계 승인 완료. 부분 실패(원본 status 반영 실패) 후
-    // 재시도 시 원본을 승인 확정할 수 있도록 그대로 돌려준다(멱등 복구).
+    // 대기 단계 없음 + 반려 없음 = 전 단계 승인(또는 건너뜀) 완료.
+    // 부분 실패(원본 status 반영 실패)나 결재자 퇴사로 단계가 건너뛰어진 뒤,
+    // 원본을 확정하려면 여기를 지나야 한다.
+    //
+    // 🔴 [후속 검수 치명 1] 반드시 권한을 먼저 본다.
+    //    예전엔 이 자리에 권한 검사가 없어서, **회사의 아무 직원이나** 신청 id만 알면
+    //    남의 휴가·근태정정을 자기 이름으로 최종 승인할 수 있었다.
+    //    (근태정정은 승인되면 실제 출퇴근 기록을 덮어쓰므로 법정 기록 위조 경로가 된다)
+    //    이 확정은 "관리자가 마무리 짓는" 복구 동작이므로 관리자만 허용한다.
+    if (me.role !== "admin") return "denied";
     if (isChainComplete(steps)) return "approved";
     return "denied";
   }
@@ -479,7 +487,31 @@ export const countMyPendingApprovals = cache(async (companyId: string, userId: s
 });
 
 // 신청들의 결재 진행상황(진행표시용). requestId → {단계수·승인수·다음 결재자·반려 여부·다음이 전결권자인지}.
-export type ApprovalProgress = { total: number; approvedCount: number; nextApproverName: string | null; rejected: boolean; nextIsFinal: boolean };
+export type ApprovalProgress = {
+  total: number;
+  approvedCount: number; // 승인 + 건너뜀(=처리가 끝난 단계 수)
+  skippedCount: number; // 그중 건너뛴 단계(결재자 퇴사 등)
+  needsAdminFinalize: boolean; // 결재선은 끝났는데 원본이 아직 대기 → 관리자가 확정만 하면 됨
+  nextApproverName: string | null;
+  rejected: boolean;
+  nextIsFinal: boolean;
+};
+
+// 결재 진행상황을 관리자 화면에 보여줄 한 줄 문구로 만든다.
+// 6개 승인 화면(휴가·정정·외출·초과근무·재택·출장)이 같은 문구를 쓰도록 여기 하나로 모았다.
+//  (예전엔 같은 문장이 6곳에 복붙돼 있어, 한 곳만 고치면 화면마다 다른 말을 하게 됐다)
+export function approvalProgressLabel(p: ApprovalProgress | undefined): string | undefined {
+  if (!p) return undefined;
+  if (p.rejected) return "부서장 반려됨";
+  // 결재자가 퇴사해 단계가 건너뛰어졌고, 남은 결재자가 없는 상태 → 관리자가 확정만 하면 된다.
+  if (p.needsAdminFinalize) {
+    return p.skippedCount > 0
+      ? `결재자 퇴사로 건너뜀 (${p.approvedCount}/${p.total}) · 관리자 확정 필요`
+      : `부서장 결재 완료 (${p.approvedCount}/${p.total}) · 관리자 확정 필요`;
+  }
+  const skipped = p.skippedCount > 0 ? ` · 퇴사로 건너뜀 ${p.skippedCount}건` : "";
+  return `부서장 결재 ${p.approvedCount}/${p.total}${p.nextApproverName ? ` · 다음 ${p.nextApproverName}` : ""}${skipped}`;
+}
 
 export async function getApprovalProgressMap(
   companyId: string,
@@ -511,9 +543,16 @@ export async function getApprovalProgressMap(
   }
   for (const [rid, ss] of byReq) {
     const next = ss.find((s) => s.status === "pending");
+    // 🔴 [후속 검수 치명 2] 건너뛴 단계(결재자 퇴사 등)도 "처리 끝난 단계"로 센다.
+    //    안 그러면 결재자가 퇴사해 단계가 건너뛰어졌는데도 화면에 "부서장 결재 1/2 · 다음 —"으로 떠서
+    //    관리자가 "아직 누가 결재 중"으로 오해하고 확정을 미룬다(= 결재가 조용히 멈춘 것과 같아진다).
+    const skippedCount = ss.filter((s) => s.status === "skipped").length;
     map.set(rid, {
       total: ss.length,
-      approvedCount: ss.filter((s) => s.status === "approved").length,
+      approvedCount: ss.filter((s) => s.status === "approved").length + skippedCount,
+      skippedCount,
+      // 대기 단계가 없는데 반려도 아니면 = 결재선은 끝났고 관리자가 확정만 하면 되는 상태
+      needsAdminFinalize: !next && !ss.some((s) => s.status === "rejected"),
       nextApproverName: next ? (nameOf.get(next.approverUserId) ?? null) : null,
       rejected: ss.some((s) => s.status === "rejected"),
       nextIsFinal: next ? next.isFinal === true : false, // 다음 결재자가 전결권자면 그 승인이 최종

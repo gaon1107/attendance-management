@@ -71,7 +71,11 @@ export function workedMinutes(att: AttendanceLike, now: Date = new Date()): numb
   let breakMs = 0;
   for (const b of att.breaks) {
     const bEnd = b.endAt ?? now;
-    breakMs += bEnd.getTime() - b.startAt.getTime();
+    // 각 외출 구간을 0 이상으로 막는다.
+    //  미퇴근 기록은 종료 시각에 상한을 걸어 계산하는데(effectiveEnd), 그 상한보다 **늦게 시작한**
+    //  아직 안 닫힌 외출이 있으면 (끝 − 시작)이 음수가 되어 외출 시간이 빠지는 게 아니라
+    //  오히려 더해져 근무시간이 늘어난다(후속 검수 지적).
+    breakMs += Math.max(0, bEnd.getTime() - b.startAt.getTime());
   }
 
   const workedMs = totalMs - breakMs;

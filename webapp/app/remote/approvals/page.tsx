@@ -6,7 +6,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { RemoteApprovalsClient, type RemoteRow } from "./RemoteApprovalsClient";
 import { remoteStatusLabel, remoteRangeLabel } from "@/lib/remote";
 import { parseAnchor, toISODate } from "@/lib/period";
-import { getApprovalProgressMap } from "@/lib/approval-server";
+import { getApprovalProgressMap, approvalProgressLabel } from "@/lib/approval-server";
 import { getAttachmentsMap } from "@/lib/request-attachment-server";
 
 export default async function RemoteApprovalsPage({
@@ -61,10 +61,8 @@ export default async function RemoteApprovalsPage({
       ? await getApprovalProgressMap(me.companyId, "remote", pendingReqs.map((r) => r.id))
       : new Map();
   const progressLabel = (id: string): string | undefined => {
-    const p = progressMap.get(id);
-    if (!p) return undefined;
-    if (p.rejected) return "부서장 반려됨";
-    return `부서장 결재 ${p.approvedCount}/${p.total}${p.nextApproverName ? ` · 다음 ${p.nextApproverName}` : ""}`;
+    // 문구는 lib/approval-server.ts 한 곳에서 만든다(6개 승인화면이 같은 말을 하도록).
+    return approvalProgressLabel(progressMap.get(id));
   };
 
   const attMap = await getAttachmentsMap(me.companyId, "remote", pendingReqs.map((r) => r.id));

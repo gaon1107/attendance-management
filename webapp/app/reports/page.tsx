@@ -80,22 +80,24 @@ export default async function ReportsPage({
   //   (회사 계정은 사람이 아니므로 제외 — 다른 집계 화면과 같은 기준)
   const activeEmployees = await prisma.user.findMany({
     where: { companyId: me.companyId, deactivatedAt: null, isOwner: false },
-    select: { id: true, name: true, employeeNo: true, role: true, workDays: true, shiftGroupId: true },
+    select: { id: true, name: true, employeeNo: true, role: true, workDays: true, shiftGroupId: true, hireDate: true, deactivatedAt: true },
     orderBy: { createdAt: "asc" },
   });
 
   // 직원별 집계 (+ 초과근무를 위해 날짜별 실근무 분도 모은다)
-  const byUser = new Map<string, { id: string; name: string; employeeNo: string | null; role: string; minutes: number; breaks: number; days: Set<string>; workDays: string | null; shiftGroupId: string | null; dayMinutes: Map<string, number> }>();
+  const byUser = new Map<string, { id: string; name: string; employeeNo: string | null; role: string; minutes: number; breaks: number; days: Set<string>; workDays: string | null; shiftGroupId: string | null; dayMinutes: Map<string, number>; hireDate: Date | null; deactivatedAt: Date | null }>();
   // 먼저 재직 직원 전원을 0으로 깔아둔다 → 출근이 한 번도 없어도 표에 남아 결근이 집계된다.
   for (const e of activeEmployees) {
     byUser.set(e.id, {
       id: e.id, name: e.name, employeeNo: e.employeeNo, role: e.role,
       minutes: 0, breaks: 0, days: new Set<string>(),
       workDays: e.workDays, shiftGroupId: e.shiftGroupId, dayMinutes: new Map<string, number>(),
+      hireDate: e.hireDate, deactivatedAt: e.deactivatedAt,
     });
   }
   for (const r of records) {
-    const cur = byUser.get(r.userId) ?? { id: r.userId, name: r.user.name, employeeNo: r.user.employeeNo, role: r.user.role, minutes: 0, breaks: 0, days: new Set<string>(), workDays: r.user.workDays, shiftGroupId: r.user.shiftGroupId, dayMinutes: new Map<string, number>() };
+    // 재직자 목록에 없는데 기록이 있는 경우 = 기간 중 퇴사한 직원. 그 사람의 기록도 빠뜨리지 않는다.
+    const cur = byUser.get(r.userId) ?? { id: r.userId, name: r.user.name, employeeNo: r.user.employeeNo, role: r.user.role, minutes: 0, breaks: 0, days: new Set<string>(), workDays: r.user.workDays, shiftGroupId: r.user.shiftGroupId, dayMinutes: new Map<string, number>(), hireDate: r.user.hireDate, deactivatedAt: r.user.deactivatedAt };
     // 퇴근을 안 찍은 기록이 수백 시간으로 부풀지 않게 상한 적용(검수 C-6 — 대시보드·초과근무 화면과 같은 기준).
     const wm = workedMinutes(r, effectiveEnd(r.clockIn, r.clockOut, now));
     const iso = toISODate(r.clockIn);
@@ -132,10 +134,32 @@ export default async function ReportsPage({
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const absLimit = end < startOfToday ? end : startOfToday;
-  function absentCountFor(userId: string, userWorkDays: string | null, shiftGroupId: string | null, attended: Set<string>, leaveDays: Set<string>): number {
+  // 🔴 [후속 검수 치명 6] 결근은 **그 사람이 실제로 재직한 기간**만 센다.
+  //    입사일·퇴사일을 안 보면 7/28 입사자의 7월 리포트가 "출근 2일 · 결근 18일"이 된다.
+  //    이 숫자가 월 마감·급여 연동에 쓰이므로 틀리면 급여가 잘못 깎인다.
+  function absentCountFor(
+    userId: string,
+    userWorkDays: string | null,
+    shiftGroupId: string | null,
+    attended: Set<string>,
+    leaveDays: Set<string>,
+    hireDate: Date | null,
+    deactivatedAt: Date | null
+  ): number {
     const wd = effectiveWorkDays(userWorkDays, company?.workDays);
+    // 시작: 조회 기간 시작과 입사일 중 늦은 쪽 / 끝: 조회 상한과 퇴사일 중 이른 쪽
+    let from = new Date(start);
+    if (hireDate) {
+      const hire = new Date(hireDate.getFullYear(), hireDate.getMonth(), hireDate.getDate());
+      if (hire > from) from = hire;
+    }
+    let to = new Date(absLimit);
+    if (deactivatedAt) {
+      const left = new Date(deactivatedAt.getFullYear(), deactivatedAt.getMonth(), deactivatedAt.getDate());
+      if (left < to) to = left; // 퇴사일 당일은 세지 않는다(그날은 근무했을 수 있어 기록으로 판단)
+    }
     let n = 0;
-    for (let cur = new Date(start); cur < absLimit; cur = new Date(cur.getTime() + 86400000)) {
+    for (let cur = new Date(from); cur < to; cur = new Date(cur.getTime() + 86400000)) {
       const iso = toISODate(cur);
       // 근무요일 + 쉬는날(공휴일·회사휴무일) 제외는 공통. 교대제는 추가로 그날 조 배정(≠휴무)까지 있어야 근무예정.
       const isWork = isEffectiveWorkDay(cur, wd, offDays) && (!shiftCtx || resolveShift(shiftCtx, userId, shiftGroupId, iso) !== null);
@@ -155,7 +179,7 @@ export default async function ReportsPage({
       days: u.days.size,
       minutes: u.minutes,
       overtime: overtimeMinutesOf(u.dayMinutes),
-      absent: absentCountFor(u.id, u.workDays, u.shiftGroupId, u.days, leaveByUser.get(u.id) ?? new Set()),
+      absent: absentCountFor(u.id, u.workDays, u.shiftGroupId, u.days, leaveByUser.get(u.id) ?? new Set(), u.hireDate, u.deactivatedAt),
       breaks: u.breaks,
       search: [u.name, u.employeeNo ?? "", u.role === "admin" ? "관리자" : "직원"].join(" ").toLowerCase(),
     }))

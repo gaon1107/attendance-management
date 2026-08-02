@@ -6,7 +6,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { OutingApprovalsClient, type OutingRow } from "./OutingApprovalsClient";
 import { outingKindLabel, outingStatusLabel } from "@/lib/outing";
 import { parseAnchor, toISODate } from "@/lib/period";
-import { getApprovalProgressMap } from "@/lib/approval-server";
+import { getApprovalProgressMap, approvalProgressLabel } from "@/lib/approval-server";
 import { getAttachmentsMap } from "@/lib/request-attachment-server";
 
 function ymd(d: Date): string {
@@ -69,10 +69,8 @@ export default async function OutingApprovalsPage({
       ? await getApprovalProgressMap(me.companyId, "outing", pendingReqs.map((r) => r.id))
       : new Map();
   const progressLabel = (id: string): string | undefined => {
-    const p = progressMap.get(id);
-    if (!p) return undefined;
-    if (p.rejected) return "부서장 반려됨";
-    return `부서장 결재 ${p.approvedCount}/${p.total}${p.nextApproverName ? ` · 다음 ${p.nextApproverName}` : ""}`;
+    // 문구는 lib/approval-server.ts 한 곳에서 만든다(6개 승인화면이 같은 말을 하도록).
+    return approvalProgressLabel(progressMap.get(id));
   };
 
   // 첨부파일(대기 건) — 결재자가 다운로드해 검토.

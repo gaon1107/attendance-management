@@ -6,7 +6,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { LeaveApprovalsClient, type LeaveRow } from "./LeaveApprovalsClient";
 import { leaveTypeLabel, leaveStatusLabel, leaveTypeDeducts, leaveBalanceInYear } from "@/lib/leave";
 import { parseAnchor, toISODate } from "@/lib/period";
-import { getApprovalProgressMap } from "@/lib/approval-server";
+import { getApprovalProgressMap, approvalProgressLabel } from "@/lib/approval-server";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
@@ -73,10 +73,8 @@ export default async function LeaveApprovalsPage({
       ? await getApprovalProgressMap(me.companyId, "leave", pendingReqs.map((r) => r.id))
       : new Map();
   const progressLabel = (id: string): string | undefined => {
-    const p = progressMap.get(id);
-    if (!p) return undefined;
-    if (p.rejected) return "부서장 반려됨";
-    return `부서장 결재 ${p.approvedCount}/${p.total}${p.nextApproverName ? ` · 다음 ${p.nextApproverName}` : ""}`;
+    // 문구는 lib/approval-server.ts 한 곳에서 만든다(6개 승인화면이 같은 말을 하도록).
+    return approvalProgressLabel(progressMap.get(id));
   };
 
   // 대기 건 중 "승인하면 잔여 연차를 넘는" 것을 미리 표시한다(검수 C-2).

@@ -88,7 +88,13 @@ export async function clockIn(
     const gps = company ? evaluateOfficeLocation(company, lat, lng) : "unavailable";
     const h = await headers();
     const clientIp = getClientIp(h);
-    const hasIpRule = Boolean(company?.officeIps && company.officeIps.trim());
+    // 🔴 [후속 검수 치명 4] 접속 IP를 **읽을 수 없으면** IP 규칙은 "확인 수단이 없는" 것으로 본다.
+    //    (프록시를 신뢰하지 않는 설정에서는 IP가 항상 null이다 — lib/ip.ts 참고)
+    //    이 구분이 없으면, 사내 IP를 등록해 둔 회사의 사무실 직원 전원이 매일
+    //    **"위치 벗어남"으로 기록**된다. 그 값은 DB에 남아 법정 증빙 엑셀에 인쇄되고,
+    //    나중에 설정을 켜도 소급 복구가 안 된다. "모르는 것"은 "벗어남"이 아니라 "확인 불가"다.
+    const canCheckIp = clientIp !== null;
+    const hasIpRule = canCheckIp && Boolean(company?.officeIps && company.officeIps.trim());
     const ipMatch = hasIpRule && ipMatches(clientIp, company?.officeIps);
 
     if (ipMatch || gps === "verified") {

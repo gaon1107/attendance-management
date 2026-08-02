@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { parseDays, daysToCsv } from "@/lib/workdays";
 import { parseProfile, employeeNoTaken } from "@/lib/employee-profile";
 import { canDeactivate, canManageAccount } from "@/lib/owner-rules";
+import { logAdminAction } from "@/lib/audit";
 
 export async function addEmployee(
   _prev: { error?: string; ok?: boolean },
@@ -162,6 +163,15 @@ export async function deactivateEmployee(
     // 🔴 [검수 H-6] 퇴사자가 부서장·대결자로 남아 있으면 그 부서의 결재가 통째로 멈춘다.
     //    (퇴사자는 로그인할 수 없어 그 단계가 영원히 대기로 남는다)
     //    직위를 비워 두면 결재선이 상위 부서로 이어져 정상 진행된다. 관리자가 새 부서장을 지정하면 된다.
+    //    어느 부서였는지는 아래에서 감사로그에 남긴다(복직해도 자동 복구되지 않으므로).
+    const headDepts = await tx.department.findMany({
+      where: { companyId: me.companyId, headUserId: rule.target.id },
+      select: { name: true },
+    });
+    const deputyDepts = await tx.department.findMany({
+      where: { companyId: me.companyId, deputyUserId: rule.target.id },
+      select: { name: true },
+    });
     await tx.department.updateMany({
       where: { companyId: me.companyId, headUserId: rule.target.id },
       data: { headUserId: null },
@@ -173,12 +183,21 @@ export async function deactivateEmployee(
 
     // 이미 진행 중이던 결재에서 이 사람 차례로 걸려 있는 단계는 "건너뜀"으로 처리해
     // 다음 결재자에게 차례가 넘어가게 한다(멈춘 결재를 되살린다).
-    await tx.approvalStep.updateMany({
+    const skipped = await tx.approvalStep.updateMany({
       where: { companyId: me.companyId, approverUserId: rule.target.id, status: "pending" },
       data: { status: "skipped", decidedAt: new Date(), comment: "결재자 퇴사로 자동 건너뜀" },
     });
-    return { ok: true };
+    return { ok: true, headOf: headDepts.map((d) => d.name), deputyOf: deputyDepts.map((d) => d.name), skipped: skipped.count };
   });
+
+  // 조직 구조를 건드린 기록을 남긴다 — 복직시켜도 부서장 직위는 자동으로 안 돌아오므로
+  // 나중에 "누가 어느 부서 부서장이었는지" 되짚을 수 있어야 한다(후속 검수 지적).
+  if ("ok" in result && result.ok) {
+    const changed = [...result.headOf, ...result.deputyOf];
+    if (changed.length || result.skipped > 0) {
+      await logAdminAction(me, "config", `deactivate_employee(부서장해제:${changed.join("/") || "없음"}, 결재건너뜀:${result.skipped}건)`);
+    }
+  }
 
   revalidatePath(`/employees/${id}`);
   revalidatePath("/employees");
@@ -228,7 +247,17 @@ export async function resetEmployeePassword(
 
   await prisma.user.update({
     where: { id: target.id },
-    data: { passwordHash: hashPassword(password), failedLoginCount: 0, lockedUntil: null },
+    data: {
+      passwordHash: hashPassword(password),
+      failedLoginCount: 0,
+      lockedUntil: null,
+      // 🔴 [후속 검수 치명 3] 임시 비밀번호 만료 표시를 반드시 지운다.
+      //    안 지우면, 예전에 발급한 임시 비밀번호의 만료 시각이 남아 있어
+      //    관리자가 새로 정해준 **정확한 비밀번호로도 "기한이 지났습니다"라며 로그인이 거부**된다.
+      //    (직원도 관리자도 원인을 알 수 없는 영구 로그인 불가 상태가 된다)
+      mustChangePassword: false,
+      tempPasswordExpiresAt: null,
+    },
   });
   await prisma.session.deleteMany({ where: { userId: target.id } });
 
