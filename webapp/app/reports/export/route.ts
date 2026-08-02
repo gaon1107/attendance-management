@@ -44,7 +44,8 @@ export async function GET(request: Request): Promise<Response> {
   const MAX_DAYS = 92;
   const maxEnd = new Date(start);
   maxEnd.setDate(maxEnd.getDate() + MAX_DAYS);
-  if (end > maxEnd) {
+  const rangeCapped = end > maxEnd;
+  if (rangeCapped) {
     end = maxEnd;
     const capEnd = new Date(maxEnd);
     capEnd.setDate(capEnd.getDate() - 1);
@@ -152,11 +153,22 @@ export async function GET(request: Request): Promise<Response> {
   for (const key of ["days", "worked", "overtime", "leave", "absent", "breaks"]) {
     ws2.getColumn(key).alignment = { horizontal: "right" };
   }
-  // 조회 기간·집계 규칙을 파일 안에도 남긴다 — 화면·PDF와 달리 엑셀엔 92일 제한 안내가 어디에도 없었다(검수 경미).
-  ws2.addRow({});
-  ws2.addRow({ name: `※ 조회 기간: ${fromISO} ~ ${toISO} (최대 92일)` });
-  ws2.addRow({ name: "※ 결근 = 근무예정일인데 출근 기록도 승인된 휴가도 없는 날. 오늘·미래와 입사 전·퇴사 후는 세지 않습니다." });
-  ws2.addRow({ name: "※ 승인된 출장·재택도 출퇴근 기록이 없으면 결근으로 잡히며, 그 사유는 [근태기록] 시트의 구분 칸에 표시됩니다." });
+
+  // 3번 시트: 안내 — 화면·PDF와 달리 엑셀엔 집계 규칙·기간 제한 안내가 어디에도 없었다(검수 경미).
+  //  ※ 요약 시트 아래에 붙이면 자동필터로 정렬할 때 데이터에 섞이므로 시트를 따로 둔다(검수 2차 경미).
+  const ws3 = wb.addWorksheet("안내");
+  ws3.columns = [{ header: "이 파일을 읽는 방법", key: "text", width: 110 }];
+  styleHeader(ws3);
+  const notes = [
+    `조회 기간: ${fromISO} ~ ${toISO}${rangeCapped ? " (기간이 길어 시작일부터 92일까지만 집계했습니다)" : ""}`,
+    "[근태기록] 시트 = 하루 한 줄. 구분이 '출근'이면 그날의 출퇴근 기록, '결근'·'휴가'는 기록이 없는 날입니다.",
+    "결근 = 근무예정일(근무요일 · 공휴일/휴무일 제외 · 교대제면 배정된 날)인데 출근 기록도 승인된 휴가도 없는 날.",
+    "오늘과 미래, 입사 전·퇴사 후는 결근으로 세지 않습니다. 퇴사자는 퇴사 처리 시각까지를 재직으로 봅니다.",
+    "결재가 끝나지 않은 휴가, 승인된 출장·재택이라도 출퇴근 기록이 없으면 결근입니다. 그 사유를 구분 칸에 함께 적었습니다.",
+    "[직원별 요약]의 휴가(일) = 휴가로 쉰 정도의 합(반차 0.5일, 하루 최대 1일). 휴가일에 출근한 날은 근무일수로만 셉니다.",
+    "결근·휴가 줄의 실근무·외출 칸은 빈칸입니다(0을 넣으면 평균·건수 계산이 틀어지기 때문).",
+  ];
+  for (const t of notes) ws3.addRow({ text: t });
 
   const buf = await wb.xlsx.writeBuffer();
   const filename = `attendance_${fromISO}_${toISO}.xlsx`;

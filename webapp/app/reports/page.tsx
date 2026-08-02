@@ -78,8 +78,10 @@ export default async function ReportsPage({
   //   예전엔 출퇴근 기록이 있는 사람만 표에 넣어서, **기간 내내 결근한 직원이 리포트에서 통째로 사라졌다.**
   //   결근이 가장 심한 사람이 결근 집계에서 빠지는 셈이라 월 마감·급여 연동에서 놓치기 쉬웠다.
   //   (회사 계정은 사람이 아니므로 제외 — 다른 집계 화면과 같은 기준)
+  //   · **기간에 걸쳐 퇴사한 사람도 대상**이다(2026-08-03). 기록이 하나도 없는 퇴사자를 빼면
+  //     무단결근하다 퇴사한 직원이 또 사라지고, 엑셀·PDF(lib/report-server.ts)와 인원이 어긋난다.
   const activeEmployees = await prisma.user.findMany({
-    where: { companyId: me.companyId, deactivatedAt: null, isOwner: false },
+    where: { companyId: me.companyId, isOwner: false, OR: [{ deactivatedAt: null }, { deactivatedAt: { gt: start } }] },
     select: { id: true, name: true, employeeNo: true, role: true, workDays: true, shiftGroupId: true, hireDate: true, deactivatedAt: true },
     orderBy: { createdAt: "asc" },
   });
@@ -163,6 +165,7 @@ export default async function ReportsPage({
       employeeNo: u.employeeNo,
       initial: u.name.slice(0, 1),
       isAdmin: u.role === "admin",
+      resigned: !!u.deactivatedAt,
       days: u.days.size,
       minutes: u.minutes,
       overtime: overtimeMinutesOf(u.dayMinutes),

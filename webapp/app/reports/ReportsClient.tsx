@@ -20,6 +20,7 @@ export type ReportRow = {
   employeeNo: string | null; // 사번(동명이인 구분·검색용)
   initial: string;
   isAdmin: boolean;
+  resigned?: boolean; // 기간에 걸쳐 퇴사한 사람(집계에는 남지만 재직자와 구분해 보여준다)
   days: number; // 근무일수
   minutes: number; // 실근무 합계(분)
   overtime: number; // 초과근무(분)
@@ -143,6 +144,7 @@ export function ReportsClient({
                         <span style={{ fontWeight: 700 }}>
                           {s.name}
                           {s.isAdmin && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}> (관리자)</span>}
+                          {s.resigned && <span style={{ fontSize: 12, color: "var(--danger)", fontWeight: 700 }}> (퇴사)</span>}
                         </span>
                       </div>
                     </td>

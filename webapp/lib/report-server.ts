@@ -16,7 +16,7 @@ import { clockOutText } from "@/lib/labels";
 import { toISODate } from "@/lib/period";
 import { effectiveWorkDays } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
-import { leaveDateSet, leaveLabelByDate, leaveTypeByDate } from "@/lib/leave";
+import { leaveDateSet, leaveLabelByDate, leaveTypeLabel } from "@/lib/leave";
 import { loadShiftContext } from "@/lib/shift-server";
 import { dayBreakdown } from "@/lib/report-days";
 import { queryTerms, matchesTerms } from "@/lib/search";
@@ -124,15 +124,18 @@ export async function buildReportBlocks(opts: {
   //  법정 문서에 아무 설명 없는 "결근"이 찍히면 노무 분쟁에서 회사에 불리하다.
   const noteByUserDate = new Map<string, string>();
   const addNote = (userId: string, s: Date, e: Date, note: string) => {
-    const cur = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+    // 조회 기간 밖은 채우지 않는다(출장은 최대 366일까지 신청 가능 — 쓸데없이 큰 맵이 된다)
+    const first = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+    const cur = first < start ? new Date(start) : first;
     const last = new Date(e.getFullYear(), e.getMonth(), e.getDate());
-    while (cur <= last) {
+    while (cur <= last && cur < end) {
       const key = `${userId}|${toISODate(cur)}`;
       if (!noteByUserDate.has(key)) noteByUserDate.set(key, note); // 먼저 잡힌 사유를 유지(휴가 대기 > 출장 > 재택)
       cur.setDate(cur.getDate() + 1);
     }
   };
-  for (const l of pendingLeaves) addNote(l.userId, l.startDate, l.endDate, "휴가 결재 대기");
+  // 종류를 그대로 적는다 — "조퇴 결재 대기"를 "휴가 결재 대기"로 적으면 종일 무단결근이 휴가처럼 보인다(검수 2차 M-5).
+  for (const l of pendingLeaves) addNote(l.userId, l.startDate, l.endDate, `${leaveTypeLabel(l.type)} 결재 대기`);
   for (const t of trips) addNote(t.userId, t.startDate, t.endDate, "출장 승인");
   for (const r of remotes) addNote(r.userId, r.startDate, r.endDate, "재택 승인");
 
@@ -149,6 +152,8 @@ export async function buildReportBlocks(opts: {
   for (const e of employees) byUser.set(e.id, mk(e));
 
   for (const r of records) {
+    // 회사 계정(사람이 아님)은 집계 대상이 아니다 — 직원 목록 쿼리와 기준을 맞춘다(검수 2차 경미).
+    if (r.user.isOwner) continue;
     // 재직자 목록에 없는데 기록이 있는 경우 = 기간 중(또는 이미) 퇴사한 직원. 그 사람의 기록도 빠뜨리지 않는다.
     const cur = byUser.get(r.userId) ?? mk({
       id: r.userId, name: r.user.name, employeeNo: r.user.employeeNo, role: r.user.role,
@@ -190,7 +195,6 @@ export async function buildReportBlocks(opts: {
     const mine = leavesByUser.get(u.id) ?? [];
     const leaveSet = leaveDateSet(mine);
     const labelByDate = leaveLabelByDate(mine);
-    const typeByDate = leaveTypeByDate(mine); // 반차(0.5일) 판별용
     const { absent, onLeave, leaveAll } = dayBreakdown({
       start, absLimit,
       workDays: effectiveWorkDays(u.workDays, company?.workDays),
@@ -200,8 +204,20 @@ export async function buildReportBlocks(opts: {
     });
 
     const blank = { workMode: "-", location: "-", in: "", out: "", breaks: 0, worked: 0, open: false, unclosed: false };
+    // 그날에 걸린 휴가 종류를 **전부** 적는다 — 오전 반차 + 오후 반차를 쓴 날이 "오후 반차"로만 보이면
+    // 법정 문서에서 반나절만 쉰 것처럼 읽힌다(날짜→라벨 맵은 하나만 남긴다).
+    const labelsOf = (iso: string): string => {
+      const seen: string[] = [];
+      for (const l of mine) {
+        if (l.type === "early_leave") continue;
+        if (iso < toISODate(l.startDate) || iso > toISODate(l.endDate)) continue;
+        const label = leaveTypeLabel(l.type);
+        if (!seen.includes(label)) seen.push(label);
+      }
+      return seen.length ? seen.join(" · ") : labelByDate.get(iso) ?? "휴가";
+    };
     for (const iso of onLeave) {
-      u.rows.push({ date: iso, kind: "leave", kindLabel: `휴가 · ${labelByDate.get(iso) ?? "휴가"}`, ...blank });
+      u.rows.push({ date: iso, kind: "leave", kindLabel: `휴가 · ${labelsOf(iso)}`, ...blank });
     }
     for (const iso of absent) {
       const note = noteByUserDate.get(`${u.id}|${iso}`);
@@ -216,9 +232,27 @@ export async function buildReportBlocks(opts: {
     let overtime = 0;
     for (const v of u.dayMinutes.values()) overtime += Math.max(0, v - standardMin);
 
-    // 휴가 일수 = 반차는 0.5일로 센다(연차 차감과 같은 무게). 출근도 한 반차 날도 포함한다(검수 M-6).
+    // 휴가 일수 = "그날 휴가로 쉰 정도"의 합. 반차는 0.5일, 하루 최대 1일.
+    //  · 그날의 승인건을 **전부 더한다** — 오전 반차 + 오후 반차로 하루를 통째로 쉬면 0.5+0.5 = 1일(검수 2차 C-1).
+    //    (날짜→종류 맵으로 하나만 보면 반차 2건이 0.5일로 반토막 나고, DB 행 순서에 따라 값이 흔들렸다)
+    //  · 출근 기록이 있는 날은 **반차 몫만** 센다 — 그날은 이미 근무일수로 세었으므로, 종일 휴가까지 더하면
+    //    근무일수+휴가가 실제 날짜 수를 넘는다(검수 2차 C-2). 연차 소진량은 [연차정산] 화면이 단일 출처다.
+    const dayLeaveWeight = (iso: string, attendedThatDay: boolean): number => {
+      let w = 0;
+      for (const l of mine) {
+        if (l.type === "early_leave") continue; // 조퇴는 휴가로 쉰 날이 아니다(lib/leave.ts와 같은 기준)
+        const s = toISODate(l.startDate);
+        const e = toISODate(l.endDate);
+        if (iso < s || iso > e) continue;
+        const half = HALF_DAY_TYPES.has(l.type);
+        if (attendedThatDay && !half) continue; // 출근한 날의 종일 휴가는 세지 않는다
+        w += half ? 0.5 : 1;
+      }
+      return Math.min(1, w);
+    };
+    const onLeaveSet = new Set(onLeave);
     const leaveDaysCount =
-      Math.round(leaveAll.reduce((s, iso) => s + (HALF_DAY_TYPES.has(typeByDate.get(iso) ?? "") ? 0.5 : 1), 0) * 10) / 10;
+      Math.round(leaveAll.reduce((s, iso) => s + dayLeaveWeight(iso, !onLeaveSet.has(iso)), 0) * 10) / 10;
 
     out.push({
       id: u.id, name: u.name, employeeNo: u.employeeNo, role: u.role,
