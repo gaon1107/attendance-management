@@ -15,8 +15,9 @@ export type LeaveSummaryRow = {
   dept: string;
   hireDate: string;
   granted: number | null; // 과거 연도는 발생 이력이 없어 null("—")
-  used: number;
-  remain: number | null; // granted가 null이면 함께 null
+  used: number; // 승인 확정된 사용일수
+  pending: number; // 결재 대기 중이라 미리 잡아둔 일수(잔여에서 함께 뺀다)
+  remain: number | null; // granted가 null이면 함께 null. 발생 − 사용 − 대기
 };
 
 const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 16px", whiteSpace: "nowrap" };
@@ -52,10 +53,12 @@ export function LeaveSummaryClient({
   // KPI는 "화면에 보이는 직원" 기준(검색 반영). 과거 연도는 발생·잔여가 "—"(사용만 의미).
   const grantedSum = shown.reduce((s, r) => s + (r.granted ?? 0), 0);
   const usedSum = shown.reduce((s, r) => s + r.used, 0);
+  const pendingSum = shown.reduce((s, r) => s + r.pending, 0);
   const totalGranted = isCurrentYear ? num1(grantedSum) : "—";
   const totalUsed = num1(usedSum);
-  // 총 잔여 = 총 발생 − 총 사용(각각 독립 반올림 시 0.1 어긋나는 것 방지)
-  const totalRemain = isCurrentYear ? num1(grantedSum - usedSum) : "—";
+  const totalPending = num1(pendingSum);
+  // 총 잔여 = 총 발생 − 총 사용 − 총 대기(각각 독립 반올림 시 0.1 어긋나는 것 방지)
+  const totalRemain = isCurrentYear ? num1(grantedSum - usedSum - pendingSum) : "—";
 
   // 엑셀: 현재 검색어를 서버에 전달해 "보이는 직원만" 내보낸다.
   const exportHref = q.trim() ? `${exportBase}&q=${encodeURIComponent(q)}` : exportBase;
@@ -63,6 +66,7 @@ export function LeaveSummaryClient({
   const kpis = [
     { label: "총 발생", value: totalGranted, color: "var(--text)" },
     { label: "총 사용", value: totalUsed, color: "var(--text)" },
+    ...(pendingSum > 0 ? [{ label: "총 결재대기", value: totalPending, color: "var(--warning)" }] : []),
     { label: "총 잔여", value: totalRemain, color: "var(--primary)" },
   ];
 
@@ -126,13 +130,14 @@ export function LeaveSummaryClient({
                 <th style={th}>입사일</th>
                 <th style={{ ...th, textAlign: "right" }}>발생</th>
                 <th style={{ ...th, textAlign: "right" }}>사용</th>
+                <th style={{ ...th, textAlign: "right" }}>결재대기</th>
                 <th style={{ ...th, textAlign: "right" }}>잔여</th>
               </tr>
             </thead>
             <tbody>
               {pg.view.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: "28px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={8} style={{ padding: "28px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {rows.length === 0 ? "재직 중인 직원이 없습니다." : "검색 결과가 없습니다."}
                   </td>
                 </tr>
@@ -145,6 +150,7 @@ export function LeaveSummaryClient({
                     <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{r.hireDate || "—"}</td>
                     <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{cell(r.granted)}</td>
                     <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: "var(--text-sub)" }}>{num1(r.used)}</td>
+                    <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: r.pending > 0 ? "var(--warning)" : "var(--text-sub)" }}>{num1(r.pending)}</td>
                     <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: r.remain !== null && r.remain < 0 ? "var(--danger)" : "var(--text)" }}>{cell(r.remain)}</td>
                   </tr>
                 ))

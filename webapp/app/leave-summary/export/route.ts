@@ -2,7 +2,7 @@
 import ExcelJS from "exceljs";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
-import { usedLeaveDaysInYear, annualLeaveGranted } from "@/lib/leave";
+import { leaveBalanceInYear } from "@/lib/leave";
 import { toISODate } from "@/lib/period";
 import { queryTerms, matchesTerms } from "@/lib/search";
 
@@ -33,7 +33,7 @@ export async function GET(request: Request): Promise<Response> {
   const yStart = new Date(year, 0, 1);
   const yEnd = new Date(year + 1, 0, 1);
   const leaves = await prisma.leaveRequest.findMany({
-    where: { companyId: me.companyId, status: "approved", startDate: { gte: yStart, lt: yEnd } },
+    where: { companyId: me.companyId, status: { in: ["approved", "pending"] }, startDate: { gte: yStart, lt: yEnd } },
     select: { userId: true, type: true, days: true, status: true, startDate: true },
   });
   const byUser = new Map<string, typeof leaves>();
@@ -43,16 +43,17 @@ export async function GET(request: Request): Promise<Response> {
     else byUser.set(lv.userId, [lv]);
   }
   const rows = employees.map((e) => {
-    const used = usedLeaveDaysInYear(byUser.get(e.id) ?? [], year);
-    // 화면과 동일: 과거 연도는 발생·잔여를 비운다(빈 셀). 발생은 소수 1자리로(화면=엑셀 일치).
-    const granted = isCurrentYear ? Math.round(annualLeaveGranted(e) * 10) / 10 : null;
-    const remain = granted === null ? null : Math.round((granted - used) * 10) / 10;
+    const bal = leaveBalanceInYear(e, byUser.get(e.id) ?? [], year);
+    // 화면과 동일: 과거 연도는 발생·잔여를 비운다(빈 셀). 잔여 = 발생 − 사용 − 결재대기.
+    const granted = isCurrentYear ? bal.granted : null;
+    const remain = granted === null ? null : bal.remaining;
     return {
       name: e.name,
       dept: e.department?.name ?? "미배정",
       hireDate: e.hireDate ? toISODate(e.hireDate) : "",
       granted,
-      used,
+      used: bal.used,
+      pending: bal.pending,
       remain,
     };
   });
@@ -74,6 +75,7 @@ export async function GET(request: Request): Promise<Response> {
     { header: "입사일", key: "hireDate", width: 13 },
     { header: "발생(일)", key: "granted", width: 10 },
     { header: "사용(일)", key: "used", width: 10 },
+    { header: "결재대기(일)", key: "pending", width: 12 },
     { header: "잔여(일)", key: "remain", width: 10 },
   ];
 

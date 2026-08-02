@@ -13,7 +13,7 @@ import { AnnualLeaveForm } from "./AnnualLeaveForm";
 import { DepartmentAssignForm } from "./DepartmentAssignForm";
 import { ProfileForm } from "./ProfileForm";
 import { parseDays, effectiveWorkDays, daysLabel } from "@/lib/workdays";
-import { usedLeaveDays, annualLeaveGranted, grantedAnnualLeave } from "@/lib/leave";
+import { leaveBalanceInYear, grantedAnnualLeave } from "@/lib/leave";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
@@ -61,15 +61,17 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   const companyDaysLabel = daysLabel(parseDays(company?.workDays));
   const effectiveLabel = daysLabel(effectiveWorkDays(emp.workDays, company?.workDays));
 
-  // 이 직원의 연차 사용/잔여(승인된 연차·반차 합)
+  // 이 직원의 올해 연차 현황 — lib/leave.ts 단일 출처 함수 사용(화면 간 숫자 불일치 방지, 검수 C-2).
   const empLeaves = await prisma.leaveRequest.findMany({
     where: { userId: emp.id, companyId: me.companyId },
-    select: { type: true, days: true, status: true },
+    select: { type: true, days: true, status: true, startDate: true },
   });
-  const leaveUsed = usedLeaveDays(empLeaves);
+  const leaveBalance = leaveBalanceInYear(emp, empLeaves, new Date().getFullYear());
+  const leaveUsed = leaveBalance.used;
+  const leavePending = leaveBalance.pending;
   const leaveAutoDays = grantedAnnualLeave(emp.hireDate); // 입사일 기준 자동 발생값
-  const leaveGranted = annualLeaveGranted(emp); // 적용값(override 우선)
-  const leaveRemaining = Math.round((leaveGranted - leaveUsed) * 10) / 10;
+  const leaveGranted = leaveBalance.granted; // 적용값(override 우선)
+  const leaveRemaining = leaveBalance.remaining;
 
   const authLabel = emp.authMethod === "face" ? "얼굴인증" : emp.authMethod === "gps" ? "GPS(위치)" : "미설정";
   const consented = !!emp.faceConsentAt;
@@ -186,7 +188,9 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
       <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>연차</div>
         <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
-          발생 <b>{leaveGranted}일</b> · 사용 <b>{leaveUsed}일</b> · 잔여 <b style={{ color: leaveRemaining > 0 ? "var(--primary)" : "var(--danger)" }}>{leaveRemaining}일</b>. (입사일 기준으로 자동 발생하며, 직원이 신청·승인한 연차·반차가 사용에 반영됩니다.)
+          발생 <b>{leaveGranted}일</b> · 사용 <b>{leaveUsed}일</b>
+          {leavePending > 0 && <> · 결재 대기 <b style={{ color: "var(--warning)" }}>{leavePending}일</b></>}
+          {" · "}잔여 <b style={{ color: leaveRemaining > 0 ? "var(--primary)" : "var(--danger)" }}>{leaveRemaining}일</b>. (올해 기준. 입사일 기준으로 자동 발생하며, 신청·승인한 연차·반차가 사용에 반영됩니다. 결재 대기 중인 연차도 미리 잔여에서 빼둡니다.)
         </p>
         <AnnualLeaveForm id={emp.id} autoDays={leaveAutoDays} override={emp.annualLeaveOverride} hasHireDate={!!emp.hireDate} />
       </div>

@@ -6,7 +6,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { PaginatedTable } from "@/app/components/PaginatedTable";
 import { LeaveRequestForm } from "./LeaveRequestForm";
 import { cancelLeave } from "@/app/actions/leave";
-import { leaveTypeLabel, leaveStatusLabel, usedLeaveDays, annualLeaveGranted } from "@/lib/leave";
+import { leaveTypeLabel, leaveStatusLabel, leaveBalanceInYear } from "@/lib/leave";
 import { getApprovalProgressMap, type ApprovalProgress, listApprovalCandidates, resolveCustomApprovers } from "@/lib/approval-server";
 import { ApprovalLineEditor } from "@/app/components/ApprovalLineEditor";
 
@@ -52,14 +52,18 @@ export default async function LeavePage() {
   const candidates = isCustom ? await listApprovalCandidates(me.companyId, me.id) : [];
   const currentLine = isCustom ? await resolveCustomApprovers(me.companyId, me.id, "leave") : [];
 
-  const used = usedLeaveDays(requests);
-  const granted = annualLeaveGranted(me); // 입사일 기준 자동 발생(관리자 수동조정 우선)
-  const remaining = Math.round((granted - used) * 10) / 10;
+  // 연차 현황은 lib/leave.ts의 단일 출처 함수로 구한다 — 화면마다 숫자가 달라지지 않게(검수 C-2).
+  //  · 올해 기준: 발생 − 올해 승인분 − 올해 대기분
+  //  · 대기분을 따로 보여줘, 결재를 기다리는 연차가 얼마인지 직원이 알 수 있게 한다.
+  const balance = leaveBalanceInYear(me, requests, new Date().getFullYear());
 
   const kpis = [
-    { label: "부여 연차", value: granted, color: "var(--text)" },
-    { label: "사용", value: used, color: "var(--text)" },
-    { label: "잔여", value: remaining, color: remaining > 0 ? "var(--primary)" : "var(--danger)" },
+    { label: "부여 연차", value: balance.granted, color: "var(--text)" },
+    { label: "사용", value: balance.used, color: "var(--text)" },
+    ...(balance.pending > 0
+      ? [{ label: "결재 대기", value: balance.pending, color: "var(--warning)" }]
+      : []),
+    { label: "잔여", value: balance.remaining, color: balance.remaining > 0 ? "var(--primary)" : "var(--danger)" },
   ];
 
   const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 16px", whiteSpace: "nowrap" };

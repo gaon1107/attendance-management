@@ -85,21 +85,54 @@ export function computeLeaveDays(type: string, start: Date, end: Date, workDays:
   return countWorkdaysBetween(start, end, workDays, offDays);
 }
 
-// 승인된 신청들 중 연차 잔여에서 차감되는 사용일수 합(연차·반차). 병가는 제외.
-type LeaveUse = { type: string; days: number; status: string };
-export function usedLeaveDays(requests: LeaveUse[]): number {
-  return requests
-    .filter((r) => r.status === "approved" && leaveTypeDeducts(r.type))
-    .reduce((s, r) => s + r.days, 0);
+// ⚠️ 예전에 있던 usedLeaveDays(전 기간 승인분)·usedLeaveDaysInYear(그 해 승인분)는 삭제했다(2026-08-02).
+//    두 함수가 공존해서 화면마다 "사용/잔여" 기준이 달랐던 것이 검수 C-2의 원인이다.
+//    사용일수·잔여가 필요하면 아래 leaveBalanceInYear 하나만 쓴다.
+
+// ── [단일 출처] 연차 잔여 계산 ───────────────────────────────────────
+// 2026-08-02 종합검수 C-2·C-3 반영. **잔여를 계산하는 모든 곳은 이 함수 하나만 쓴다.**
+//
+// 예전에 무엇이 잘못됐나:
+//  ① 화면마다 기준이 달랐다 — [휴가]·[직원상세]는 "전 기간 승인분", [연차정산]은 "그 해 승인분".
+//     → 해가 바뀌면 같은 직원의 잔여가 화면마다 다르게 나왔다(2027년 1월이면 작년 사용분이 계속 차감).
+//  ② 신청 검사가 "결재 대기 중"인 신청을 세지 않았다.
+//     → 잔여 1일인 직원이 1일짜리를 5번 신청하면 5건 모두 검사를 통과하고, 관리자가 다 승인하면 잔여가 −4일.
+//
+// 지금 규칙: **잔여 = 그 해 발생 − 그 해 확정사용(승인) − 그 해 예정사용(대기)**
+//  · 대기분을 미리 빼두는 이유: 아직 승인 전이어도 "쓰겠다고 잡아둔 몫"이라 이중으로 쓸 수 없어야 한다.
+//  · 반려·취소되면 대기에서 빠지므로 잔여가 자동으로 돌아온다.
+type LeaveBalanceInput = { type: string; days: number; status: string; startDate: Date };
+export type LeaveBalance = {
+  granted: number; // 그 해 발생(부여) 연차
+  used: number; // 승인 확정된 사용일수
+  pending: number; // 결재 대기 중이라 미리 잡아둔 일수
+  remaining: number; // 실제로 더 쓸 수 있는 일수
+};
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10; // 반차 0.5 누적 시 부동소수 오차 방지
 }
 
-// 특정 연도에 "시작하는" 승인된 연차·반차 사용일수 합. (연차 정산 화면 — 연도별 사용량)
-// 기간이 연말을 넘는 휴가는 시작일 연도로 귀속한다(간소형 기준).
-type LeaveUseDated = { type: string; days: number; status: string; startDate: Date };
-export function usedLeaveDaysInYear(requests: LeaveUseDated[], year: number): number {
-  return requests
-    .filter((r) => r.status === "approved" && leaveTypeDeducts(r.type) && r.startDate.getFullYear() === year)
-    .reduce((s, r) => s + r.days, 0);
+export function leaveBalanceInYear(
+  user: { hireDate: Date | null; annualLeaveOverride: number | null },
+  requests: LeaveBalanceInput[],
+  year: number,
+  asOf: Date = new Date()
+): LeaveBalance {
+  // 그 해에 "시작하는" 차감 대상(연차·반차)만 센다. 연말을 넘는 휴가는 시작일 연도로 귀속(연차정산 화면과 같은 기준).
+  const inYear = requests.filter((r) => leaveTypeDeducts(r.type) && r.startDate.getFullYear() === year);
+  const sumOf = (status: string) =>
+    inYear.filter((r) => r.status === status).reduce((s, r) => s + r.days, 0);
+
+  const granted = round1(annualLeaveGranted(user, asOf));
+  const used = round1(sumOf("approved"));
+  const pending = round1(sumOf("pending"));
+  return { granted, used, pending, remaining: round1(granted - used - pending) };
+}
+
+// 두 기간이 하루라도 겹치는가(시작·종료일 포함). 같은 날짜에 휴가를 두 번 신청하는 것을 막는 데 쓴다.
+export function rangesOverlap(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean {
+  return aStart <= bEnd && bStart <= aEnd;
 }
 
 // ── B-2 연차 자동발생 (입사일 기준·간소) ──────────────────────────────

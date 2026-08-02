@@ -24,6 +24,7 @@ export type LeaveRow = {
   status: string;
   statusLabel: string;
   progress?: string; // 부서장 결재선 진행상황(대기 건에만). 예: "부서장 결재 1/2 · 다음 홍길동"
+  shortage?: string; // 잔여 연차를 넘어 승인할 수 없는 건(대기 건에만). 예: "잔여 부족 — 쓸 수 있는 연차 2일 / 신청 5일"
   search: string;
 };
 
@@ -112,6 +113,12 @@ export function LeaveApprovalsClient({
                     <td style={{ ...td, color: "var(--text-sub)", maxWidth: 220 }}>
                       <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.reason || "—"}</div>
                       {r.progress && <div style={{ fontSize: 12, color: "var(--warning)", marginTop: 3, fontWeight: 700 }}>{r.progress}</div>}
+                      {/* 잔여 연차를 넘는 건 — 서버가 승인을 막으므로 이유를 미리 보여준다 */}
+                      {r.shortage && (
+                        <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 3, fontWeight: 700, whiteSpace: "normal" }}>
+                          ⚠ {r.shortage}
+                        </div>
+                      )}
                     </td>
                     <td style={{ ...td, textAlign: "right" }}>
                       <div style={{ display: "inline-flex", gap: 8 }}>

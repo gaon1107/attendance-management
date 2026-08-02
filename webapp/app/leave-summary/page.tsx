@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
-import { usedLeaveDaysInYear, annualLeaveGranted } from "@/lib/leave";
+import { leaveBalanceInYear } from "@/lib/leave";
 import { toISODate } from "@/lib/period";
 import { LeaveSummaryClient, type LeaveSummaryRow } from "./LeaveSummaryClient";
 
@@ -43,8 +43,10 @@ export default async function LeaveSummaryPage({
   // 그 연도에 시작하는 승인 연차·반차만(성능 위해 연도 범위로 1차 필터) → 사용자별로 묶는다.
   const yStart = new Date(year, 0, 1);
   const yEnd = new Date(year + 1, 0, 1);
+  // 승인분(확정 사용)과 대기분(결재 중이라 미리 잡아둔 몫)을 함께 읽는다 —
+  // 잔여를 다른 화면([휴가]·[직원상세])과 같은 기준으로 맞추기 위함(검수 C-2).
   const leaves = await prisma.leaveRequest.findMany({
-    where: { companyId: me.companyId, status: "approved", startDate: { gte: yStart, lt: yEnd } },
+    where: { companyId: me.companyId, status: { in: ["approved", "pending"] }, startDate: { gte: yStart, lt: yEnd } },
     select: { userId: true, type: true, days: true, status: true, startDate: true },
   });
   const byUser = new Map<string, typeof leaves>();
@@ -55,10 +57,10 @@ export default async function LeaveSummaryPage({
   }
 
   const rows: LeaveSummaryRow[] = employees.map((e) => {
-    const used = usedLeaveDaysInYear(byUser.get(e.id) ?? [], year);
+    const bal = leaveBalanceInYear(e, byUser.get(e.id) ?? [], year);
     // 과거 연도는 그 해 부여량(발생) 이력이 없다 → 발생·잔여를 null(화면 "—")로 두고 '사용'만 정확히 보여준다.
-    const granted = isCurrentYear ? annualLeaveGranted(e) : null;
-    const remain = granted === null ? null : Math.round((granted - used) * 10) / 10; // 부동소수 오차 방지
+    const granted = isCurrentYear ? bal.granted : null;
+    const remain = granted === null ? null : bal.remaining; // 발생 − 사용 − 대기
     return {
       id: e.id,
       name: e.name,
@@ -66,7 +68,8 @@ export default async function LeaveSummaryPage({
       dept: e.department?.name ?? "미배정",
       hireDate: e.hireDate ? toISODate(e.hireDate) : "",
       granted,
-      used,
+      used: bal.used,
+      pending: bal.pending,
       remain,
     };
   });

@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { LeaveApprovalsClient, type LeaveRow } from "./LeaveApprovalsClient";
-import { leaveTypeLabel, leaveStatusLabel } from "@/lib/leave";
+import { leaveTypeLabel, leaveStatusLabel, leaveTypeDeducts, leaveBalanceInYear } from "@/lib/leave";
 import { parseAnchor, toISODate } from "@/lib/period";
 import { getApprovalProgressMap } from "@/lib/approval-server";
 
@@ -79,6 +79,37 @@ export default async function LeaveApprovalsPage({
     return `부서장 결재 ${p.approvedCount}/${p.total}${p.nextApproverName ? ` · 다음 ${p.nextApproverName}` : ""}`;
   };
 
+  // 대기 건 중 "승인하면 잔여 연차를 넘는" 것을 미리 표시한다(검수 C-2).
+  //  · 서버(approveLeave)가 실제로 승인을 막으므로, 관리자가 이유를 모른 채 계속 누르지 않도록 화면에 알려준다.
+  //  · 신청 단계에서 이미 대기분까지 빼고 검사하므로 평소엔 뜨지 않는다. 관리자가 나중에 연차 부여량을
+  //    줄였을 때처럼 예외 상황에서만 나타난다.
+  const shortageById = new Map<string, string>();
+  {
+    const applicantIds = [...new Set(pendingReqs.filter((r) => leaveTypeDeducts(r.type)).map((r) => r.userId))];
+    if (applicantIds.length) {
+      const theirLeaves = await prisma.leaveRequest.findMany({
+        where: { companyId: me.companyId, userId: { in: applicantIds } },
+        select: { userId: true, type: true, days: true, status: true, startDate: true },
+      });
+      const byUser = new Map<string, typeof theirLeaves>();
+      for (const lv of theirLeaves) {
+        const arr = byUser.get(lv.userId);
+        if (arr) arr.push(lv);
+        else byUser.set(lv.userId, [lv]);
+      }
+      for (const r of pendingReqs) {
+        if (!leaveTypeDeducts(r.type)) continue;
+        const year = r.startDate.getFullYear();
+        const bal = leaveBalanceInYear(r.user, byUser.get(r.userId) ?? [], year, r.startDate);
+        // 이 건은 대기라 이미 잔여에서 빠져 있다 → 되돌려 더한 값이 "이 건에 쓸 수 있는 몫".
+        const availableForThis = Math.round((bal.remaining + r.days) * 10) / 10;
+        if (r.days > availableForThis) {
+          shortageById.set(r.id, `잔여 부족 — 쓸 수 있는 연차 ${availableForThis}일 / 신청 ${r.days}일`);
+        }
+      }
+    }
+  }
+
   const toRow = (r: (typeof pendingReqs)[number]): LeaveRow => {
     const typeLabel = leaveTypeLabel(r.type);
     const rl = rangeLabel(r.startDate, r.endDate);
@@ -96,6 +127,7 @@ export default async function LeaveApprovalsPage({
       status: r.status,
       statusLabel,
       progress: progressLabel(r.id),
+      shortage: shortageById.get(r.id),
       search: [r.user.name, r.user.employeeNo ?? "", typeLabel, rl, reason, statusLabel].join(" ").toLowerCase(),
     };
   };

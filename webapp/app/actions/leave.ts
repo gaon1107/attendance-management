@@ -5,7 +5,8 @@ import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { effectiveWorkDays } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
-import { REQUESTABLE_TYPES, isSingleDayLeave, leaveTypeDeducts, computeLeaveDays, parseYmd, usedLeaveDays, annualLeaveGranted } from "@/lib/leave";
+import { REQUESTABLE_TYPES, isSingleDayLeave, leaveTypeDeducts, computeLeaveDays, parseYmd, leaveBalanceInYear, rangesOverlap, leaveTypeLabel } from "@/lib/leave";
+import { toISODate } from "@/lib/period";
 import { createApprovalStepsIfNeeded, advanceApproval, deleteApprovalSteps, isSelfApprovalBlocked } from "@/lib/approval-server";
 
 // 직원: 휴가 신청. 종류·기간을 받아 근무요일 기준 사용일수를 계산하고 대기 상태로 만든다.
@@ -47,15 +48,48 @@ export async function requestLeave(
     return { error: `한 번에 신청할 수 있는 근무일수(${MAX_NONDEDUCT_DAYS}일)를 넘었습니다. 기간을 나눠 신청해주세요.` };
   }
 
-  // 연차·반차는 잔여를 넘을 수 없다(병가는 차감 안 함).
+  // 내가 낸 신청 전체를 한 번만 읽어 ①기간 겹침 ②잔여 검사에 함께 쓴다.
+  const mine = await prisma.leaveRequest.findMany({
+    where: { userId: me.id, companyId: me.companyId },
+    select: { type: true, days: true, status: true, startDate: true, endDate: true },
+  });
+
+  // ① 같은 날짜에 이미 잡아둔 휴가가 있으면 거부 (검수 C-3 — 중복 신청 이중 차감 방지).
+  //    · 같은 종류가 겹치면 무조건 거부(버튼 두 번 눌림·고의 중복 모두 여기서 걸린다)
+  //    · 종류가 달라도 둘 다 연차에서 깎는 휴가면 거부
+  //    · 예외: 오전 반차 + 오후 반차는 하루를 나눠 쓰는 정상 조합이라 허용한다
+  const isHalfPair = (a: string, b: string) =>
+    (a === "half_am" && b === "half_pm") || (a === "half_pm" && b === "half_am");
+  const conflict = mine.find(
+    (r) =>
+      (r.status === "pending" || r.status === "approved") &&
+      rangesOverlap(start, end, r.startDate, r.endDate) &&
+      (r.type === type ||
+        (leaveTypeDeducts(type) && leaveTypeDeducts(r.type) && !isHalfPair(type, r.type)))
+  );
+  if (conflict) {
+    const when =
+      toISODate(conflict.startDate) === toISODate(conflict.endDate)
+        ? toISODate(conflict.startDate)
+        : `${toISODate(conflict.startDate)} ~ ${toISODate(conflict.endDate)}`;
+    const state = conflict.status === "approved" ? "승인된" : "결재 대기 중인";
+    return {
+      error: `이미 ${state} ${leaveTypeLabel(conflict.type)}(${when})와 날짜가 겹칩니다. 기존 신청을 취소하거나 다른 날짜를 선택해주세요.`,
+    };
+  }
+
+  // ② 연차·반차는 잔여를 넘을 수 없다(병가·경조·공가·특별·조퇴는 차감 안 함).
+  //    잔여 = 그 해 발생 − 승인분 − 대기분. 대기분까지 빼는 이유는 lib/leave.ts 설명 참고(검수 C-2).
   if (leaveTypeDeducts(type)) {
-    const mine = await prisma.leaveRequest.findMany({
-      where: { userId: me.id, companyId: me.companyId },
-      select: { type: true, days: true, status: true },
-    });
-    const remaining = annualLeaveGranted(me) - usedLeaveDays(mine);
-    if (days > remaining) {
-      return { error: `잔여 연차(${remaining}일)보다 많이 신청했습니다. (${days}일 신청)` };
+    const balance = leaveBalanceInYear(me, mine, start.getFullYear(), start);
+    if (days > balance.remaining) {
+      const detail =
+        balance.pending > 0
+          ? `(발생 ${balance.granted}일 − 사용 ${balance.used}일 − 결재 대기 ${balance.pending}일)`
+          : `(발생 ${balance.granted}일 − 사용 ${balance.used}일)`;
+      return {
+        error: `잔여 연차 ${balance.remaining}일보다 많이 신청했습니다. ${days}일 신청 ${detail}`,
+      };
     }
   }
 
@@ -94,6 +128,29 @@ export async function approveLeave(formData: FormData): Promise<void> {
   if (!lv) return;
   // 🔴 자기 신청을 자기가 승인하지 못하게 막는다(다른 관리자가 없으면 허용 — lib/approval-server.ts 설명).
   if (await isSelfApprovalBlocked(me, lv.userId)) return;
+
+  // 🔴 승인 시점 잔여 재검사 (검수 C-2 — 마지막 방어선).
+  //   신청 때 통과했어도 그 사이 다른 건이 승인돼 잔여가 줄었을 수 있다.
+  //   여기서 다시 보지 않으면 대기 중인 여러 건을 차례로 승인해 잔여가 마이너스가 된다.
+  if (leaveTypeDeducts(lv.type)) {
+    const applicant = await prisma.user.findFirst({
+      where: { id: lv.userId, companyId: me.companyId },
+      select: { hireDate: true, annualLeaveOverride: true },
+    });
+    if (!applicant) return;
+    const theirs = await prisma.leaveRequest.findMany({
+      where: { userId: lv.userId, companyId: me.companyId },
+      select: { type: true, days: true, status: true, startDate: true },
+    });
+    const year = lv.startDate.getFullYear();
+    // 이 건은 아직 대기 상태로 잔여에서 빠져 있다 → 되돌려 더한 뒤 "이 건을 승인해도 되는지"를 본다.
+    const balance = leaveBalanceInYear(applicant, theirs, year, lv.startDate);
+    const availableForThis = Math.round((balance.remaining + lv.days) * 10) / 10;
+    if (lv.days > availableForThis) {
+      return; // 잔여 초과 → 승인하지 않는다(화면은 대기 상태 그대로 유지)
+    }
+  }
+
   const result = await advanceApproval(me, "leave", lv.id, "approve", comment);
   if (result === "denied") return;
   if (result === "approved") {
