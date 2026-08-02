@@ -133,7 +133,23 @@ export async function resolveApproverChain(
     select: { id: true, headUserId: true, parentId: true, deputyUserId: true, finalApproval: true },
   });
   const map = new Map<string, DeptNode>(depts.map((d) => [d.id, d]));
-  return buildApprovalChain(applicantUserId, applicantDeptId, map, stepCount).approvers;
+  const chain = buildApprovalChain(applicantUserId, applicantDeptId, map, stepCount).approvers;
+  if (chain.length === 0) return chain;
+
+  // 🔴 [검수 H-6] 퇴사한 사람을 결재자로 세우지 않는다.
+  //   퇴사자는 로그인할 수 없으므로 그 단계가 영원히 대기로 남고, 다음 결재자에게는
+  //   "내 차례"로 뜨지 않아 **결재가 조용히 멈춘다**(관리자 오버라이드로만 풀림).
+  //   직급 결재선(custom)은 이미 재직자만 거르는데, 부서장 결재선(deptline)만 이 검사가 빠져 있었다.
+  const alive = await prisma.user.findMany({
+    where: { id: { in: chain.map((a) => a.userId) }, companyId, deactivatedAt: null },
+    select: { id: true },
+  });
+  const aliveSet = new Set(alive.map((u) => u.id));
+  const filtered = chain.filter((a) => aliveSet.has(a.userId));
+  if (filtered.length !== chain.length) {
+    console.warn(`[resolveApproverChain] 퇴사자를 결재선에서 제외 (company=${companyId}, 남은 결재자 ${filtered.length}명)`);
+  }
+  return filtered;
 }
 
 // 신청 생성 직후 결재선(ApprovalStep들)을 만든다. 결재자가 없으면 만들지 않는다(=관리자 단일 승인).

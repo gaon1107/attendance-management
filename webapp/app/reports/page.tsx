@@ -74,8 +74,26 @@ export default async function ReportsPage({
   // 교대제면 결근을 조 배정 기준으로(비교대면 ctx=null → 근무요일 기준 기존 로직).
   const shiftCtx = await loadShiftContext(me.companyId, toISODate(start), toISODate(end));
 
+  // 🔴 [검수 H-7] 재직 직원 **전체**를 집계 대상으로 삼는다.
+  //   예전엔 출퇴근 기록이 있는 사람만 표에 넣어서, **기간 내내 결근한 직원이 리포트에서 통째로 사라졌다.**
+  //   결근이 가장 심한 사람이 결근 집계에서 빠지는 셈이라 월 마감·급여 연동에서 놓치기 쉬웠다.
+  //   (회사 계정은 사람이 아니므로 제외 — 다른 집계 화면과 같은 기준)
+  const activeEmployees = await prisma.user.findMany({
+    where: { companyId: me.companyId, deactivatedAt: null, isOwner: false },
+    select: { id: true, name: true, employeeNo: true, role: true, workDays: true, shiftGroupId: true },
+    orderBy: { createdAt: "asc" },
+  });
+
   // 직원별 집계 (+ 초과근무를 위해 날짜별 실근무 분도 모은다)
   const byUser = new Map<string, { id: string; name: string; employeeNo: string | null; role: string; minutes: number; breaks: number; days: Set<string>; workDays: string | null; shiftGroupId: string | null; dayMinutes: Map<string, number> }>();
+  // 먼저 재직 직원 전원을 0으로 깔아둔다 → 출근이 한 번도 없어도 표에 남아 결근이 집계된다.
+  for (const e of activeEmployees) {
+    byUser.set(e.id, {
+      id: e.id, name: e.name, employeeNo: e.employeeNo, role: e.role,
+      minutes: 0, breaks: 0, days: new Set<string>(),
+      workDays: e.workDays, shiftGroupId: e.shiftGroupId, dayMinutes: new Map<string, number>(),
+    });
+  }
   for (const r of records) {
     const cur = byUser.get(r.userId) ?? { id: r.userId, name: r.user.name, employeeNo: r.user.employeeNo, role: r.user.role, minutes: 0, breaks: 0, days: new Set<string>(), workDays: r.user.workDays, shiftGroupId: r.user.shiftGroupId, dayMinutes: new Map<string, number>() };
     // 퇴근을 안 찍은 기록이 수백 시간으로 부풀지 않게 상한 적용(검수 C-6 — 대시보드·초과근무 화면과 같은 기준).

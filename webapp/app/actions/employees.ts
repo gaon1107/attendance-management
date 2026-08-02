@@ -158,6 +158,25 @@ export async function deactivateEmployee(
     await tx.user.update({ where: { id: rule.target.id }, data: { deactivatedAt: new Date() } });
     // 이미 로그인해 있던 세션도 즉시 무효화
     await tx.session.deleteMany({ where: { userId: rule.target.id } });
+
+    // 🔴 [검수 H-6] 퇴사자가 부서장·대결자로 남아 있으면 그 부서의 결재가 통째로 멈춘다.
+    //    (퇴사자는 로그인할 수 없어 그 단계가 영원히 대기로 남는다)
+    //    직위를 비워 두면 결재선이 상위 부서로 이어져 정상 진행된다. 관리자가 새 부서장을 지정하면 된다.
+    await tx.department.updateMany({
+      where: { companyId: me.companyId, headUserId: rule.target.id },
+      data: { headUserId: null },
+    });
+    await tx.department.updateMany({
+      where: { companyId: me.companyId, deputyUserId: rule.target.id },
+      data: { deputyUserId: null },
+    });
+
+    // 이미 진행 중이던 결재에서 이 사람 차례로 걸려 있는 단계는 "건너뜀"으로 처리해
+    // 다음 결재자에게 차례가 넘어가게 한다(멈춘 결재를 되살린다).
+    await tx.approvalStep.updateMany({
+      where: { companyId: me.companyId, approverUserId: rule.target.id, status: "pending" },
+      data: { status: "skipped", decidedAt: new Date(), comment: "결재자 퇴사로 자동 건너뜀" },
+    });
     return { ok: true };
   });
 
