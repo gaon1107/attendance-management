@@ -25,8 +25,7 @@ echo.
 echo [4/4] 서버를 켭니다. 잠시 후 브라우저가 자동으로 열립니다.
 echo.
 echo    주소:  http://localhost:3000
-echo    로그인: admin@skytech.co.kr / test1234  (관리자)
-echo           kim@skytech.co.kr / emp12345    (직원)
+echo    로그인 계정은 별도로 안내받은 것을 사용하세요.
 echo.
 echo    * 끄려면 이 검은 창에서 Ctrl+C 를 누르거나 창을 닫으세요.
 echo ============================================================

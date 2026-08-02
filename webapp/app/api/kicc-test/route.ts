@@ -8,11 +8,48 @@
 //
 // 이 파일이 하는 일: 화면에서 받은 요청 정보로 아이원 주소를 호출하고,
 // 응답(상태·본문·JSON)을 읽어서 화면으로 돌려준다.
+//
+// 🔒 안전장치 3중 (2026-08-02 종합검수 C-1 반영 — 이 3가지를 절대 빼지 말 것):
+//   ① 관리자 로그인 필수      — 예전엔 누구나 호출할 수 있었다.
+//   ② 목적지 화이트리스트     — 결제사 주소만. 임의 주소 호출 금지.
+//   ③ 리다이렉트 자동추적 금지 — 허용 주소를 경유한 내부망 우회 차단.
 
 import type { NextRequest } from "next/server";
+import { getCurrentUser } from "@/lib/session";
 
 // 정소장님이 준 기본 호출 주소 (화면에서 바꿀 수 있음)
 const DEFAULT_URL = "http://tapprsys.ione24.com/_appr/card_appr.ashx?pkind=appr";
+
+// 🔒 호출을 허용할 목적지 (아이원/KICC 계열만).
+//    이 목록이 없으면 "아무 주소나 우리 서버가 대신 호출해 주는 창구"가 되어
+//    외부인이 사내망·클라우드 내부주소를 들여다보는 통로로 악용된다(검수 C-1).
+const ALLOWED_HOSTS = [
+  "tapprsys.ione24.com", // 아이원 테스트 결제
+  "apprsys.ione24.com", // 아이원 운영 결제(추후)
+  "testpaygate.kicc.co.kr", // KICC 테스트
+  "paygate.kicc.co.kr", // KICC 운영(추후)
+];
+
+// 목적지 주소가 허용 목록에 있는지 확인한다. 통과 못 하면 사유를 돌려준다.
+function checkTarget(raw: string): { ok: true; url: URL } | { ok: false; reason: string } {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return { ok: false, reason: "주소 형식이 올바르지 않습니다." };
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return { ok: false, reason: `허용하지 않는 프로토콜입니다.(${url.protocol})` };
+  }
+  const host = url.hostname.toLowerCase();
+  if (!ALLOWED_HOSTS.includes(host)) {
+    return {
+      ok: false,
+      reason: `허용하지 않는 주소입니다.(${host}) — 결제사 주소만 호출할 수 있습니다. 목록: ${ALLOWED_HOSTS.join(", ")}`,
+    };
+  }
+  return { ok: true, url };
+}
 
 // content-type 헤더에서 charset(예: euc-kr)을 뽑아낸다. 없으면 utf-8.
 function charsetOf(contentType: string | null): string {
@@ -27,6 +64,15 @@ function charsetOf(contentType: string | null): string {
 
 export async function POST(request: NextRequest) {
   const started = Date.now();
+
+  // 🔒 관리자만 사용할 수 있는 테스트 도구다. (로그인 없이 열려 있으면 외부 공격 통로가 된다)
+  const me = await getCurrentUser();
+  if (!me) {
+    return Response.json({ ok: false, error: "로그인이 필요합니다." }, { status: 401 });
+  }
+  if (me.role !== "admin") {
+    return Response.json({ ok: false, error: "관리자만 사용할 수 있습니다." }, { status: 403 });
+  }
 
   // 화면에서 보낸 요청 정보 읽기
   let input: {
@@ -46,6 +92,16 @@ export async function POST(request: NextRequest) {
   }
 
   const targetUrl = (input.url || DEFAULT_URL).trim();
+
+  // 🔒 목적지 검사 — 결제사 주소가 아니면 호출하지 않는다.
+  const target = checkTarget(targetUrl);
+  if (!target.ok) {
+    return Response.json(
+      { ok: false, calledUrl: targetUrl, error: target.reason, durationMs: Date.now() - started },
+      { status: 400 },
+    );
+  }
+
   const method = (input.method || "POST").toUpperCase();
   const contentType = input.contentType || "application/json";
   const authorization = input.authorization?.trim();
@@ -70,6 +126,9 @@ export async function POST(request: NextRequest) {
       signal: controller.signal,
       // 캐시 없이 매번 실제 호출
       cache: "no-store",
+      // 🔒 자동 리다이렉트 금지 — 허용된 결제사 주소가 다른 곳(사내망 등)으로
+      //    보내더라도 따라가지 않는다. 리다이렉트는 응답으로만 보여준다.
+      redirect: "manual",
     });
 
     // 응답 본문을 '글자 깨짐 없이' 읽기 — euc-kr일 수 있어 바이트로 받아 직접 디코딩
