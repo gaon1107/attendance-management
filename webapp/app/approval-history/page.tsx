@@ -11,7 +11,7 @@ import { ApprovalHistoryClient, type HistoryClientRow } from "./ApprovalHistoryC
 
 const TYPES: RequestType[] = ["leave", "correction", "outing", "remote", "overtime", "trip"];
 const TYPE_LABEL: Record<RequestType, string> = { leave: "휴가", correction: "근태정정", outing: "외출/외근", remote: "재택근무", overtime: "초과근무", trip: "출장" };
-const STATUS_LABEL: Record<string, string> = { pending: "대기", approved: "승인", rejected: "반려" };
+const STATUS_LABEL: Record<string, string> = { pending: "대기", approved: "승인", rejected: "반려", cancelled: "승인 취소" };
 
 function ymdhm(d: Date): string {
   return d.toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });

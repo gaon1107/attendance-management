@@ -16,7 +16,8 @@ export function CancelLeaveButton({
   summary,
   hasPastDate,
   deducts,
-  otherYear,
+  leaveYear,
+  serverYear,
 }: {
   action: (prev: { error?: string; ok?: boolean }, formData: FormData) => Promise<{ error?: string; ok?: boolean }>;
   requestId: string;
@@ -24,38 +25,60 @@ export function CancelLeaveButton({
   summary: string; // 예: "연차 (08/01 ~ 08/03) · 3일"
   hasPastDate: boolean; // 휴가 기간에 오늘 이전 날짜가 들어있는가(결근 전환 경고용)
   deducts: boolean; // 연차에서 깎이는 종류인가(연차·반차만 true)
-  otherYear?: number; // 올해가 아닌 해의 휴가면 그 연도(그 해 잔여로 돌아가므로 올해 잔여는 안 늘어난다)
+  leaveYear: number; // 이 휴가가 귀속되는 해(=시작일 연도). 잔여 계산이 이 기준이다
+  serverYear: number; // 화면을 그릴 때의 연도(대비용 기본값)
 }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [nowYear, setNowYear] = useState<number | null>(null); // 모달을 열 때 다시 잰다
   const [pending, startTransition] = useTransition();
   const canSubmit = reason.trim().length > 0 && !pending;
+
+  // 화면을 밤새 열어둔 채 자정을 넘기면 서버가 준 연도가 어제 것이 된다 → 모달을 열 때 지금 연도를 다시 잰다(검수 M-N3).
+  const openModal = () => {
+    setNowYear(new Date().getFullYear());
+    setError(null); // 지난 시도의 오류가 새 시도에 남아 오해를 주지 않게(검수 M-N2)
+    setOpen(true);
+  };
+  // 처리 중에는 닫지 않는다 — 닫아버리면 뒤늦게 온 실패 메시지가 사라져 "닫혔으니 됐겠지"가 된다(검수 C-N2).
+  const closeModal = () => {
+    if (!pending) setOpen(false);
+  };
 
   // 성공했을 때만 닫는다. 실패하면 적어둔 사유를 그대로 둔 채 이유를 보여준다(저장 안 됐다는 사실을 알려야 한다).
   const submit = (formData: FormData) => {
     startTransition(async () => {
-      const res = await action({}, formData);
-      if (res?.error) setError(res.error);
-      else {
-        setError(null);
-        setOpen(false);
+      setError(null);
+      try {
+        const res = await action({}, formData);
+        if (res?.error) setError(res.error);
+        else {
+          setReason("");
+          setOpen(false);
+        }
+      } catch {
+        // 통신 끊김·서버 재시작 등. 그냥 던지면 화면 전체가 오류 페이지로 바뀌어 실행 여부조차 알 수 없다(검수 M-N1).
+        setError("통신에 실패했습니다. 화면을 새로고침해 취소가 됐는지 먼저 확인해주세요.");
       }
     });
   };
 
   // 연차 복원 안내는 종류·연도에 따라 사실이 달라진다 — 거짓 안내를 하지 않도록 문장을 갈라 쓴다.
+  //  ⚠️ 지난 해 휴가: 이 제품에 "지난 해 잔여"라는 값은 없다(연차정산은 과거 연도의 잔여를 '—'로 둔다).
+  //     되살아나는 것은 그 해 '사용일수'뿐이고, 올해 쓸 수 있는 연차는 늘지 않는다 — 그대로 말한다(검수 C-N1).
+  const isOtherYear = leaveYear !== (nowYear ?? serverYear);
   const restoreText = !deducts
     ? "이 종류는 연차를 깎지 않으므로 잔여 연차는 변하지 않습니다."
-    : otherYear
-      ? `이 휴가는 ${otherYear}년 몫이라 ${otherYear}년 잔여로 돌아갑니다. 올해 잔여 연차는 늘어나지 않습니다.`
+    : isOtherYear
+      ? `이 휴가는 ${leaveYear}년 몫이라 ${leaveYear}년 사용일수에서만 빠집니다. 올해 쓸 수 있는 연차는 늘지 않고, 그 연차를 다시 쓸 수도 없습니다.`
       : "차감됐던 연차는 자동으로 돌아옵니다.";
 
   return (
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openModal}
         style={{
           height: 30,
           padding: "0 12px",
@@ -73,7 +96,8 @@ export function CancelLeaveButton({
         승인 취소
       </button>
 
-      <Modal open={open} onClose={() => setOpen(false)} title="휴가 승인 취소" maxWidth={460}>
+      {/* onClose는 딤 클릭·✕·ESC가 모두 거쳐 간다 → closeModal 하나로 "처리 중엔 안 닫힘"이 세 경로 전부에 걸린다 */}
+      <Modal open={open} onClose={closeModal} title="휴가 승인 취소" maxWidth={460}>
         <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
           {name} · {summary}
         </div>
@@ -134,8 +158,9 @@ export function CancelLeaveButton({
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
             <button
               type="button"
-              onClick={() => setOpen(false)}
-              style={{ height: 38, padding: "0 16px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--text)", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+              onClick={closeModal}
+              disabled={pending}
+              style={{ height: 38, padding: "0 16px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: pending ? "var(--text-sub)" : "var(--text)", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: pending ? "default" : "pointer" }}
             >
               닫기
             </button>

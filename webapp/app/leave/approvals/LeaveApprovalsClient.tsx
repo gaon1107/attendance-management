@@ -30,7 +30,7 @@ export type LeaveRow = {
   selfBlocked?: boolean; // 내 휴가라 내가 못 되돌리는 건(안내 문구 표시)
   hasPastDate?: boolean; // 지난 날짜 포함 — 취소 시 결근으로 바뀐다는 경고를 모달에 띄운다
   deducts?: boolean; // 연차를 깎는 종류인가(취소 안내 문구 분기)
-  otherYear?: number; // 올해가 아닌 해의 휴가면 그 연도(올해 잔여는 안 늘어난다는 안내용)
+  leaveYear?: number; // 이 휴가가 귀속되는 해(=시작일 연도). 올해가 아니면 안내 문구가 달라진다
   cancelNote?: string; // 취소된 건의 "취소 사유 · 취소한 사람 · 날짜"
   search: string;
 };
@@ -61,12 +61,14 @@ export function LeaveApprovalsClient({
   from,
   to,
   todayISO,
+  serverYear,
 }: {
   pending: LeaveRow[];
   decided: LeaveRow[];
   from: string;
   to: string;
   todayISO: string;
+  serverYear: number; // 화면을 그린 시점의 연도(승인 취소 안내의 기본값 — 모달을 열 때 다시 잰다)
 }) {
   const [q, setQ] = useState("");
   const p = useMemo(() => { const t = queryTerms(q); return pending.filter((r) => matchesTerms(r.search, t)); }, [q, pending]);
@@ -204,7 +206,8 @@ export function LeaveApprovalsClient({
                             summary={`${r.typeLabel} (${r.rangeLabel}) · ${r.days}일`}
                             hasPastDate={!!r.hasPastDate}
                             deducts={!!r.deducts}
-                            otherYear={r.otherYear}
+                            leaveYear={r.leaveYear ?? serverYear}
+                            serverYear={serverYear}
                           />
                         )}
                         {/* 자기 휴가는 자기가 못 되돌린다 — 눌러도 안 되는 버튼 대신 이유를 적는다 */}

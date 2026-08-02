@@ -228,13 +228,15 @@ export async function rejectLeave(formData: FormData): Promise<void> {
 //    되돌리기 전에 화면에서 경고하고, 사유를 반드시 받는다.
 //
 // ⚠️ 실패를 조용히 삼키지 않는다(검수 M-2). 되돌릴 수 없는 작업이라, 거부되면 화면에 이유를 보여줘야 한다.
-//    (승인/반려와 달리 결과를 돌려주는 형태 — useActionState로 받는다)
+//    (승인/반려와 달리 결과를 돌려준다. 호출부 CancelLeaveButton은 useTransition으로 받아
+//     실패하면 모달을 닫지 않고 사유를 남긴다 — 저장소의 useActionState 폼들과 다른 이유는 그 때문이다)
 export async function cancelApprovedLeave(
   _prev: { error?: string; ok?: boolean },
   formData: FormData
 ): Promise<{ error?: string; ok?: boolean }> {
   const me = await getCurrentUser();
-  if (!me || me.role !== "admin") return { error: "권한이 없습니다." }; // 관리자(회사 계정 포함)만
+  if (!me) return { error: "로그인이 필요합니다. 다시 로그인해주세요." }; // 세션 만료와 권한 부족을 구분해 알린다
+  if (me.role !== "admin") return { error: "권한이 없습니다." }; // 관리자(회사 계정 포함)만
   const id = String(formData.get("id") ?? "");
   const raw = String(formData.get("comment") ?? "").trim();
   if (!raw) return { error: "취소 사유를 입력해주세요." }; // 서버에서도 강제(반려와 같은 규칙)
@@ -263,6 +265,8 @@ export async function cancelApprovedLeave(
   revalidatePath("/my-records");
   revalidatePath("/reports");
   revalidatePath("/approval-history");
+  revalidatePath(`/employees/${lv.userId}`); // 직원 상세의 연차 잔여
+  revalidatePath(`/records/${lv.userId}`); // 그 직원 근태 상세(휴가일 표시)
   return { ok: true };
 }
 

@@ -154,19 +154,21 @@ export default async function LeaveApprovalsPage({
       selfBlocked: r.status === "approved" && selfCancelBlocked && r.userId === me.id,
       hasPastDate: r.startDate < startOfToday, // 지난 날짜가 섞이면 "결근으로 바뀜" 경고를 띄운다
       deducts: leaveTypeDeducts(r.type), // 연차를 깎는 종류인가 — 취소 안내 문구가 달라진다(검수 C-2)
-      // 잔여 연차는 "휴가 시작일의 연도"로 귀속된다 → 작년 휴가를 취소해도 올해 잔여는 안 는다(검수 C-1)
-      otherYear: r.startDate.getFullYear() !== thisYear ? r.startDate.getFullYear() : undefined,
+      // 잔여 연차는 "휴가 시작일의 연도"로 귀속된다 → 지난 해 휴가를 취소해도 올해 잔여는 안 는다(검수 C-1).
+      //  연도 비교는 화면(모달 열 때)에서 다시 하므로 여기선 두 연도를 그대로 넘긴다(자정 넘김 대비 — 검수 M-N3).
+      leaveYear: r.startDate.getFullYear(),
       cancelNote:
         r.status === "cancelled"
           ? `취소 사유: ${r.cancelReason ?? "—"}${canceller ? ` · ${canceller}` : ""}${r.cancelledAt ? ` · ${ymdFull(r.cancelledAt)}` : ""}`
           : undefined,
-      search: [r.user.name, r.user.employeeNo ?? "", typeLabel, rl, reason, statusLabel, r.cancelReason ?? ""].join(" ").toLowerCase(),
+      // 검색은 취소 사유·취소한 사람까지 훑는다(승인 취소 건을 찾는 실제 실마리가 그 둘이다).
+      search: [r.user.name, r.user.employeeNo ?? "", typeLabel, rl, reason, statusLabel, r.cancelReason ?? "", canceller ?? ""].join(" ").toLowerCase(),
     };
   };
 
   return (
     <AppShell user={me} active="leave-approvals" title="휴가 승인" subtitle={me.company.name}>
-      <LeaveApprovalsClient pending={pendingReqs.map(toRow)} decided={decidedReqs.map(toRow)} from={fromISO} to={toISO} todayISO={todayISO} />
+      <LeaveApprovalsClient pending={pendingReqs.map(toRow)} decided={decidedReqs.map(toRow)} from={fromISO} to={toISO} todayISO={todayISO} serverYear={thisYear} />
     </AppShell>
   );
 }

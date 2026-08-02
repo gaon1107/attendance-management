@@ -56,7 +56,9 @@ export default async function LeavePage() {
   // 연차 현황은 lib/leave.ts의 단일 출처 함수로 구한다 — 화면마다 숫자가 달라지지 않게(검수 C-2).
   //  · 올해 기준: 발생 − 올해 승인분 − 올해 대기분
   //  · 대기분을 따로 보여줘, 결재를 기다리는 연차가 얼마인지 직원이 알 수 있게 한다.
-  const balance = leaveBalanceInYear(me, requests, new Date().getFullYear());
+  // 표 안에서 기준 연도가 행마다 달라지지 않도록 한 번만 잰다(잔여 KPI와 안내 문구가 같은 해를 말해야 한다).
+  const thisYear = new Date().getFullYear();
+  const balance = leaveBalanceInYear(me, requests, thisYear);
 
   const kpis = [
     { label: "부여 연차", value: balance.granted, color: "var(--text)" },
@@ -158,8 +160,8 @@ export default async function LeavePage() {
                               {/* 연차 복원 안내는 사실이 갈린다 — 무차감 종류·지난 해 휴가에 거짓 안내를 하지 않는다(검수 C-1·C-2) */}
                               {!leaveTypeDeducts(r.type)
                                 ? "이 종류는 연차를 깎지 않아 잔여 연차는 변하지 않습니다."
-                                : r.startDate.getFullYear() !== new Date().getFullYear()
-                                  ? `차감됐던 연차는 ${r.startDate.getFullYear()}년 잔여로 되돌아갔습니다(올해 잔여는 그대로입니다).`
+                                : r.startDate.getFullYear() !== thisYear
+                                  ? `${r.startDate.getFullYear()}년 몫이라 그 해 사용일수에서만 빠집니다. 올해 쓸 수 있는 연차는 늘지 않습니다.`
                                   : "차감됐던 연차는 되돌아왔습니다."}
                             </div>
                           </div>
