@@ -16,7 +16,7 @@ import { clockOutText } from "@/lib/labels";
 import { toISODate } from "@/lib/period";
 import { effectiveWorkDays } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
-import { leaveDateSet, leaveLabelByDate } from "@/lib/leave";
+import { leaveDateSet, leaveLabelByDate, leaveTypeByDate } from "@/lib/leave";
 import { loadShiftContext } from "@/lib/shift-server";
 import { dayBreakdown } from "@/lib/report-days";
 import { queryTerms, matchesTerms } from "@/lib/search";
@@ -24,7 +24,7 @@ import { queryTerms, matchesTerms } from "@/lib/search";
 export type ReportDayRow = {
   date: string; // "YYYY-MM-DD"
   kind: "work" | "leave" | "absent";
-  kindLabel: string; // "출근" | "휴가 · 연차" | "결근"
+  kindLabel: string; // "출근" | "휴가 · 연차" | "결근" | "결근 (출장 승인)" 등
   workMode: string;
   location: string;
   in: string; // "HH:MM"
@@ -50,6 +50,9 @@ export type ReportPerson = {
   leaveDays: number;
 };
 
+// 반차 종류(하루의 절반). 휴가 일수를 셀 때 0.5로 센다 — 연차 차감(lib/leave.ts computeLeaveDays)과 같은 무게.
+const HALF_DAY_TYPES = new Set(["half", "half_am", "half_pm"]);
+
 function hhmm(d: Date | null): string {
   if (!d) return "";
   return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -70,22 +73,38 @@ export async function buildReportBlocks(opts: {
 }): Promise<ReportPerson[]> {
   const { companyId, start, end, q, now, standardMin } = opts;
 
-  const [company, records, employees, leaves, shiftCtx] = await Promise.all([
+  const [company, records, employees, leaves, pendingLeaves, trips, remotes, shiftCtx] = await Promise.all([
     prisma.company.findUnique({ where: { id: companyId }, select: { workDays: true, holidayAutoOn: true } }),
     prisma.attendance.findMany({
       where: { companyId, clockIn: { gte: start, lt: end } },
       include: { user: true, breaks: true },
       orderBy: [{ clockIn: "asc" }],
     }),
-    // 재직 전원(회사 계정 제외) — 출근이 하나도 없어도 대상이다(H-7의 핵심).
+    // 재직 전원(회사 계정 제외) + **기간에 걸쳐 퇴사한 사람**.
+    //  · 퇴사자를 "기록이 있는 사람"으로만 끌어오면, 무단결근하다 퇴사한 직원이 또 통째로 빠진다
+    //    (H-7과 정확히 같은 구멍 — 검수 M-3).
     prisma.user.findMany({
-      where: { companyId, deactivatedAt: null, isOwner: false },
+      where: { companyId, isOwner: false, OR: [{ deactivatedAt: null }, { deactivatedAt: { gt: start } }] },
       select: { id: true, name: true, employeeNo: true, role: true, workDays: true, shiftGroupId: true, hireDate: true, deactivatedAt: true },
       orderBy: { createdAt: "asc" },
     }),
     prisma.leaveRequest.findMany({
       where: { companyId, status: "approved", startDate: { lt: end }, endDate: { gte: start } },
       select: { userId: true, type: true, startDate: true, endDate: true },
+    }),
+    // 아래 3종은 **결근 판정을 바꾸지 않는다.** 결근으로 남는 날에 "왜 그럴 수 있는지"를 덧붙이기 위해서만 읽는다
+    // (법정 문서에 이유 없는 결근이 찍히는 것을 막는다 — 검수 M-4·M-5).
+    prisma.leaveRequest.findMany({
+      where: { companyId, status: "pending", startDate: { lt: end }, endDate: { gte: start } },
+      select: { userId: true, type: true, startDate: true, endDate: true },
+    }),
+    prisma.businessTripRequest.findMany({
+      where: { companyId, status: "approved", startDate: { lt: end }, endDate: { gte: start } },
+      select: { userId: true, startDate: true, endDate: true },
+    }),
+    prisma.remoteWorkRequest.findMany({
+      where: { companyId, status: "approved", startDate: { lt: end }, endDate: { gte: start } },
+      select: { userId: true, startDate: true, endDate: true },
     }),
     loadShiftContext(companyId, toISODate(start), toISODate(end)),
   ]);
@@ -99,6 +118,23 @@ export async function buildReportBlocks(opts: {
     if (arr) arr.push(l);
     else leavesByUser.set(l.userId, [l]);
   }
+
+  // 결근 줄에 덧붙일 사유 후보(결근 여부 자체는 바꾸지 않는다).
+  //  · 결재 대기 중인 휴가 → "휴가 결재 대기"   · 승인된 출장/재택인데 출퇴근 기록이 없음 → "출장/재택 승인"
+  //  법정 문서에 아무 설명 없는 "결근"이 찍히면 노무 분쟁에서 회사에 불리하다.
+  const noteByUserDate = new Map<string, string>();
+  const addNote = (userId: string, s: Date, e: Date, note: string) => {
+    const cur = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+    const last = new Date(e.getFullYear(), e.getMonth(), e.getDate());
+    while (cur <= last) {
+      const key = `${userId}|${toISODate(cur)}`;
+      if (!noteByUserDate.has(key)) noteByUserDate.set(key, note); // 먼저 잡힌 사유를 유지(휴가 대기 > 출장 > 재택)
+      cur.setDate(cur.getDate() + 1);
+    }
+  };
+  for (const l of pendingLeaves) addNote(l.userId, l.startDate, l.endDate, "휴가 결재 대기");
+  for (const t of trips) addNote(t.userId, t.startDate, t.endDate, "출장 승인");
+  for (const r of remotes) addNote(r.userId, r.startDate, r.endDate, "재택 승인");
 
   type Acc = {
     id: string; name: string; employeeNo: string | null; role: string;
@@ -154,7 +190,8 @@ export async function buildReportBlocks(opts: {
     const mine = leavesByUser.get(u.id) ?? [];
     const leaveSet = leaveDateSet(mine);
     const labelByDate = leaveLabelByDate(mine);
-    const { absent, onLeave } = dayBreakdown({
+    const typeByDate = leaveTypeByDate(mine); // 반차(0.5일) 판별용
+    const { absent, onLeave, leaveAll } = dayBreakdown({
       start, absLimit,
       workDays: effectiveWorkDays(u.workDays, company?.workDays),
       offDays, shiftCtx, userId: u.id, shiftGroupId: u.shiftGroupId,
@@ -167,13 +204,21 @@ export async function buildReportBlocks(opts: {
       u.rows.push({ date: iso, kind: "leave", kindLabel: `휴가 · ${labelByDate.get(iso) ?? "휴가"}`, ...blank });
     }
     for (const iso of absent) {
-      u.rows.push({ date: iso, kind: "absent", kindLabel: "결근", ...blank });
+      const note = noteByUserDate.get(`${u.id}|${iso}`);
+      u.rows.push({ date: iso, kind: "absent", kindLabel: note ? `결근 (${note})` : "결근", ...blank });
     }
-    // 날짜순(같은 날이면 출근 기록 먼저 — 반차 등으로 한 날에 두 줄이 생겨도 순서가 일정)
-    u.rows.sort((a, b) => (a.date === b.date ? (a.kind === "work" ? -1 : 1) : a.date < b.date ? -1 : 1));
+    // 날짜순. 같은 날이면 출근 줄이 먼저, 그 안에서는 **출근 시각 순서(입력 순서)를 유지**한다.
+    //  ⚠️ 예전엔 `a.kind === "work" ? -1 : 1`로 비교했는데, 같은 날 출근 줄 두 개를 비교하면 양쪽 다 -1이라
+    //     비교 규칙이 자기모순이 되어 **하루 두 번 출근한 기록의 시각이 거꾸로 인쇄됐다**(검수 C-1).
+    const rank = (k: ReportDayRow["kind"]) => (k === "work" ? 0 : 1);
+    u.rows.sort((a, b) => (a.date === b.date ? rank(a.kind) - rank(b.kind) : a.date < b.date ? -1 : 1));
 
     let overtime = 0;
     for (const v of u.dayMinutes.values()) overtime += Math.max(0, v - standardMin);
+
+    // 휴가 일수 = 반차는 0.5일로 센다(연차 차감과 같은 무게). 출근도 한 반차 날도 포함한다(검수 M-6).
+    const leaveDaysCount =
+      Math.round(leaveAll.reduce((s, iso) => s + (HALF_DAY_TYPES.has(typeByDate.get(iso) ?? "") ? 0.5 : 1), 0) * 10) / 10;
 
     out.push({
       id: u.id, name: u.name, employeeNo: u.employeeNo, role: u.role,
@@ -184,7 +229,7 @@ export async function buildReportBlocks(opts: {
       totalBreaks: u.totalBreaks,
       overtime,
       absentDays: absent.length,
-      leaveDays: onLeave.length,
+      leaveDays: leaveDaysCount,
     });
   }
 

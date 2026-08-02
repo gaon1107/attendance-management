@@ -105,8 +105,11 @@ export async function GET(request: Request): Promise<Response> {
         in: r.in,
         // 퇴근 시각이 비어 있으면 "미퇴근"임을 글자로 남긴다 — 빈칸이면 증빙에서 오해를 부른다(검수 C-6).
         out: r.kind === "work" ? (r.out || (r.unclosed ? "미퇴근" : "근무중")) : "",
-        worked: r.worked, // 숫자 셀(엑셀에서 합계 가능)
-        breaks: r.breaks, // 숫자 셀
+        // 결근·휴가 줄은 숫자 0이 아니라 **빈칸**으로 둔다.
+        //  0을 넣으면 합계(SUM)는 같지만 평균(AVERAGE)이 뚝 떨어지고 건수(COUNT)가 결근까지 세어
+        //  급여 담당자가 조용히 틀린 숫자를 쓰게 된다(검수 M-2).
+        worked: r.kind === "work" ? r.worked : null, // 숫자 셀(엑셀에서 합계 가능)
+        breaks: r.kind === "work" ? r.breaks : null,
       });
     }
   }
@@ -149,6 +152,11 @@ export async function GET(request: Request): Promise<Response> {
   for (const key of ["days", "worked", "overtime", "leave", "absent", "breaks"]) {
     ws2.getColumn(key).alignment = { horizontal: "right" };
   }
+  // 조회 기간·집계 규칙을 파일 안에도 남긴다 — 화면·PDF와 달리 엑셀엔 92일 제한 안내가 어디에도 없었다(검수 경미).
+  ws2.addRow({});
+  ws2.addRow({ name: `※ 조회 기간: ${fromISO} ~ ${toISO} (최대 92일)` });
+  ws2.addRow({ name: "※ 결근 = 근무예정일인데 출근 기록도 승인된 휴가도 없는 날. 오늘·미래와 입사 전·퇴사 후는 세지 않습니다." });
+  ws2.addRow({ name: "※ 승인된 출장·재택도 출퇴근 기록이 없으면 결근으로 잡히며, 그 사유는 [근태기록] 시트의 구분 칸에 표시됩니다." });
 
   const buf = await wb.xlsx.writeBuffer();
   const filename = `attendance_${fromISO}_${toISO}.xlsx`;

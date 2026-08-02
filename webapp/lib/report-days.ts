@@ -30,10 +30,13 @@ export type DayBreakdownInput = {
 
 // 그 직원의 기간을 하루씩 훑어 "결근한 날"과 "휴가로 쉰 날"을 각각 돌려준다.
 //  · onLeave = 근무예정일인데 출근 없이 승인 휴가로 쉰 날(엑셀·PDF에 '휴가' 줄로 남긴다)
-//  · 반차처럼 출근도 한 날은 출근 기록이 있으므로 여기 들어오지 않는다(중복 줄 방지)
-export function dayBreakdown(i: DayBreakdownInput): { absent: string[]; onLeave: string[] } {
+//  · 반차처럼 출근도 한 날은 출근 기록이 있으므로 onLeave에 넣지 않는다(같은 날 줄이 두 개가 되는 것을 막는다).
+//    다만 **휴가 일수 집계**에는 그 날도 들어가야 하므로(오전 반차 쓰고 출근한 날 = 0.5일 소진)
+//    leaveAll에 따로 모은다 — 줄(rows)과 집계(일수)의 기준이 다르다는 점을 헷갈리지 말 것.
+export function dayBreakdown(i: DayBreakdownInput): { absent: string[]; onLeave: string[]; leaveAll: string[] } {
   const absent: string[] = [];
   const onLeave: string[] = [];
+  const leaveAll: string[] = [];
 
   let from = new Date(i.start);
   if (i.hireDate) {
@@ -52,11 +55,12 @@ export function dayBreakdown(i: DayBreakdownInput): { absent: string[]; onLeave:
       isEffectiveWorkDay(cur, i.workDays, i.offDays) &&
       (!i.shiftCtx || resolveShift(i.shiftCtx, i.userId, i.shiftGroupId, iso) !== null);
     if (!isWork) continue;
+    if (i.leaveDays.has(iso)) leaveAll.push(iso); // 출근 여부와 무관한 "휴가를 쓴 근무예정일"
     if (i.attended.has(iso)) continue;
     if (i.leaveDays.has(iso)) onLeave.push(iso);
     else absent.push(iso);
   }
-  return { absent, onLeave };
+  return { absent, onLeave, leaveAll };
 }
 
 // 결근 일수만 필요할 때(리포트 화면).
