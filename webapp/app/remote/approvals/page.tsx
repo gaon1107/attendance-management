@@ -1,4 +1,4 @@
-﻿// 재택근무 승인(관리자 전용) — 대기 목록 승인/반려 + 처리 내역. 기간 달력 + 통합검색. (휴가 승인 화면 패턴)
+// 재택근무 승인(관리자 전용) — 대기 목록 승인/반려 + 처리 내역. 기간 달력 + 통합검색. (휴가 승인 화면 패턴)
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
@@ -6,7 +6,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { RemoteApprovalsClient, type RemoteRow } from "./RemoteApprovalsClient";
 import { remoteStatusLabel, remoteRangeLabel } from "@/lib/remote";
 import { parseAnchor, toISODate } from "@/lib/period";
-import { getApprovalProgressMap, approvalProgressLabel, selfApprovalNotice } from "@/lib/approval-server";
+import { getApprovalProgressMap, approvalProgressLabel, selfApprovalNotice, isSelfApprovalBlocked } from "@/lib/approval-server";
 import { getAttachmentsMap } from "@/lib/request-attachment-server";
 
 export default async function RemoteApprovalsPage({
@@ -60,11 +60,13 @@ export default async function RemoteApprovalsPage({
     (me.company.approvalMode === "deptline" || me.company.approvalMode === "custom")
       ? await getApprovalProgressMap(me.companyId, "remote", pendingReqs.map((r) => r.id))
       : new Map();
+  // 회사에 나 말고 다른 관리자가 있는가(= 내 신청은 그 사람이 처리해야 한다).
+  const otherAdminsExist = await isSelfApprovalBlocked(me, me.id);
   const progressLabel = (id: string, isMine: boolean): string | undefined => {
     // 문구는 lib/approval-server.ts 한 곳에서 만든다(6개 승인화면이 같은 말을 하도록).
     //  · 내 신청이면 "승인을 눌러도 통과되지 않는 이유"를 함께 붙인다(M-11).
     const base = approvalProgressLabel(progressMap.get(id));
-    const notice = selfApprovalNotice(progressMap.get(id), isMine);
+    const notice = selfApprovalNotice(progressMap.get(id), isMine, otherAdminsExist);
     if (!notice) return base;
     return base ? `${base} · ${notice}` : notice;
   };

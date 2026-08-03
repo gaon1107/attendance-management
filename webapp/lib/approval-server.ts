@@ -542,13 +542,27 @@ export type ApprovalProgress = {
 // 결재 진행상황을 관리자 화면에 보여줄 한 줄 문구로 만든다.
 // 6개 승인 화면(휴가·정정·외출·초과근무·재택·출장)이 같은 문구를 쓰도록 여기 하나로 모았다.
 //  (예전엔 같은 문장이 6곳에 복붙돼 있어, 한 곳만 고치면 화면마다 다른 말을 하게 됐다)
-// 관리자가 **자기 신청**을 보고 있고 부서장 결재가 아직 진행 중이면, 승인을 눌러도 통과되지 않는다(M-11).
-// 그 이유를 화면에 미리 알려주는 문구 — 안 그러면 "눌러도 아무 반응이 없는 버튼"이 된다(검수 치명).
-//  · 결재선이 없거나(관리자 단독 승인) 이미 끝난 상태(관리자 확정만 남음)면 승인할 수 있으므로 문구 없음.
-export function selfApprovalNotice(p: ApprovalProgress | undefined, isMine: boolean): string | undefined {
-  if (!isMine || !p) return undefined;
-  if (p.rejected || p.needsAdminFinalize) return undefined; // 확정·마무리 가능한 상태
-  return "본인 신청이라 부서장 결재가 끝나야 확정할 수 있습니다(승인 눌러도 통과되지 않음)";
+// 관리자가 **자기 신청**을 승인하려 할 때 "왜 눌러도 통과되지 않는지"를 화면에 미리 알려주는 문구(M-11).
+// 안 그러면 "눌러도 아무 반응이 없는 버튼"이 된다(검수 치명).
+//  · 차단 사유는 두 가지이고 **둘 다** 덮어야 한다(검수 재지적):
+//    ① 부서장 결재가 아직 진행 중  ② 회사에 다른 관리자가 있음(그 사람이 처리해야 함)
+//  · 둘 다 아니면(결재선이 끝났고 관리자도 나뿐) 승인할 수 있으므로 문구 없음.
+export function selfApprovalNotice(
+  p: ApprovalProgress | undefined,
+  isMine: boolean,
+  otherAdminsExist: boolean,
+): string | undefined {
+  if (!isMine) return undefined;
+  // ① 결재선 진행 중 — 반려 확정 건은 [반려]로 마무리하는 자리라 여기서 다루지 않는다.
+  if (p && !p.rejected && !p.needsAdminFinalize) {
+    return "본인 신청이라 부서장 결재가 끝나야 확정할 수 있습니다(승인 눌러도 통과되지 않음)";
+  }
+  // ② 다른 관리자가 있으면 자기 건은 그 사람이 처리해야 한다.
+  //    (결재자 퇴사로 "관리자 확정 필요"가 뜬 상태에서 본인이 확정하려는 경우도 여기서 걸린다)
+  if (otherAdminsExist) {
+    return "본인 신청이라 다른 관리자만 승인할 수 있습니다(승인 눌러도 통과되지 않음)";
+  }
+  return undefined;
 }
 
 export function approvalProgressLabel(p: ApprovalProgress | undefined): string | undefined {

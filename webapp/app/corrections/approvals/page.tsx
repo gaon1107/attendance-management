@@ -1,4 +1,4 @@
-﻿// 근태 정정 승인(관리자 전용) — 대기 승인/반려 + 처리 내역. 기간 달력 + 통합검색(클라이언트).
+// 근태 정정 승인(관리자 전용) — 대기 승인/반려 + 처리 내역. 기간 달력 + 통합검색(클라이언트).
 // 사이드바 아이콘은 없고, 대시보드 '오늘 알림'과 근태현황 화면에서 들어온다. (active는 근태현황으로 표시)
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -8,7 +8,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { CorrectionApprovalsClient, type CorrectionRow } from "./CorrectionApprovalsClient";
 import { correctionStatusLabel, checkApplicable, hmToDate } from "@/lib/corrections";
 import { parseAnchor, toISODate } from "@/lib/period";
-import { getApprovalProgressMap, approvalProgressLabel, selfApprovalNotice } from "@/lib/approval-server";
+import { getApprovalProgressMap, approvalProgressLabel, selfApprovalNotice, isSelfApprovalBlocked } from "@/lib/approval-server";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" });
@@ -73,11 +73,13 @@ export default async function CorrectionApprovalsPage({
     (me.company.approvalMode === "deptline" || me.company.approvalMode === "custom")
       ? await getApprovalProgressMap(me.companyId, "correction", pendingReqs.map((r) => r.id))
       : new Map();
+  // 회사에 나 말고 다른 관리자가 있는가(= 내 신청은 그 사람이 처리해야 한다).
+  const otherAdminsExist = await isSelfApprovalBlocked(me, me.id);
   const progressLabel = (id: string, isMine: boolean): string | undefined => {
     // 문구는 lib/approval-server.ts 한 곳에서 만든다(6개 승인화면이 같은 말을 하도록).
     //  · 내 신청이면 "승인을 눌러도 통과되지 않는 이유"를 함께 붙인다(M-11).
     const base = approvalProgressLabel(progressMap.get(id));
-    const notice = selfApprovalNotice(progressMap.get(id), isMine);
+    const notice = selfApprovalNotice(progressMap.get(id), isMine, otherAdminsExist);
     if (!notice) return base;
     return base ? `${base} · ${notice}` : notice;
   };

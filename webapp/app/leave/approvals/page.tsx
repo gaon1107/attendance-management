@@ -76,11 +76,13 @@ export default async function LeaveApprovalsPage({
     (me.company.approvalMode === "deptline" || me.company.approvalMode === "custom")
       ? await getApprovalProgressMap(me.companyId, "leave", pendingReqs.map((r) => r.id))
       : new Map();
+  // 회사에 나 말고 다른 관리자가 있는가(= 내 신청은 그 사람이 처리해야 한다). 승인·취소 판단에 함께 쓴다.
+  const otherAdminsExist = await isSelfApprovalBlocked(me, me.id);
   const progressLabel = (id: string, isMine: boolean): string | undefined => {
     // 문구는 lib/approval-server.ts 한 곳에서 만든다(6개 승인화면이 같은 말을 하도록).
     //  · 내 신청이면 "승인을 눌러도 통과되지 않는 이유"를 함께 붙인다(M-11).
     const base = approvalProgressLabel(progressMap.get(id));
-    const notice = selfApprovalNotice(progressMap.get(id), isMine);
+    const notice = selfApprovalNotice(progressMap.get(id), isMine, otherAdminsExist);
     if (!notice) return base;
     return base ? `${base} · ${notice}` : notice;
   };
@@ -122,7 +124,7 @@ export default async function LeaveApprovalsPage({
   // 승인 취소(M-2) 표시용 준비.
   //  · 자기 휴가는 자기가 되돌릴 수 없다(서버 액션과 같은 규칙). 회사에 다른 관리자가 있을 때만 막으므로
   //    한 번만 계산해 두고, 내 신청 줄에서만 버튼을 감춘다(눌러도 안 되는 버튼을 보여주지 않기 위함).
-  const selfCancelBlocked = await isSelfApprovalBlocked(me, me.id);
+  const selfCancelBlocked = otherAdminsExist; // 같은 규칙(다른 관리자가 있을 때만 차단) — 위에서 한 번만 조회
   // 취소한 관리자 이름(처리 내역에 "누가 취소했는지" 표시) — 한 번에 조회.
   const cancellerIds = [...new Set(decidedReqs.map((r) => r.cancelledById).filter((v): v is string => !!v))];
   const cancellerName = new Map<string, string>(
