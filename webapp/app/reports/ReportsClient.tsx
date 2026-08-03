@@ -66,13 +66,18 @@ export function ReportsClient({
 
   // KPI는 걸러진 목록 기준으로 계산
   const totalMinutes = filtered.reduce((s, u) => s + u.minutes, 0);
-  const avgMinutes = filtered.length > 0 ? Math.round(totalMinutes / filtered.length) : 0;
+  // 평균의 분모는 "근무 기록이 있는 직원"만(9-D). 표에는 결근만 한 직원·기간 중 퇴사자도
+  // 0시간으로 남는데(H-7 의도), 그 0들이 분모에 들어가면 평균이 실제보다 낮아 보인다.
+  // 라벨에 분모를 명시해 집계 인원(전원)과 기준이 다름을 드러낸다.
+  const workedCount = filtered.filter((u) => u.minutes > 0).length;
+  const avgMinutes = workedCount > 0 ? Math.round(totalMinutes / workedCount) : 0;
   const totalOvertime = filtered.reduce((s, u) => s + u.overtime, 0);
 
   const kpis = [
     { label: "집계 인원", value: `${filtered.length}`, unit: "명" },
     { label: "총 실근무", value: formatMinutes(totalMinutes), unit: "" },
-    { label: "1인 평균 실근무", value: formatMinutes(avgMinutes), unit: "" },
+    // 근무자가 0명이면 "0명 기준 0분"이 아니라 "—"로(평균이 존재하지 않음을 정직하게).
+    { label: `1인 평균 실근무 (근무 ${workedCount}명 기준)`, value: workedCount > 0 ? formatMinutes(avgMinutes) : "—", unit: "" },
     { label: `총 초과근무 (기준 ${standardWorkHours}h)`, value: totalOvertime > 0 ? formatMinutes(totalOvertime) : "0분", unit: "" },
   ];
 
