@@ -192,19 +192,36 @@ export default async function DashboardPage() {
   }
   const otCount = otOverNames.length + otWarnNames.length;
 
-  // 승인 대기 휴가 건수 + 비밀번호 재설정 요청 건수 + 최신 공지(오늘 알림 카드용)
-  const pendingLeaveCount = await prisma.leaveRequest.count({ where: { companyId: me.companyId, status: "pending" } });
-  const pendingResetCount = await prisma.passwordResetRequest.count({ where: { companyId: me.companyId, status: "pending" } });
-  const pendingCorrectionCount = await prisma.attendanceCorrection.count({ where: { companyId: me.companyId, status: "pending" } });
-  const pendingOutingCount = await prisma.outingRequest.count({ where: { companyId: me.companyId, status: "pending" } });
-  const pendingRemoteCount = await prisma.remoteWorkRequest.count({ where: { companyId: me.companyId, status: "pending" } });
-  const pendingOvertimeCount = await prisma.overtimeRequest.count({ where: { companyId: me.companyId, status: "pending" } });
-  const pendingTripCount = await prisma.businessTripRequest.count({ where: { companyId: me.companyId, status: "pending" } });
-  const latestNotice = await prisma.announcement.findFirst({
-    where: { companyId: me.companyId },
-    orderBy: { createdAt: "desc" },
-    select: { title: true, body: true, authorName: true, createdAt: true, noticeDate: true },
-  });
+  // 승인 대기 건수 7종 + 최신 공지(오늘 알림 카드용).
+  // 서로 아무 관계가 없는 조회라 **한꺼번에 물어본다**(P-3) — 예전엔 하나씩 차례로 기다려
+  // 관리자가 가장 자주 여는 이 화면의 지연이 8번 누적됐다. 숫자·표시는 그대로다.
+  // ⚠️ where 조건을 변수로 빼지 않고 각 쿼리에 그대로 적는다(검수 중간 8).
+  //    변수로 빼면 TypeScript의 "이 표에 없는 칸" 검사가 꺼져서, 나중에 어느 표의 companyId 칸이
+  //    바뀌어도 오류 없이 통과하고 **회사 격리가 조용히 풀린다**(대기 건수가 전 회사 합계로 나온다).
+  const cid = me.companyId;
+  const [
+    pendingLeaveCount,
+    pendingResetCount,
+    pendingCorrectionCount,
+    pendingOutingCount,
+    pendingRemoteCount,
+    pendingOvertimeCount,
+    pendingTripCount,
+    latestNotice,
+  ] = await Promise.all([
+    prisma.leaveRequest.count({ where: { companyId: cid, status: "pending" } }),
+    prisma.passwordResetRequest.count({ where: { companyId: cid, status: "pending" } }),
+    prisma.attendanceCorrection.count({ where: { companyId: cid, status: "pending" } }),
+    prisma.outingRequest.count({ where: { companyId: cid, status: "pending" } }),
+    prisma.remoteWorkRequest.count({ where: { companyId: cid, status: "pending" } }),
+    prisma.overtimeRequest.count({ where: { companyId: cid, status: "pending" } }),
+    prisma.businessTripRequest.count({ where: { companyId: cid, status: "pending" } }),
+    prisma.announcement.findFirst({
+      where: { companyId: me.companyId },
+      orderBy: { createdAt: "desc" },
+      select: { title: true, body: true, authorName: true, createdAt: true, noticeDate: true },
+    }),
+  ]);
 
   // 이상접속 미확인 건수(접속/보안 6단계) — 알림 화면과 **같은 함수**를 써서 두 곳 숫자가 어긋나지 않게 한다.
   // ⚠️ 이 부가 기능이 고장 나도 대시보드(본기능)는 떠야 한다 → 실패하면 0으로 두고 넘어간다.

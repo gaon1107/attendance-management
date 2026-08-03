@@ -307,6 +307,9 @@ model ClockPhoto {
 
   @@index([companyId, createdAt])
   @@index([attendanceId])
+  // 90일 자동 파기가 "아직 안 지운 것 중 오래된 것"을 훑는 자리 — 회사 조건이 없어
+  // 위 companyId 인덱스를 못 쓰고 전 회사 표를 스캔했다(P-4).
+  @@index([fileDeletedAt, createdAt])
 }
 
 // 외출 기록 — 출근한 상태에서 외출할 때마다 한 줄. 복귀 전에는 endAt이 비어있음(null).
@@ -389,6 +392,9 @@ model Announcement {
   // 캘린더에 표시할 날짜("YYYY-MM-DD"). null이면 작성일(createdAt)에 표시(기존 공지 호환).
   // 관리자가 공지 작성 시 원하는 날짜를 지정할 수 있다. 표시 위치 전용(작성 시각과 별개).
   noticeDate String?
+
+  // 모든 직원이 출퇴근 화면·대시보드를 열 때마다 조회하는 최다 빈도 쿼리 → 없으면 매번 표 전체 스캔(P-2).
+  @@index([companyId, createdAt])
 }
 
 // 근태 정정 요청 — 직원이 특정 날짜의 출퇴근을 고쳐달라고 요청하고, 관리자가 승인/반려한다.
@@ -578,6 +584,10 @@ model ApprovalStep {
 
   @@index([companyId, requestType, requestId]) // 한 신청의 단계들 조회
   @@index([approverUserId, status])            // 결재함(내 차례) 조회
+  // 🔴 결재함·사이드바 배지는 여러 신청의 단계를 "유형 구분 없이" 한 번에 가져온다(requestId 묶음 조회).
+  //    위 인덱스는 가운데 칸(requestType)을 안 쓰면 companyId까지만 걸려서, 회사의 3년치 결재기록을
+  //    통째로 훑게 된다(검수 실측: 20만 행에서 대기 5건 조회가 37ms → 169ms로 느려짐).
+  @@index([companyId, requestId])
 }
 
 // 직급(직위) 사다리 — 회사마다 직접 만든다. 결재선 서열 비교(상급자 판별)에 쓴다.
@@ -624,6 +634,10 @@ model PasswordResetRequest {
   status     String    @default("pending")
   createdAt  DateTime  @default(now())
   resolvedAt DateTime? // 관리자가 임시 비밀번호를 발급한 시각
+
+  // 대시보드 대기건수 집계(companyId+status)·중복요청 검사(userId+status)가 매번 도는 자리(P-2).
+  @@index([companyId, status])
+  @@index([userId, status])
 }
 
 // 로그인 세션 — 로그인 시 발급하는 "출입증(토큰)". 브라우저 쿠키에 토큰만 담는다.
@@ -634,6 +648,9 @@ model Session {
   user      User     @relation(fields: [userId], references: [id])
   expiresAt DateTime
   createdAt DateTime @default(now())
+
+  // 퇴사·비밀번호 변경·임시비번 발급 때마다 "그 사람 세션 전부 삭제"가 도는 자리(P-2).
+  @@index([userId])
 }
 
 // 접속·보안 이벤트 로그 — 로그인/로그아웃/출퇴근/관리자 동작의 "누가·언제·어디서(IP·기기)·결과" 기록.
@@ -782,6 +799,7 @@ model ShiftPattern {
   dayOfWeek Int     // 0=일 … 6=토
   shiftId   String?
   @@unique([userId, dayOfWeek])
+  @@index([companyId]) // 교대제 회사의 패턴 일괄 조회(P-2)
 }
 
 // [rotation] 조(A/B/C). order=0,1,2 = 시작단계 offset.
