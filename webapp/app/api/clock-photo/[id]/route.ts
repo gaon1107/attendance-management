@@ -6,7 +6,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
-import { readClockPhoto, purgeExpiredPhotos, isPhotoExpired, clockPhotoStorageReady } from "@/lib/clock-photo";
+import { readClockPhoto, purgeExpiredPhotos, isPhotoExpired } from "@/lib/clock-photo";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const me = await getCurrentUser();
@@ -57,20 +57,28 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       },
     });
   } catch (e) {
-    // 파일이 이미 없으면(파기 중 서버가 멈춰 표시가 안 찍힌 경우 등) "고장"이 아니라 "파기됨"이다.
-    // 그 자리에서 파기 표시를 맞춰 두어 같은 어긋남이 반복되지 않게 한다(자가치유).
-    //  ⚠️ 단, **저장 폴더가 통째로 안 잡힌 경우도 같은 오류(ENOENT)**로 온다(검수 치명).
-    //     그 상황에서 파기 표시를 찍으면, 디스크에 멀쩡히 있는 증거 사진이 되돌릴 수 없이 봉인된다.
-    //     그래서 폴더가 정상일 때만 보정하고, 아니면 정직하게 "고장"으로 알린다.
-    const enoent = e && typeof e === "object" && (e as NodeJS.ErrnoException).code === "ENOENT";
-    if (enoent && (await clockPhotoStorageReady())) {
-      console.error(`[clock-photo] 파일 없음 — 파기 표시 보정(사진 ${photo.id}, 파일 ${photo.fileName})`);
-      await prisma.clockPhoto
-        .updateMany({ where: { id: photo.id, fileDeletedAt: null }, data: { fileDeletedAt: new Date() } })
-        .catch(() => null);
-      return NextResponse.json({ message: "보관기간(90일)이 지나 파기된 사진입니다." }, { status: 410 });
+    // 파일이 없으면 관리자에게는 "파기됨"으로 안내한다(파기 중 서버가 멈춰 표시가 안 찍힌 경우 등).
+    //  🔴 단, **DB에 파기 표시를 자동으로 찍지는 않는다**(검수 치명).
+    //     "파일 하나가 없다"와 "저장 폴더가 통째로 안 잡혔다"가 같은 오류(ENOENT)로 오는데,
+    //     후자는 배포 경로가 어긋난 것일 뿐 사진은 예전 폴더에 멀쩡히 살아 있다.
+    //     그때 파기 표시를 찍으면 위조의심 증거 사진이 **되돌릴 수 없이** 봉인되고
+    //     파기 대장에는 "파기함"이라는 거짓이 남는다.
+    //     ("폴더가 있는지" 확인으로도 못 막는다 — 얼굴 출퇴근이 1건만 저장되면
+    //      저장 로직이 그 잘못된 경로에 폴더를 자동으로 만들어 버린다)
+    //     그래서 자동 보정 대신 **로그만 남겨 사람이 확인**하게 한다.
+    if (e && typeof e === "object" && (e as NodeJS.ErrnoException).code === "ENOENT") {
+      console.error(
+        `[clock-photo] 사진 파일이 없습니다 — 파기 표시는 찍지 않습니다(사람 확인 필요). ` +
+          `사진 ${photo.id}, 파일 ${photo.fileName}. 저장 폴더 설정(CLOCK_PHOTO_DIR)이 바뀌지 않았는지 확인하세요.`,
+      );
+      // ⚠️ 여기까지 온 사진은 위에서 이미 "90일 안 지났고 파기 표시도 없음"이 확인된 것이다.
+      //    그런데 파일이 없다 = 정상 파기가 아니라 **비정상 상황**(저장 폴더 오설정·파일 유실).
+      //    이걸 "파기되었습니다"로 안내하면 관리자가 정상 절차로 오해해 조사를 끝내버린다(검수 치명).
+      return NextResponse.json(
+        { message: "사진 파일을 찾을 수 없습니다. 아직 보관기간(90일) 안의 사진이므로 관리자 확인이 필요합니다." },
+        { status: 500 },
+      );
     }
-    if (enoent) console.error("[clock-photo] 사진 저장 폴더에 접근할 수 없습니다(CLOCK_PHOTO_DIR 확인 필요) — 파기 표시하지 않음");
     console.error("[clock-photo] 열람 실패:", e);
     return NextResponse.json({ message: "사진을 여는 중 오류가 발생했습니다." }, { status: 500 });
   }

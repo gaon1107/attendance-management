@@ -277,10 +277,10 @@ export async function advanceApproval(
   return isChainComplete(updated) ? "approved" : "advanced";
 }
 
-// 신청 취소/삭제 시 남은 결재 단계를 정리(고아 방지).
-export async function deleteApprovalSteps(companyId: string, requestType: RequestType, requestId: string): Promise<void> {
-  await prisma.approvalStep.deleteMany({ where: { companyId, requestType, requestId } });
-}
+// ⚠️ 신청 취소 시 결재 단계만 따로 지우는 함수는 **일부러 없앴다**(검수 M-5).
+//    결재 단계만 지워지고 원본 신청이 남으면, 결재 엔진이 "결재선을 안 쓰는 회사"로 보고
+//    관리자 단독 승인을 허용해 **부서장 결재선이 통째로 사라진다**.
+//    취소는 반드시 lib/request-cancel.ts의 cancelPendingRequest(원본+단계 한 트랜잭션)를 쓸 것.
 
 // 결재함용 한 항목.
 export type ApprovalInboxItem = {
@@ -331,10 +331,11 @@ export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
   if (myTurn.length === 0) return [];
 
   // ③ 유형별 원본을 한 번에. 조건(회사격리 + status: pending)은 예전 건별 조회와 동일하다.
-  //    ⚠️ 유형과 표를 **한 곳에 짝지어** 둔다(검수 중간 2). 예전처럼 "id 목록 배열"과 "조회 배열"을
+  //    ⚠️ 유형과 표를 **한 줄에 짝지어** 둔다(검수 중간 2). 예전처럼 "id 목록 배열"과 "조회 배열"을
   //       순서로만 맞추면, 나중에 한쪽 순서만 바뀌어도 타입 검사에 안 걸리고
   //       그 유형의 결재 건이 **오류 없이 결재함에서 통째로 사라진다**(조회가 빈 배열을 돌려주므로).
-  //       Record<RequestType, …>이라 유형을 추가하면 여기서 컴파일이 막힌다.
+  //    ⚠️ 신청 유형을 새로 추가할 땐 **여기 loadFor 한 줄 + 아래 조립 분기를 반드시 함께** 추가할 것.
+  //       컴파일러가 빠뜨림을 막아주지 않는다(requestType이 DB에서 문자열이라 완전성 검사가 안 걸린다).
   const idsOf = (t: RequestType) => myTurn.filter((s) => s.requestType === t).map((s) => s.requestId);
   const applicant = { user: { select: { name: true, employeeNo: true } } } as const;
   const pick = (ids: string[]) => ({ where: { id: { in: ids }, companyId: me.companyId, status: "pending" }, include: applicant });

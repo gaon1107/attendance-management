@@ -62,14 +62,6 @@ export async function saveClockPhoto(imageBuffer: Buffer): Promise<string> {
   return fileName;
 }
 
-// 사진 저장 폴더가 실제로 붙어 있는가 — "파일 하나가 없다"와 "폴더째로 안 잡혔다"를 구분하기 위함.
-//  🔴 이 확인이 필요한 이유(검수 치명): 파일이 없을 때와 폴더가 없을 때가 **같은 오류(ENOENT)**로 온다.
-//     배포 방식이 바뀌어 저장 폴더 경로가 어긋난 상황에서 그것을 "파기됨"으로 처리해버리면,
-//     디스크에 멀쩡히 살아 있는 위조의심 증거 사진이 **되돌릴 수 없이** 파기 표시된다.
-export async function clockPhotoStorageReady(): Promise<boolean> {
-  return fs.access(storageDir()).then(() => true).catch(() => false);
-}
-
 // 암호화 파일을 복호화해 JPEG 원본을 돌려준다. (관리자 열람 API에서만 호출)
 export async function readClockPhoto(fileName: string): Promise<Buffer> {
   // DB에서 온 이름이라도 방어: 경로 구분자·상위 이동이 섞여 있으면 거부
