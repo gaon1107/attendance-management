@@ -70,6 +70,9 @@ export default async function ApprovalHistoryPage({
     decidedByName: r.decidedByName,
     decidedAtText: r.decidedAt ? ymdhm(r.decidedAt) : null,
     decisionComment: r.decisionComment,
+    progressText: r.progressText,
+    // ⚠️ progressText는 검색 문자열에 넣지 않는다 — "퇴사"·"승인" 같은 검색어가
+    //    진행 문구에 걸려 오탐을 만든다(8순위 검수 4차에서 겪은 것과 같은 유형의 문제).
     search: [r.applicantName, r.applicantNo, r.applicantDept, TYPE_LABEL[r.type], r.summary, r.reason, STATUS_LABEL[r.status] ?? r.status, r.decidedByName, r.decisionComment]
       .filter(Boolean)
       .join(" ")

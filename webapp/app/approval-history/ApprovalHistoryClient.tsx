@@ -24,6 +24,7 @@ export type HistoryClientRow = {
   decidedByName: string | null;
   decidedAtText: string | null;
   decisionComment: string | null;
+  progressText: string | null; // 대기 건의 결재 진행 문구(퇴사로 건너뜀·관리자 확정 필요 등, 9-E) — 검색 대상 아님
   search: string; // 소문자 결합(신청자·사번·부서·유형·내용·사유·상태·처리자) — 통합검색 대상
 };
 
@@ -195,7 +196,11 @@ export function ApprovalHistoryClient({
                       <div>{r.summary}</div>
                       {r.reason && <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 2, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>사유: {r.reason}</div>}
                     </td>
-                    <td style={td}>{badge(STATUS_STYLE[r.status]?.bg ?? "#EEE", STATUS_STYLE[r.status]?.color ?? "#555", STATUS_LABEL[r.status] ?? r.status)}</td>
+                    <td style={td}>
+                      {badge(STATUS_STYLE[r.status]?.bg ?? "#EEE", STATUS_STYLE[r.status]?.color ?? "#555", STATUS_LABEL[r.status] ?? r.status)}
+                      {/* 대기 건: 지금 결재가 어디서 멈춰 있는지(다음 결재자·퇴사로 건너뜀·관리자 확정 필요) */}
+                      {r.progressText && <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 4, whiteSpace: "nowrap" }}>{r.progressText}</div>}
+                    </td>
                     <td style={{ ...td, whiteSpace: "nowrap", color: r.decidedByName ? "var(--text)" : "var(--text-sub)" }}>{r.decidedByName ?? "—"}</td>
                     <td style={{ ...td, color: "var(--text-sub)", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{r.decidedAtText ?? "—"}</td>
                     <td style={{ ...td, minWidth: 160, color: r.status === "rejected" ? "var(--danger)" : "var(--text-sub)" }}>

@@ -3,7 +3,7 @@
 //  · 읽기 전용(조회만). 회사격리(companyId) 필수. 결재 엔진·판정 로직 무접촉.
 //  · 각 신청 모델은 status·createdAt·decidedAt·decisionComment·decidedById 필드가 동일해 공통 처리한다.
 import { prisma } from "@/lib/db";
-import type { RequestType } from "@/lib/approval-server";
+import { getApprovalProgressMap, approvalProgressLabel, type RequestType, type ApprovalProgress } from "@/lib/approval-server";
 import { leaveTypeLabel } from "@/lib/leave";
 import { outingKindLabel } from "@/lib/outing";
 import { remoteRangeLabel } from "@/lib/remote";
@@ -27,6 +27,9 @@ export type HistoryRow = {
   decidedByName: string | null;    // 처리자 이름
   decidedAt: Date | null;          // 처리 시각
   createdAt: Date;                 // 신청 시각
+  // 대기(pending) 건의 결재 진행 문구(승인 화면들과 같은 공통 문구, 9-E).
+  // "결재자 퇴사로 건너뜀 (n/m) · 관리자 확정 필요" 같은 상태가 이력에서 그냥 "대기"로만 보이던 것을 보완.
+  progressText: string | null;
 };
 
 export type HistoryFilter = {
@@ -70,6 +73,7 @@ function toRaw(type: RequestType, r: CommonReq, summary: string, reason: string 
     decidedById: r.decidedById,
     decidedAt: r.decidedAt,
     createdAt: r.createdAt,
+    progressText: null, // 대기 건만 마지막에 일괄 채운다(쿼리 절약)
   };
 }
 
@@ -144,6 +148,22 @@ export async function listApprovalHistory(
     for (const u of users) nameOf.set(u.id, u.name);
   }
 
+  // 대기 건의 결재 진행 문구(9-E) — 유형별로 묶어 공통 함수로 일괄 조회(최대 6쿼리).
+  // 승인 화면 13곳과 같은 문구 출처(approvalProgressLabel)라 화면마다 다른 말을 하지 않는다.
+  const pendingByType = new Map<RequestType, string[]>();
+  for (const r of limited) {
+    if (r.status !== "pending") continue;
+    const arr = pendingByType.get(r.type) ?? [];
+    arr.push(r.requestId);
+    pendingByType.set(r.type, arr);
+  }
+  const progressByType = new Map<RequestType, Map<string, ApprovalProgress>>();
+  await Promise.all(
+    [...pendingByType].map(async ([t, ids]) => {
+      progressByType.set(t, await getApprovalProgressMap(companyId, t, ids));
+    }),
+  );
+
   return limited.map(({ decidedById, origApproverId, origApprovedAt, ...r }) => {
     // 승인 취소 건: "승인 취소 사유: … (원래 승인: 홍길동 · 2026-08-03)" — 감사 추적이 반쪽이 되지 않게.
     let comment = r.decisionComment;
@@ -153,6 +173,11 @@ export async function listApprovalHistory(
       const parts = [who, when].filter(Boolean).join(" · ");
       if (parts) comment = `${comment ?? ""} (원래 승인: ${parts})`.trim();
     }
-    return { ...r, decisionComment: comment, decidedByName: decidedById ? nameOf.get(decidedById) ?? null : null };
+    return {
+      ...r,
+      decisionComment: comment,
+      decidedByName: decidedById ? nameOf.get(decidedById) ?? null : null,
+      progressText: r.status === "pending" ? approvalProgressLabel(progressByType.get(r.type)?.get(r.requestId)) ?? null : null,
+    };
   });
 }
