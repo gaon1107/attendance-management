@@ -6,8 +6,8 @@ import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { parseYmd } from "@/lib/leave";
 import { isValidHm } from "@/lib/overtime-request";
-import { createApprovalStepsIfNeeded, advanceApproval, deleteApprovalSteps, isSelfApprovalBlocked } from "@/lib/approval-server";
-import { deleteAttachmentsForRequest } from "@/lib/request-attachment-server";
+import { createApprovalStepsIfNeeded, advanceApproval, isSelfApprovalBlocked } from "@/lib/approval-server";
+import { cancelPendingRequest } from "@/lib/request-cancel";
 
 // 직원: 초과근무 사전신청. 날짜·시각(야근 시간대)·사유를 받아 대기 상태로 만든다.
 //  · 성공 시 생성된 신청 id를 함께 반환한다(클라이언트 첨부 업로드용).
@@ -50,11 +50,10 @@ export async function cancelOvertime(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
   const id = String(formData.get("id") ?? "");
-  const o = await prisma.overtimeRequest.findFirst({ where: { id, userId: me.id, companyId: me.companyId, status: "pending" } });
-  if (!o) return;
-  await deleteApprovalSteps(me.companyId, "overtime", o.id); // 결재 단계도 함께 정리(고아 방지)
-  await deleteAttachmentsForRequest(me.companyId, "overtime", o.id); // 첨부파일·파일 정리
-  await prisma.overtimeRequest.delete({ where: { id: o.id } });
+  // 원본과 결재 단계를 한 트랜잭션으로 함께 삭제(M-5) — 자세한 이유는 lib/request-cancel.ts 주석.
+  await cancelPendingRequest(me.companyId, "overtime", id, (tx) =>
+    tx.overtimeRequest.deleteMany({ where: { id, companyId: me.companyId, userId: me.id, status: "pending" } }),
+  );
   revalidatePath("/overtime");
   revalidatePath("/approvals");
 }

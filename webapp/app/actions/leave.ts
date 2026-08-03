@@ -7,7 +7,8 @@ import { effectiveWorkDays } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
 import { REQUESTABLE_TYPES, isSingleDayLeave, leaveTypeDeducts, computeLeaveDays, parseYmd, leaveBalanceInYear, rangesOverlap, leaveTypeLabel } from "@/lib/leave";
 import { toISODate } from "@/lib/period";
-import { createApprovalStepsIfNeeded, advanceApproval, deleteApprovalSteps, isSelfApprovalBlocked } from "@/lib/approval-server";
+import { createApprovalStepsIfNeeded, advanceApproval, isSelfApprovalBlocked } from "@/lib/approval-server";
+import { cancelPendingRequest } from "@/lib/request-cancel";
 
 // 직원: 휴가 신청. 종류·기간을 받아 근무요일 기준 사용일수를 계산하고 대기 상태로 만든다.
 export async function requestLeave(
@@ -137,10 +138,10 @@ export async function cancelLeave(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
   const id = String(formData.get("id") ?? "");
-  const lv = await prisma.leaveRequest.findFirst({ where: { id, userId: me.id, status: "pending" } });
-  if (!lv) return;
-  await deleteApprovalSteps(me.companyId, "leave", lv.id); // 결재 단계도 함께 정리(고아 방지)
-  await prisma.leaveRequest.delete({ where: { id: lv.id } });
+  // 원본과 결재 단계를 한 트랜잭션으로 함께 삭제(M-5) — 자세한 이유는 lib/request-cancel.ts 주석.
+  await cancelPendingRequest(me.companyId, "leave", id, (tx) =>
+    tx.leaveRequest.deleteMany({ where: { id, companyId: me.companyId, userId: me.id, status: "pending" } }),
+  );
   revalidatePath("/leave");
   revalidatePath("/approvals");
 }

@@ -6,7 +6,8 @@ import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { parseYmd } from "@/lib/leave";
 import { isValidHm, hmToDate, checkApplicable } from "@/lib/corrections";
-import { createApprovalStepsIfNeeded, advanceApproval, deleteApprovalSteps, isSelfApprovalBlocked } from "@/lib/approval-server";
+import { createApprovalStepsIfNeeded, advanceApproval, isSelfApprovalBlocked } from "@/lib/approval-server";
+import { cancelPendingRequest } from "@/lib/request-cancel";
 
 // 직원: 근태 정정 요청. 날짜 + (출근/퇴근 중 하나 이상) + 사유.
 export async function requestCorrection(
@@ -79,10 +80,10 @@ export async function cancelCorrection(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
   if (!me) return;
   const id = String(formData.get("id") ?? "");
-  const c = await prisma.attendanceCorrection.findFirst({ where: { id, userId: me.id, status: "pending" } });
-  if (!c) return;
-  await deleteApprovalSteps(me.companyId, "correction", c.id); // 결재 단계도 함께 정리
-  await prisma.attendanceCorrection.delete({ where: { id: c.id } });
+  // 원본과 결재 단계를 한 트랜잭션으로 함께 삭제(M-5) — 자세한 이유는 lib/request-cancel.ts 주석.
+  await cancelPendingRequest(me.companyId, "correction", id, (tx) =>
+    tx.attendanceCorrection.deleteMany({ where: { id, companyId: me.companyId, userId: me.id, status: "pending" } }),
+  );
   revalidatePath("/corrections");
   revalidatePath("/approvals");
 }
