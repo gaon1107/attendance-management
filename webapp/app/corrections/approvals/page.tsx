@@ -1,4 +1,4 @@
-// 근태 정정 승인(관리자 전용) — 대기 승인/반려 + 처리 내역. 기간 달력 + 통합검색(클라이언트).
+﻿// 근태 정정 승인(관리자 전용) — 대기 승인/반려 + 처리 내역. 기간 달력 + 통합검색(클라이언트).
 // 사이드바 아이콘은 없고, 대시보드 '오늘 알림'과 근태현황 화면에서 들어온다. (active는 근태현황으로 표시)
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -8,7 +8,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { CorrectionApprovalsClient, type CorrectionRow } from "./CorrectionApprovalsClient";
 import { correctionStatusLabel, checkApplicable, hmToDate } from "@/lib/corrections";
 import { parseAnchor, toISODate } from "@/lib/period";
-import { getApprovalProgressMap, approvalProgressLabel } from "@/lib/approval-server";
+import { getApprovalProgressMap, approvalProgressLabel, selfApprovalNotice } from "@/lib/approval-server";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" });
@@ -73,9 +73,13 @@ export default async function CorrectionApprovalsPage({
     (me.company.approvalMode === "deptline" || me.company.approvalMode === "custom")
       ? await getApprovalProgressMap(me.companyId, "correction", pendingReqs.map((r) => r.id))
       : new Map();
-  const progressLabel = (id: string): string | undefined => {
+  const progressLabel = (id: string, isMine: boolean): string | undefined => {
     // 문구는 lib/approval-server.ts 한 곳에서 만든다(6개 승인화면이 같은 말을 하도록).
-    return approvalProgressLabel(progressMap.get(id));
+    //  · 내 신청이면 "승인을 눌러도 통과되지 않는 이유"를 함께 붙인다(M-11).
+    const base = approvalProgressLabel(progressMap.get(id));
+    const notice = selfApprovalNotice(progressMap.get(id), isMine);
+    if (!notice) return base;
+    return base ? `${base} · ${notice}` : notice;
   };
 
   // 대기 건 중 "승인해도 반영할 수 없는" 것을 미리 알려준다(후속 검수 지적).
@@ -121,7 +125,7 @@ export default async function CorrectionApprovalsPage({
       reason: r.reason,
       status: r.status,
       statusLabel,
-      progress: progressLabel(r.id),
+      progress: progressLabel(r.id, r.userId === me.id),
       blocked: blockedById.get(r.id),
       search: [r.user.name, r.user.employeeNo ?? "", dateText, timeText, r.reason, statusLabel].join(" ").toLowerCase(),
     };

@@ -68,7 +68,7 @@ export async function approveRemote(formData: FormData): Promise<void> {
   const r = await prisma.remoteWorkRequest.findFirst({ where: { id, companyId: me.companyId, status: "pending" } });
   if (!r) return;
   // 🔴 자기 신청을 자기가 승인하지 못하게 막는다(다른 관리자가 없으면 허용 — lib/approval-server.ts 설명).
-  if (await isSelfApprovalBlocked(me, r.userId)) return;
+  if (await isSelfApprovalBlocked(me, r.userId, { requestType: "remote", requestId: r.id })) return;
   const result = await advanceApproval(me, "remote", r.id, "approve", comment);
   if (result === "denied") return;
   if (result === "approved") {

@@ -68,7 +68,7 @@ export async function approveOvertime(formData: FormData): Promise<void> {
   const o = await prisma.overtimeRequest.findFirst({ where: { id, companyId: me.companyId, status: "pending" } });
   if (!o) return;
   // 🔴 자기 신청을 자기가 승인하지 못하게 막는다(다른 관리자가 없으면 허용 — lib/approval-server.ts 설명).
-  if (await isSelfApprovalBlocked(me, o.userId)) return;
+  if (await isSelfApprovalBlocked(me, o.userId, { requestType: "overtime", requestId: o.id })) return;
   const result = await advanceApproval(me, "overtime", o.id, "approve", comment);
   if (result === "denied") return;
   if (result === "approved") {

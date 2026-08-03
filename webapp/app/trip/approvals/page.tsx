@@ -1,4 +1,4 @@
-// 출장 승인(관리자 전용) — 대기 목록 승인/반려 + 처리 내역. 기간 달력 + 통합검색. (재택 승인 화면 패턴 + 출장지)
+﻿// 출장 승인(관리자 전용) — 대기 목록 승인/반려 + 처리 내역. 기간 달력 + 통합검색. (재택 승인 화면 패턴 + 출장지)
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
@@ -6,7 +6,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { TripApprovalsClient, type TripRow } from "./TripApprovalsClient";
 import { tripStatusLabel, tripRangeLabel } from "@/lib/trip";
 import { parseAnchor, toISODate } from "@/lib/period";
-import { getApprovalProgressMap, approvalProgressLabel } from "@/lib/approval-server";
+import { getApprovalProgressMap, approvalProgressLabel, selfApprovalNotice } from "@/lib/approval-server";
 import { getAttachmentsMap } from "@/lib/request-attachment-server";
 
 export default async function TripApprovalsPage({
@@ -60,9 +60,13 @@ export default async function TripApprovalsPage({
     (me.company.approvalMode === "deptline" || me.company.approvalMode === "custom")
       ? await getApprovalProgressMap(me.companyId, "trip", pendingReqs.map((r) => r.id))
       : new Map();
-  const progressLabel = (id: string): string | undefined => {
+  const progressLabel = (id: string, isMine: boolean): string | undefined => {
     // 문구는 lib/approval-server.ts 한 곳에서 만든다(6개 승인화면이 같은 말을 하도록).
-    return approvalProgressLabel(progressMap.get(id));
+    //  · 내 신청이면 "승인을 눌러도 통과되지 않는 이유"를 함께 붙인다(M-11).
+    const base = approvalProgressLabel(progressMap.get(id));
+    const notice = selfApprovalNotice(progressMap.get(id), isMine);
+    if (!notice) return base;
+    return base ? `${base} · ${notice}` : notice;
   };
 
   const attMap = await getAttachmentsMap(me.companyId, "trip", pendingReqs.map((r) => r.id));
@@ -81,7 +85,7 @@ export default async function TripApprovalsPage({
       reason,
       status: r.status,
       statusLabel,
-      progress: progressLabel(r.id),
+      progress: progressLabel(r.id, r.userId === me.id),
       attachments: attMap.get(r.id) ?? [],
       search: [r.user.name, r.user.employeeNo ?? "", rl, r.destination, reason, statusLabel].join(" ").toLowerCase(),
     };

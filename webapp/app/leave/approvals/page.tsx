@@ -6,7 +6,7 @@ import { AppShell } from "@/app/components/AppShell";
 import { LeaveApprovalsClient, type LeaveRow } from "./LeaveApprovalsClient";
 import { leaveTypeLabel, leaveStatusLabel, leaveTypeDeducts, leaveBalanceInYear } from "@/lib/leave";
 import { parseAnchor, toISODate } from "@/lib/period";
-import { getApprovalProgressMap, approvalProgressLabel, isSelfApprovalBlocked } from "@/lib/approval-server";
+import { getApprovalProgressMap, approvalProgressLabel, selfApprovalNotice, isSelfApprovalBlocked } from "@/lib/approval-server";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
@@ -76,9 +76,13 @@ export default async function LeaveApprovalsPage({
     (me.company.approvalMode === "deptline" || me.company.approvalMode === "custom")
       ? await getApprovalProgressMap(me.companyId, "leave", pendingReqs.map((r) => r.id))
       : new Map();
-  const progressLabel = (id: string): string | undefined => {
+  const progressLabel = (id: string, isMine: boolean): string | undefined => {
     // 문구는 lib/approval-server.ts 한 곳에서 만든다(6개 승인화면이 같은 말을 하도록).
-    return approvalProgressLabel(progressMap.get(id));
+    //  · 내 신청이면 "승인을 눌러도 통과되지 않는 이유"를 함께 붙인다(M-11).
+    const base = approvalProgressLabel(progressMap.get(id));
+    const notice = selfApprovalNotice(progressMap.get(id), isMine);
+    if (!notice) return base;
+    return base ? `${base} · ${notice}` : notice;
   };
 
   // 대기 건 중 "승인하면 잔여 연차를 넘는" 것을 미리 표시한다(검수 C-2).
@@ -147,7 +151,7 @@ export default async function LeaveApprovalsPage({
       reason,
       status: r.status,
       statusLabel,
-      progress: progressLabel(r.id),
+      progress: progressLabel(r.id, r.userId === me.id),
       shortage: shortageById.get(r.id),
       // 승인된 건만 되돌릴 수 있고, 내 휴가는 다른 관리자가 있으면 내가 못 되돌린다.
       canCancel: r.status === "approved" && !(selfCancelBlocked && r.userId === me.id),

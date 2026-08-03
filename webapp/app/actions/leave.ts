@@ -156,8 +156,8 @@ export async function approveLeave(formData: FormData): Promise<void> {
   const comment = raw ? Array.from(raw).slice(0, 500).join("") : undefined; // 승인 사유는 선택, 코드포인트 기준 상한
   const lv = await prisma.leaveRequest.findFirst({ where: { id, companyId: me.companyId, status: "pending" } });
   if (!lv) return;
-  // 🔴 자기 신청을 자기가 승인하지 못하게 막는다(다른 관리자가 없으면 허용 — lib/approval-server.ts 설명).
-  if (await isSelfApprovalBlocked(me, lv.userId)) return;
+  // 🔴 자기 신청을 자기가 승인하지 못하게 막는다(결재선 진행 중이면 무조건, 아니면 다른 관리자가 있을 때 — M-11).
+  if (await isSelfApprovalBlocked(me, lv.userId, { requestType: "leave", requestId: lv.id })) return;
 
   // 🔴 승인 시점 잔여 재검사 (검수 C-2 — 마지막 방어선).
   //   신청 때 통과했어도 그 사이 다른 건이 승인돼 잔여가 줄었을 수 있다.

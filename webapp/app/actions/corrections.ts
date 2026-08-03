@@ -100,7 +100,7 @@ export async function approveCorrection(formData: FormData): Promise<void> {
   if (!c) return;
 
   // 🔴 자기 신청을 자기가 승인하지 못하게 막는다(다른 관리자가 없으면 허용 — lib/approval-server.ts 설명).
-  if (await isSelfApprovalBlocked(me, c.userId)) return;
+  if (await isSelfApprovalBlocked(me, c.userId, { requestType: "correction", requestId: c.id })) return;
 
   // 그 날짜 범위 [자정, 다음날 자정)
   const dayStart = c.targetDate;

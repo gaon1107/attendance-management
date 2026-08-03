@@ -71,7 +71,7 @@ export async function approveTrip(formData: FormData): Promise<void> {
   const t = await prisma.businessTripRequest.findFirst({ where: { id, companyId: me.companyId, status: "pending" } });
   if (!t) return;
   // 🔴 자기 신청을 자기가 승인하지 못하게 막는다(다른 관리자가 없으면 허용 — lib/approval-server.ts 설명).
-  if (await isSelfApprovalBlocked(me, t.userId)) return;
+  if (await isSelfApprovalBlocked(me, t.userId, { requestType: "trip", requestId: t.id })) return;
   const result = await advanceApproval(me, "trip", t.id, "approve", comment);
   if (result === "denied") return;
   if (result === "approved") {

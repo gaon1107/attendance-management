@@ -542,6 +542,15 @@ export type ApprovalProgress = {
 // 결재 진행상황을 관리자 화면에 보여줄 한 줄 문구로 만든다.
 // 6개 승인 화면(휴가·정정·외출·초과근무·재택·출장)이 같은 문구를 쓰도록 여기 하나로 모았다.
 //  (예전엔 같은 문장이 6곳에 복붙돼 있어, 한 곳만 고치면 화면마다 다른 말을 하게 됐다)
+// 관리자가 **자기 신청**을 보고 있고 부서장 결재가 아직 진행 중이면, 승인을 눌러도 통과되지 않는다(M-11).
+// 그 이유를 화면에 미리 알려주는 문구 — 안 그러면 "눌러도 아무 반응이 없는 버튼"이 된다(검수 치명).
+//  · 결재선이 없거나(관리자 단독 승인) 이미 끝난 상태(관리자 확정만 남음)면 승인할 수 있으므로 문구 없음.
+export function selfApprovalNotice(p: ApprovalProgress | undefined, isMine: boolean): string | undefined {
+  if (!isMine || !p) return undefined;
+  if (p.rejected || p.needsAdminFinalize) return undefined; // 확정·마무리 가능한 상태
+  return "본인 신청이라 부서장 결재가 끝나야 확정할 수 있습니다(승인 눌러도 통과되지 않음)";
+}
+
 export function approvalProgressLabel(p: ApprovalProgress | undefined): string | undefined {
   if (!p) return undefined;
   if (p.rejected) return "부서장 반려됨";
@@ -613,13 +622,37 @@ export async function getApprovalProgressMap(
  *  · 단, **다른 관리자가 아무도 없으면 허용한다.** 안 그러면 관리자 1명인 회사에서 그 사람의 휴가를
  *    영원히 승인할 수 없다(막는 것이 오히려 업무를 멈춘다).
  *
+ * 🔴 [검수 M-11] 결재선이 진행 중이면 관리자라도 자기 신청을 스스로 통과시킬 수 없다.
+ *  · 예전엔 "다른 관리자 수"만 봤다. 그래서 **관리자가 1명인 회사**에서는 부서장 결재선을 켜 놓아도
+ *    그 관리자가 자기 휴가를 신청한 뒤 곧바로 스스로 최종 승인할 수 있었다
+ *    (관리자 오버라이드가 남은 부서장 단계를 전부 승인 처리한다) → 결재선이 통째로 무의미해진다.
+ *  · 그래서 **내 신청에 아직 처리되지 않은(pending) 결재 단계가 남아 있으면 무조건 막는다.**
+ *  · 막다른 길이 아닌 이유: 부서장들이 결재를 마치면 그 마지막 승인으로 원본이 자동 확정된다.
+ *    결재자 퇴사 등으로 단계가 건너뛰어져 "관리자 확정만 남은" 상태가 되면 pending이 0이므로
+ *    아래 기존 규칙으로 내려가고, 관리자가 나뿐이면 확정할 수 있다.
+ *
+ * ⚠️ **반려(reject)에는 일부러 이 가드를 걸지 않는다.** 결재가 멈췄을 때(결재자 부재 등)
+ *    관리자가 자기 신청을 스스로 종료시킬 수 있는 유일한 탈출구이기 때문이다.
+ *    여기에 가드를 추가하면 관리자 1명 회사에서 승인도 반려도 못 하는 진짜 막다른 길이 생긴다.
+ *
+ * @param ctx 신청을 특정할 수 있으면 넘긴다(승인 경로 6곳). 없으면 결재선 검사 없이 기존 규칙만 적용
+ *            — 승인 **취소**나 화면 버튼 노출 판단처럼 "진행 중인 결재선"이 없는 자리에서 쓴다.
  * @returns true면 이 승인을 막아야 한다.
  */
 export async function isSelfApprovalBlocked(
   me: { id: string; companyId: string },
-  requesterId: string
+  requesterId: string,
+  ctx?: { requestType: RequestType; requestId: string },
 ): Promise<boolean> {
   if (requesterId !== me.id) return false;
+
+  if (ctx) {
+    const pending = await prisma.approvalStep.count({
+      where: { companyId: me.companyId, requestType: ctx.requestType, requestId: ctx.requestId, status: "pending" },
+    });
+    if (pending > 0) return true; // 부서장이 아직 결재 중 → 관리자라도 자기 건을 통과시킬 수 없다
+  }
+
   const otherAdmins = await prisma.user.count({
     where: { companyId: me.companyId, role: "admin", isOwner: false, deactivatedAt: null, id: { not: me.id } },
   });
