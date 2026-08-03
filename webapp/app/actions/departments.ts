@@ -87,11 +87,15 @@ export async function saveDepartmentApproval(formData: FormData): Promise<void> 
   if (!dept) return;
 
   // 직원 존재 검증: 빈 값 → null(해제), 유효 → id, 무효 → undefined(저장 중단)
+  //  · 퇴사자(deactivatedAt≠null)는 **해제(null) 취급**(9-A) — 결재선이 퇴사자를 "없는 사람"으로 보는 것과
+  //    같은 의미. 저장 중단(undefined)으로 하면 낡은 화면에서 고른 퇴사자 하나 때문에 같은 폼의
+  //    다른 칸 수정분까지 소리 없이 통째로 버려진다(검수 M-1).
   const validUser = async (raw: string): Promise<string | null | undefined> => {
     const uid = raw.trim();
     if (!uid) return null;
-    const u = await prisma.user.findFirst({ where: { id: uid, companyId: me.companyId }, select: { id: true } });
-    return u ? u.id : undefined;
+    const u = await prisma.user.findFirst({ where: { id: uid, companyId: me.companyId }, select: { id: true, deactivatedAt: true } });
+    if (!u) return undefined; // 존재하지 않거나 타사 직원(폼 위조) → 저장 중단
+    return u.deactivatedAt ? null : u.id;
   };
   const headUserId = await validUser(String(formData.get("headUserId") ?? ""));
   if (headUserId === undefined) return;

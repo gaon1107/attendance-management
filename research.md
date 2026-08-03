@@ -1,81 +1,56 @@
-# Research: 초과근무 전용 관리화면 + 휴게시간 회사별 설정화면 (2026-07-23)
+# Research: 최종 검수 후속 6건 (2026-08-03)
 
-목업 2개(`근태 관리 디자인 스타일/리뉴얼_화면/초과근무 관리.dc.html`, `휴게시간 관리.dc.html`)와 실제 코드를 전수 대조했다.
+> 대상: project-status.md "다음 세션 할 일 1순위" — plan.md "A. 최종 검수에서 남긴 후속 과제" 6건
+> (이전 research는 git 이력에 보존)
 
----
+## 관련 파일과 역할
 
-# A. 초과근무 전용 관리화면
-
-## 목업이 요구하는 것
-> "주 12시간 한도 기준 초과근무 현황과 승인"
-- 주 단위 선택(2026년 7월 1주 / 6월 4주) + 부서 필터 + 내보내기
-- 요약 KPI + 표: **이름 · 부서 · 기본근무 · 초과근무 · 한도(주 12h) 대비 · 상태 · 처리(승인/정산)**
-
-## 지금 있는 것 (코드 확인)
-| 기능 | 현재 상태 | 위치 |
-|---|---|---|
-| 초과근무 **계산** | ✅ 있음 — **하루 기준**: (그날 실근무 − 기준 일 근무시간 8h) 양수분의 합 | [reports/page.tsx:89](webapp/app/reports/page.tsx:89) `overtimeMinutesOf` |
-| 주 52시간 **판정·알림** | ✅ 있음(B-3) — 주간 실근무 합계로 ok/warn/over 3단계 | [lib/overtime.ts](webapp/lib/overtime.ts), [dashboard/page.tsx:157](webapp/app/dashboard/page.tsx:157) |
-| 초과근무 **사전신청·결재** | ✅ 있음(2026-07-20) — 직원 신청 → 승인 | `app/overtime/`, `OvertimeRequest` 표 |
-| 초과근무 **전용 관리화면** | ❌ **없음** — 리포트 표의 한 열로만 존재 | — |
-
-## 🔴 짚어야 할 문제: "초과근무" 정의가 두 개다
-- **현재 리포트**: 하루 8시간 초과분의 합 (일 기준)
-- **목업/법 기준**: **주 40시간 초과분 = 연장근로**(한도 주 12h, 그래서 40+12=52h)
-
-예: 월~금 매일 9시간(총 45h) → 리포트는 "초과 5h"(일 기준), 법 기준도 5h로 같다.
-하지만 월화수 12시간씩·목금 0시간(총 36h) → **리포트는 12h 초과, 법 기준은 0h**. 숫자가 달라진다.
-→ 새 화면을 **주 40h 기준**으로 만들면 리포트 숫자와 달라 보이므로, **화면에 계산 기준을 명시**해야 혼선이 없다. (주 52h 알림과는 일관됨)
-
-## 목업의 "승인/정산" 열
-`OvertimeRequest`(사전신청 결재)는 있지만, **"이 주의 초과근무를 정산 처리했다"는 상태를 담을 DB 칸은 없다.** 새로 만들면 표 1개 추가 + 결재 흐름과의 관계 정리가 필요 → **결정 사항**.
-
-## 영향 범위
-- 새 화면은 **조회 전용**이면 기존 코드 **무수정**(읽기만). 회귀 위험 거의 없음.
-- 사이드바 관리자 메뉴에 항목 1개 추가([Sidebar.tsx](webapp/app/components/Sidebar.tsx) NavKey·LABEL·ICON·그룹 3곳).
-- 재사용 가능: `weekStartMonday`·`cappedEnd`·`weeklyLevel`(lib/overtime.ts), `workedMinutes`(worktime.ts), 공통 `SearchBox`·`TablePagination`·`PaginatedTable`.
-
----
-
-# B. 휴게시간 회사별 설정화면
-
-## 목업이 요구하는 것
-> "근로기준법상 휴게시간 부여 규칙과 준수 현황. 근로시간 4시간마다 30분 이상, 8시간 근무 시 1시간 이상"
-- **휴게 규칙 설정**: 점심 휴게 시간대(~), **자동 차감 방식 = [고정 시간 차감] vs [실제 외출 기록 반영]**, 추가 휴게 허용(4시간마다 15분 자율)
-- **오늘 휴게 준수 현황** 표: 이름 · 근무 · 휴게 · 준수 여부
-
-## 지금 있는 것 (코드 확인)
-| 기능 | 현재 상태 |
+| 작업 | 핵심 파일 |
 |---|---|
-| 휴게 = **실제 외출 기록** | ✅ 있음 — 직원이 [외출]→[복귀]한 시간만큼 차감. [lib/worktime.ts:12](webapp/lib/worktime.ts:12) |
-| 고정 시간 자동 차감 | ❌ 없음 |
-| 법정 휴게(4h/30분, 8h/1h) **준수 판정** | ❌ 없음 |
-| 휴게 규칙 **설정화면** | ❌ 없음 |
+| ① 퇴사자 데이터 일회성 정리 | `webapp/prisma/migrations/` (신규 SQL), 선례: `20260726050000_pcoff_retention_defaults` (데이터 백필 UPDATE 포함) |
+| ② 결재선 퇴사자→대결자 대체 | `webapp/lib/approval.ts:47` (candidate = head ?? deputy), `webapp/lib/approval-server.ts:125-153` (H-6 사후 필터), `:440-445` (isApprovalLineMember) |
+| ③ 임시비번 가드 | `webapp/lib/session.ts:26-44` `getCurrentUser()` — **90개 파일 156곳에서 사용하는 공통 모듈** |
+| ④ 리포트 KPI 평균 희석 | `webapp/app/reports/ReportsClient.tsx:68-77` (분모 = filtered.length, 0시간 직원 포함) |
+| ⑤ skipped 단계 이력 표시 | `webapp/lib/approval-history.ts` (approvalStep을 아예 안 읽음), `app/approval-history/*` 2개 |
+| ⑥ 야간 교대 릴리스 노트 | 문서만 (effectiveEnd 도입으로 대시보드 주52·초과근무·휴게 3화면 숫자 변경) |
 
-즉 현재 시스템은 목업의 두 방식 중 **"실제 외출 기록 반영" 하나만** 구현된 상태다.
+## 🔴 영향 범위
 
-## 🔴🔴 최대 위험: "고정 시간 차감"은 실근무시간 계산을 바꾼다
-`workedMinutes`(= 퇴근−출근−외출)는 **제품의 심장**이다. 여기서 점심 1시간을 자동으로 더 빼면:
-- 근태현황·직원상세·리포트·**엑셀 법정근로기록**·대시보드·**주 52시간 판정**의 숫자가 전부 바뀐다
-- 이미 쌓인 과거 기록의 표시값도 소급해 바뀐다(계산이 실시간이라 저장값이 아님)
-- 급여 연동(2차)까지 파급
+### ② 결재선 (가장 중요한 발견)
+- **퇴사 처리(H-6, `app/actions/employees.ts:136-205`)가 이미 부서장/대결자 칸을 null로 비운다** →
+  앞으로 퇴사하는 부서장은 기존 로직(`head ?? deputy`)만으로 대결자에게 넘어간다.
+- 실제 남은 구멍 2개:
+  1. **H-6 이전에 퇴사한 사람**의 `headUserId`/`deputyUserId` 잔존 참조 + 멈춘 pending 단계 (→ 작업①이 해결)
+  2. `resolveApproverChain`의 **사후 필터**가 퇴사자를 "빼기만" 함 — 그 부서의 deputy로 대체하지 않고,
+     전결(isFinal) 단계였으면 표시가 통째로 사라지며 **체인이 거기서 잘림**(상위 단계도 안 만들어짐)
+- `buildApprovalChain` 호출처: `approval-server.ts:136` 단 1곳. `createApprovalStepsIfNeeded` 호출처 7곳(6종 신청 + agent overtime) — 시그니처 안 바꾸면 무영향.
+- **`isApprovalLineMember`(사이드바 결재함 메뉴 게이팅)는 buildApprovalChain 규칙과 일치해야 함** — 규칙을 바꾸면 여기도 같이.
+- 엣지: 대결자도 퇴사 / 대결자=신청자 본인(seen으로 배제 유지) / 대결자가 상위 단계와 중복 / 전결권자 퇴사 시 isFinal 승계.
+- 부수 구멍(보고): `app/actions/departments.ts:90-99` 부서장/대결자 저장 시 `deactivatedAt: null` 미검사 → 폼 위조로 퇴사자 지정 가능.
 
-→ **이건 코드 문제가 아니라 경영 판단**이다. 실제로 점심시간에 [외출]을 누르지 않는 회사라면 근무시간이 1시간씩 부풀려져 있을 수 있고, 반대로 잘 누르는 회사에 고정 차감을 켜면 **이중 차감**된다.
+### ③ 임시비번 가드 (공통 모듈 — safe-coding 대상)
+- `getCurrentUser()`에 mustChangePassword 차단을 넣으면 156곳 전부 즉시 보호.
+- **반드시 예외(allowMustChange)가 필요한 곳**: `app/change-password/page.tsx`(무한루프 방지),
+  `app/actions/account.ts` changePassword(변경 자체), `app/actions/auth.ts` logout(로그아웃 기록). AppShell 경유 페이지는 null→`redirect("/login")`으로 안전.
+- 구멍 실측: 세션 기반 route 13개(`app/api` 8 + **api 밖 export 라우트 4** + kicc-test) + `reports/print/page.tsx`(AppShell 미사용 9개 페이지 중 유일한 로그인 화면) + 서버액션 31파일 106곳 — 전부 mustChangePassword 무검사.
+- agent 라우트 4개는 기기토큰 인증(브라우저 세션 무관) → 대상 아님.
 
-## 영향 범위 (안전한 범위와 위험한 범위)
-| 범위 | 건드리는 것 | 위험 |
-|---|---|---|
-| **A안(안전)**: 규칙 저장 + 준수 현황 표시만 | Company 칸 몇 개 추가 + 새 화면 1개. `worktime.ts` **무접촉** | 낮음(회귀 0) |
-| **B안(위험)**: 고정 시간 자동 차감 | `worktime.ts` 수정 → 위 6개 화면 + 엑셀 + 주52 전부 재검증 | **높음** |
+### ④ KPI
+- 계산은 화면 1곳뿐. 엑셀은 의도적으로 평균 없음(빈칸 정책), PDF도 없음. 대시보드 "오늘 실근무 평균"은 별개(이미 0시간 미포함).
 
-## 재사용 가능한 것
-- 설정 카드 패턴: 방금 만든 `OutingReasonForm`·`WorkRulesForm` 그대로.
-- 준수 현황 표: `records/page.tsx`의 오늘 기록 조회 + `workedMinutes` + 공통 표 부품.
+### ⑤ skipped
+- `skipped` 생성 경로는 퇴사 처리 1곳뿐. 이력 화면은 **신청 원본 status만** 조회하므로 skipped 뱃지가 뜰 일은 없음.
+- 실제 증상: 퇴사로 건너뛴 신청이 이력에서 그냥 "대기" — `approvalProgressLabel`(승인 화면 13곳이 쓰는 공통 문구)이 이력 화면에만 없음.
 
----
+## 공통 모듈 여부 / 건드리면 안 되는 부분
+- `getCurrentUser`(90파일)·`buildApprovalChain`(순수함수)·`approvalProgressLabel`(13곳) = 공통. 시그니처는 **추가 인자(옵션)만** 허용, 기존 호출 무변경.
+- 결재 엔진 불변식: 원본 status는 전 단계 승인 시에만 approved / companyId 격리 / add-only 스키마.
 
-# 결론 — 사장님 결정이 필요한 3가지
+## DB·API 변경
+- 작업①: 마이그레이션 1건(데이터 UPDATE만, 스키마 무변경). 선례 있음.
+- 나머지: 스키마 무변경.
 
-1. **휴게시간: 자동 차감을 도입할 것인가?** (A안=표시만 / B안=계산 변경)
-2. **초과근무 화면: "정산 처리" 기능을 넣을 것인가?** (조회 전용 / 승인·정산 상태 관리 포함)
-3. **초과근무 기준: 주 40h 초과(법 기준, 목업)로 갈 것인가?** — 리포트의 일 기준 숫자와 달라지는 점 감수
+## 결론 (계획 시 고려)
+- 순서: ②(로직) → ①(정리 — 로직과 정리 기준 일치) → ③ → ④ → ⑤ → ⑥(문서).
+- ②는 "사후 필터"를 "사전 alive 주입"으로 옮겨 buildApprovalChain 안에서 대체·승계를 판단하게 한다.
+- ③은 getCurrentUser 옵션 방식(기본 차단 + 예외 3곳)이 최소 수정·최대 커버.

@@ -133,23 +133,23 @@ export async function resolveApproverChain(
     select: { id: true, headUserId: true, parentId: true, deputyUserId: true, finalApproval: true },
   });
   const map = new Map<string, DeptNode>(depts.map((d) => [d.id, d]));
-  const chain = buildApprovalChain(applicantUserId, applicantDeptId, map, stepCount).approvers;
-  if (chain.length === 0) return chain;
 
-  // 🔴 [검수 H-6] 퇴사한 사람을 결재자로 세우지 않는다.
-  //   퇴사자는 로그인할 수 없으므로 그 단계가 영원히 대기로 남고, 다음 결재자에게는
-  //   "내 차례"로 뜨지 않아 **결재가 조용히 멈춘다**(관리자 오버라이드로만 풀림).
-  //   직급 결재선(custom)은 이미 재직자만 거르는데, 부서장 결재선(deptline)만 이 검사가 빠져 있었다.
-  const alive = await prisma.user.findMany({
-    where: { id: { in: chain.map((a) => a.userId) }, companyId, deactivatedAt: null },
-    select: { id: true },
-  });
+  // 🔴 [검수 H-6 → 9-A 개선] 퇴사한 사람을 결재자로 세우지 않는다.
+  //   예전엔 체인을 만든 **뒤에** 퇴사자를 빼기만 해서 ① 그 부서의 대결자가 대신 서지 못했고
+  //   ② 전결(isFinal) 단계가 통째로 사라져 체인이 거기서 잘렸다.
+  //   이제 부서장/대결자 후보 전원의 재직 여부를 **먼저** 조회해 buildApprovalChain에 주입한다 —
+  //   퇴사한 부서장 자리는 대결자가 대신 서고(전결권 승계), 둘 다 없으면 상위 부서로 이어진다.
+  const candidateIds = [
+    ...new Set(depts.flatMap((d) => [d.headUserId, d.deputyUserId]).filter((v): v is string => !!v)),
+  ];
+  const alive = candidateIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: candidateIds }, companyId, deactivatedAt: null },
+        select: { id: true },
+      })
+    : [];
   const aliveSet = new Set(alive.map((u) => u.id));
-  const filtered = chain.filter((a) => aliveSet.has(a.userId));
-  if (filtered.length !== chain.length) {
-    console.warn(`[resolveApproverChain] 퇴사자를 결재선에서 제외 (company=${companyId}, 남은 결재자 ${filtered.length}명)`);
-  }
-  return filtered;
+  return buildApprovalChain(applicantUserId, applicantDeptId, map, stepCount, aliveSet).approvers;
 }
 
 // 신청 생성 직후 결재선(ApprovalStep들)을 만든다. 결재자가 없으면 만들지 않는다(=관리자 단일 승인).
@@ -433,15 +433,28 @@ export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
 }
 
 // 결재 라인 구성원인지(사이드바 [결재함] 메뉴 표시용). 실제 결재자 산정(buildApprovalChain:
-// candidate = headUserId ?? deputyUserId)과 일치시킨다 → 부서장(headUserId)이거나,
-// **부서장이 없는 부서의** 대결자(deputyUserId)면 true. 전결권자도 부서장이라 포함.
-//  · 부서장+대결자가 둘 다 있으면 대결자는 실제 결재를 받지 못하므로(빈 결재함 방지) 제외.
+// 재직 부서장 → 없으면 재직 대결자)과 일치시킨다 → 부서장(headUserId)이거나,
+// **부서장이 없거나 퇴사한 부서의** 대결자(deputyUserId)면 true. 전결권자도 부서장이라 포함(9-A).
+//  · 부서장이 재직 중이면 대결자는 실제 결재를 받지 못하므로(빈 결재함 방지) 제외.
 //  · 회사격리 필수. React cache() → 한 요청 내 실제 조회 1회.
 export const isApprovalLineMember = cache(async (companyId: string, userId: string): Promise<boolean> => {
-  const n = await prisma.department.count({
-    where: { companyId, OR: [{ headUserId: userId }, { headUserId: null, deputyUserId: userId }] },
+  const asHead = await prisma.department.count({ where: { companyId, headUserId: userId } });
+  if (asHead > 0) return true; // 본인이 부서장(로그인한 본인 = 재직)
+
+  // 대결자인 부서들: 부서장 칸이 비었거나, 적힌 부서장이 퇴사자면 이 사람이 실제 결재자다.
+  const deputyDepts = await prisma.department.findMany({
+    where: { companyId, deputyUserId: userId },
+    select: { headUserId: true },
   });
-  return n > 0;
+  if (deputyDepts.length === 0) return false;
+  if (deputyDepts.some((d) => !d.headUserId)) return true;
+  const headIds = [...new Set(deputyDepts.map((d) => d.headUserId).filter((v): v is string => !!v))];
+  const aliveHeads = await prisma.user.findMany({
+    where: { id: { in: headIds }, companyId, deactivatedAt: null },
+    select: { id: true },
+  });
+  const aliveSet = new Set(aliveHeads.map((u) => u.id));
+  return deputyDepts.some((d) => d.headUserId && !aliveSet.has(d.headUserId));
 });
 
 // 내가 지금 결재할 차례인 대기 건수(사이드바 배지·알림용). 배지용이라 원본 레코드·user join 없이

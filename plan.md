@@ -110,6 +110,24 @@
 - [ ] **대량 인쇄 한계** — 직원 200명 × 92일이면 근로기록부 HTML이 수 MB·수백 장이 된다(인원 상한·분할 필요)
 - [ ] 요약의 "휴가(일)"은 종류를 합산한 값 — 유급/무급 구분이 필요하면 종류별 분리
 
+## 9순위 — 최종 검수 후속 6건 (2026-08-03 착수) — 상태: 구현 중
+
+> 리서치: [research.md](research.md). 순서는 의존성 기준(②로직 → ①정리가 ②의 규칙과 일치해야 함).
+
+- [ ] 9-A. **결재선 퇴사자→대결자 대체** — `buildApprovalChain`에 재직자 집합(aliveSet)을 주입해
+      "부서장이 퇴사면 대결자, 둘 다 없으면 그 부서 건너뛰고 상위로"를 체인 계산 안에서 판단.
+      전결 부서면 대체자가 isFinal 승계. 사후 필터 제거. `isApprovalLineMember` 같은 규칙으로 갱신.
+      (+입구 차단: 부서장/대결자 저장 시 퇴사자 거부 — departments.ts validUser에 deactivatedAt 검사)
+- [ ] 9-B. **기존 퇴사자 데이터 일회성 정리** — 마이그레이션 SQL(UPDATE만): 퇴사자를 가리키는
+      Department.headUserId/deputyUserId → null, 퇴사자의 pending ApprovalStep → skipped(사유 코멘트)
+- [ ] 9-C. **임시비번 가드를 공통 인증 함수로 이동** — `getCurrentUser()`가 기본으로
+      mustChangePassword 상태를 차단(null). 예외(allowMustChange): change-password 화면·changePassword 액션·logout.
+      → 엑셀·PDF·API·서버액션 156곳 일괄 보호
+- [ ] 9-D. **리포트 KPI 평균 희석** — 분모를 "근무 기록이 있는 직원"으로, 라벨에 기준 명시
+- [ ] 9-E. **결재 이력에 진행상황 문구** — pending 건에 `approvalProgressLabel`(퇴사로 건너뜀 n건 · 관리자 확정 필요 등) 표시
+- [ ] 9-F. **야간 교대 릴리스 노트** — effectiveEnd로 숫자가 바뀐 3화면 안내 문서(+TRUST_PROXY 프록시 설정 주의 포함)
+- [ ] 각 항목: tsc·lint 0 + 검증(임시 라우트/스크립트) + `code-reviewer` 검수 반영 → 재검수 → 커밋
+
 ## 다음 세션 시작점
 
 ### A. 최종 검수에서 남긴 후속 과제 (검수 4회차, 커밋 ef5e903에서 치명 6건은 처리 완료)

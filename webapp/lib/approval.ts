@@ -22,6 +22,10 @@ export type ApprovalChain = {
 
 // 신청자의 부서에서 시작해 상위부서로 올라가며 최대 stepCount명의 결재자를 모은다.
 //  · 각 부서 결재자 = headUserId 우선, 없으면 deputyUserId. 둘 다 없으면 그 부서는 건너뛰고 계속 상위로.
+//  · aliveSet(재직자 id 집합)을 주면 **퇴사한 부서장은 없는 사람으로 보고 대결자가 대신 선다**(9-A).
+//    대결자도 퇴사면 그 부서는 건너뛰고 상위로. 전결 부서면 대신 선 사람이 전결권(isFinal)을 그대로 승계한다.
+//    (aliveSet 생략 시 전원 재직으로 간주 = 기존 동작. 대체는 "퇴사"에만 적용 — 부서장이 재직인데
+//     신청자 본인이거나 하위 단계와 중복인 경우는 예전처럼 건너뜀/종결 처리하고 대결자를 세우지 않는다)
 //  · 신청자 본인은 결재자에서 제외(자기결재 방지) → 부서장이 신청하면 그 단계는 건너뛰고 상위부서장이 결재.
 //  · 이미 뽑힌 결재자는 중복 제외.
 //  · 전결(전결권자): finalApproval=true인 부서의 결재자를 "실제로 추가"하면 그 지점에서 상위 탐색을 멈춘다
@@ -32,11 +36,14 @@ export function buildApprovalChain(
   applicantDeptId: string | null,
   deptMap: Map<string, DeptNode>,
   stepCount: number,
+  aliveSet?: Set<string>, // 재직자 id 집합(선택). 없으면 전원 재직 취급 — 기존 호출 무영향(add-only)
 ): ApprovalChain {
   const approvers: ChainApprover[] = [];
   const seen = new Set<string>([applicantUserId]); // 본인은 처음부터 제외 대상
   const visitedDepts = new Set<string>();
   const maxSteps = Math.max(0, Math.min(Math.trunc(stepCount), 3)); // 방어: 0~3단계
+  // 퇴사자(aliveSet에 없는 id)는 "그 자리에 없는 사람"으로 취급한다.
+  const alive = (id: string | null): id is string => id !== null && (!aliveSet || aliveSet.has(id));
 
   let deptId: string | null = applicantDeptId;
   while (deptId && approvers.length < maxSteps) {
@@ -44,7 +51,7 @@ export function buildApprovalChain(
     visitedDepts.add(deptId);
     const node = deptMap.get(deptId);
     if (!node) break; // 부서 정보 누락 → 중단
-    const candidate = node.headUserId ?? node.deputyUserId ?? null;
+    const candidate = alive(node.headUserId) ? node.headUserId : alive(node.deputyUserId) ? node.deputyUserId : null;
     if (candidate && !seen.has(candidate)) {
       const isFinal = node.finalApproval === true; // 전결권자 부서의 결재자
       approvers.push({ userId: candidate, isFinal });
