@@ -225,7 +225,8 @@ export async function login(
 // 로그아웃
 export async function logout(): Promise<void> {
   // 접속기록: 누가 로그아웃했는지 남기려면 세션 파기 전에 조회한다.
-  const me = await getCurrentUser();
+  // allowMustChange: 임시 비밀번호 상태에서도 로그아웃(강제 변경 화면의 유일한 출구)은 되어야 한다(9-C).
+  const me = await getCurrentUser({ allowMustChange: true });
   if (me) {
     const { ip, userAgent } = readClientMeta(await headers());
     await recordAccess({ companyId: me.companyId, userId: me.id, actorName: me.name, emailTried: me.email, kind: "logout", result: "success", ip, userAgent });

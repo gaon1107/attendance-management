@@ -9,7 +9,8 @@ export async function changePassword(
   _prev: { error?: string; ok?: boolean },
   formData: FormData
 ): Promise<{ error?: string; ok?: boolean }> {
-  const me = await getCurrentUser();
+  // allowMustChange: 임시 비밀번호를 새 비밀번호로 바꾸는 액션 자체(9-C — 기본 차단이면 영영 못 바꾼다).
+  const me = await getCurrentUser({ allowMustChange: true });
   if (!me) return { error: "로그인이 필요합니다." };
 
   const current = String(formData.get("current") ?? "");
@@ -21,6 +22,12 @@ export async function changePassword(
   if (next !== confirm) return { error: "새 비밀번호 확인이 일치하지 않습니다." };
   if (!verifyPassword(current, me.passwordHash)) return { error: "현재 비밀번호가 올바르지 않습니다." };
   if (current === next) return { error: "새 비밀번호가 현재 비밀번호와 같습니다." };
+  // 🔒 만료된 임시 비밀번호는 "현재 비밀번호"로도 못 쓴다(9-C 검수 경미 1).
+  //    48시간 만료는 로그인 시(auth.ts)에만 걸려 있어서, 만료 전에 얻어둔 세션으로
+  //    며칠 뒤 이 화면에 오면 만료된 임시 비밀번호로 변경이 됐다. 로그인과 같은 기준으로 막는다.
+  if (me.mustChangePassword && me.tempPasswordExpiresAt && me.tempPasswordExpiresAt < new Date()) {
+    return { error: "임시 비밀번호의 사용 기한(48시간)이 지났습니다. 비밀번호 재설정을 다시 요청해주세요." };
+  }
 
   // 비밀번호를 바꾸면 "임시 비밀번호 → 변경 강제" 표시와 만료 시각도 함께 내려준다(정상 변경도 무해).
   await prisma.user.update({

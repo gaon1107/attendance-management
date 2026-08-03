@@ -5,7 +5,8 @@ import { getCurrentUser } from "@/lib/session";
 import { ForcedChangeForm } from "./ForcedChangeForm";
 
 export default async function ChangePasswordPage() {
-  const me = await getCurrentUser();
+  // allowMustChange: 임시 비밀번호 상태에서 유일하게 열려야 하는 화면(9-C — 기본은 차단).
+  const me = await getCurrentUser({ allowMustChange: true });
   if (!me) redirect("/login");
   const home = me.role === "admin" ? "/dashboard" : "/attendance";
   // 임시 비밀번호 상태가 아니면 이 화면이 필요 없다 → 원래 쓰던 홈으로 보낸다.
