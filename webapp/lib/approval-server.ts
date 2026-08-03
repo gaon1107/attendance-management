@@ -298,25 +298,68 @@ export type ApprovalInboxItem = {
 };
 
 // 로그인한 사용자가 "지금 결재할 차례"인 대기 항목만 모은다(앞 단계가 끝난 것).
+//  · 조회 방식(P-1): 예전엔 대기 건마다 "형제 단계 1회 + 원본 1회"를 물어봐서 200건이면 400회가 넘었다.
+//    이제 ①내 대기 단계 ②형제 단계 전부 ③유형별 원본 6종을 각각 **한 번씩** 물어본다(최대 8회 고정).
+//    같은 파일 countMyPendingApprovals가 쓰던 방식 그대로다. 반환 내용·순서는 예전과 같다.
 export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
   const mySteps = await prisma.approvalStep.findMany({
     where: { companyId: me.companyId, approverUserId: me.id, status: "pending" },
     orderBy: { createdAt: "desc" },
   });
+  if (mySteps.length === 0) return [];
+
+  // ① 형제 단계(같은 신청의 모든 단계)를 한 번에 — "지금 내 차례인가"를 메모리에서 판정한다.
+  const reqIds = [...new Set(mySteps.map((s) => s.requestId))];
+  const allSiblings = await prisma.approvalStep.findMany({
+    where: { companyId: me.companyId, requestId: { in: reqIds } },
+    orderBy: { stepOrder: "asc" },
+  });
+  const sibKey = (t: string, id: string) => `${t}:${id}`;
+  const sibMap = new Map<string, typeof allSiblings>();
+  for (const s of allSiblings) {
+    const k = sibKey(s.requestType, s.requestId);
+    const arr = sibMap.get(k) ?? [];
+    arr.push(s);
+    sibMap.set(k, arr);
+  }
+
+  // ② 내 차례인 단계만 남긴다(앞 단계가 아직 대기면 제외). 원본 조회 건수를 여기서 미리 줄인다.
+  const myTurn = mySteps.filter((step) => {
+    const cur = nextPendingStep(sibMap.get(sibKey(step.requestType, step.requestId)) ?? []);
+    return !!cur && cur.id === step.id;
+  });
+  if (myTurn.length === 0) return [];
+
+  // ③ 유형별 원본을 한 번에. 조건(회사격리 + status: pending)은 예전 건별 조회와 동일하다.
+  //    ⚠️ 유형과 표를 **한 곳에 짝지어** 둔다(검수 중간 2). 예전처럼 "id 목록 배열"과 "조회 배열"을
+  //       순서로만 맞추면, 나중에 한쪽 순서만 바뀌어도 타입 검사에 안 걸리고
+  //       그 유형의 결재 건이 **오류 없이 결재함에서 통째로 사라진다**(조회가 빈 배열을 돌려주므로).
+  //       Record<RequestType, …>이라 유형을 추가하면 여기서 컴파일이 막힌다.
+  const idsOf = (t: RequestType) => myTurn.filter((s) => s.requestType === t).map((s) => s.requestId);
+  const applicant = { user: { select: { name: true, employeeNo: true } } } as const;
+  const pick = (ids: string[]) => ({ where: { id: { in: ids }, companyId: me.companyId, status: "pending" }, include: applicant });
+  const byId = <T extends { id: string }>(rows: T[]) => new Map(rows.map((r) => [r.id, r]));
+  // 유형과 조회할 표를 **한 줄에 함께** 적는다 — 둘을 따로 두면 순서만 어긋나도 타입 검사에 안 걸린다.
+  const loadFor = async <R extends { id: string }>(t: RequestType, run: (ids: string[]) => Promise<R[]>) => {
+    const ids = idsOf(t);
+    return byId(ids.length ? await run(ids) : []);
+  };
+  const [leaveMap, corrMap, outingMap, remoteMap, overtimeMap, tripMap] = await Promise.all([
+    loadFor("leave", (ids) => prisma.leaveRequest.findMany(pick(ids))),
+    loadFor("correction", (ids) => prisma.attendanceCorrection.findMany(pick(ids))),
+    loadFor("outing", (ids) => prisma.outingRequest.findMany(pick(ids))),
+    loadFor("remote", (ids) => prisma.remoteWorkRequest.findMany(pick(ids))),
+    loadFor("overtime", (ids) => prisma.overtimeRequest.findMany(pick(ids))),
+    loadFor("trip", (ids) => prisma.businessTripRequest.findMany(pick(ids))),
+  ]);
+
+  // ④ 조립 — 표시 문구는 예전과 한 글자도 다르지 않게 유지한다.
   const items: ApprovalInboxItem[] = [];
-  for (const step of mySteps) {
-    const siblings = await prisma.approvalStep.findMany({
-      where: { companyId: me.companyId, requestType: step.requestType, requestId: step.requestId },
-      orderBy: { stepOrder: "asc" },
-    });
-    const cur = nextPendingStep(siblings);
-    if (!cur || cur.id !== step.id) continue; // 아직 내 차례가 아님(앞 단계 대기 중)
+  for (const step of myTurn) {
+    const siblings = sibMap.get(sibKey(step.requestType, step.requestId)) ?? [];
 
     if (step.requestType === "leave") {
-      const lv = await prisma.leaveRequest.findFirst({
-        where: { id: step.requestId, companyId: me.companyId, status: "pending" },
-        include: { user: { select: { name: true, employeeNo: true } } },
-      });
+      const lv = leaveMap.get(step.requestId);
       if (!lv) continue; // 취소/처리됨
       const s = lv.startDate.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
       const e = lv.endDate.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
@@ -333,10 +376,7 @@ export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
         detail: lv.reason ?? "",
       });
     } else if (step.requestType === "correction") {
-      const c = await prisma.attendanceCorrection.findFirst({
-        where: { id: step.requestId, companyId: me.companyId, status: "pending" },
-        include: { user: { select: { name: true, employeeNo: true } } },
-      });
+      const c = corrMap.get(step.requestId);
       if (!c) continue;
       const d = c.targetDate.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
       const parts = [c.requestedIn ? `출근 ${c.requestedIn}` : "", c.requestedOut ? `퇴근 ${c.requestedOut}` : ""].filter(Boolean).join(" · ");
@@ -353,10 +393,7 @@ export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
         detail: c.reason,
       });
     } else if (step.requestType === "outing") {
-      const o = await prisma.outingRequest.findFirst({
-        where: { id: step.requestId, companyId: me.companyId, status: "pending" },
-        include: { user: { select: { name: true, employeeNo: true } } },
-      });
+      const o = outingMap.get(step.requestId);
       if (!o) continue;
       const d = o.targetDate.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
       const kindLabel = outingKindLabel(o.kind);
@@ -373,10 +410,7 @@ export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
         detail: o.reason ?? "",
       });
     } else if (step.requestType === "remote") {
-      const rw = await prisma.remoteWorkRequest.findFirst({
-        where: { id: step.requestId, companyId: me.companyId, status: "pending" },
-        include: { user: { select: { name: true, employeeNo: true } } },
-      });
+      const rw = remoteMap.get(step.requestId);
       if (!rw) continue;
       items.push({
         type: "remote",
@@ -391,10 +425,7 @@ export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
         detail: rw.reason ?? "",
       });
     } else if (step.requestType === "overtime") {
-      const ot = await prisma.overtimeRequest.findFirst({
-        where: { id: step.requestId, companyId: me.companyId, status: "pending" },
-        include: { user: { select: { name: true, employeeNo: true } } },
-      });
+      const ot = overtimeMap.get(step.requestId);
       if (!ot) continue;
       const d = ot.targetDate.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" });
       items.push({
@@ -410,10 +441,7 @@ export async function listMyApprovals(me: Me): Promise<ApprovalInboxItem[]> {
         detail: ot.reason ?? "",
       });
     } else if (step.requestType === "trip") {
-      const tp = await prisma.businessTripRequest.findFirst({
-        where: { id: step.requestId, companyId: me.companyId, status: "pending" },
-        include: { user: { select: { name: true, employeeNo: true } } },
-      });
+      const tp = tripMap.get(step.requestId);
       if (!tp) continue;
       items.push({
         type: "trip",
