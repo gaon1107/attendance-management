@@ -52,9 +52,23 @@ export async function deleteDepartment(formData: FormData): Promise<void> {
   const dept = await prisma.department.findFirst({ where: { id, companyId: me.companyId } });
   if (!dept) return;
 
-  // 먼저 소속 직원을 미배정으로 → 그 다음 부서 삭제(외래키 안전).
-  await prisma.user.updateMany({ where: { departmentId: dept.id }, data: { departmentId: null } });
-  await prisma.department.delete({ where: { id: dept.id } });
+  // ⚠️ 세 가지를 한 트랜잭션으로 — 중간에 끊기면 "직원은 미배정인데 부서는 살아 있는" 어중간한 상태가 남는다.
+  await prisma.$transaction(async (tx) => {
+    // 먼저 소속 직원을 미배정으로 → 그 다음 부서 삭제(외래키 안전).
+    // companyId를 함께 건다 — 이 저장소의 최우선 불변식(모든 쿼리는 회사 격리)을 예외 없이 지킨다.
+    await tx.user.updateMany({ where: { companyId: me.companyId, departmentId: dept.id }, data: { departmentId: null } });
+
+    // 🔴 [검수 M-7] 하위 부서를 **삭제되는 부서의 상위 부서로 재연결**한다.
+    //    예전엔 그냥 두어서 "영업1팀 → (없어진)영업본부 → 대표" 결재선이 1단계에서 조용히 끊겼다.
+    //    lib/approval.ts는 parentId를 따라 올라가다 없는 부서를 만나면 거기서 멈추기 때문이다.
+    //    최상위 부서를 지우면 하위 부서들이 최상위(null)가 된다 — 결재선은 관리자 폴백으로 이어진다.
+    await tx.department.updateMany({
+      where: { companyId: me.companyId, parentId: dept.id },
+      data: { parentId: dept.parentId },
+    });
+
+    await tx.department.delete({ where: { id: dept.id } });
+  });
   revalidatePath("/employees");
 }
 

@@ -62,6 +62,8 @@ export default async function AccountPage() {
       </div>
 
       {/* PC-OFF 연결 — 기존 두 카드 아래에 추가(기존 카드는 그대로) */}
+      {/* 🔒 회사 계정에는 카드를 아예 그리지 않는다 — 연결코드 발급이 거부되므로 버튼만 남으면 무반응이 된다(검수 경미 2) */}
+      {!me.isOwner && (
       <div style={{ marginTop: 16 }}>
         <PcLinkCard
           pcOffOn={me.company.pcOffOn}
@@ -78,6 +80,7 @@ export default async function AccountPage() {
           }))}
         />
       </div>
+      )}
     </AppShell>
   );
 }

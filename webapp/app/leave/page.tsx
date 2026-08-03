@@ -29,6 +29,10 @@ const STATUS_STYLE: Record<string, { bg: string; dot: string; color: string }> =
 export default async function LeavePage() {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
+  // 🔒 회사 계정은 근로자가 아니라 신청 화면에 들어올 일이 없다(검수 M-13).
+  //    액션에서도 막지만, 화면까지 막아야 "버튼을 눌러도 반응 없는" 경험이 안 생긴다
+  //    (/attendance·/my-records 등 다른 화면과 같은 방식).
+  if (me.isOwner) redirect("/dashboard");
 
   const requests = await prisma.leaveRequest.findMany({
     where: { userId: me.id, companyId: me.companyId },

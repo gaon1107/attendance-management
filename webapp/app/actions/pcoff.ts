@@ -129,6 +129,9 @@ export type PairCodeResult = { error?: string; code?: string; expiresAt?: string
 export async function issuePairCode(): Promise<PairCodeResult> {
   const me = await getCurrentUser();
   if (!me) return { error: "로그인이 필요합니다." };
+  // 🔒 회사 계정은 근로자가 아니라 PC 근무를 기록할 대상이 아니다(검수 M-13 후속).
+  //    연결 자체를 막아 두면 에이전트 API 경로가 애초에 열리지 않는다(agent-auth.ts에서도 다시 막는다 = 이중 방어).
+  if (me.isOwner) return { error: "회사 계정은 PC를 연결할 수 없습니다. 직원 계정으로 로그인해 주세요." };
 
   // 이전에 발급한 안 쓴 코드는 무효화한다 — 동시에 여러 개가 살아있지 않게(추측 대상 축소).
   await prisma.agentPairCode.updateMany({

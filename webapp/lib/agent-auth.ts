@@ -125,12 +125,22 @@ export async function authenticateAgent(req: Request): Promise<AgentAuthResult> 
     where: { tokenHash: hashToken(token) },
     select: {
       id: true, deviceName: true, agentVersion: true, revokedAt: true,
-      user: { select: { id: true, name: true, companyId: true, departmentId: true, pcOffExempt: true, deactivatedAt: true } },
+      user: { select: { id: true, name: true, companyId: true, departmentId: true, pcOffExempt: true, deactivatedAt: true, isOwner: true } },
     },
   });
   if (!device) return { ok: false, status: 401, error: "인증이 필요합니다." };
   if (device.revokedAt) return { ok: false, status: 401, error: "연결이 해제된 기기입니다. 다시 연결해주세요." };
   if (device.user.deactivatedAt) return { ok: false, status: 401, error: "사용할 수 없는 계정입니다." };
+  // 🔒 회사 계정(isOwner)은 근로자가 아니다 — 근태 기록도 신청도 가질 수 없다(검수 M-13).
+  //    ⚠️ 여기서 막는 이유: /api/agent/overtime은 requestOvertime을 부르지 않고 규칙을 따로 조립하므로,
+  //       서버액션에만 차단을 넣으면 **에이전트 경로로 유령 신청이 그대로 들어온다**(검수 치명 1).
+  //       이 함수는 모든 에이전트 API가 지나가는 단 하나의 관문이라 여기서 한 번에 막는다.
+  //    ⚠️ 문구를 퇴사자와 구분한다 — PC 앱이 401을 "새 연결코드를 받아 다시 연결하세요"로 덮는데,
+  //       그 안내를 따라가면 연결코드 발급도 거부돼 원인을 모른 채 맴돌게 된다(2차 검수 경미 3).
+  //       토큰을 가진 본인에게만 나가는 응답이라 정보 노출 위험은 없다.
+  if (device.user.isOwner) {
+    return { ok: false, status: 401, error: "회사 계정은 PC를 연결할 수 없습니다. 직원 계정으로 연결해 주세요." };
+  }
 
   return {
     ok: true,

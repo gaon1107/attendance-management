@@ -25,6 +25,7 @@ const STATUS_STYLE: Record<string, { bg: string; dot: string; color: string }> =
 export default async function OutingPage() {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
+  if (me.isOwner) redirect("/dashboard"); // 🔒 회사 계정은 신청 대상이 아니다(검수 M-13)
 
   const requests = await prisma.outingRequest.findMany({
     where: { userId: me.id, companyId: me.companyId },

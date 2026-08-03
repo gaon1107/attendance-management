@@ -17,6 +17,9 @@ export async function requestLeave(
 ): Promise<{ error?: string; ok?: boolean }> {
   const me = await getCurrentUser();
   if (!me) return { error: "로그인이 필요합니다." };
+  // 🔒 회사 계정은 근로자가 아니다 — 신청하면 결재함에 유령 신청이 남는다(검수 M-13).
+  //    근태 정정만 막혀 있고 나머지 5종은 뚫려 있었다.
+  if (me.isOwner) return { error: "회사 계정은 휴가를 신청할 수 없습니다. 직원 계정으로 로그인해 주세요." };
 
   const type = String(formData.get("type") ?? "");
   if (!(REQUESTABLE_TYPES as readonly string[]).includes(type)) return { error: "휴가 종류를 선택해주세요." };

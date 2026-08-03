@@ -128,7 +128,9 @@ export async function listPcOffUnreported(
 
   // 감시 대상 기기: 해제되지 않은 기기 중, 예외자·퇴사자가 아니고, 기록을 보낼 수 있는 버전.
   const devices = await prisma.agentDevice.findMany({
-    where: { companyId, revokedAt: null, user: { deactivatedAt: null, pcOffExempt: false } },
+    // 🔒 회사 계정(isOwner)의 기기는 감시 대상이 아니다 — 에이전트 API가 회사 계정을 401로 막으므로
+    //    기록이 올라올 수 없고, 빼지 않으면 매 근무일 "프로그램을 끈 PC"로 영구 오경보가 뜬다(2차 검수 중간 2).
+    where: { companyId, revokedAt: null, user: { deactivatedAt: null, pcOffExempt: false, isOwner: false } },
     select: {
       id: true, deviceName: true, agentVersion: true, lastSeenAt: true,
       user: { select: { name: true, workDays: true } },

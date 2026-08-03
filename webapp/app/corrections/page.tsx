@@ -23,6 +23,7 @@ const STATUS_STYLE: Record<string, { bg: string; dot: string; color: string }> =
 export default async function CorrectionsPage() {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
+  if (me.isOwner) redirect("/dashboard"); // 🔒 회사 계정은 신청 대상이 아니다(검수 M-13 — 신청 화면 6종 일괄)
 
   const requests = await prisma.attendanceCorrection.findMany({
     where: { userId: me.id, companyId: me.companyId },

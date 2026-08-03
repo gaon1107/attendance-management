@@ -1,6 +1,7 @@
 "use server";
 // 직원 초대 — 관리자가 초대 링크를 만들고(createInvite), 직원이 그 링크로 스스로 가입한다(acceptInvite).
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { hashPassword } from "@/lib/password";
 import { getCurrentUser, createSession } from "@/lib/session";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
@@ -11,6 +12,9 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+// 초대 선점 경쟁에서 진 경우(다른 사람이 먼저 그 링크로 가입) — 트랜잭션을 되돌리려고 던지는 신호.
+class InviteTakenError extends Error {}
 
 // 관리자: 초대 링크 생성. 7일간 유효한 1회용 토큰을 만든다.
 export async function createInvite(): Promise<void> {
@@ -71,21 +75,56 @@ export async function acceptInvite(
     return { error: "이미 같은 사번을 쓰는 직원이 있습니다. 관리자에게 확인해 주세요." };
   }
 
-  const user = await prisma.user.create({
-    data: {
-      companyId: invite.companyId, // 초대한 회사 소속으로
-      email,
-      name,
-      passwordHash: hashPassword(password),
-      role: "employee",
-      phone: profile.phone,
-      employeeNo: profile.employeeNo,
-      hireDate: profile.hireDate,
-    },
-  });
+  // 🔒 "1회용"을 DB에서 원자적으로 보장한다(검수 M-1).
+  //  · 예전 순서(계정 생성 → 사용 표시)는 두 사람이 같은 링크를 동시에 열면 **둘 다 통과**해
+  //    계정이 2개 만들어졌다. 위 findUnique 검사는 조회 시점의 사진일 뿐이라 경합을 못 막는다.
+  //  · 이제 `usedAt: null` 조건을 **쓰기에 함께 걸어** 먼저 도착한 한 명만 선점한다(count=0이면 진 것).
+  //  · 선점과 계정 생성을 한 트랜잭션에 묶어, 계정 생성이 실패하면(예: 그 찰나에 같은 이메일이
+  //    가입되면 P2002) 선점도 함께 되돌아간다 → **링크가 헛되이 소모되지 않는다.**
+  // ⚠️ 비밀번호 해시는 **트랜잭션 밖에서** 미리 만든다(검수 중간 4).
+  //    scryptSync는 수십~수백 ms 동안 서버 전체를 멈추는 동기 연산이다. 트랜잭션 안에서 하면
+  //    SQLite 쓰기 잠금을 쥔 채로 멈춰 다른 직원의 출퇴근 기록까지 밀린다.
+  const passwordHash = hashPassword(password);
 
-  // 초대 1회용 처리
-  await prisma.invite.update({ where: { id: invite.id }, data: { usedAt: new Date() } });
+  let user;
+  try {
+    user = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.invite.updateMany({
+        where: { id: invite.id, usedAt: null, expiresAt: { gt: new Date() } },
+        data: { usedAt: new Date() },
+      });
+      if (claimed.count === 0) throw new InviteTakenError();
+      return tx.user.create({
+        data: {
+          companyId: invite.companyId, // 초대한 회사 소속으로
+          email,
+          name,
+          passwordHash,
+          role: "employee",
+          phone: profile.phone,
+          employeeNo: profile.employeeNo,
+          hireDate: profile.hireDate,
+        },
+      });
+    });
+  } catch (e) {
+    if (e instanceof InviteTakenError) {
+      // 선점에 실패한 이유는 둘 중 하나 — 사유를 뒤바꿔 말하지 않도록 실제 상태를 다시 본다(검수 경미 7).
+      const now = await prisma.invite.findUnique({ where: { id: invite.id }, select: { usedAt: true } });
+      return {
+        error: now?.usedAt
+          ? "이미 사용된 초대입니다. 관리자에게 새 링크를 요청해주세요."
+          : "만료된 초대입니다. 관리자에게 새 링크를 요청해주세요.",
+      };
+    }
+    // 이메일 중복(P2002) 등 — 트랜잭션이 되돌아가 초대는 그대로 살아 있다.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      // 위 findUnique 검사 뒤 그 찰나에 같은 이메일이 가입된 경우 — 스스로 해결할 수 있게 정확히 알린다(검수 경미 8).
+      return { error: "이미 가입된 이메일입니다. 다른 이메일을 쓰거나 로그인해주세요." };
+    }
+    console.error("[acceptInvite] 가입 실패", e);
+    return { error: "가입 처리 중 문제가 생겼습니다. 잠시 후 다시 시도해주세요." };
+  }
 
   await createSession(user.id);
   // 접속기록: 초대 가입 직후 자동 로그인 1건(성공).

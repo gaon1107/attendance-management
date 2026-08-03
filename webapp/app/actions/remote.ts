@@ -17,6 +17,8 @@ export async function requestRemote(
 ): Promise<{ error?: string; ok?: boolean; id?: string }> {
   const me = await getCurrentUser();
   if (!me) return { error: "로그인이 필요합니다." };
+  // 🔒 회사 계정은 근로자가 아니다 — 신청하면 결재함에 유령 신청이 남는다(검수 M-13).
+  if (me.isOwner) return { error: "회사 계정은 재택근무를 신청할 수 없습니다. 직원 계정으로 로그인해 주세요." };
 
   const start = parseYmd(String(formData.get("startDate") ?? ""));
   const end = parseYmd(String(formData.get("endDate") ?? ""));

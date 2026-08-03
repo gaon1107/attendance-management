@@ -10,6 +10,9 @@ import { revalidatePath } from "next/cache";
 
 type ActionResult = { error?: string; ok?: boolean };
 
+// 이 시간이 지나도 "보내는 중"인 기록은 정상 진행일 수 없다(문자 API 호출은 10초 제한).
+const STALE_PENDING_MS = 5 * 60 * 1000;
+
 // 원자적 1회 제한 + 발송 + 결과확정.
 //  ① (companyId,kind,refId) 유니크로 먼저 "pending" 선점 → 동시 클릭 시 두 번째는 P2002로 즉시 차단(발송 전).
 //  ② 성공 → result="success"로 확정(이후 재발송 영구 차단).
@@ -22,6 +25,34 @@ async function claimSendFinalize(input: {
   to: string;
   text: string;
 }): Promise<ActionResult> {
+  // 🔴 [검수 M-8] "보내는 중(pending)"으로 영구히 잠기는 것을 푼다.
+  //    발송 도중 서버가 재시작되면 pending 기록이 남고, 유니크 제약 때문에 그 초대·임시비번은
+  //    영원히 "이미 보내는 중입니다"만 반복했다(다시 보낼 방법이 없었다).
+  //    아이원24 호출은 10초 제한이므로, STALE_PENDING_MS(5분)이 지난 pending은 정상 진행 중일 수 없다.
+  //
+  //  ⚠️ 두 가지를 지킨다(검수 중간 5):
+  //   ① **"실패"라고 단정하지 않는다** — 문자가 실제로 나가고 과금까지 된 뒤에 서버가 죽었을 수 있다.
+  //      사실이 아닌 값을 감사기록에 남기지 않도록 result="unknown"으로 남긴다.
+  //   ② **자동으로 다시 보내지 않는다** — 슬롯만 풀고 이번 클릭은 여기서 멈춘다. 관리자가 안내를 읽고
+  //      한 번 더 누르면 그때 발송한다. 이중 발송·이중 과금은 사람이 결정할 일이다.
+  const released = await prisma.smsLog.updateMany({
+    where: {
+      companyId: input.companyId,
+      kind: input.kind,
+      refId: input.refId,
+      result: "pending",
+      createdAt: { lt: new Date(Date.now() - STALE_PENDING_MS) },
+    },
+    // refId는 유니크 키라 비워야 슬롯이 풀린다 → 어느 건이었는지는 detail에 남겨 추적을 유지한다(검수 경미 5).
+    data: { result: "unknown", refId: null, detail: `발송 결과 미확인(서버 중단 추정) — 대상: ${input.kind}/${input.refId}` },
+  });
+  if (released.count > 0) {
+    return {
+      error:
+        "이전 발송의 결과를 확인할 수 없습니다(서버가 중단된 것으로 보입니다). 이미 발송됐을 수도 있으니, 그래도 다시 보내려면 한 번 더 눌러 주세요.",
+    };
+  }
+
   let logId: string;
   try {
     const log = await prisma.smsLog.create({
@@ -45,15 +76,22 @@ async function claimSendFinalize(input: {
 
   const res = await sendSms({ to: input.to, text: input.text });
 
+  // ⚠️ 결과 확정(update)이 실패하면 pending이 그대로 남아 위 ①②의 "결과 미확인" 경로로 빠진다.
+  //    그 사실을 서버 로그에 남겨 원인을 추적할 수 있게 한다(검수 중간 5 — 예전엔 예외가 그냥 튀어나갔다).
+  const finalize = async (data: { result: string; refId?: null; detail: string | null }) => {
+    try {
+      await prisma.smsLog.update({ where: { id: logId }, data });
+    } catch (e) {
+      console.error("[sms] 발송 결과 기록 실패 — 기록은 '보내는 중'으로 남는다", { logId, result: data.result }, e);
+    }
+  };
+
   if (res.ok) {
-    await prisma.smsLog.update({ where: { id: logId }, data: { result: "success", detail: null } });
+    await finalize({ result: "success", detail: null });
     return { ok: true };
   }
   // 실패: 과금 안 됨 → refId를 풀어 재시도 허용(실패 기록은 남김).
-  await prisma.smsLog.update({
-    where: { id: logId },
-    data: { result: "fail", refId: null, detail: res.detail.slice(0, 200) },
-  });
+  await finalize({ result: "fail", refId: null, detail: res.detail.slice(0, 200) });
   return { error: `문자 발송 실패: ${res.detail}` };
 }
 

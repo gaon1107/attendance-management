@@ -14,6 +14,7 @@ import { DepartmentAssignForm } from "./DepartmentAssignForm";
 import { ProfileForm } from "./ProfileForm";
 import { parseDays, effectiveWorkDays, daysLabel } from "@/lib/workdays";
 import { leaveBalanceInYear, grantedAnnualLeave } from "@/lib/leave";
+import { openSessionSince } from "@/lib/worktime";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
@@ -76,6 +77,35 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   const authLabel = emp.authMethod === "face" ? "얼굴인증" : emp.authMethod === "gps" ? "GPS(위치)" : "미설정";
   const consented = !!emp.faceConsentAt;
   const active = !emp.deactivatedAt;
+
+  // 🔴 [검수 M-6] 퇴근을 안 찍은 기록이 남은 채로 퇴사시키면, 본인은 로그인할 수 없어
+  //    그 기록의 퇴근 시각을 더 이상 채울 수 없다(정정 신청은 본인만 가능).
+  //    ⚠️ 서버가 퇴근 시각을 지어내지 않는다 — 법정 3년 보존 기록에 가짜 시각이 남기 때문이다
+  //       (actions/attendance.ts의 기존 규칙과 동일). 대신 **퇴사시키기 전에 관리자에게 알린다.**
+  //    ⚠️ 열린 기록을 **두 종류로 나눈다**(2차 검수 치명 1). 하나로 뭉치면 둘 중 하나가 반드시 망가진다:
+  //       ① 오래된 미퇴근(`clockIn < openSessionSince()`) — 퇴근을 못 찍고 넘어간 것. 정정이 필요하다.
+  //       ② 지금 출근 상태(`clockIn >= openSessionSince()`) — 근무 중. 이걸 ①로 세면 퇴사 처리 때마다
+  //          오경보가 되지만, 아예 안 세면 **가장 사고가 잦은 경우**(출근해 있는 사람을 그날 퇴사시킴)를
+  //          놓친다. 그 순간 세션이 삭제돼 본인은 오늘 퇴근을 영영 못 찍는다. 그래서 문구를 달리해 알린다.
+  //       두 종류의 경계는 lib/worktime.ts openSessionSince() 한 곳에서 정한다.
+  //    · 퇴사자에게도 보여준다 — 이미 퇴사시킨 뒤라면 복직시켜야만 고칠 수 있어서, 그 방법을 알려야 한다(검수 중간 3).
+  const openBase = { userId: emp.id, companyId: me.companyId, clockOut: null } as const;
+  const sessionSince = openSessionSince();
+  const [staleOpen, staleCount, workingNowCount] = await Promise.all([
+    prisma.attendance.findMany({
+      where: { ...openBase, clockIn: { lt: sessionSince } },
+      orderBy: { clockIn: "asc" }, // 오래된 것부터 — 가장 문제인 기록이 "외"에 숨지 않게(검수 경미 12)
+      take: 4,
+      select: { clockIn: true },
+    }),
+    prisma.attendance.count({ where: { ...openBase, clockIn: { lt: sessionSince } } }),
+    prisma.attendance.count({ where: { ...openBase, clockIn: { gte: sessionSince } } }),
+  ]);
+  const openAttendanceDates = staleOpen.map((a) =>
+    a.clockIn.toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" })
+  );
+  // 퇴사자에게는 둘을 나눌 의미가 없다(근무 중일 수 없다) — 남은 열린 기록을 모두 합쳐 보여준다.
+  const openAttendanceCount = active ? staleCount : staleCount + workingNowCount;
 
   const rows: { label: string; value: React.ReactNode }[] = [
     { label: "이메일", value: emp.email },
@@ -214,7 +244,14 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
             ? "퇴사 처리하면 이 직원은 로그인할 수 없고 직원 목록에서 내려갑니다. 과거 근태 기록은 리포트에 그대로 보존되며, 나중에 복직할 수 있습니다."
             : "이 직원은 현재 퇴사(비활성화) 상태입니다. 복직시키면 다시 로그인할 수 있습니다."}
         </p>
-        <EmployeeStatusActions id={emp.id} name={emp.name} active={active} />
+        <EmployeeStatusActions
+          id={emp.id}
+          name={emp.name}
+          active={active}
+          openAttendanceCount={openAttendanceCount}
+          openAttendanceDates={openAttendanceDates}
+          workingNow={active && workingNowCount > 0}
+        />
       </div>
       </div>
       </div>

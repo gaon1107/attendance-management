@@ -8,6 +8,7 @@ import { parseDays, daysToCsv } from "@/lib/workdays";
 import { parseProfile, employeeNoTaken } from "@/lib/employee-profile";
 import { canDeactivate, canManageAccount } from "@/lib/owner-rules";
 import { logAdminAction } from "@/lib/audit";
+import { openSessionSince } from "@/lib/worktime";
 
 export async function addEmployee(
   _prev: { error?: string; ok?: boolean },
@@ -187,21 +188,43 @@ export async function deactivateEmployee(
       where: { companyId: me.companyId, approverUserId: rule.target.id, status: "pending" },
       data: { status: "skipped", decidedAt: new Date(), comment: "결재자 퇴사로 자동 건너뜀" },
     });
-    return { ok: true, headOf: headDepts.map((d) => d.name), deputyOf: deputyDepts.map((d) => d.name), skipped: skipped.count };
+    // 🔴 [검수 M-6] 퇴근을 안 찍은 기록은 이 사람이 로그인할 수 없게 되는 순간 "채울 수 없는 기록"이 된다.
+    //    ⚠️ 퇴근 시각을 지어내지 않는다 — 3년 보존 대상인 법정 기록에 가짜 시각이 남는다
+    //       (actions/attendance.ts의 기존 규칙과 동일). 화면이 퇴사 전에 경고하고, 여기서는 **사실을 기록**한다.
+    //    화면과 **같은 기준**으로 나눠 센다(2차 검수 중간 1) — 감사로그와 화면이 다른 사실을 말하면
+    //    나중에 노무 분쟁에서 근거가 흔들린다. 경계는 lib/worktime.ts openSessionSince() 한 곳.
+    const since = openSessionSince();
+    const openBase = { userId: rule.target.id, companyId: me.companyId, clockOut: null } as const;
+    const staleAtt = await tx.attendance.count({ where: { ...openBase, clockIn: { lt: since } } });
+    const workingAtt = await tx.attendance.count({ where: { ...openBase, clockIn: { gte: since } } });
+    return {
+      ok: true,
+      headOf: headDepts.map((d) => d.name),
+      deputyOf: deputyDepts.map((d) => d.name),
+      skipped: skipped.count,
+      staleAtt,
+      workingAtt,
+    };
   });
 
   // 조직 구조를 건드린 기록을 남긴다 — 복직시켜도 부서장 직위는 자동으로 안 돌아오므로
   // 나중에 "누가 어느 부서 부서장이었는지" 되짚을 수 있어야 한다(후속 검수 지적).
   if ("ok" in result && result.ok) {
     const changed = [...result.headOf, ...result.deputyOf];
-    if (changed.length || result.skipped > 0) {
-      await logAdminAction(me, "config", `deactivate_employee(부서장해제:${changed.join("/") || "없음"}, 결재건너뜀:${result.skipped}건)`);
+    if (changed.length || result.skipped > 0 || result.staleAtt > 0 || result.workingAtt > 0) {
+      await logAdminAction(
+        me,
+        "config",
+        `deactivate_employee(부서장해제:${changed.join("/") || "없음"}, 결재건너뜀:${result.skipped}건, ` +
+          `미퇴근기록:${result.staleAtt}건, 출근중마감안됨:${result.workingAtt}건)`
+      );
     }
   }
 
   revalidatePath(`/employees/${id}`);
   revalidatePath("/employees");
-  return result;
+  // 화면에는 성공/실패만 돌려준다 — 부서명·건수 같은 내부 정보가 클라이언트 상태로 직렬화되지 않게(검수 경미 15).
+  return "ok" in result && result.ok ? { ok: true } : result;
 }
 
 // 복직(재활성화) — 관리자만. 다시 로그인 가능하게 하고 로그인 잠금도 초기화한다.
