@@ -5,10 +5,24 @@ import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { logAdminAction } from "@/lib/audit";
 import { syncHolidays } from "@/lib/holiday-server";
+import { countHolidayImpact, holidayWarning, holidayAuditText, IMPACT_FAILED_WARNING, type HolidayImpact } from "@/lib/retroactive";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-type Result = { error?: string; ok?: boolean; msg?: string };
+// needConfirm=true면 **아직 저장하지 않았다**. 화면이 warning을 보여주고, 관리자가 한 번 더 누르면
+// confirm="1"과 함께 다시 호출된다(검수 M-9 — 소급 변경을 모르고 누르는 것을 막는다).
+//  · echo*: 다시 보낼 값을 화면에 되돌려준다. React는 서버액션이 끝나면 폼의 입력값을 비우므로,
+//    "그대로 저장" 버튼이 같은 값을 다시 보내려면 서버가 값을 알려줘야 한다.
+type Result = {
+  error?: string;
+  ok?: boolean;
+  msg?: string;
+  warning?: string;
+  needConfirm?: boolean;
+  echoDate?: string;
+  echoName?: string;
+  echoId?: string;
+};
 
 // "YYYY-MM-DD"가 실제 존재하는 날짜인지(2026-02-30 같은 값 방어).
 function isRealDate(s: string): boolean {
@@ -41,13 +55,33 @@ export async function addCompanyHoliday(_prev: Result, formData: FormData): Prom
   if (!isRealDate(date)) return { error: "날짜를 올바르게 골라주세요. (예: 2026-08-15)" };
   if (!name) return { error: "휴무일 이름을 입력해주세요. (예: 창립기념일)" };
 
+  // 🔴 [검수 M-9] 지난 날짜를 휴무일로 지정하면 그날의 지각·결근 판정이 사라지고,
+  //    이미 승인된 휴가의 연차 차감은 **자동으로 돌아오지 않는다**(차감은 신청 시점에 고정).
+  //    데이터를 자동으로 되돌리지 않는 대신, 영향 건수를 세어 보여주고 한 번 더 확인받는다.
+  //    ⚠️ 계산이 실패해도 화면이 죽지 않게 감싸되, **경고 없이 저장되지는 않게** 보수적 경고로 대체한다.
+  let impact: HolidayImpact | null = null;
+  let warning: string | null = null;
+  try {
+    impact = await countHolidayImpact(me.companyId, date, "add");
+    warning = holidayWarning(date, "add", impact);
+  } catch (e) {
+    console.error("[addCompanyHoliday] 영향 계산 실패:", e);
+    warning = IMPACT_FAILED_WARNING;
+  }
+  if (warning && formData.get("confirm") !== "1") {
+    return { needConfirm: true, warning, echoDate: date, echoName: name };
+  }
+
   await prisma.companyHoliday.upsert({
     where: { companyId_date: { companyId: me.companyId, date } },
     update: { name, createdBy: me.name },
     create: { companyId: me.companyId, date, name, createdBy: me.name },
   });
 
-  await logAdminAction(me, "config", "company_holiday_add");
+  // 감사로그에 **어느 날짜를 소급으로 건드렸고 영향이 몇 건이었는지** 남긴다.
+  //  ※ lib/audit.ts는 원칙적으로 "값"을 남기지 않지만, 날짜·건수는 개인정보가 아니고
+  //    이것을 모르면 "누가 언제 과거 기록을 다시 쓰게 했는지"를 되짚을 수 없다.
+  await logAdminAction(me, "config", impact ? holidayAuditText("add", date, impact) : `company_holiday_add(${date})`);
   // [설정] 폼과 [일정] 캘린더 두 곳에서 호출된다 — 두 화면 모두 새로고침해야 반영이 즉시 보인다.
   revalidatePath("/settings");
   revalidatePath("/schedule");
@@ -62,11 +96,28 @@ export async function deleteCompanyHoliday(_prev: Result, formData: FormData): P
   const id = String(formData.get("id") ?? "").trim();
   if (!id) return { error: "삭제 대상이 없습니다." };
 
-  // 다른 회사 것 삭제 방지 — id + companyId 동시 일치할 때만 지운다.
+  // 다른 회사 것 삭제 방지 — id + companyId 동시 일치할 때만 조회·삭제한다.
+  const target = await prisma.companyHoliday.findFirst({ where: { id, companyId: me.companyId }, select: { date: true } });
+  if (!target) return { error: "이미 삭제되었거나 대상을 찾을 수 없습니다." };
+
+  // 🔴 [검수 M-9] 휴무일을 풀면 그날이 다시 근무일이 되어 **없던 결근·지각이 소급 발생**한다.
+  let impact: HolidayImpact | null = null;
+  let warning: string | null = null;
+  try {
+    impact = await countHolidayImpact(me.companyId, target.date, "delete");
+    warning = holidayWarning(target.date, "delete", impact);
+  } catch (e) {
+    console.error("[deleteCompanyHoliday] 영향 계산 실패:", e);
+    warning = IMPACT_FAILED_WARNING;
+  }
+  if (warning && formData.get("confirm") !== "1") {
+    return { needConfirm: true, warning, echoId: id, echoDate: target.date };
+  }
+
   const res = await prisma.companyHoliday.deleteMany({ where: { id, companyId: me.companyId } });
   if (res.count === 0) return { error: "이미 삭제되었거나 대상을 찾을 수 없습니다." };
 
-  await logAdminAction(me, "config", "company_holiday_del");
+  await logAdminAction(me, "config", impact ? holidayAuditText("delete", target.date, impact) : `company_holiday_del(${target.date})`);
   // [설정]·[일정] 두 화면 모두 새로고침(위 add와 동일 이유).
   revalidatePath("/settings");
   revalidatePath("/schedule");

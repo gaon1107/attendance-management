@@ -6,6 +6,7 @@
 import { useActionState, useState } from "react";
 import { saveHolidayAuto, addCompanyHoliday, deleteCompanyHoliday, syncHolidaysNow } from "@/app/actions/holidays";
 import { DatePicker } from "@/app/components/DatePicker";
+import { RetroWarning } from "@/app/components/RetroWarning";
 
 type Holiday = { id: string; date: string; name: string };
 
@@ -86,6 +87,15 @@ export function HolidayForm({
             {addPending ? "추가 중..." : "추가"}
           </button>
         </form>
+        {/* 🔴 [검수 M-9] 소급 등록 경고 — 아직 저장되지 않았다. 값은 서버가 되돌려준 것을 그대로 다시 보낸다
+            (React가 서버액션 후 입력칸을 비우므로 위 폼에 기대면 빈 값이 다시 날아간다). */}
+        {addState?.needConfirm && addState.warning && (
+          <form action={addAction} style={{ marginBottom: 12 }}>
+            <input type="hidden" name="date" value={addState.echoDate ?? ""} />
+            <input type="hidden" name="name" value={addState.echoName ?? ""} />
+            <RetroWarning warning={`${addState.echoDate} · ${addState.echoName}\n${addState.warning}`} label="확인했습니다. 그대로 휴무일 등록" disabled={addPending} />
+          </form>
+        )}
         {addState?.error && <div style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700, marginBottom: 8 }}>{addState.error}</div>}
         {delState?.error && <div style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700, marginBottom: 8 }}>{delState.error}</div>}
 
@@ -94,16 +104,25 @@ export function HolidayForm({
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {initial.holidays.map((h) => (
-              <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 8 }}>
-                <span style={{ fontSize: 14, fontWeight: 700, minWidth: 100 }}>{h.date}</span>
-                <span style={{ fontSize: 14, flex: 1 }}>{h.name}</span>
-                <form action={delAction}>
-                  <input type="hidden" name="id" value={h.id} />
-                  <button type="submit"
-                    style={{ height: 32, border: "1px solid var(--border)", borderRadius: 6, background: "#fff", color: "var(--danger)", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: "0 12px" }}>
-                    삭제
-                  </button>
-                </form>
+              <div key={h.id} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, minWidth: 100 }}>{h.date}</span>
+                  <span style={{ fontSize: 14, flex: 1 }}>{h.name}</span>
+                  <form action={delAction}>
+                    <input type="hidden" name="id" value={h.id} />
+                    <button type="submit"
+                      style={{ height: 32, border: "1px solid var(--border)", borderRadius: 6, background: "#fff", color: "var(--danger)", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: "0 12px" }}>
+                      삭제
+                    </button>
+                  </form>
+                </div>
+                {/* 이 줄의 삭제가 소급 영향을 낼 때만(echoId로 대상 확인) 경고를 붙인다 */}
+                {delState?.needConfirm && !!delState.echoId && delState.echoId === h.id && delState.warning && (
+                  <form action={delAction}>
+                    <input type="hidden" name="id" value={h.id} />
+                    <RetroWarning warning={delState.warning} label="확인했습니다. 그대로 삭제" />
+                  </form>
+                )}
               </div>
             ))}
           </div>

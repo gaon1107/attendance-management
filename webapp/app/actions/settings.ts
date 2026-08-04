@@ -11,6 +11,10 @@ import { parseBreakRuleInput, LEGAL_BREAK_MIN_4H, LEGAL_BREAK_MIN_8H } from "@/l
 // 외출 사유 저장 결과 — saved(정규화되어 실제 저장된 문자열)로 화면 입력칸을 DB와 맞춘다.
 export type OutingReasonsResult = { error?: string; ok?: boolean; warn?: string; saved?: string };
 import { logAdminAction } from "@/lib/audit";
+import {
+  countWorkRuleImpact, workRuleWarning, workRuleAuditText, workRuleSignature,
+  IMPACT_FAILED_WARNING, type WorkRuleSnapshot, type WorkRuleImpact,
+} from "@/lib/retroactive";
 
 export async function saveOfficeLocation(
   _prev: { error?: string; ok?: boolean },
@@ -221,10 +225,12 @@ export async function saveLivenessRule(
 // 근무제·기준시간 저장 — 관리자만. 지각/정상 판정의 기준(표준 출퇴근 시각 + 지각 유예).
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/; // "HH:MM" 24시간
 
+// needConfirm=true면 **아직 저장하지 않았다** — 화면이 warning을 보여주고, 관리자가 한 번 더 누르면
+// confirm="1"과 함께 다시 호출된다(검수 M-10 — 과거 판정이 통째로 다시 쓰이는 것을 모르고 저장하는 것을 막는다).
 export async function saveWorkRules(
-  _prev: { error?: string; ok?: boolean },
+  _prev: { error?: string; ok?: boolean; warning?: string; needConfirm?: boolean; echoSig?: string },
   formData: FormData
-): Promise<{ error?: string; ok?: boolean }> {
+): Promise<{ error?: string; ok?: boolean; warning?: string; needConfirm?: boolean; echoSig?: string }> {
   const me = await getCurrentUser();
   if (!me || me.role !== "admin") {
     return { error: "권한이 없습니다." };
@@ -290,6 +296,48 @@ export async function saveWorkRules(
   //  ShiftGroup.order는 0-based(0,1,2=A,B,C)라 유효 조는 0..shiftMode-1 → 초과 = order>=shiftMode.
   //  (A안: 방식과 무관하게 shiftMode 기준. 순환→고정으로만 바꾸고 교대수가 같으면 조·배정은 보존.)
   const keepGroups = shiftMode ?? 0; // 유지할 순환 조 개수(교대 끄면 0=전부 정리)
+
+  // 🔴 [검수 M-10] 이 설정들은 **과거 판정을 다시 쓴다.** 지각·조퇴·결근은 저장돼 있지 않고 매번 다시 계산되므로,
+  //    출근 기준시각을 09:00→10:00으로 바꾸면 지난달 지각 건수가 통째로 달라진다(3년 보존 기록).
+  //    데이터를 자동으로 재계산하지 않는 대신, 저장 전에 영향 건수를 세어 보여주고 한 번 더 확인받는다.
+  const beforeRow = await prisma.company.findUnique({
+    where: { id: me.companyId },
+    select: { workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true, shiftMode: true, standardWorkHours: true },
+  });
+  const before: WorkRuleSnapshot = {
+    workStartTime: beforeRow?.workStartTime ?? null,
+    workEndTime: beforeRow?.workEndTime ?? null,
+    lateGraceMin: beforeRow?.lateGraceMin ?? 0,
+    workDays: beforeRow?.workDays ?? null,
+    shiftMode: beforeRow?.shiftMode ?? null,
+    standardWorkHours: beforeRow?.standardWorkHours ?? null,
+  };
+  const afterSnap: WorkRuleSnapshot = {
+    workStartTime: start || null,
+    workEndTime: end || null,
+    lateGraceMin: Math.round(grace),
+    workDays,
+    shiftMode,
+    standardWorkHours: std,
+  };
+  const sig = workRuleSignature(afterSnap);
+  // 영향 계산은 쿼리가 여럿이라 실패할 수 있다. 실패해도 화면이 죽지 않게 감싸고,
+  // **경고 없이 저장되는 일이 없도록** 보수적 경고로 대체한다(검수 중간 6).
+  let impact: WorkRuleImpact | null = null;
+  let warning: string | null = null;
+  try {
+    impact = await countWorkRuleImpact(me.companyId, before, afterSnap);
+    warning = workRuleWarning(impact);
+  } catch (e) {
+    console.error("saveWorkRules 영향 계산 실패:", e);
+    warning = workRuleSignature(before) === sig ? null : IMPACT_FAILED_WARNING;
+  }
+  // 확인은 **그때 본 값에 대해서만** 유효하다 — 경고를 본 뒤 값을 고치고 확인 버튼을 누르면 다시 경고한다.
+  const confirmed = formData.get("confirm") === "1" && formData.get("confirmSig") === sig;
+  if (warning && !confirmed) {
+    return { needConfirm: true, warning, echoSig: sig };
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
       await tx.company.update({
@@ -366,7 +414,11 @@ export async function saveWorkRules(
     return { error: "근무제 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요." };
   }
 
-  await logAdminAction(me, "config", "work_rules"); // 감사로그(성공 시에만)
+  // 감사로그(성공 시에만) — **무엇이 무엇으로 바뀌었고 과거 판정이 몇 건 뒤집혔는지**를 남긴다.
+  //  ※ lib/audit.ts는 원칙적으로 "값"을 남기지 않지만(개인정보 유출 방지), 근무 기준시각·요일은
+  //    회사 설정이라 개인정보가 아니고, 이 값을 모르면 "왜 지난달 지각 수가 달라졌는지"를 되짚을 수 없다.
+  //  ※ 영향 계산이 실패했으면(impact=null) 값 변경만 남긴다 — 없는 숫자를 지어내지 않는다.
+  await logAdminAction(me, "config", impact ? workRuleAuditText(impact, before, afterSnap) : "work_rules");
   revalidatePath("/settings");
   revalidatePath("/dashboard"); // 알림 켜기·경고선이 바뀌면 대시보드 알림도 바뀐다
   return { ok: true };

@@ -6,6 +6,7 @@ import { useActionState, useState } from "react";
 import { saveWorkRules } from "@/app/actions/settings";
 import { WEEK_ORDER, DAY_LABELS, parseDays, daysToCsv } from "@/lib/workdays";
 import { TimePicker, splitTime, joinTime } from "@/app/components/TimePicker";
+import { RetroWarning } from "@/app/components/RetroWarning";
 
 const labelStyle: React.CSSProperties = { display: "block", fontSize: 13, fontWeight: 700, marginBottom: 8 };
 const selStyle: React.CSSProperties = { height: 38, padding: "0 10px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 14, background: "#fff", cursor: "pointer" };
@@ -231,6 +232,18 @@ export function WorkRulesForm({
           style={{ height: 48, border: "none", borderRadius: 10, background: "var(--primary)", color: "#fff", fontFamily: "inherit", fontSize: 15, fontWeight: 700, cursor: pending ? "default" : "pointer", opacity: pending ? 0.6 : 1, alignSelf: "flex-start", padding: "0 28px" }}>
           {pending ? "저장 중..." : "저장"}
         </button>
+
+        {/* 🔴 [검수 M-10] 아직 저장되지 않았다 — 과거 판정이 몇 건 뒤집히는지 보여주고 한 번 더 받는다.
+            ⚠️ 반드시 위 [저장] 버튼 **뒤**에 둔다 — 앞에 두면 입력칸에서 Enter만 눌러도 확인이 눌려
+               2단계 확인이 1단계가 된다(검수 중간 1).
+            ⚠️ confirmSig는 "경고를 본 그 값"의 지문이다. 경고를 본 뒤 값을 고치고 이 버튼을 누르면
+               서버가 지문 불일치를 보고 새 경고를 다시 띄운다(본 숫자와 다른 일이 벌어지는 것을 막는다). */}
+        {state?.needConfirm && state.warning && (
+          <>
+            <input type="hidden" name="confirmSig" value={state.echoSig ?? ""} />
+            <RetroWarning warning={state.warning} label="확인했습니다. 그대로 저장" disabled={pending} />
+          </>
+        )}
       </form>
     </div>
   );

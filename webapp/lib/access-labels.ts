@@ -32,6 +32,18 @@ export function accessResultLabel(result: string): string {
 export function accessMetaLabel(meta: string | null | undefined): string {
   if (!meta) return "";
 
+  // "이름(상세)" 분리 — **콜론 분리보다 먼저** 판정한다(검수 치명 1).
+  //  소급 변경 감사기록은 상세에 시각이 들어간다: work_rules(출근 09:00→10:00, ...).
+  //  콜론을 먼저 보면 "work_rules(출근 09"에서 잘려 라벨을 못 찾고 **화면·엑셀이 통째로 공란**이 된다.
+  const par = meta.indexOf("(");
+  if (par > 0 && meta.endsWith(")")) {
+    const base = baseMetaLabel(meta.slice(0, par));
+    const detail = meta.slice(par + 1, -1).trim();
+    if (base && detail) return `${base} · ${detail}`;
+    if (base) return base;
+    return detail; // 라벨을 모르는 이름이어도 상세는 보여준다(빈칸보다 낫다)
+  }
+
   // "이름:대상" 분리 — 첫 콜론만 기준(대상 이름에 콜론이 있어도 안전).
   const sep = meta.indexOf(":");
   if (sep > 0) {
@@ -61,6 +73,12 @@ function baseMetaLabel(meta: string): string {
     face_rule: "얼굴 인식 기준",
     liveness_rule: "본인 확인 재검토 기준",
     work_rules: "근무제·기준시간",
+    // 공휴일·회사휴무일 — 지난 날짜를 건드리면 그날의 결근·지각 판정이 다시 쓰인다(소급 변경).
+    //  ⚠️ 이 두 키는 예전부터 액션이 기록해 왔는데 map에 없어 화면이 계속 공란이었다(검수 치명 1에서 함께 발견).
+    holiday_auto: "법정공휴일 자동반영",
+    holiday_sync: "공휴일 데이터 갱신",
+    company_holiday_add: "회사 휴무일 등록",
+    company_holiday_del: "회사 휴무일 해제",
     // 생체정보 동의 개시(actions/authmethod.ts) — 수집 시작 시점. 파기와 짝을 이루는 감사 기록.
     biometric_consent: "생체정보 동의",
     biometric_reconsent: "생체정보 재동의",

@@ -8,6 +8,7 @@ import { addEvent, deleteEvent } from "@/app/actions/schedule";
 import { addCompanyHoliday, deleteCompanyHoliday } from "@/app/actions/holidays";
 import { createNotice, deleteNotice } from "@/app/actions/notice";
 import { DatePicker } from "@/app/components/DatePicker";
+import { RetroWarning } from "@/app/components/RetroWarning";
 
 export type DayData = {
   nationalHoliday?: string; // 법정공휴일 이름(읽기전용)
@@ -252,6 +253,26 @@ function DayModal({ iso, data, canManageCompany, onClose }: { iso: string; data:
                 <input type="hidden" name="date" value={iso} />
                 <input name="name" defaultValue="휴무일" maxLength={50} style={{ flex: 1, height: 40, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 14, outline: "none" }} />
                 <button type="submit" disabled={addHolPending} style={{ height: 40, padding: "0 16px", border: "none", borderRadius: 8, background: "#6D28D9", color: "#fff", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: addHolPending ? "default" : "pointer", opacity: addHolPending ? 0.6 : 1, whiteSpace: "nowrap" }}>휴무 지정</button>
+              </form>
+            )}
+            {/* 🔴 [검수 M-9] 지난 날짜를 휴무 지정/해제하면 그날 판정이 다시 쓰인다 — 아직 저장 전이다.
+                값은 서버가 되돌려준 것을 그대로 다시 보낸다(React가 액션 후 입력칸을 비우기 때문). */}
+            {addHolState?.needConfirm && addHolState.warning && (
+              <form action={addHolAction} style={{ marginTop: 8 }}>
+                <input type="hidden" name="date" value={addHolState.echoDate ?? ""} />
+                <input type="hidden" name="name" value={addHolState.echoName ?? ""} />
+                {/* 실제로 저장될 값을 함께 보여준다 — 위 입력칸은 액션 후 "휴무일"로 되돌아가 서로 달라 보인다(검수 경미 3) */}
+                <RetroWarning
+                  warning={`${addHolState.echoDate} · ${addHolState.echoName}\n${addHolState.warning}`}
+                  label="확인했습니다. 그대로 휴무 지정"
+                  disabled={addHolPending}
+                />
+              </form>
+            )}
+            {delHolState?.needConfirm && delHolState.warning && delHolState.echoId && delHolState.echoId === data?.companyHoliday?.id && (
+              <form action={delHolAction} style={{ marginTop: 8 }}>
+                <input type="hidden" name="id" value={delHolState.echoId} />
+                <RetroWarning warning={delHolState.warning} label="확인했습니다. 그대로 휴무 해제" />
               </form>
             )}
             {addHolState?.error && <div style={{ fontSize: 12, color: "var(--danger)", fontWeight: 700, marginTop: 6 }}>{addHolState.error}</div>}
