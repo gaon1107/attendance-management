@@ -124,6 +124,8 @@ export async function detectAnomalies(
   // ip+actorName으로 묶어 받은 뒤 ip 기준으로 다시 합친다(이름은 표시용).
   const blockedGroups = await prisma.accessEvent.groupBy({
     by: ["ip", "actorName"],
+    //  ※ 자동 IP 제한(login-throttle)은 이 kind를 쓰지 않고 login_fail로 남긴다 — 그래야 규칙2(연속 실패)와
+    //    [차단 후보] 목록에도 잡힌다. 덕분에 이 규칙은 "관리자가 직접 막은 IP"만 보는 원래 전제를 그대로 지킨다.
     where: { companyId, kind: "blocked", createdAt: range, ip: { not: null } },
     _count: { _all: true },
     _max: { createdAt: true },

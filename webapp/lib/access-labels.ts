@@ -13,6 +13,7 @@ export function accessKindLabel(kind: string): string {
     purge: "생체정보 파기",
     data_view: "데이터 조회",
     blocked: "접속 차단",
+    public_request: "비로그인 요청",
   };
   return map[kind as AccessKind] ?? kind;
 }
@@ -32,28 +33,33 @@ export function accessResultLabel(result: string): string {
 export function accessMetaLabel(meta: string | null | undefined): string {
   if (!meta) return "";
 
-  // "이름(상세)" 분리 — **콜론 분리보다 먼저** 판정한다(검수 치명 1).
-  //  소급 변경 감사기록은 상세에 시각이 들어간다: work_rules(출근 09:00→10:00, ...).
-  //  콜론을 먼저 보면 "work_rules(출근 09"에서 잘려 라벨을 못 찾고 **화면·엑셀이 통째로 공란**이 된다.
-  const par = meta.indexOf("(");
-  if (par > 0 && meta.endsWith(")")) {
-    const base = baseMetaLabel(meta.slice(0, par));
-    const detail = meta.slice(par + 1, -1).trim();
-    if (base && detail) return `${base} · ${detail}`;
-    if (base) return base;
-    return detail; // 라벨을 모르는 이름이어도 상세는 보여준다(빈칸보다 낫다)
+  // meta는 세 조각까지 담는다: `이름[:대상][ (상세)]`
+  //   예) "work_rules(출근 09:00→10:00)" · "clock_photo:홍길동 (a1b2c3)" · "ip_block_add:1.2.3.4"
+  //
+  //  ⚠️ **끝의 괄호를 먼저 떼고, 남은 앞부분에 콜론 분리를 적용한다.** 순서가 중요하다:
+  //   · 콜론을 먼저 보면 "work_rules(출근 09"에서 잘려 라벨을 못 찾고 화면·엑셀이 **공란**이 된다.
+  //   · 괄호만 보고 끝내면 "clock_photo:홍길동 (a1b2c3)"이 **"a1b2c3"**만 남아 누구 사진을 봤는지 사라진다.
+  //   둘 다 실제로 겪은 실수라 여기 적어 둔다.
+  let head = meta;
+  let detail = "";
+  const m = /^(.*?)\s*\(([^()]*)\)$/.exec(meta);
+  if (m) {
+    head = m[1];
+    detail = m[2].trim();
   }
 
   // "이름:대상" 분리 — 첫 콜론만 기준(대상 이름에 콜론이 있어도 안전).
-  const sep = meta.indexOf(":");
-  if (sep > 0) {
-    const base = baseMetaLabel(meta.slice(0, sep));
-    const extra = meta.slice(sep + 1).trim();
-    if (base && extra) return `${base} · 대상: ${extra}`;
-    if (base) return base;
-    return "";
-  }
-  return baseMetaLabel(meta);
+  const sep = head.indexOf(":");
+  const base = baseMetaLabel(sep > 0 ? head.slice(0, sep) : head);
+  const target = sep > 0 ? head.slice(sep + 1).trim() : "";
+
+  const parts: string[] = [];
+  if (base) parts.push(base);
+  if (target) parts.push(`대상: ${target}`);
+  if (detail) parts.push(detail);
+  // 이름을 모르면(사전에 없는 값) 상세라도 보여준다 — 빈칸보다 낫다.
+  if (!base && !target) return detail;
+  return parts.join(" · ");
 }
 
 // meta의 "이름" 부분 → 한글 라벨
@@ -92,6 +98,14 @@ function baseMetaLabel(meta: string): string {
     pcoff_rule: "PC-OFF 잠금 규칙",
     pcoff_exempt: "PC-OFF 잠금 예외자",
     pcoff_device_revoke: "PC 연결 해제",
+    // 생체정보 열람(app/api/clock-photo) — "clock_photo:직원이름" 형식으로 누구 사진을 봤는지 남긴다
+    clock_photo: "출퇴근 사진 열람",
+    // 비로그인 창구(actions/auth.ts·password-reset.ts) — 남용 감지용
+    signup: "회원가입 시도",
+    signup_blocked: "회원가입 시도 차단(과다 요청)",
+    reset_request: "비밀번호 재설정 요청",
+    reset_request_blocked: "재설정 요청 차단(과다 요청)",
+    login_ip_throttled: "로그인 시도 차단(같은 IP 과다 실패)",
     // 생체정보 파기 경로(actions/authmethod.ts)
     admin_revoke: "관리자 파기",
     self_withdraw: "본인 철회",

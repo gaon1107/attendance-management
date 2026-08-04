@@ -11,12 +11,12 @@ import { queryTerms, matchesTerms } from "@/lib/search";
 // exceljs는 Node 런타임 필요 — Edge로 실행되지 않도록 고정.
 export const runtime = "nodejs";
 
-const ACCESS_KINDS = ["login", "login_fail", "logout", "clock_in", "clock_out", "config", "purge", "blocked"];
+const ACCESS_KINDS = ["login", "login_fail", "logout", "clock_in", "clock_out", "config", "purge", "data_view", "blocked", "public_request"];
 // 동작 필터 — 화면(AccessLogClient의 KIND_FILTERS)과 같은 규칙을 유지한다.
 const KIND_GROUPS: Record<string, string[]> = {
-  auth: ["login", "login_fail", "logout", "blocked"], // 로그인 계열 + 차단된 IP의 로그인 거부
+  auth: ["login", "login_fail", "logout", "blocked", "public_request"], // 로그인 계열 + 차단 + 비로그인 창구(가입·재설정 요청)
   clock: ["clock_in", "clock_out"],
-  admin: ["config", "purge"], // 관리자 동작(설정 변경·생체정보 파기)
+  admin: ["config", "purge", "data_view"], // 관리자 동작(설정 변경·생체정보 파기·생체정보 열람)
 };
 
 function fmtDateTime(d: Date): string {

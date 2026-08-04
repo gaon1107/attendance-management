@@ -7,6 +7,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { readClockPhoto, purgeExpiredPhotos, isPhotoExpired } from "@/lib/clock-photo";
+import { recordAccess, readClientMeta } from "@/lib/access-log";
+import { headers } from "next/headers";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const me = await getCurrentUser();
@@ -15,7 +17,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const { id } = await params;
   // 회사 격리 — 반드시 내 회사 사진만
-  const photo = await prisma.clockPhoto.findFirst({ where: { id, companyId: me.companyId } });
+  //  · 열람기록에 "누구의 사진인지"를 남기려고 대상 직원 이름을 함께 읽는다(검수 M-18).
+  const photo = await prisma.clockPhoto.findFirst({
+    where: { id, companyId: me.companyId },
+    include: { attendance: { select: { user: { select: { name: true } } } } },
+  });
   if (!photo) return NextResponse.json({ message: "사진 기록을 찾을 수 없습니다." }, { status: 404 });
 
   // ⑤ 열람은 부정 방지 재검토가 필요한 건(위조 의심·판독 실패)만 허용한다 — 정상 확인 사진은 차단.
@@ -43,11 +49,32 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   try {
     const jpeg = await readClockPhoto(photo.fileName);
-    // 열람 기록 — 누가 언제 봤는지(생체정보 접근 통제)
+    // 열람 기록 ① 사진 행에 "마지막으로 본 사람" — 화면이 바로 옆에 보여주는 값(기존 동작 유지).
     await prisma.clockPhoto.update({
       where: { id: photo.id },
       data: { lastViewedBy: `${me.name} (${me.email})`, lastViewedAt: new Date() },
     });
+    // 열람 기록 ② 🔴 [검수 M-18] **열람할 때마다 접속기록에 1건**을 남긴다.
+    //    예전엔 ①만 있어 관리자가 10번 봐도 기록이 1건이었다 — 생체정보 접근이력을 2년 보관하라는
+    //    개인정보 안전성 확보조치 기준의 취지를 못 맞춘다(이 파일이 스스로 적어둔 기준과도 모순이었다).
+    //    ⚠️ 기록이 실패해도 열람 자체는 막지 않는다(lib/audit.ts 원칙 ①과 동일).
+    try {
+      const { ip, userAgent } = readClientMeta(await headers());
+      await recordAccess({
+        companyId: me.companyId,
+        userId: me.id,
+        actorName: me.name,
+        kind: "data_view",
+        result: "success",
+        ip,
+        userAgent,
+        // 누구의 사진을 봤는지가 감사의 핵심이다(파기 기록과 같은 예외 — lib/audit.ts 원칙 ②).
+        //  · 사진 id 끝 6자를 붙여 **어떤 사진**을 봤는지도 특정할 수 있게 한다(같은 사람 사진이 여러 장이므로).
+        meta: `clock_photo:${photo.attendance.user.name} (${photo.id.slice(-6)})`,
+      });
+    } catch (e) {
+      console.warn("[clock-photo] 열람 기록 실패(열람은 정상 처리됨):", e);
+    }
     return new NextResponse(new Uint8Array(jpeg), {
       status: 200,
       headers: {

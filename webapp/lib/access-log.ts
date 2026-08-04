@@ -11,7 +11,9 @@ type HeaderLike = { get(name: string): string | null };
 export type AccessKind =
   | "login" | "login_fail" | "logout"
   | "clock_in" | "clock_out"
-  | "config" | "purge" | "data_view" | "blocked";
+  | "config" | "purge" | "data_view" | "blocked"
+  // 로그인 없이 부를 수 있는 창구(회원가입·비밀번호 재설정 요청). 남용 감지·IP 제한의 근거가 된다(검수 M-19).
+  | "public_request";
 
 export type AccessResult = "success" | "fail" | "blocked";
 
@@ -30,18 +32,22 @@ export type AccessInput = {
 // 접속 이벤트 1건 기록. 실패해도 조용히 넘어간다(본기능 보호).
 export async function recordAccess(e: AccessInput): Promise<void> {
   try {
+    // ⚠️ 길이는 **여기 한 곳에서** 자른다(검수 중간 3) — 호출부마다 자르면 반드시 한 군데를 빠뜨린다.
+    //    자르지 않으면 로그인 창에 붙여넣은 수십 KB 문자열이 그대로 2년 보관되고,
+    //    관리자 접속기록 화면(최신 2000건을 한 번에 로드)이 무거워진다.
+    const cut = (s: string | null | undefined, n: number): string | null => (s ? s.slice(0, n) : null);
     await prisma.accessEvent.create({
       data: {
         companyId: e.companyId ?? null,
         userId: e.userId ?? null,
-        actorName: e.actorName ?? null,
-        emailTried: e.emailTried ?? null,
+        actorName: cut(e.actorName, 100),
+        emailTried: cut(e.emailTried, 254),
         kind: e.kind,
         result: e.result,
-        ip: e.ip ?? null,
-        userAgent: e.userAgent ?? null,
+        ip: cut(e.ip, 64),
+        userAgent: cut(e.userAgent, 512),
         device: e.userAgent ? deviceLabel(e.userAgent) : null,
-        meta: e.meta ?? null,
+        meta: cut(e.meta, 300),
       },
     });
   } catch (err) {

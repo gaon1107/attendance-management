@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/session";
 import { sendSms, normalizePhone } from "@/lib/sms";
+import { verifyPassword } from "@/lib/password";
 import { revalidatePath } from "next/cache";
 
 type ActionResult = { error?: string; ok?: boolean };
@@ -137,6 +138,15 @@ export async function sendTempPasswordSms(_prev: ActionResult, formData: FormDat
     include: { user: true },
   });
   if (!req) return { error: "요청을 찾을 수 없습니다." };
+
+  // 🔴 [검수 M-21] 문자 본문에 들어갈 값을 **클라이언트가 정하게 두지 않는다.**
+  //    예전엔 formData의 temp를 그대로 본문에 넣었다 → 관리자 계정이 털리면 회사 이름이 붙은
+  //    "신뢰받는 문자"로 임의 문구(피싱 링크 등)를 직원들에게 보낼 수 있었다.
+  //    이제 **그 계정에 실제로 적용된 임시 비밀번호가 맞는지** 해시로 확인하고, 아니면 보내지 않는다.
+  //    (임시 비밀번호는 발급 순간에만 평문으로 존재하므로 서버가 다시 만들어낼 수는 없다 → 대조로 검증한다)
+  if (!req.user.mustChangePassword || !verifyPassword(temp, req.user.passwordHash)) {
+    return { error: "방금 발급한 임시 비밀번호가 아닙니다. 임시 비밀번호를 다시 발급한 뒤 보내주세요." };
+  }
 
   const to = normalizePhone(req.user.phone ?? "");
   if (to.length < 9 || to.length > 12) {

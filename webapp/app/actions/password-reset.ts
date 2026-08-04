@@ -8,6 +8,9 @@ import { hashPassword } from "@/lib/password";
 import { generateTempPassword, TEMP_PASSWORD_TTL_MS } from "@/lib/temp-password";
 import { getCurrentUser } from "@/lib/session";
 import { canManageAccount } from "@/lib/owner-rules";
+import { recordAccess, readClientMeta } from "@/lib/access-log";
+import { publicActionAllowedForIp, recordThrottleHit, RESET_MAX_PER_IP, RESET_WINDOW_MIN } from "@/lib/login-throttle";
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 
 // ① 직원이 비밀번호 재설정을 요청한다(로그인 화면에서). 이메일만 받는다.
@@ -19,8 +22,35 @@ export async function requestPasswordReset(
 ): Promise<{ error?: string; ok?: boolean }> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   if (!email) return { error: "이메일을 입력해주세요." };
+  // 형식·길이 검증(검수 치명 3) — 없으면 아무 문자열이나 접속기록에 저장돼 2년 보관된다.
+  //  응답은 성공과 같게 유지한다(존재 여부 비노출 원칙).
+  if (email.length > 254 || !email.includes("@")) return { ok: true };
+
+  // 🔴 [검수 M-19] 로그인 없이 누구나 부를 수 있는 창구다 — 같은 IP에서 쏟아지는 요청을 막는다.
+  //    막지 않으면 관리자 [직원 관리] 화면이 대기 요청으로 가득 차 진짜 요청이 묻힌다.
+  //    ⚠️ 거부해도 안내 문구는 성공과 **같다** — 이메일 존재 여부를 알려주지 않는다는 이 함수의 원칙을 지킨다.
+  //    ⚠️ 차단된 요청은 **1분에 1건만** 기록한다(검수 치명 3 + 2차 중간 4) — 매번 기록하면
+  //       "막혀도 계속 쓰는" 통로가 되어 그 자체로 DB를 채우는 공격이 되고, 아예 안 남기면
+  //       남용이 있었는지 사후에 확인할 방법이 없다.
+  const { ip, userAgent } = readClientMeta(await headers());
+  if (!(await publicActionAllowedForIp(ip, "reset_request", RESET_MAX_PER_IP, RESET_WINDOW_MIN))) {
+    // 거부 사실은 **1분에 1건만** 남긴다 — 안 남기면 남용이 있었는지 사후에 알 방법이 없고(이 제품은
+    // 콘솔 로그가 창을 닫으면 사라진다), 매번 남기면 그 자체가 DB를 채우는 통로가 된다(검수 2차 중간 4).
+    await recordThrottleHit({ ip, kind: "public_request", meta: "reset_request_blocked", emailTried: email, userAgent });
+    return { ok: true };
+  }
 
   const user = await prisma.user.findUnique({ where: { email } });
+
+  // 시도 기록 — 위 제한의 근거이자 남용 감지 자료.
+  //  · IP를 모르면(TRUST_PROXY 미설정) 제한에 쓸 수 없으므로 기록하지 않는다 — 쓰기만 늘리지 않기 위함.
+  //  · 회사를 알 수 있으면 함께 남긴다(그래야 [보안]-[접속기록] 화면에 보인다 — 검수 중간 4).
+  if (ip) {
+    await recordAccess({
+      companyId: user?.companyId ?? null, userId: null, emailTried: email.slice(0, 254),
+      kind: "public_request", result: "success", ip, userAgent, meta: "reset_request",
+    });
+  }
 
   // 실제 계정이고, 퇴사(비활성화)된 계정이 아닐 때만 요청을 만든다.
   //  · 🔒 회사 계정은 제외한다: 이 요청은 **관리자가 승인해 임시 비번을 발급**하는 구조라,

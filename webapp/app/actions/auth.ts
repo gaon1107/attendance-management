@@ -6,6 +6,7 @@ import { hashPassword, verifyPassword } from "@/lib/password";
 import { createSession, destroySession, getCurrentUser } from "@/lib/session";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { isBlockedForCompany } from "@/lib/ip-block";
+import { loginAllowedForIp, publicActionAllowedForIp, recordThrottleHit, THROTTLED_META, SIGNUP_MAX_PER_IP, SIGNUP_WINDOW_MIN } from "@/lib/login-throttle";
 import { isValidBizRegNoFormat, formatBizRegNo, normalizeBizRegNo, verifyBizRegNo } from "@/lib/bizreg";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -46,6 +47,22 @@ export async function signup(
   // 동의는 법적 필수 — 체크하지 않으면 가입시키지 않는다(개인정보보호법 제15조·제22조).
   if (!agreeTerms || !agreePrivacy) {
     return { error: "이용약관과 개인정보 수집·이용에 동의해주세요." };
+  }
+
+  // 🔴 [검수 M-19] 가입은 로그인 없이 누구나 부를 수 있다 — 같은 IP에서 쏟아지는 시도를 막는다.
+  //    막지 않으면 **국세청 사업자번호 조회 쿼터**를 태워 정상 가입까지 "확인 보류"로 떨어뜨릴 수 있다.
+  //    ⚠️ 형식 검증(위)을 통과한 뒤에 센다 — 오타 한 번에 횟수가 깎이지 않게.
+  //    ⚠️ 차단된 요청은 **기록하지 않는다**(검수 치명 3) — 막혀도 계속 쓰면 그 자체가 DB를 채우는 통로가 된다.
+  //    ⚠️ IP를 모르면(TRUST_PROXY 미설정) 제한에 쓸 수 없으므로 기록도 하지 않는다.
+  const signupClient = readClientMeta(await headers());
+  if (!(await publicActionAllowedForIp(signupClient.ip, "signup", SIGNUP_MAX_PER_IP, SIGNUP_WINDOW_MIN))) {
+    // 거부 사실은 1분에 1건만 남긴다(감사 흔적은 남기되 적재 공격은 막는다 — 검수 2차 중간 4).
+    await recordThrottleHit({ ip: signupClient.ip, kind: "public_request", meta: "signup_blocked", emailTried: email, userAgent: signupClient.userAgent });
+    return { error: "가입 시도가 너무 잦습니다. 잠시 후 다시 시도해주세요." };
+  }
+  // 시도 자체를 남긴다(성공·실패 무관) — 이 기록이 곧 위 제한의 근거가 된다.
+  if (signupClient.ip) {
+    await recordAccess({ companyId: null, userId: null, emailTried: email.slice(0, 254), kind: "public_request", result: "success", ip: signupClient.ip, userAgent: signupClient.userAgent, meta: "signup" });
   }
 
   // 사업자등록번호: 먼저 계산으로 걸러내고(국세청에 물을 필요도 없는 가짜), 그다음 국세청에 묻는다.
@@ -139,6 +156,11 @@ export async function signup(
 const MAX_FAILED = 5; // 연속 5회 실패하면
 const LOCK_MINUTES = 10; // 10분간 잠금
 
+// 존재하지 않는 이메일에도 해시 비교를 한 번 돌리기 위한 더미 값(검수 M-17).
+//  · 없는 계정이면 즉시 반환하던 예전 코드는 **응답 시간만으로 계정 존재를 알 수 있었다**(있으면 느리고 없으면 빠름).
+//  · 서버 시작 시 1회만 만든다(scrypt 1회). 이 값으로는 아무도 로그인할 수 없다.
+const DUMMY_HASH = hashPassword("no-such-account-placeholder");
+
 // 로그인 — 이메일/비밀번호 확인 후 세션 발급.
 export async function login(
   _prev: { error?: string },
@@ -149,6 +171,11 @@ export async function login(
 
   if (!email || !password) {
     return { error: "이메일과 비밀번호를 입력해주세요." };
+  }
+  // 길이 상한(검수 2차 치명 2·중간 3) — 없으면 ①본문 크기만큼 긴 문자열이 접속기록에 2년 보관되고
+  // ②그 값으로도 scrypt가 돌아 서버가 멈춘다. 정상 입력은 절대 넘지 않는 값이다.
+  if (email.length > 254 || password.length > 200) {
+    return { error: "이메일 또는 비밀번호가 올바르지 않습니다." };
   }
 
   // 접속기록용 IP·기기(이메일이 입력된 이후부터 남긴다).
@@ -166,22 +193,40 @@ export async function login(
     return { error: "이메일 또는 비밀번호가 올바르지 않습니다." };
   }
 
-  // 퇴사(비활성화)된 계정은 로그인 불가.
-  if (user?.deactivatedAt) {
-    await recordAccess({ companyId: user.companyId, userId: user.id, actorName: user.name, emailTried: email, kind: "login_fail", result: "fail", ip, userAgent, meta: "deactivated" });
-    return { error: "이 계정은 비활성화되었습니다. 관리자에게 문의하세요." };
+  // 🔴 [검수 M-17] IP 단위 시도 제한 — 계정 단위 5회 잠금만으로는 **계정을 바꿔가며 두드리는 공격**을 못 막는다.
+  //    같은 IP에서 최근 10분간 실패가 임계치를 넘으면 잠시 거부한다. 사내망(officeIps)은 면제.
+  //    ⚠️ 판정만 먼저 하고 **차단은 비밀번호를 확인한 뒤에** 한다(검수 치명 1) —
+  //       비밀번호가 맞은 사람은 어떤 경우에도 막지 않는다. 사무실이 한 공인 IP를 함께 쓰는 구조에서
+  //       "옆자리 직원이 여러 번 틀려서 나까지 출근을 못 찍는" 사고를 절대 만들지 않기 위함이다.
+  const ipThrottled = !(await loginAllowedForIp(ip, user?.companyId ?? null));
+
+  // 🔴 [검수 M-17] **비밀번호를 먼저 확인한다.**
+  //    예전엔 퇴사·잠금 안내를 비밀번호 확인 전에 돌려줘, 아무 비번이나 넣어도 "이 계정은 비활성화되었습니다"라는
+  //    응답으로 **그 이메일이 실재하는지** 알 수 있었다(계정 목록 수집 → 표적 공격).
+  //    이제 비번이 맞은 사람에게만 진짜 이유를 알려준다 — 정상 사용자는 안내를 그대로 받고, 공격자는 아무것도 못 얻는다.
+  //    ⚠️ 없는 이메일일 때도 해시 비교를 한 번 돌린다 — 응답 시간 차이로 존재를 알아내는 것을 막는다.
+  //    ⚠️ 제한에 걸렸는데 **없는 계정**이면 해시를 돌리지 않고 바로 거부한다(검수 치명 2) —
+  //       scrypt는 1회 약 40ms 동안 서버 전체를 멈추므로, 이미 제한 중인 IP에까지 그 값을 태우면
+  //       제한이 CPU를 한 푼도 아껴주지 못한다(그 자체가 서비스 마비 통로).
+  //       이미 거부 중인 IP에 응답이 빨라지는 것은 정보 노출이 아니다.
+  if (ipThrottled && !user) {
+    await recordThrottleHit({ ip, kind: "login_fail", meta: THROTTLED_META, emailTried: email, userAgent });
+    return { error: "이메일 또는 비밀번호가 올바르지 않습니다." };
   }
 
-  // 계정이 잠겨 있으면(연속 실패로 잠금) 비번이 맞아도 잠금 해제 시각까지 거부.
-  if (user?.lockedUntil && user.lockedUntil > new Date()) {
-    const mins = Math.max(1, Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000));
-    await recordAccess({ companyId: user.companyId, userId: user.id, actorName: user.name, emailTried: email, kind: "login_fail", result: "fail", ip, userAgent, meta: "locked" });
-    return { error: `비밀번호를 여러 번 잘못 입력했습니다. 약 ${mins}분 뒤에 다시 시도해주세요.` };
-  }
+  const passwordOk = user
+    ? verifyPassword(password, user.passwordHash)
+    : (verifyPassword(password, DUMMY_HASH), false);
 
-  if (!user || !verifyPassword(password, user.passwordHash)) {
+  if (!user || !passwordOk) {
     // 실패 시: 실제 계정이면 실패 횟수를 올리고, 한도 도달하면 잠근다.
-    if (user) {
+    //  ⚠️ **이미 잠긴 계정은 더 올리지 않는다**(검수 중간 2) — 예전엔 잠긴 계정에 계속 두드리면
+    //     5회마다 잠금이 새로 10분씩 갱신돼 그 직원이 영영 못 들어오는 사고가 났다.
+    //  ⚠️ IP 제한에 걸린 시도도 **똑같이 센다**(검수 2차 치명 1) — 예전엔 여기서 건너뛰었는데,
+    //     그러면 공격자가 쓰레기 이메일 50건으로 스스로 제한을 켜 놓고 표적 계정을 무제한으로
+    //     두드릴 수 있었다(계정 5회 잠금이 통째로 꺼짐). 이 저장소의 유일한 대입 방어를 지켜야 한다.
+    const alreadyLocked = !!user?.lockedUntil && user.lockedUntil > new Date();
+    if (user && !alreadyLocked) {
       const failed = user.failedLoginCount + 1;
       await prisma.user.update({
         where: { id: user.id },
@@ -192,9 +237,30 @@ export async function login(
       });
     }
     // 접속기록: 실패 1건. 존재하지 않는 이메일이면 소속 회사를 알 수 없어 companyId=null(회사별 화면엔 안 보임).
-    await recordAccess({ companyId: user?.companyId ?? null, userId: user?.id ?? null, actorName: user?.name ?? null, emailTried: email, kind: "login_fail", result: "fail", ip, userAgent, meta: "bad_credentials" });
+    //  · 제한에 걸린 시도는 **1분에 1건만** 남긴다 — 무제한 적재로 진짜 기록을 밀어내지 않게(검수 2차 중간 2).
+    //    같은 kind(login_fail)로 남기므로 [이상접속]·[차단 후보] 감시에도 그대로 잡힌다.
+    if (ipThrottled) {
+      await recordThrottleHit({ ip, kind: "login_fail", meta: THROTTLED_META, companyId: user?.companyId ?? null, userId: user?.id ?? null, actorName: user?.name ?? null, emailTried: email, userAgent });
+    } else {
+      await recordAccess({ companyId: user?.companyId ?? null, userId: user?.id ?? null, actorName: user?.name ?? null, emailTried: email, kind: "login_fail", result: "fail", ip, userAgent, meta: "bad_credentials" });
+    }
     // 보안: 이메일/비번 중 무엇이 틀렸는지 구분해 알려주지 않는다.
     return { error: "이메일 또는 비밀번호가 올바르지 않습니다." };
+  }
+
+  // ── 여기부터는 **비밀번호가 맞은 사람**이다. 이제야 진짜 이유를 알려줘도 정보가 새지 않는다(검수 M-17). ──
+
+  // 퇴사(비활성화)된 계정은 로그인 불가.
+  if (user.deactivatedAt) {
+    await recordAccess({ companyId: user.companyId, userId: user.id, actorName: user.name, emailTried: email, kind: "login_fail", result: "fail", ip, userAgent, meta: "deactivated" });
+    return { error: "이 계정은 비활성화되었습니다. 관리자에게 문의하세요." };
+  }
+
+  // 계정이 잠겨 있으면(연속 실패로 잠금) 비번이 맞아도 잠금 해제 시각까지 거부.
+  if (user.lockedUntil && user.lockedUntil > new Date()) {
+    const mins = Math.max(1, Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000));
+    await recordAccess({ companyId: user.companyId, userId: user.id, actorName: user.name, emailTried: email, kind: "login_fail", result: "fail", ip, userAgent, meta: "locked" });
+    return { error: `비밀번호를 여러 번 잘못 입력했습니다. 약 ${mins}분 뒤에 다시 시도해주세요.` };
   }
 
   // 🔒 임시 비밀번호 만료 검사(검수 H-4).

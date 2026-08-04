@@ -17,7 +17,9 @@ import { AccessLogClient, type AccessRow } from "./AccessLogClient";
 // 이 화면에서 다루는 종류 — 로그인 계열 + 출퇴근(3단계) + 관리자 동작(4단계) + 차단 거부(5단계).
 // ⚠️ 새 kind를 기록하기 시작하면 **반드시 여기와 export/route.ts의 KIND_GROUPS·화면 필터에 함께 추가**할 것.
 //    빠뜨리면 DB엔 쌓이는데 화면·엑셀 어디에도 안 보이고 2년 뒤 조용히 파기된다(5단계에서 실제로 겪음).
-const ACCESS_KINDS = ["login", "login_fail", "logout", "clock_in", "clock_out", "config", "purge", "blocked"];
+// ⚠️ 여기에 없는 kind는 DB에 쌓여도 이 화면에 안 보이고 2년 뒤 조용히 파기된다(lib/audit.ts 경고).
+//    data_view = 생체정보(출퇴근 사진) 열람 1건 — 볼 때마다 남는다(검수 M-18).
+const ACCESS_KINDS = ["login", "login_fail", "logout", "clock_in", "clock_out", "config", "purge", "data_view", "blocked", "public_request"];
 
 // Date → "MM-DD HH:MM"
 function fmtDateTime(d: Date): string {

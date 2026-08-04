@@ -47,10 +47,11 @@ const RESULT_STYLE: Record<string, { bg: string; dot: string; color: string }> =
 // ⚠️ export/route.ts의 KIND_GROUPS와 같은 규칙을 유지할 것(화면과 엑셀이 어긋나면 안 됨).
 const KIND_FILTERS = [
   { key: "all", label: "전체", kinds: [] as string[] },
-  { key: "auth", label: "로그인", kinds: ["login", "login_fail", "logout", "blocked"] },
+  { key: "auth", label: "로그인", kinds: ["login", "login_fail", "logout", "blocked", "public_request"] },
   { key: "clock", label: "출퇴근", kinds: ["clock_in", "clock_out"] },
   // 라벨이 "관리자 동작"이 아닌 이유: 생체정보 파기에는 직원 "본인 철회"도 섞인다(대부분은 관리자 동작).
-  { key: "admin", label: "설정·파기", kinds: ["config", "purge"] },
+  //  · data_view = 출퇴근 사진 열람(생체정보). 여기 없으면 필터를 걸었을 때 열람 기록이 사라진다(검수 중간 5).
+  { key: "admin", label: "설정·파기·열람", kinds: ["config", "purge", "data_view"] },
 ];
 
 export function AccessLogClient({

@@ -22,7 +22,8 @@ type Actor = { id: string; companyId: string; name: string };
 // 기록할 관리자 행위 종류 — AccessEvent.kind에 정의돼 있고 **화면·엑셀에서 실제로 보이는 것만** 허용한다.
 // ⚠️ 여기에 종류를 늘리려면 반드시 security/access/page.tsx의 ACCESS_KINDS와 export/route.ts의
 //    KIND_GROUPS에도 함께 넣을 것. 안 그러면 DB엔 쌓이는데 아무 화면에도 안 보이고 2년 뒤 조용히 파기된다.
-//    (참고: "data_view"는 kind에 정의는 돼 있으나 아직 쓰는 곳이 없어 여기서 제외 — 쓸 때 화면과 함께 추가)
+//    (참고: "data_view"는 이 함수가 아니라 app/api/clock-photo가 recordAccess로 직접 남긴다 — 사진 열람 1건마다.
+//     "public_request"(가입·재설정 요청)도 마찬가지로 액션이 직접 남긴다. 둘 다 화면·엑셀에 등록돼 있다.)
 type AuditKind = Extract<AccessKind, "config" | "purge">;
 
 /**
