@@ -145,13 +145,15 @@ function toItems(keys: NavKey[]): Item[] {
 function groupsFor(role: string, showApprovals: boolean, isOwner: boolean): NavGroup[] {
   if (role === "admin") {
     const adminKeys: NavKey[] = ["dashboard", "notifications", "live", "employees", "records", "shifts", "schedule", "reports", "overtime-manage", "break-time", "leave-approvals", "outing-approvals", "remote-approvals", "overtime-approvals", "trip-approvals", ...(showApprovals ? (["approvals"] as NavKey[]) : []), "pending-approvals", "approval-history", "leave-summary", "biometrics", "pc-devices", "security", "company", "settings"];
-    const groups: NavGroup[] = [{ caption: "회사관리", tintBg: "#E4EDFF", tintText: "#2563EB", items: toItems(adminKeys) }];
+    // 그룹 제목 칩 색 — 메뉴바가 회색(var(--rail))이 되면서 예전 연한 색은 배경에 묻힌다. 한 단계씩 진하게.
+    //  · 위 주석대로 "관리=파랑 / 개인=초록"이 원래 의도였는데 초록이 실제로는 빠져 있었다(2026-08-05 확인) → 함께 채운다.
+    const groups: NavGroup[] = [{ caption: "회사관리", tintBg: "#DCE8FF", tintText: "#1D4ED8", items: toItems(adminKeys) }];
     // 사람인 관리자에게만 본인 근태 묶음을 준다(회사 계정 제외).
     if (!isOwner) {
       // ⚠️ 신청 메뉴(휴가·정정)도 함께 준다. 없으면 관리자가 연차를 써도 승인된 휴가가 없어
       //    대시보드 [미출근]에 계속 뜨고, [연차 현황]의 사용일수가 영원히 0이 되어
       //    미사용 연차수당 산정 근거가 틀어진다(검수 2차 7).
-      groups.push({ caption: "내 근태", items: toItems(["attendance", "my-records", "leave", "corrections", "auth-method"]) });
+      groups.push({ caption: "내 근태", tintBg: "#D8F3E4", tintText: "#166534", items: toItems(["attendance", "my-records", "leave", "corrections", "auth-method"]) });
     }
     return groups;
   }
@@ -176,7 +178,9 @@ export async function Sidebar({ user, active }: { user: NavUser; active: NavKey 
       style={{
         width: 76,
         flexShrink: 0,
-        background: "#fff",
+        // 메뉴바 배경 — 본문(var(--bg) #F9FAFB)보다 한 단계 진한 회색으로 영역을 구분한다.
+        //  예전엔 #fff라 본문과 거의 같은 색이었고 1px 선 하나로만 갈라졌다(2026-08-05 사장님 지적).
+        background: "var(--rail)",
         borderRight: "1px solid var(--border)",
         // 화면 높이에 고정하고 자기 자리를 지킨다(길이가 긴 본문에서도 사이드바는 항상 보임).
         // 메뉴가 화면보다 길면 nav만 내부 스크롤 → 맨 아래 프로필과 겹치지 않는다.
@@ -197,7 +201,8 @@ export async function Sidebar({ user, active }: { user: NavUser; active: NavKey 
           height: 36,
           borderRadius: 9,
           background: user.company.logoName ? "#fff" : "var(--primary)",
-          border: user.company.logoName ? "1px solid var(--border)" : "none",
+          // 로고 상자 테두리도 회색 메뉴바 위에서는 var(--border)가 안 보인다(검수 경미 6) → 프로필과 같은 색으로.
+          border: user.company.logoName ? "1px solid #C7CEDA" : "none",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -226,7 +231,8 @@ export async function Sidebar({ user, active }: { user: NavUser; active: NavKey 
             style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", alignItems: "center" }}
           >
             {/* 두 번째 그룹부터는 앞에 구분선을 둔다 */}
-            {gi > 0 && <div style={{ width: 44, height: 1, background: "var(--border)", margin: "10px 0 4px" }} />}
+            {/* 구분선도 회색 배경 위에서는 var(--border)(#E5E7EB)가 거의 안 보인다 → 한 단계 진하게 */}
+            {gi > 0 && <div style={{ width: 44, height: 1, background: "#D6DCE5", margin: "10px 0 4px" }} />}
             {/* 그룹 제목(관리자만 있음) */}
             {g.caption && (
               <span
@@ -266,8 +272,13 @@ export async function Sidebar({ user, active }: { user: NavUser; active: NavKey 
                     justifyContent: "center",
                     gap: 3,
                     textDecoration: "none",
-                    background: on ? "#EFF6FF" : "transparent",
-                    color: on ? "var(--primary)" : "#9CA3AF",
+                    // 지금 보고 있는 메뉴 표시 — 메뉴바가 회색이 되면서 예전 색(#EFF6FF)은 배경에 묻힌다.
+                    //  한 단계 진한 파랑(#DBEAFE)으로 올려 "여기가 지금 화면"이 또렷하게 보이게 한다.
+                    background: on ? "#DBEAFE" : "transparent",
+                    // ⚠️ 칩 배경을 진하게 했으면 그 위 글자도 함께 진하게 내려야 한다(검수 중간 2).
+                    //    var(--primary)를 그대로 두면 글자 대비가 4.75 → 4.24로 오히려 나빠져 읽기 기준(4.5)에 미달했다.
+                    //    비활성 글자도 11px 작은 글씨라 4.5 이상이 필요하다(옛 #9CA3AF는 2.54로 원래부터 미달 — 이번에 함께 해소).
+                    color: on ? "#1D4ED8" : "#5F6B7A",
                   }}
                 >
                   <span
@@ -306,7 +317,10 @@ export async function Sidebar({ user, active }: { user: NavUser; active: NavKey 
             width: 32,
             height: 32,
             borderRadius: "50%",
-            background: "#EEF2F7",
+            // 회색 메뉴바 위에서는 예전 색(#EEF2F7)이 배경과 거의 같아 동그라미가 사라진다 → 흰 바탕 + 테두리.
+            //  테두리는 var(--border)(#E5E7EB)면 회색 배경과 거의 같아 없는 것과 같다(검수 경미 6) → 한 단계 진하게.
+            background: "#fff",
+            border: "1px solid #C7CEDA",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
