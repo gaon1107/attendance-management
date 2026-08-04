@@ -74,7 +74,15 @@ export default async function RecordsPage({
 
   const records = await prisma.attendance.findMany({
     where: { companyId: me.companyId, clockIn: { gte: start, lt: end } },
-    include: { user: true, breaks: true, clockPhotos: { select: { livenessStatus: true } } },
+    // 🔴 [검수 P-5] 직원 정보는 **화면에 쓰는 것만** 가져온다.
+    //    예전엔 `user: true`라 기록 한 줄마다 비밀번호 해시·전화번호·얼굴 동의 기록까지
+    //    직원 카드 전체가 딸려왔다(92일 조회면 같은 카드가 수천 번 중복 적재).
+    //    필드를 빠뜨리면 타입체크(tsc)가 컴파일 단계에서 잡는다 — 조용히 빈칸이 되지 않는다.
+    include: {
+      user: { select: { name: true, employeeNo: true, workDays: true, shiftGroupId: true } },
+      breaks: true,
+      clockPhotos: { select: { livenessStatus: true } },
+    },
     orderBy: { clockIn: "asc" }, // 오래된 것이 위로(시간 흐름 순)
   });
 

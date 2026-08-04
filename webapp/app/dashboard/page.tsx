@@ -28,7 +28,11 @@ export default async function DashboardPage() {
 
   const todays = await prisma.attendance.findMany({
     where: { companyId: me.companyId, clockIn: { gte: startOfToday } },
-    include: { user: true, breaks: true },
+    // 🔴 [검수 P-5] 대시보드가 쓰는 직원 항목만(비밀번호 해시 등 카드 전체 적재 방지).
+    include: {
+      user: { select: { name: true, workDays: true, shiftGroupId: true } },
+      breaks: true,
+    },
     orderBy: { clockIn: "asc" },
   });
   // 직원 목록(근무요일·미출근 계산용) — 재직중(퇴사 안 한) 사람만.

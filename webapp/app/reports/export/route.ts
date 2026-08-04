@@ -174,6 +174,21 @@ export async function GET(request: Request): Promise<Response> {
   ];
   for (const t of notes) ws3.addRow({ text: t });
 
+  // ⚠️ [검수 P-6] 여기는 **스트리밍이 아니다.** 파일 전체를 메모리에 만든 뒤 한 번에 내려보낸다.
+  //  2026-08-04에 `write(스트림)`으로 바꿔봤다가 **되돌렸다.** 이유(라이브러리 소스·실측으로 확인):
+  //   ① exceljs는 압축 마지막 단계에서 zip 전체를 Buffer 하나로 만든 뒤 스트림에 **한 번에** 밀어 넣는다
+  //      (utils/zip-stream.js `finalize()`: generateAsync → stream.end(content)). 조각이 1개라 흘려보내는
+  //      효과가 없고, 실측 피크 메모리도 437.2MB vs 437.4MB로 **차이가 없었다**(오히려 조금 느림).
+  //   ② 실패 처리가 더 나빠진다. 스트리밍이면 200 OK와 파일 이름 헤더가 **이미 나간 뒤**라, 압축이 실패하면
+  //      브라우저에 **반쪽짜리 파일이 정상 파일처럼 저장된다.** 급여 정산에서 조용히 틀리는 최악의 형태다.
+  //      지금 방식은 실패해도 파일이 아예 만들어지지 않는다.
+  //  ⚠️ 단, "압축이 실패하면 요청이 영영 안 끝난다"는 문제는 **지금 방식에도 똑같이 있다**(2차 검수 M-1).
+  //     writeBuffer()가 내부에서 같은 write()/_finalize()를 쓰는데, _finalize는 async인 zip.finalize()를
+  //     await 없이 부르고 `zip.on('error')`로 기다린다. 그런데 zip-stream.js는 'finish'만 emit하고
+  //     'error'는 **어디서도 내지 않는다** → 압축 실패 시 약속이 영원히 pending. 이 화면에 타임아웃을
+  //     거는 건 별도 후속 과제로 등재했다(plan.md).
+  //  진짜로 메모리를 줄이려면 exceljs의 WorkbookWriter(줄 단위 기록)로 갈아타야 하고, 머리글 서식·자동필터·
+  //  틀고정이 그대로 나오는지 재검증이 필요한 **별도 과제**다(plan.md 후속 등재). 지금은 92일 상한이 방벽이다.
   const buf = await wb.xlsx.writeBuffer();
   const filename = `attendance_${fromISO}_${toISO}.xlsx`;
 

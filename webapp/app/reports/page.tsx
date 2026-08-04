@@ -67,7 +67,16 @@ export default async function ReportsPage({
   // 기간 내 우리 회사 출퇴근 기록
   const records = await prisma.attendance.findMany({
     where: { companyId: me.companyId, clockIn: { gte: start, lt: end } },
-    include: { user: true, breaks: true },
+    // 🔴 [검수 P-5] 집계에 쓰는 직원 항목만 가져온다(비밀번호 해시 등 전체 적재 방지).
+    include: {
+      user: {
+        select: {
+          isOwner: true, name: true, employeeNo: true, role: true,
+          workDays: true, shiftGroupId: true, hireDate: true, deactivatedAt: true,
+        },
+      },
+      breaks: true,
+    },
     orderBy: { clockIn: "asc" },
   });
 
