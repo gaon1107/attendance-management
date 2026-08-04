@@ -1,6 +1,13 @@
-// 공통 왼쪽 아이콘 사이드바 — 리뉴얼 디자인의 세로 네비게이션.
-// 링크 구성은 역할별(관리자/직원)로 나뉜다. 아이콘 레일 형태의 세로 네비게이션.
+// 공통 왼쪽 사이드바 — 다크 네이비 세로 네비게이션(2026-08-05 개편).
+// 링크 구성은 역할별(관리자/직원)로 나뉜다. 아이콘(좌) + 메뉴명(우) 가로 배치.
+//
+// ⚠️ 이 파일은 **서버 컴포넌트**다(Prisma로 결재 대기 건수를 직접 조회한다).
+//    그래서 "접기" 같은 클릭 상태를 컴포넌트가 들고 있을 수 없다.
+//    → 접기 토글은 **작은 폼 + 서버 액션 + 쿠키**로 처리한다. 자바스크립트 없이 동작하고,
+//      새로고침·화면 이동에도 접힘이 유지된다. 클라이언트 컴포넌트를 새로 만들지 않기 위한 선택이다.
 import Link from "next/link";
+import { cookies } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { countMyPendingApprovals, isApprovalLineMember } from "@/lib/approval-server";
 
 type NavUser = {
@@ -36,7 +43,7 @@ export type NavKey =
 
 type Item = { key: NavKey; href: string; label: string; icon: string };
 
-// lucide 스타일 아이콘(선). 목업과 동일한 모양.
+// lucide 스타일 아이콘(선). 목업과 동일한 모양. ※ 이모지는 쓰지 않는다.
 const ICON: Record<NavKey, string> = {
   dashboard: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
   notifications: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
@@ -93,7 +100,6 @@ const LABEL: Record<NavKey, string> = {
   notice: "공지",
   corrections: "정정",
   "leave-summary": "연차정산",
-  // 4글자 규칙 준수("PC관리"). 라틴 2글자 + 한글 2글자라 56px 칸에 한 줄로 들어간다.
   "pc-devices": "PC관리",
   security: "보안로그",
   live: "현황판",
@@ -108,7 +114,6 @@ const LABEL: Record<NavKey, string> = {
   "remote-approvals": "재택승인",
   overtime: "초과근무",
   "overtime-approvals": "야근승인",
-  // 6글자라 56px 칸에 한 줄로 안 들어간다. 띄어쓰기를 넣어 "초과근무 / 관리"로 예쁘게 두 줄이 되게 한다(아래 wordBreak:keep-all과 한 쌍).
   "overtime-manage": "초과근무 관리",
   "break-time": "휴게시간",
   trip: "출장",
@@ -126,62 +131,116 @@ const HREF: Partial<Record<NavKey, string>> = {
   security: "/security/logins", // 보안로그 진입점 = 로그인 이력 화면
 };
 
-// tintBg/tintText: 그룹 제목 칩의 연한 포인트 색(관리=파랑, 개인=초록으로 서로 구분)
-type NavGroup = { caption: string; items: Item[]; tintBg?: string; tintText?: string };
+// 접을 수 있는 그룹의 id — **여기가 유일한 출처**다.
+//  ⚠️ 새 그룹을 만들면 반드시 여기에 추가한다. 안 하면 tsc가 컴파일에서 막는다(검수 중간 3).
+//     예전엔 이 목록과 groupsFor()가 따로 놀아서, 빠뜨리면 "제목은 보이는데 눌러도 아무 일도 안 나는"
+//     조용한 고장이 났다(에러도 로그도 남지 않는다).
+const GROUP_IDS = ["ops", "appr", "hr", "ana", "sec", "mine"] as const;
+type ToggleableGroupId = (typeof GROUP_IDS)[number];
+// "emp"(직원 한 묶음)는 제목이 없어 접기 대상이 아니다 — 접히면 링크가 0개인 화면이 된다.
+type GroupId = ToggleableGroupId | "emp";
+
+// id: 그룹 접기 상태를 쿠키에 기록할 때 쓰는 이름(사람이 보는 caption과 분리 — 제목이 바뀌어도 접힘이 풀리지 않게).
+type NavGroup = { id: GroupId; caption: string; items: Item[] };
 
 function toItems(keys: NavKey[]): Item[] {
   return keys.map((key) => ({ key, href: HREF[key] ?? `/${key}`, label: LABEL[key], icon: ICON[key] }));
 }
 
-// 관리자 메뉴는 "회사관리"(직원들 것) + "내 근태"(본인 것) 두 묶음.
-//  · 2026-07-27 변경: 예전에는 관리자에게 "내 근태"를 주지 않았다. 그런데 관리자를 여러 명 둘 수 있게 되면서
-//    관리자(총무 담당 등)도 근태 집계 대상에 포함시켰고, **출근 버튼이 없으면 매일 [미출근]으로 뜬다**
-//    (검수 치명 4). 근태에 세는 사람에게는 반드시 찍을 수단을 준다.
-//  · 🔒 회사 계정(isOwner)은 사람이 아니므로 이 묶음을 주지 않는다 — 법정 근로시간 기록에
-//    사람 아닌 계정이 섞이면 안 된다(출퇴근 서버 액션도 따로 막아 두었다).
-// 직원 메뉴는 전부 본인 것이라 한 묶음(제목 없음).
-// showApprovals: [결재함] 메뉴 표시 여부. 결재 라인 구성원(부서장·대결자) 또는 지금 결재 대기가 있는 사람만 true.
-//  → 결재선 켠 회사여도 일반 직원/미지정 관리자에겐 안 보인다(빈 결재함 노출 방지). 판정은 Sidebar에서.
+// ── 접기 상태 쿠키 ────────────────────────────────────────────────────────
+const COOKIE_RAIL = "sb_collapsed"; // "1"이면 64px 아이콘만
+const COOKIE_GROUPS = "sb_groups"; // 접어 둔 그룹 id를 쉼표로 이어 둔 값
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1년
+
+// 접기 토글(서버 액션) — 폼 전송으로 호출된다. 자바스크립트가 없어도 동작한다.
+//  target="rail"이면 사이드바 전체 접기, 그 외에는 그룹 id.
+//  ⚠️ 화면 데이터는 건드리지 않는다. 쿠키 하나만 쓰고 화면을 다시 그리게 한다.
+async function toggleSidebar(formData: FormData): Promise<void> {
+  "use server";
+  const target = String(formData.get("target") ?? "").slice(0, 32);
+  // 🔒 아는 이름만 받는다(검수 중간 1). 없으면 임의 문자열이 쿠키에 무한히 쌓여
+  //    요청 헤더 한도를 넘고, 결국 로그인조차 안 되는 상태가 된다.
+  if (target !== "rail" && !(GROUP_IDS as readonly string[]).includes(target)) return;
+  const jar = await cookies();
+  // httpOnly: 이 값은 서버만 읽으면 된다. 브라우저 스크립트가 못 건드리게 막아 두면
+  //  "그룹을 전부 접어 링크가 하나도 없는 화면으로 만드는" 장난도 원천 차단된다.
+  const opts = { path: "/", maxAge: COOKIE_MAX_AGE, sameSite: "lax" as const, httpOnly: true, secure: process.env.NODE_ENV === "production" };
+  if (target === "rail") {
+    jar.set(COOKIE_RAIL, jar.get(COOKIE_RAIL)?.value === "1" ? "0" : "1", opts);
+  } else {
+    const cur = new Set((jar.get(COOKIE_GROUPS)?.value ?? "").split(",").filter(Boolean));
+    if (cur.has(target)) cur.delete(target);
+    else cur.add(target);
+    // 저장할 때도 아는 이름만 남긴다 — 읽을 때만 걸러내면 밖에서 심어진 값이 계속 따라다닌다(검수 경미 4).
+    jar.set(COOKIE_GROUPS, [...cur].filter((x) => (GROUP_IDS as readonly string[]).includes(x)).join(","), opts);
+  }
+  // 사이드바는 **모든 화면**에 붙어 있으므로 레이아웃 단위로 다시 그린다.
+  //  범위가 넓어 보이지만, 이게 없으면 이미 다녀온 다른 화면이 라우터 캐시에서 나올 때
+  //  **접기 전 모습의 사이드바**가 그대로 보인다. 이 프로젝트엔 데이터 캐시를 쓰는 곳이
+  //  한 군데도 없어(unstable_cache·"use cache"·revalidate 전부 0건) 지워질 캐시도 없다.
+  revalidatePath("/", "layout");
+}
+
+// ── 메뉴 구성 ────────────────────────────────────────────────────────────
+// 관리자 메뉴는 6묶음. **메뉴를 더하거나 빼지 않는다** — 기존 24개를 성격별로 나눠 담기만 한다.
+//  · 2026-07-27 결정 유지: 관리자에게도 "내 근태"를 준다. 관리자도 근태 집계 대상이라
+//    출근 버튼이 없으면 매일 [미출근]으로 뜨고, 휴가·정정이 없으면 연차 사용일수가 0으로 남는다.
+//  · 🔒 회사 계정(isOwner)은 사람이 아니므로 "내 근태"를 주지 않는다.
+// 직원 메뉴는 전부 본인 것이라 한 묶음(제목 없음 → 접기 대상도 아님).
+// showApprovals: [결재함] 표시 여부. 결재 라인 구성원이거나 지금 내 차례가 있는 사람만 true.
 function groupsFor(role: string, showApprovals: boolean, isOwner: boolean): NavGroup[] {
   if (role === "admin") {
-    const adminKeys: NavKey[] = ["dashboard", "notifications", "live", "employees", "records", "shifts", "schedule", "reports", "overtime-manage", "break-time", "leave-approvals", "outing-approvals", "remote-approvals", "overtime-approvals", "trip-approvals", ...(showApprovals ? (["approvals"] as NavKey[]) : []), "pending-approvals", "approval-history", "leave-summary", "biometrics", "pc-devices", "security", "company", "settings"];
-    // 그룹 제목 칩 색 — 메뉴바가 회색(var(--rail))이 되면서 예전 연한 색은 배경에 묻힌다. 한 단계씩 진하게.
-    //  · 위 주석대로 "관리=파랑 / 개인=초록"이 원래 의도였는데 초록이 실제로는 빠져 있었다(2026-08-05 확인) → 함께 채운다.
-    const groups: NavGroup[] = [{ caption: "회사관리", tintBg: "#DCE8FF", tintText: "#1D4ED8", items: toItems(adminKeys) }];
-    // 사람인 관리자에게만 본인 근태 묶음을 준다(회사 계정 제외).
+    const groups: NavGroup[] = [
+      { id: "ops", caption: "근태 운영", items: toItems(["dashboard", "records", "live", "shifts", "schedule"]) },
+      {
+        id: "appr",
+        caption: "승인 관리",
+        items: toItems([
+          "leave-approvals", "overtime-manage", "outing-approvals", "remote-approvals",
+          "overtime-approvals", "trip-approvals",
+          ...(showApprovals ? (["approvals"] as NavKey[]) : []),
+          "pending-approvals", "approval-history",
+        ]),
+      },
+      { id: "hr", caption: "인사 정보", items: toItems(["employees", "notifications", "leave-summary"]) },
+      { id: "ana", caption: "분석·설정", items: toItems(["reports", "break-time", "company", "settings"]) },
+      { id: "sec", caption: "보안·기기", items: toItems(["biometrics", "pc-devices", "security"]) },
+    ];
     if (!isOwner) {
-      // ⚠️ 신청 메뉴(휴가·정정)도 함께 준다. 없으면 관리자가 연차를 써도 승인된 휴가가 없어
-      //    대시보드 [미출근]에 계속 뜨고, [연차 현황]의 사용일수가 영원히 0이 되어
-      //    미사용 연차수당 산정 근거가 틀어진다(검수 2차 7).
-      groups.push({ caption: "내 근태", tintBg: "#D8F3E4", tintText: "#166534", items: toItems(["attendance", "my-records", "leave", "corrections", "auth-method"]) });
+      groups.push({ id: "mine", caption: "내 근태", items: toItems(["attendance", "my-records", "leave", "corrections", "auth-method"]) });
     }
     return groups;
   }
-  // 직원: 결재 라인에 있는 사람(부서장 등)에게만 [결재함](자기 차례 승인)을 추가.
   const empKeys: NavKey[] = ["attendance", "my-records", "schedule", "leave", "corrections", "outing", "remote", "overtime", "trip", ...(showApprovals ? (["approvals"] as NavKey[]) : []), "auth-method"];
-  return [{ caption: "", items: toItems(empKeys) }];
+  return [{ id: "emp", caption: "", items: toItems(empKeys) }];
 }
 
+// 폭(펼침 220px / 접힘·좁은 화면 64px)은 globals.css의 .rail / .rail-fold에 있다.
 export async function Sidebar({ user, active }: { user: NavUser; active: NavKey }) {
   // 다단계 결재를 쓰는 회사(부서장 자동 deptline · 상신자 지정 custom). single은 결재함 없음.
   const multiStep = user.company.approvalMode === "deptline" || user.company.approvalMode === "custom";
   const initial = user.name.slice(0, 1);
   // 다단계 결재 회사에서만 내 결재 대기 수를 배지로. 결재자 아니면 첫 쿼리에서 0(값싸다). single이면 조회 없음.
   const approvalWaiting = multiStep && user.companyId && user.id ? await countMyPendingApprovals(user.companyId, user.id) : 0;
-  // [결재함] 메뉴: 지금 결재 대기가 있으면(두 모드 공통), 또는 deptline이면 결재 라인 구성원(부서장·대결자)에게 미리 노출.
-  //  · custom은 지정 결재자가 고정 조직이 아니므로, 내 차례가 온 시점(approvalWaiting>0)에 메뉴·배지가 뜬다.
   const showApprovals = multiStep && !!user.companyId && !!user.id && (approvalWaiting > 0 || (user.company.approvalMode === "deptline" && (await isApprovalLineMember(user.companyId, user.id))));
   const groups = groupsFor(user.role, showApprovals, !!user.isOwner);
 
+  const jar = await cookies();
+  const collapsed = jar.get(COOKIE_RAIL)?.value === "1";
+  // ⚠️ 접은 그룹의 메뉴는 **DOM에는 그대로 두고 CSS로만 숨긴다.**
+  //    서버는 화면 크기를 알 수 없는데, 좁은 화면·접힌 상태에서는 그룹 제목이 사라져
+  //    다시 펼 방법이 없어지기 때문이다. CSS가 그때 도로 보여준다(메뉴가 영영 사라지는 함정 방지).
+  //    제목이 없는 묶음(직원 화면)은 애초에 접기 대상이 아니다 — 접히면 링크가 0개가 된다(검수 중간 1).
+  const closedGroups = new Set((jar.get(COOKIE_GROUPS)?.value ?? "").split(",").filter(Boolean));
+
+  const roleLabel = user.role === "admin" ? "관리자" : "직원";
+
   return (
     <aside
+      className={collapsed ? "rail rail-fold" : "rail"}
       style={{
-        width: 76,
         flexShrink: 0,
-        // 메뉴바 배경 — 본문(var(--bg) #F9FAFB)보다 한 단계 진한 회색으로 영역을 구분한다.
-        //  예전엔 #fff라 본문과 거의 같은 색이었고 1px 선 하나로만 갈라졌다(2026-08-05 사장님 지적).
         background: "var(--rail)",
-        borderRight: "1px solid var(--border)",
         // 화면 높이에 고정하고 자기 자리를 지킨다(길이가 긴 본문에서도 사이드바는 항상 보임).
         // 메뉴가 화면보다 길면 nav만 내부 스크롤 → 맨 아래 프로필과 겹치지 않는다.
         height: "100vh",
@@ -190,147 +249,158 @@ export async function Sidebar({ user, active }: { user: NavUser; active: NavKey 
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        alignItems: "center",
-        padding: "16px 0",
       }}
     >
-      {/* 로고 — 회사 로고가 있으면 이미지, 없으면 "근" 글자([회사정보]에서 업로드) */}
+      {/* ── 상단 56px: 로고 + 회사명 + 접기 토글 ──
+          여백·정렬은 CSS(.rail-head)에 둔다 — 좁은 화면에서 아이콘 레일로 바뀌어야 하는데
+          서버는 화면 크기를 모르기 때문이다(검수 치명 1). */}
       <div
+        className="rail-head"
         style={{
-          width: 36,
-          height: 36,
-          borderRadius: 9,
-          background: user.company.logoName ? "#fff" : "var(--primary)",
-          // 로고 상자 테두리도 회색 메뉴바 위에서는 var(--border)가 안 보인다(검수 경미 6) → 프로필과 같은 색으로.
-          border: user.company.logoName ? "1px solid #C7CEDA" : "none",
+          height: 56,
+          flexShrink: 0,
           display: "flex",
           alignItems: "center",
-          justifyContent: "center",
-          marginBottom: 22,
-          overflow: "hidden",
+          gap: 10,
+          borderBottom: "1px solid var(--rail-line)",
         }}
       >
-        {user.company.logoName ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={`/api/company-logo?v=${encodeURIComponent(user.company.logoName)}`}
-            alt={user.company.name}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-          />
-        ) : (
-          <span style={{ color: "#fff", fontSize: 17, fontWeight: 700 }}>근</span>
-        )}
-      </div>
-
-      {/* 메뉴 — 관리자는 "회사관리 / 내근태" 두 묶음으로 나눠 표시(구분선+작은 제목) */}
-      {/* flex:1 + minHeight:0 + overflowY:auto → 화면이 낮아 메뉴가 넘칠 때만 내부 스크롤(맨 아래 프로필과 겹침 방지) */}
-      <nav style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", alignItems: "center", flex: 1, minHeight: 0, overflowY: "auto" }}>
-        {groups.map((g, gi) => (
-          <div
-            key={g.caption || gi}
-            style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", alignItems: "center" }}
-          >
-            {/* 두 번째 그룹부터는 앞에 구분선을 둔다 */}
-            {/* 구분선도 회색 배경 위에서는 var(--border)(#E5E7EB)가 거의 안 보인다 → 한 단계 진하게 */}
-            {gi > 0 && <div style={{ width: 44, height: 1, background: "#D6DCE5", margin: "10px 0 4px" }} />}
-            {/* 그룹 제목(관리자만 있음) */}
-            {g.caption && (
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 800,
-                  letterSpacing: 0.3,
-                  marginTop: 2,
-                  marginBottom: 4,
-                  whiteSpace: "nowrap",
-                  // 그룹 제목 배경 칩 — 관리(파랑)/개인(초록) 연한 포인트 색으로 또렷하게 구분(과하지 않게)
-                  background: g.tintBg ?? "#E5E8EE",
-                  color: g.tintText ?? "#4B5563",
-                  padding: "3px 9px",
-                  borderRadius: 7,
-                }}
-              >
-                {g.caption}
-              </span>
-            )}
-            {g.items.map((it) => {
-              const on = it.key === active;
-              return (
-                <Link
-                  key={it.key}
-                  href={it.href}
-                  style={{
-                    position: "relative",
-                    width: 56,
-                    // minHeight(고정 height 아님): 라벨이 두 줄인 항목이 혹시 칸을 넘겨도 칸이 늘어날 뿐 아래 메뉴와 겹치지 않는다.
-                    // 한 줄 라벨(콘텐츠 34px)은 그대로 50px 유지 → 기존 화면 변화 없음.
-                    minHeight: 50,
-                    borderRadius: 11,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 3,
-                    textDecoration: "none",
-                    // 지금 보고 있는 메뉴 표시 — 메뉴바가 회색이 되면서 예전 색(#EFF6FF)은 배경에 묻힌다.
-                    //  한 단계 진한 파랑(#DBEAFE)으로 올려 "여기가 지금 화면"이 또렷하게 보이게 한다.
-                    background: on ? "#DBEAFE" : "transparent",
-                    // ⚠️ 칩 배경을 진하게 했으면 그 위 글자도 함께 진하게 내려야 한다(검수 중간 2).
-                    //    var(--primary)를 그대로 두면 글자 대비가 4.75 → 4.24로 오히려 나빠져 읽기 기준(4.5)에 미달했다.
-                    //    비활성 글자도 11px 작은 글씨라 4.5 이상이 필요하다(옛 #9CA3AF는 2.54로 원래부터 미달 — 이번에 함께 해소).
-                    color: on ? "#1D4ED8" : "#5F6B7A",
-                  }}
-                >
-                  <span
-                    style={{ width: 19, height: 19, display: "flex" }}
-                    dangerouslySetInnerHTML={{
-                      __html: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${it.icon}</svg>`,
-                    }}
-                  />
-                  {/* 라벨: 한글은 띄어쓰기 없으면 아무 글자에서나 잘리므로 keep-all로 "띄어쓰기에서만" 줄바꿈시킨다("초과근무 관리" → 초과근무/관리).
-                      overflowWrap:anywhere = 안전장치. 띄어쓰기가 없는 긴 라벨(5글자↑)은 keep-all만으론 안 끊겨 가로로 삐져나가 잘리므로,
-                        정 안 들어갈 때만 강제로 끊게 한다(현재 라벨은 전부 4글자 이하라 동작 변화 없음).
-                      lineHeight 1.2 → 두 줄 26.4px + 아이콘 19 + gap 3 = 48.4px < 50px 칸(여유 1.6px).
-                        ※ fontSize·gap·minHeight 중 하나라도 바꾸면 이 계산을 다시 할 것. */}
-                  <span style={{ fontSize: 11, fontWeight: 700, wordBreak: "keep-all", overflowWrap: "anywhere", textAlign: "center", lineHeight: 1.2 }}>{it.label}</span>
-                  {/* 결재함: 내 결재 대기 건수 배지 */}
-                  {it.key === "approvals" && approvalWaiting > 0 && (
-                    <span
-                      style={{ position: "absolute", top: 4, right: 8, minWidth: 16, height: 16, padding: "0 4px", borderRadius: 8, background: "var(--danger)", color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}
-                    >
-                      {approvalWaiting}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
-      </nav>
-
-      {/* 아래: 프로필(클릭 시 계정 설정) — 로그아웃은 상단바 우측 공통 버튼으로 이동 */}
-      <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", alignItems: "center" }}>
-        <Link
-          href="/account"
-          title={`${user.name} (${user.role === "admin" ? "관리자" : "직원"}) · 계정 설정`}
+        <div
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: "50%",
-            // 회색 메뉴바 위에서는 예전 색(#EEF2F7)이 배경과 거의 같아 동그라미가 사라진다 → 흰 바탕 + 테두리.
-            //  테두리는 var(--border)(#E5E7EB)면 회색 배경과 거의 같아 없는 것과 같다(검수 경미 6) → 한 단계 진하게.
-            background: "#fff",
-            border: "1px solid #C7CEDA",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 13,
-            fontWeight: 700,
-            color: "#374151",
-            textDecoration: "none",
+            width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+            background: user.company.logoName ? "#fff" : "var(--primary)",
+            display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
           }}
         >
-          {initial}
+          {user.company.logoName ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={`/api/company-logo?v=${encodeURIComponent(user.company.logoName)}`} alt={user.company.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ) : (
+            <span style={{ color: "#fff", fontSize: 15, fontWeight: 700 }}>근</span>
+          )}
+        </div>
+        {!collapsed && (
+          <>
+            {/* 서비스명 = 실제 회사명 + " 근태"(하드코딩하지 않는다 — 회사마다 다르다).
+                이름이 길면 말줄임되므로 title로 전체를 볼 수 있게 한다(검수 경미 4). */}
+            <span className="rail-label" title={`${user.company.name} 근태`} style={{ flex: 1, minWidth: 0, color: "#fff", fontSize: 15, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {user.company.name} 근태
+            </span>
+            <form action={toggleSidebar} className="rail-toggle" style={{ flexShrink: 0 }}>
+              <input type="hidden" name="target" value="rail" />
+              <button type="submit" className="rail-btn" title="메뉴 접기" aria-label="메뉴 접기" style={{ width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 8 }}>
+                <span style={{ width: 18, height: 18, display: "flex" }} dangerouslySetInnerHTML={{ __html: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>' }} />
+              </button>
+            </form>
+          </>
+        )}
+      </div>
+      {collapsed && (
+        <form action={toggleSidebar} className="rail-toggle rail-toggle-center" style={{ padding: "8px 0 0" }}>
+          <input type="hidden" name="target" value="rail" />
+          <button type="submit" className="rail-btn" title="메뉴 펼치기" aria-label="메뉴 펼치기" style={{ width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 8 }}>
+            <span style={{ width: 18, height: 18, display: "flex" }} dangerouslySetInnerHTML={{ __html: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/></svg>' }} />
+          </button>
+        </form>
+      )}
+
+      {/* ── 메뉴 ── flex:1 + minHeight:0 + overflowY:auto → 화면이 낮아 넘칠 때만 내부 스크롤 */}
+      <nav className="rail-nav" style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 0" }}>
+        {groups.map((g) => {
+          // 제목이 없는 묶음(직원 화면)은 접힘 대상이 아니다 — 접히면 링크가 하나도 없는 화면이 된다.
+          const closed = !!g.caption && closedGroups.has(g.id);
+          return (
+            <div key={g.id} className={closed ? "rail-group rail-group-closed" : "rail-group"}>
+              {/* 그룹 제목 = 접기 버튼(우측에 옅은 구분선). 접힌 상태·좁은 화면·직원 화면에는 제목이 없다. */}
+              {g.caption && (
+                <form action={toggleSidebar} className="rail-capwrap">
+                  <input type="hidden" name="target" value={g.id} />
+                  <button
+                    type="submit"
+                    className="rail-cap"
+                    aria-expanded={!closed}
+                    title={closed ? `${g.caption} 펼치기` : `${g.caption} 접기`}
+                    style={{ width: "100%", height: 36, display: "flex", alignItems: "center", gap: 8, padding: "0 14px", fontSize: 11, fontWeight: 600, letterSpacing: 0.3, whiteSpace: "nowrap", fontFamily: "inherit", marginTop: 6 }}
+                  >
+                    <span>{g.caption}</span>
+                    <span aria-hidden style={{ flex: 1, height: 1, background: "var(--rail-line)" }} />
+                    <span
+                      aria-hidden
+                      style={{ width: 14, height: 14, display: "flex", transform: closed ? "rotate(-90deg)" : "none" }}
+                      dangerouslySetInnerHTML={{ __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>' }}
+                    />
+                  </button>
+                </form>
+              )}
+              {g.items.map((it) => {
+                  const on = it.key === active;
+                  return (
+                    <Link
+                      key={it.key}
+                      href={it.href}
+                      className={on ? "rail-item rail-item-on" : "rail-item"}
+                      // 접힌 상태에서만 툴팁을 붙인다. 펼친 상태에선 글자가 이미 보이므로 같은 글자가
+                      //  또 뜨면 거슬리고, 좁은 화면은 터치라 마우스오버 툴팁이 애초에 뜨지 않는다(검수 경미 5).
+                      title={collapsed ? it.label : undefined}
+                      // ⚠️ display/정렬은 CSS(.rail-item)에 둔다 — 인라인으로 두면 그룹 접기(display:none)를 이겨버린다.
+                      style={{
+                        position: "relative",
+                        height: 42,
+                        flexShrink: 0,
+                        // 선택 표시용 왼쪽 3px 세로 바. 평소엔 투명으로 자리만 잡아 글자가 밀리지 않게 한다.
+                        borderLeft: `3px solid ${on ? "var(--rail-bar)" : "transparent"}`,
+                      }}
+                    >
+                      <span
+                        style={{ width: 18, height: 18, flexShrink: 0, display: "flex" }}
+                        dangerouslySetInnerHTML={{
+                          __html: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${it.icon}</svg>`,
+                        }}
+                      />
+                      <span className="rail-label" style={{ fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.label}</span>
+                      {/* 결재함: 내 결재 대기 건수 배지 (접힘·좁은 화면에서는 CSS가 오른쪽 위로 옮긴다) */}
+                      {it.key === "approvals" && approvalWaiting > 0 && (
+                        <span
+                          className="rail-badge"
+                          style={{ background: "var(--danger)", color: "#fff", fontWeight: 800, lineHeight: 1 }}
+                        >
+                          {approvalWaiting}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+            </div>
+          );
+        })}
+      </nav>
+
+      {/* ── 하단 고정: 프로필(클릭 시 계정 설정) ──
+          ※ 로그아웃 버튼은 상단바(AppShell)에 있다. 여기로 옮기면 AppShell을 고쳐야 해 이번 범위 밖이라
+            같은 버튼이 두 개 생기지 않도록 두지 않았다. */}
+      <div className="rail-profile" style={{ flexShrink: 0, borderTop: "1px solid var(--rail-line)" }}>
+        <Link
+          href="/account"
+          className="rail-item rail-profile-link"
+          title={`${user.name} (${roleLabel} · ${user.company.name}) · 계정 설정`}
+          style={{ borderRadius: 8, height: 44 }}
+        >
+          <span
+            style={{
+              width: 32, height: 32, flexShrink: 0, borderRadius: "50%",
+              background: "var(--rail-active)", color: "#fff",
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700,
+            }}
+          >
+            {initial}
+          </span>
+          {/* 색은 CSS(.rail-who/.rail-sub)로 준다 — 인라인 color를 두면 마우스를 올려도 밝아지지 않는다(검수 경미 3) */}
+          <span className="rail-label rail-userbox">
+            <span className="rail-who" style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user.name}</span>
+            <span className="rail-sub" style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {roleLabel} · {user.company.name}
+            </span>
+          </span>
         </Link>
       </div>
     </aside>
