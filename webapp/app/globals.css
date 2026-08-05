@@ -203,13 +203,17 @@ details.faq[open] > summary .faq-chevron { transform: rotate(180deg); }
 /* 왼쪽 물결 — 화면 왼쪽 끝에 붙는다(.landing-hero-wrap이 화면 전체 폭).
    원본 hero-waves.webp 620×570, 잉크 범위 원본 x 0~579. 상자 280×257은 원본과 비율이 같다. */
 .landing-hero-wrap::before {
-  /* 폭 280px: 320px이면 화면 폭 1195px에서 소제목 왼쪽 끝과 20px까지 붙는다(실측)
-     left의 max(...): 보통은 화면 왼쪽 끝(0)에 붙지만, 화면이 아주 넓어지면 글상자를 따라 오른쪽으로 온다.
-     안 그러면 2560px 화면에서 물결이 본문과 661px 떨어져 구석에 홀로 뜬다(실측).
-     837 = 글상자 절반(540) + 안쪽 여백(24) - 원하는 간격(60) + 물결 잉크 폭(261)에서 나온 값. */
-  content: ""; position: absolute; left: max(0px, calc(50% - 837px)); top: 118px; width: 280px; height: 257px;
+  /* 크기를 고정하지 않고 **글자 왼쪽에 남는 공간을 꽉 채우게** 한다(2026-08-06 사장님 요청).
+     280px 고정이었을 때는 1920px 화면에서 물결이 왼쪽 구석에 작게 박혀 보였다(시안과 다름).
+       left: 0            → 항상 화면 왼쪽 끝에서 시작(시안처럼 가장자리에서 흘러나온다)
+       right: 50% + 370px → 글상자(가운데에서 350px)보다 20px 왼쪽에서 끝난다 = 글자와 안 겹침
+       max-width: 620px   → 원본 크기. 더 키우면 세로가 570px을 넘어 미리보기 카드까지 내려온다
+       aspect-ratio       → 가로가 정해지면 세로는 원본 비율(620:570)로 따라온다
+     ⚠️ 오른쪽 끝을 글상자에 매어 놨으므로 page.tsx의 `maxWidth: 700`을 바꾸면 여기 370px도 함께 바꿀 것. */
+  content: ""; position: absolute; left: 0; right: calc(50% + 370px); top: 40px;
+  max-width: 620px; height: auto; aspect-ratio: 620 / 570;
   z-index: 0; pointer-events: none;
-  background: url("/hero-waves.webp") no-repeat center / contain;
+  background: url("/hero-waves.webp") no-repeat left top / contain;
 }
 /* 오른쪽 사람·방패 — 글 상자(최대 1080px) 기준으로 붙인다(뷰포트 기준이 아니다).
    ── 이 숫자들을 바꾸려면 아래를 먼저 읽을 것 ──
@@ -273,6 +277,7 @@ details.faq[open] > summary .faq-chevron { transform: rotate(180deg); }
   /* 기기 그림이 사라졌으니 바닥값도 해제한다 — 안 그러면 카드 아래에 빈 띠만 남는다 */
   .landing-role-card { min-height: 0; }
 }
+
 
 
 
