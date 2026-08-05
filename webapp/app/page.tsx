@@ -113,12 +113,20 @@ export default function Home() {
       {/* 히어로 — 배경은 화면 끝까지, 글은 가운데. 오른쪽 그림은 넓은 화면에서만 보인다.
           오른쪽으로 삐져나온 그림을 잘라내는 처리는 globals.css의 `.landing-hero-wrap`에 있다
           (인라인 스타일로는 옛 사파리용 폴백 두 줄을 쓸 수 없다). */}
-      <div className="landing-hero-wrap" style={{ background: "linear-gradient(180deg,#F2F7FF 0%,#FAFCFF 55%,#FFFFFF 100%)" }}>
-        <section style={{ position: "relative", maxWidth: WRAP, margin: "0 auto", padding: "clamp(56px,10vw,104px) 24px clamp(48px,8vw,80px)", textAlign: "center" }}>
-          {/* eslint-disable-next-line @next/next/no-img-element -- 크기가 고정된 장식용 SVG. 최적화 대상 아님 */}
-          <img className="landing-hero-art" src="/hero-person-shield.svg" alt="" width={360} height={309} />
-
-          <div style={{ position: "relative", zIndex: 1 }}>
+      {/* ⚠️ 배경을 흰색으로 두는 이유: 배경 그림 두 조각이 **흰 바탕으로 구워진** 이미지라
+             (투명 PNG 그대로면 233KB, 흰 배경이면 23KB) 연파랑 그라데이션 위에 얹으면
+             흰 네모가 그대로 보인다. 그림 자체에 옅은 파랑 기운이 들어 있어 흰 바탕이면 충분하다. */}
+      <div className="landing-hero-wrap" style={{ background: "#FFFFFF" }}>
+        <section className="landing-hero-inner" style={{ position: "relative", maxWidth: WRAP, margin: "0 auto", padding: "clamp(56px,10vw,104px) 24px clamp(48px,8vw,80px)", textAlign: "center" }}>
+          {/* 배경 그림(물결 + 사람·방패)은 globals.css의 `.landing-hero-wrap::before`가 깐다.
+              여기에 <img>로 두지 않는 이유: 글자 뒤에 깔리는 장식이라 문서 내용이 아니고,
+              좁은 화면에서 통째로 빼야 하는데 그건 CSS만 할 수 있기 때문이다. */}
+          {/* ⚠️ maxWidth: 700 — 오른쪽 배경 그림과 글자가 겹치지 않게 하는 **안전장치**다.
+                 그림의 잉크가 시작되는 지점은 화면 가운데에서 오른쪽으로 354px 되는 곳이고(화면 폭과 무관한 값),
+                 이 상자를 700px로 묶으면 어떤 글줄도 가운데에서 350px을 넘지 못한다.
+                 → 문구를 길게 고치거나 글꼴이 바뀌어도 겹치는 대신 **줄바꿈**이 된다(안전한 실패).
+                 ⚠️ 이 값을 키우거나 없애면 특징칩 마지막 칸이 방패 그림 위로 올라탄다. */}
+          <div style={{ position: "relative", zIndex: 1, maxWidth: 700, margin: "0 auto" }}>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 30, padding: "0 14px", background: "#E8F1FE", border: "1px solid #C7DDFD", borderRadius: 16, marginBottom: 24, whiteSpace: "nowrap" }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--success)" }} />
               <span style={{ fontSize: 13, fontWeight: 700, color: "#1D4ED8" }}>중소기업을 위한 근태관리 SaaS</span>
