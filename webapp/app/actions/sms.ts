@@ -144,7 +144,15 @@ export async function sendTempPasswordSms(_prev: ActionResult, formData: FormDat
   //    "신뢰받는 문자"로 임의 문구(피싱 링크 등)를 직원들에게 보낼 수 있었다.
   //    이제 **그 계정에 실제로 적용된 임시 비밀번호가 맞는지** 해시로 확인하고, 아니면 보내지 않는다.
   //    (임시 비밀번호는 발급 순간에만 평문으로 존재하므로 서버가 다시 만들어낼 수는 없다 → 대조로 검증한다)
-  if (!req.user.mustChangePassword || !verifyPassword(temp, req.user.passwordHash)) {
+  //    ⚠️ 2026-08-05: `mustChangePassword`만 보면 부족해졌다. [직원 추가]에도 이 표시를 세우게 되면서
+  //       **관리자가 글자를 직접 정하는 경로**가 생겼기 때문이다(그 화면의 비밀번호는 사람이 타이핑한다).
+  //       그대로 두면 "비밀번호"에 아무 문구나 넣어 만든 계정으로 이 가드를 통과시켜, 회사 이름이 붙은
+  //       문자를 임의 문구로 보낼 수 있다 — M-21이 막으려던 바로 그 경로가 다시 열린다.
+  //       → **기한(tempPasswordExpiresAt)이 살아 있는지**까지 확인한다. 이 값은 `issueTempPassword`
+  //         (서버가 무작위로 만드는 진짜 임시비번 발급)만 세우고, 직원 추가는 세우지 않는다.
+  //         정상 흐름은 발급 즉시 48시간이 붙으므로 영향이 없다.
+  const tempAlive = !!req.user.tempPasswordExpiresAt && req.user.tempPasswordExpiresAt > new Date();
+  if (!req.user.mustChangePassword || !tempAlive || !verifyPassword(temp, req.user.passwordHash)) {
     return { error: "방금 발급한 임시 비밀번호가 아닙니다. 임시 비밀번호를 다시 발급한 뒤 보내주세요." };
   }
 
