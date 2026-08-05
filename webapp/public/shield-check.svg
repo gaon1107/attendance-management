@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300" fill="none">
+  <defs>
+    <linearGradient id="s2Body" x1="60" y1="36" x2="240" y2="256" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#93C5FD"></stop>
+      <stop offset="0.5" stop-color="#3B82F6"></stop>
+      <stop offset="1" stop-color="#2563EB"></stop>
+    </linearGradient>
+    <linearGradient id="s2Gloss" x1="80" y1="40" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.65"></stop>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"></stop>
+    </linearGradient>
+    <radialGradient id="s2Glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#93C5FD" stop-opacity="0.35"></stop>
+      <stop offset="1" stop-color="#93C5FD" stop-opacity="0"></stop>
+    </radialGradient>
+    <filter id="s2Shadow" x="-35%" y="-30%" width="170%" height="175%">
+      <feDropShadow dx="0" dy="14" stdDeviation="15" flood-color="#2563EB" flood-opacity="0.25"></feDropShadow>
+    </filter>
+  </defs>
+
+  <ellipse cx="150" cy="148" rx="130" ry="126" fill="url(#s2Glow)"></ellipse>
+  <ellipse cx="150" cy="264" rx="74" ry="15" fill="#BFDBFE" opacity="0.55"></ellipse>
+
+  <g transform="rotate(-7 150 150)" filter="url(#s2Shadow)">
+    <path d="M150 40L242 74C242 150 232 202 150 252C68 202 58 150 58 74L150 40Z" fill="url(#s2Body)"></path>
+    <path d="M150 40L242 74C242 150 232 202 150 252C68 202 58 150 58 74L150 40Z" fill="url(#s2Gloss)" opacity="0.5"></path>
+    <path d="M150 40L242 74C242 150 232 202 150 252C68 202 58 150 58 74L150 40Z" stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="4" fill="none"></path>
+    <g opacity="0.35">
+      <path d="M116 148L142 175L189 118" stroke="#1D4ED8" stroke-width="19" stroke-linecap="round" stroke-linejoin="round" fill="none" transform="translate(0 6)"></path>
+    </g>
+    <path d="M116 148L142 175L189 118" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+  </g>
+
+  <circle cx="252" cy="92" r="9" fill="#60A5FA" opacity="0.9"></circle>
+  <circle cx="44" cy="120" r="7" fill="#93C5FD"></circle>
+  <circle cx="238" cy="212" r="6" fill="#BFDBFE"></circle>
+  <circle cx="66" cy="216" r="5" fill="#60A5FA" opacity="0.8"></circle>
+</svg>

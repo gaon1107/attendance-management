@@ -178,3 +178,73 @@ details.faq > summary { list-style: none; cursor: pointer; }
 details.faq > summary::-webkit-details-marker { display: none; }
 details.faq > summary .faq-chevron { transition: transform 0.15s ease; }
 details.faq[open] > summary .faq-chevron { transform: rotate(180deg); }
+
+/* ── 랜딩(홈) 화면 전용 ─────────────────────────────────────────────
+   ⚠️ 여기 규칙은 **로그인하지 않은 홈화면(app/page.tsx)에서만** 쓴다.
+      로그인 후 화면과 섞이지 않도록 클래스 이름에 전부 `landing-` 접두사를 붙였다.
+   ⚠️ 서버는 화면 크기를 모르므로, "좁으면 숨긴다"는 인라인 스타일로 못 한다 → 여기 둔다. */
+
+/* 히어로 배경 — 오른쪽으로 삐져나온 장식 그림 때문에 가로 스크롤바가 생기는 것을 막는다.
+   두 줄을 같이 쓰는 이유: clip을 모르는 옛 사파리(iOS 15 이하)는 첫 줄(hidden)로 떨어진다. */
+.landing-hero-wrap { overflow-x: hidden; overflow-x: clip; }
+
+/* 헤더 메뉴 — 좁은 화면에선 숨기고 로그인/시작하기 버튼만 남긴다(모바일 메뉴는 아직 없음) */
+.landing-nav { display: flex; align-items: center; gap: 26px; }
+.landing-nav a { color: #374151; font-size: 15px; font-weight: 600; text-decoration: none; transition: color .12s; }
+.landing-nav a:hover { color: var(--primary); }
+
+/* 히어로 오른쪽 일러스트 — 글자 위에 겹치지 않는 폭이 확보될 때만 보여준다.
+   ⚠️ 1200px가 경계인 이유: 이보다 좁으면 제목 두 번째 줄("강제하지 않는 얼굴인증")의
+      오른쪽 끝과 방패 그림이 겹쳐 글자가 읽히지 않는다. 폭·위치를 바꾸면 다시 실측할 것. */
+/* right 값은 실측으로 정했다: -40px이면 그림 왼쪽의 물결이 제목 파란 글자와 10px 겹친다(1425px에서 측정).
+   -70px이면 1201px(그림이 보이는 가장 좁은 폭)에서도 약 20px 여유가 남는다. */
+.landing-hero-art { position: absolute; top: 72px; right: -70px; width: 360px; z-index: 0; pointer-events: none; }
+
+/* FAQ — 넓은 화면에선 방패 그림 + 질문 목록 2단, 좁아지면 그림을 빼고 한 줄로 */
+.landing-faq-grid { display: grid; grid-template-columns: 260px 1fr; gap: 40px; align-items: center; }
+
+/* 도입 3단계 — 카드와 카드 사이 여백에 놓는 화살표.
+   칸 하나의 폭 = (전체 - 여백 32px) / 3 이므로, 첫 화살표는 그 자리 + 여백 절반(8px)에 온다.
+   ⚠️ 카드가 3열이 아니게 되면(≤880px) 화살표가 칸 밖으로 삐져나가 가로 스크롤을 만든다 → 숨긴다. */
+.landing-steps { position: relative; }
+.landing-step-arrow { position: absolute; top: 50%; transform: translate(-50%, -50%); color: #C7DDFD; width: 20px; height: 20px; display: inline-flex; pointer-events: none; }
+.landing-step-arrow-1 { left: calc((100% - 32px) / 3 + 8px); }
+.landing-step-arrow-2 { left: calc((100% - 32px) / 3 * 2 + 24px); }
+
+/* 미리보기 카드 안 차트 2개 (꺾은선 | 도넛) */
+.landing-chart-grid { display: grid; grid-template-columns: 1.7fr 1fr; gap: 12px; }
+
+/* 직원/관리자 카드 안 기기 그림 — 글 오른쪽에 자리를 비워 두고 그 자리에 얹는다 */
+.landing-role-body { padding-right: 152px; }
+.landing-role-body-lg { padding-right: 232px; }
+/* 폰 목업 높이가 292px이라 카드가 그보다 낮으면 윗 베젤이 잘린다 → 바닥값을 준다 */
+.landing-role-card { min-height: 300px; }
+
+@media (max-width: 1200px) {
+  .landing-hero-art { display: none; }
+}
+/* ⚠️ 이 880px은 page.tsx의 3단계 격자 `minmax(260px,1fr)`에 매여 있다.
+      3열이 유지되는 가장 좁은 폭 = 260×3 + 여백 32 + 좌우 패딩 48 = 860px. 여유 20px을 더해 880으로 잡았다.
+      **격자의 260px을 바꾸면 이 값도 함께 바꿀 것** — 안 그러면 화살표가 카드 밖으로 나가 가로 스크롤이 생긴다. */
+@media (max-width: 880px) {
+  .landing-step-arrow { display: none; }
+}
+@media (max-width: 900px) {
+  .landing-nav { display: none; }
+  .landing-faq-grid { grid-template-columns: 1fr; }
+  .landing-faq-art { display: none; }
+}
+@media (max-width: 700px) {
+  .landing-chart-grid { grid-template-columns: 1fr; }
+}
+/* 카드가 한 줄로 접히면 기기 그림이 글을 가릴 만큼 좁아진다 → 그림을 빼고 여백도 되돌린다 */
+@media (max-width: 640px) {
+  .landing-device { display: none; }
+  .landing-role-body, .landing-role-body-lg { padding-right: 0; }
+  /* 기기 그림이 사라졌으니 바닥값도 해제한다 — 안 그러면 카드 아래에 빈 띠만 남는다 */
+  .landing-role-card { min-height: 0; }
+}
+
+
+
+
