@@ -119,13 +119,24 @@ export default function SignupPage() {
             <label style={labelStyle}>담당자 연락처</label>
             <input name="managerPhone" type="tel" inputMode="tel" placeholder="010-1234-5678" style={inputStyle} value={form.managerPhone} onChange={set("managerPhone")} />
           </div>
+          {/* ⚠️ autoComplete: 브라우저가 **로그인 화면에 저장해 둔 아이디·비밀번호를 여기 채우는 것**을 막는다.
+              로그인 화면과 입력칸 이름(name="email"/"password")·종류가 똑같아, 크롬은 같은 로그인 칸으로 보고
+              저장값을 자동으로 넣는다. 그대로 [가입하기]를 누르면 **새 회사 계정의 비밀번호가 기존 계정 것으로
+              정해진다** — 회사 계정은 되찾기 어려운 마스터 열쇠라 특히 위험하다(2026-08-05 사장님 발견).
+              ※ 실제로 막는 건 비밀번호의 **new-password** 하나다. 이게 붙으면 크롬이 이 폼을 로그인 폼으로 보지 않아
+                 아이디+비번 쌍 채우기를 통째로 끈다. 이메일칸의 `off`는 크롬이 무시하므로 소용없다(검수 지적).
+              ※ 이메일에 `username`을 주는 이유: 자동완성 차단 효과는 같으면서, 가입에 **성공한 뒤** 크롬이
+                 "비밀번호를 저장할까요?"에 아이디를 제대로 채워 저장해 준다. 이 계정은 분실하면 되찾기 어렵다고
+                 화면에도 경고하고 있어(아래 노란 상자), 저장 기회를 잃는 쪽이 더 위험하다.
+              ※ 컨트롤드 입력이라고 안전한 게 아니다 — 크롬 자동완성은 React 상태를 거치지 않고 DOM 값만 바꾸는데
+                 제출은 DOM에서 읽는다. 그래서 브라우저 힌트로 막는 이 방법이 맞다. */}
           <div>
             <label style={labelStyle}>회사 계정 이메일 (로그인 아이디)</label>
-            <input name="email" type="email" placeholder="admin@skytech.co.kr" style={inputStyle} value={form.email} onChange={set("email")} />
+            <input name="email" type="email" autoComplete="username" placeholder="admin@skytech.co.kr" style={inputStyle} value={form.email} onChange={set("email")} />
           </div>
           <div>
             <label style={labelStyle}>비밀번호</label>
-            <input name="password" type="password" placeholder="8자 이상" style={inputStyle} value={form.password} onChange={set("password")} />
+            <input name="password" type="password" autoComplete="new-password" placeholder="8자 이상" style={inputStyle} value={form.password} onChange={set("password")} />
           </div>
 
           {/* 동의는 법적 필수(개인정보보호법). 체크하지 않으면 서버가 가입을 거부한다. */}
