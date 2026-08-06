@@ -210,8 +210,10 @@ details.faq[open] > summary .faq-chevron { transform: rotate(180deg); }
 
 /* 히어로 배경 — 오른쪽으로 삐져나온 장식 그림 때문에 가로 스크롤바가 생기는 것을 막는다.
    두 줄을 같이 쓰는 이유: clip을 모르는 옛 사파리(iOS 15 이하)는 첫 줄(hidden)로 떨어진다. */
-/* position: relative — 아래 ::before(배경 그림)의 기준이 된다 */
-.landing-hero-wrap { position: relative; overflow-x: hidden; overflow-x: clip; }
+/* position: relative — 아래 ::before(배경 그림)의 기준이 된다.
+   isolation: isolate — 아래 두 그림에 건 `mix-blend-mode: multiply`가 **이 상자 안에서만** 섞이게
+   가둔다. 없으면 합성이 이 상자 밖(body 배경)까지 새어 나가 색이 어긋난다. */
+.landing-hero-wrap { position: relative; overflow-x: hidden; overflow-x: clip; isolation: isolate; }
 
 /* 헤더 메뉴 — 좁은 화면에선 숨기고 로그인/시작하기 버튼만 남긴다(모바일 메뉴는 아직 없음) */
 .landing-nav { display: flex; align-items: center; gap: 26px; }
@@ -221,8 +223,12 @@ details.faq[open] > summary .faq-chevron { transform: rotate(180deg); }
 /* 히어로 배경 그림 (사장님 제공 이미지, 2026-08-06 교체) — 왼쪽 물결 + 오른쪽 사람·방패.
    ⚠️ 글자 뒤에 깔리는 장식이라 ::before로 넣는다(HTML에 <img>로 두면 화면낭독기가 읽으려 하고,
       좁은 화면에서 통째로 빼는 것도 CSS로만 된다).
-   ⚠️ background-size: 100% auto — 가로를 화면 폭에 맞추고 세로는 비율대로. 이미지가 흰 배경으로
-      구워져 있어 히어로 흰 바탕과 이음매 없이 붙는다(투명 PNG 그대로면 용량이 233KB → 흰 배경 29KB).
+   ⚠️ **mix-blend-mode: multiply (2026-08-06 추가) — 지우면 흰 네모가 즉시 드러난다.**
+      두 이미지 모두 투명 배경이 아니라 **흰 바탕으로 구워져** 있다(투명 PNG면 233KB, 흰 배경이면 29KB).
+      곱하기 합성은 "흰색(1.0) × 배경색 = 배경색"이라 **흰 부분이 투명처럼 사라진다.**
+      덕분에 이미지를 다시 뽑지 않고도 page.tsx의 히어로 파란 그라데이션 위에 얹을 수 있다.
+      부작용: 그림 안의 밝은 부분도 배경색에 살짝 물든다. 물결·방패가 원래 파란 계열이라 자연스럽다.
+      ⚠️ 히어로 배경(page.tsx)과 **짝**이다. 배경을 흰색으로 되돌리면 이 blend는 있으나 마나가 된다.
    ⚠️ 1200px가 경계인 이유: 이보다 좁으면 오른쪽 그림이 제목 글자와 겹쳐 읽히지 않는다. 실측으로 정한 값. */
 /* 왼쪽 물결 — 화면 왼쪽 끝에 붙는다(.landing-hero-wrap이 화면 전체 폭).
    원본 hero-waves.webp 620×570, 잉크 범위 원본 x 0~579. 상자 280×257은 원본과 비율이 같다. */
@@ -238,6 +244,7 @@ details.faq[open] > summary .faq-chevron { transform: rotate(180deg); }
   max-width: 620px; height: auto; aspect-ratio: 620 / 570;
   z-index: 0; pointer-events: none;
   background: url("/hero-waves.webp") no-repeat left top / contain;
+  mix-blend-mode: multiply; /* 흰 바탕 제거 — 위 주석 참고. 지우면 흰 네모가 드러난다 */
 }
 /* 오른쪽 사람·방패 — 글 상자(최대 1080px) 기준으로 붙인다(뷰포트 기준이 아니다).
    ── 이 숫자들을 바꾸려면 아래를 먼저 읽을 것 ──
@@ -253,6 +260,7 @@ details.faq[open] > summary .faq-chevron { transform: rotate(180deg); }
   content: ""; position: absolute; right: -70px; top: 60px; width: 380px; height: 298px;
   z-index: 0; pointer-events: none;
   background: url("/hero-art.webp") no-repeat center / contain;
+  mix-blend-mode: multiply; /* 흰 바탕 제거 — 물결 쪽과 같은 이유. 둘 다 있어야 톤이 맞는다 */
 }
 
 /* FAQ — 넓은 화면에선 방패 그림 + 질문 목록 2단, 좁아지면 그림을 빼고 한 줄로 */

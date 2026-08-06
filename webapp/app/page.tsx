@@ -117,10 +117,15 @@ export default function Home() {
       {/* 히어로 — 배경은 화면 끝까지, 글은 가운데. 오른쪽 그림은 넓은 화면에서만 보인다.
           오른쪽으로 삐져나온 그림을 잘라내는 처리는 globals.css의 `.landing-hero-wrap`에 있다
           (인라인 스타일로는 옛 사파리용 폴백 두 줄을 쓸 수 없다). */}
-      {/* ⚠️ 배경을 흰색으로 두는 이유: 배경 그림 두 조각이 **흰 바탕으로 구워진** 이미지라
-             (투명 PNG 그대로면 233KB, 흰 배경이면 23KB) 연파랑 그라데이션 위에 얹으면
-             흰 네모가 그대로 보인다. 그림 자체에 옅은 파랑 기운이 들어 있어 흰 바탕이면 충분하다. */}
-      <div className="landing-hero-wrap" style={{ background: "#FFFFFF" }}>
+      {/* ⚠️ 예전엔 이 배경이 흰색이었다. 배경 그림 두 조각이 **흰 바탕으로 구워진** 이미지라
+             (투명 PNG면 233KB, 흰 배경이면 23KB) 파란 그라데이션 위에 얹으면 흰 네모가 드러났기 때문이다.
+             2026-08-06: globals.css에서 그 두 그림에 `mix-blend-mode: multiply`(곱하기 합성)를 걸어
+             **흰색이 투명처럼 동작하게** 만들었다. 그래서 이제 파란 배경을 깔 수 있다.
+             ⚠️ 이 배경을 다시 손댈 땐 globals.css의 `.landing-hero-wrap::before` / `.landing-hero-inner::before`
+                blend 설정과 **짝**이라는 것을 기억할 것. blend를 빼면 흰 네모가 즉시 다시 보인다.
+             ⚠️ 시안처럼 왼쪽 위가 가장 파랗고 오른쪽 아래로 갈수록 흰색이 되게 165도로 기울였다.
+                아래쪽이 흰색인 이유: 바로 뒤에 오는 기능 섹션의 그라데이션도 흰색에서 시작하기 때문이다. */}
+      <div className="landing-hero-wrap" style={{ background: "linear-gradient(165deg,#E8F1FD 0%,#F2F7FF 45%,#FFFFFF 100%)" }}>
         <section className="landing-hero-inner" style={{ position: "relative", maxWidth: WRAP, margin: "0 auto", padding: "clamp(56px,10vw,104px) 24px clamp(48px,8vw,80px)", textAlign: "center" }}>
           {/* 배경 그림(물결 + 사람·방패)은 globals.css의 `.landing-hero-wrap::before`가 깐다.
               여기에 <img>로 두지 않는 이유: 글자 뒤에 깔리는 장식이라 문서 내용이 아니고,
@@ -131,8 +136,13 @@ export default function Home() {
                  → 문구를 길게 고치거나 글꼴이 바뀌어도 겹치는 대신 **줄바꿈**이 된다(안전한 실패).
                  ⚠️ 이 값을 키우거나 없애면 특징칩 마지막 칸이 방패 그림 위로 올라탄다. */}
           <div style={{ position: "relative", zIndex: 1, maxWidth: 700, margin: "0 auto" }}>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 30, padding: "0 14px", background: "#E8F1FE", border: "1px solid #C7DDFD", borderRadius: 16, marginBottom: 24, whiteSpace: "nowrap" }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--success)" }} />
+            {/* ⚠️ 배경색이 #D3E1FA인 이유: 히어로 배경이 파랗게 바뀌면서(2026-08-06) 예전 값 #E8F1FE는
+                   히어로 상단색 #E8F1FD와 **거의 같은 색**(대비 1.00)이 되어 배지가 통째로 묻혔다.
+                   #DCE8FA로 내려도 1.09라 여전히 약해 #D3E1FA(1.16)까지 내렸다. 알약 배경은 장식이라
+                   이 정도면 충분하다 — 실제로 읽히게 하는 건 진한 글자색(#1D4ED8)이다.
+                   시안에 맞춰 테두리와 초록 점은 뺐다.
+                   ⚠️ 히어로 배경색을 다시 바꾸면 이 값의 대비를 다시 계산할 것. */}
+            <div style={{ display: "inline-flex", alignItems: "center", height: 30, padding: "0 16px", background: "#D3E1FA", borderRadius: 16, marginBottom: 24, whiteSpace: "nowrap" }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: "#1D4ED8" }}>중소기업을 위한 근태관리 SaaS</span>
             </div>
             <h1 style={{ fontSize: "clamp(30px,5.5vw,52px)", fontWeight: 700, lineHeight: 1.22, letterSpacing: "-0.02em", margin: "0 auto 20px", maxWidth: 720 }}>
@@ -152,12 +162,15 @@ export default function Home() {
                      옅은 쪽(--landing-border)을 쓰면 버튼 모양 자체가 흐려진다 → 반드시 -strong. */}
               <a href="#features" style={{ height: 52, padding: "0 24px", display: "inline-flex", alignItems: "center", border: "1px solid var(--landing-border-strong,#CBD9F0)", borderRadius: 10, background: "#fff", color: "#374151", fontSize: 16, fontWeight: 700, whiteSpace: "nowrap", textDecoration: "none", boxShadow: "0 2px 8px rgba(37,99,235,0.07)" }}>기능 둘러보기</a>
             </div>
-            <div style={{ fontSize: 13, color: "#9CA3AF", marginTop: 16 }}>신용카드 없이 5분이면 시작 · 5인 이상 사업장 법규 대응</div>
-
             {/* 특징칩 4개 */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", marginTop: 28 }}>
+            {/* ⚠️ 알약 배경·테두리를 뺐다(2026-08-06, 시안에 맞춤). 히어로 배경이 파랗게 바뀌어
+                   흰 알약 4개가 배경 위에 도드라져 보였다. 시안은 아이콘+글자만 놓는다.
+                   ⚠️ 여기 바로 위에 있던 회색 안내문구("신용카드 없이 5분이면 시작 · 5인 이상 …")는
+                      시안에 없어 뺐다. 되살리려면 이 자리에 다시 넣으면 된다(내용은 커밋 메시지에 있음).
+                      "5분이면 설정 완료"는 아래 칩에 이미 있어 정보가 사라지지는 않는다. */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 22, justifyContent: "center", marginTop: 34 }}>
               {chips.map((c) => (
-                <div key={c.text} style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 36, padding: "0 14px", background: "rgba(255,255,255,0.9)", border: "1px solid #DCE7F8", borderRadius: 18, fontSize: 13, fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>
+                <div key={c.text} style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 36, fontSize: 13, fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>
                   <span style={{ color: "var(--primary)", width: 15, height: 15, display: "inline-flex" }} dangerouslySetInnerHTML={{ __html: svg(c.icon, 15) }} />
                   {c.text}
                 </div>
