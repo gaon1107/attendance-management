@@ -92,7 +92,11 @@ export default function Home() {
   return (
     <div id="top" style={{ minHeight: "100vh", background: "#FFFFFF", color: "var(--text)" }}>
       {/* 헤더 */}
-      <header style={{ position: "sticky", top: 0, zIndex: 10, background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)", borderBottom: "1px solid var(--border)" }}>
+      {/* ⚠️ 헤더 아래 선과 푸터 위 선은 **남긴다** — 스크롤할 때 고정된 헤더와 본문이 겹쳐 보이므로
+             경계가 필요하다. 색만 회색 → 파랑으로 맞추되 **진한 쪽(-strong)**을 쓴다.
+             헤더 배경이 반투명(0.9)이라 아래로 지나가는 푸른 섹션이 비쳐 올라오는데, 옅은 쪽을
+             쓰면 그 구간에서 선 대비가 1.10까지 떨어져 헤더와 본문이 붙어 보인다(검수 지적). */}
+      <header style={{ position: "sticky", top: 0, zIndex: 10, background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)", borderBottom: "1px solid var(--landing-border-strong,#CBD9F0)" }}>
         <div style={{ maxWidth: WRAP, margin: "0 auto", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, padding: "0 24px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
             <div style={logoBox(28, 7, 15)}>근</div>
@@ -144,7 +148,9 @@ export default function Home() {
                 무료로 시작하기
                 <span style={{ width: 17, height: 17, display: "inline-flex" }} dangerouslySetInnerHTML={{ __html: svg('<path d="M5 12h14M13 6l6 6-6 6"/>', 17) }} />
               </Link>
-              <a href="#features" style={{ height: 52, padding: "0 24px", display: "inline-flex", alignItems: "center", border: "1px solid #D1D5DB", borderRadius: 10, background: "#fff", color: "#374151", fontSize: 16, fontWeight: 700, whiteSpace: "nowrap", textDecoration: "none", boxShadow: "0 2px 8px rgba(17,24,39,0.05)" }}>기능 둘러보기</a>
+              {/* ⚠️ 이 버튼은 배경이 흰색이고 히어로 바탕도 흰색이라 **테두리가 유일한 경계**다.
+                     옅은 쪽(--landing-border)을 쓰면 버튼 모양 자체가 흐려진다 → 반드시 -strong. */}
+              <a href="#features" style={{ height: 52, padding: "0 24px", display: "inline-flex", alignItems: "center", border: "1px solid var(--landing-border-strong,#CBD9F0)", borderRadius: 10, background: "#fff", color: "#374151", fontSize: 16, fontWeight: 700, whiteSpace: "nowrap", textDecoration: "none", boxShadow: "0 2px 8px rgba(37,99,235,0.07)" }}>기능 둘러보기</a>
             </div>
             <div style={{ fontSize: 13, color: "#9CA3AF", marginTop: 16 }}>신용카드 없이 5분이면 시작 · 5인 이상 사업장 법규 대응</div>
 
@@ -160,8 +166,10 @@ export default function Home() {
           </div>
 
           {/* 제품 미리보기 */}
-          <div style={{ position: "relative", zIndex: 1, marginTop: "clamp(40px,6vw,64px)", border: "1px solid var(--border)", borderRadius: 16, background: "var(--bg)", overflow: "hidden", textAlign: "left", boxShadow: "0 24px 60px rgba(17,24,39,0.10)" }}>
-            <div style={{ height: 38, display: "flex", alignItems: "center", gap: 6, padding: "0 14px", borderBottom: "1px solid var(--border)", background: "#fff" }}>
+          {/* ⚠️ 그림자만 --landing-shadow(8%)를 안 쓰고 13%로 따로 준다 — 이 카드는 화면에서 가장 큰
+                 덩어리라 같은 8%로는 흰 히어로 바탕 위에서 떠 보이지 않는다(다른 카드보다 진하게). */}
+          <div style={{ position: "relative", zIndex: 1, marginTop: "clamp(40px,6vw,64px)", borderRadius: 16, background: "var(--landing-bg,#F5F8FF)", overflow: "hidden", textAlign: "left", boxShadow: "0 24px 60px rgba(37,99,235,0.13)" }}>
+            <div style={{ height: 38, display: "flex", alignItems: "center", gap: 6, padding: "0 14px", borderBottom: "1px solid var(--landing-border,#DCE5F4)", background: "#fff" }}>
               <span style={dot()} />
               <span style={dot()} />
               <span style={dot()} />
@@ -174,9 +182,13 @@ export default function Home() {
               </span>
             </div>
             <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+              {/* ⚠️ 미리보기 **안쪽** 카드들(아래 KPI 4칸·차트 2개)은 테두리를 지우지 않는다.
+                     여기는 바깥 카드 바탕이 푸른빛(--landing-bg)이라 흰 칸이 배경과는 구분되지만,
+                     칸끼리는 12px 간격으로만 떨어져 있어 선이 없으면 4칸이 한 덩어리로 읽힌다.
+                     경계가 사라지는 건 아니므로 약한 쪽(--landing-border)으로 충분하다. */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
                 {peek.map((p) => (
-                  <div key={p.label} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "16px 18px" }}>
+                  <div key={p.label} style={{ background: "#fff", border: "1px solid var(--landing-border,#DCE5F4)", borderRadius: 10, padding: "16px 18px" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                       <span style={{ fontSize: 13, color: "var(--text-sub)" }}>{p.label}</span>
                       <span style={{ color: p.tone, width: 15, height: 15, display: "inline-flex" }} dangerouslySetInnerHTML={{ __html: svg(p.icon, 15) }} />
@@ -199,7 +211,19 @@ export default function Home() {
              헤더가 실제로 먹는 높이는 **61px**(안쪽 60 + 아래 테두리 1)이라 68은 여유가 7px뿐이다.
              **헤더 높이를 바꾸면 이 값도 함께 올릴 것.**
              globals.css의 html{scroll-padding-top}으로 하면 로그인 후 전 화면에 영향이 가므로 여기서만 준다. */}
-      <section id="features" style={{ background: "var(--bg)", borderTop: "1px solid var(--border)", scrollMarginTop: 68 }}>
+      {/* ⚠️ 배경 그라데이션의 위·아래 끝이 **흰색**인 이유: 이 섹션의 앞(히어로)과 뒤(도입 3단계)가
+             둘 다 흰 바탕이다. 예전엔 회색 단색 + 위쪽 구분선이라 색이 뚝 끊겼는데,
+             양 끝을 흰색으로 두면 선 없이도 색이 서서히 번져 시안처럼 한 장으로 이어진다.
+             **앞뒤 섹션의 배경을 바꾸면 이 0%/100% 색도 같이 바꿀 것.**
+          ⚠️ 색이 바뀌는 지점을 %가 아니라 **48px 고정**으로 둔 이유(2026-08-06 검수 반영):
+             ① %로 두면 섹션이 길어질수록 흰색 구간도 같이 길어진다. 폰(375px)에서 카드가 세로로
+                쌓이면 이 섹션 높이가 965px까지 늘어(실측) 82% 지점이 **마지막 카드 한가운데**에
+                걸리고, 테두리 없는 카드가 같은 흰색 배경에 묻혀 사라져 보인다.
+             ② px 중에서도 **48**인 이유: 이 섹션의 위아래 여백은 clamp(56px,8vw,88px)이라
+                **최소 56px**이다. 페이드를 그보다 좁게 잡아야 색이 변하는 구간이 여백 안에서만
+                끝나고 카드 영역을 침범하지 않는다(120px로 잡았더니 카드 아래 64px가 걸렸다 — 실측).
+                ⚠️ 섹션 패딩의 최소값을 줄이면 이 48px도 함께 줄일 것. */}
+      <section id="features" style={{ background: "linear-gradient(180deg,#FFFFFF 0,var(--landing-bg,#F5F8FF) 48px,var(--landing-bg,#F5F8FF) calc(100% - 48px),#FFFFFF 100%)", scrollMarginTop: 68 }}>
         <div style={{ maxWidth: WRAP, margin: "0 auto", padding: "clamp(56px,8vw,88px) 24px" }}>
           <div style={{ textAlign: "center", marginBottom: "clamp(32px,5vw,48px)" }}>
             <div style={eyebrow}>WHY 근태관리</div>
@@ -207,7 +231,7 @@ export default function Home() {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 16 }}>
             {features.map((f) => (
-              <div key={f.title} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 16, padding: "28px 26px", boxShadow: "0 4px 16px rgba(17,24,39,0.04)" }}>
+              <div key={f.title} style={{ background: "var(--landing-card,#fff)", borderRadius: 16, padding: "28px 26px", boxShadow: "0 8px 30px var(--landing-shadow)" }}>
                 <div style={{ width: 48, height: 48, borderRadius: 13, background: f.grad, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18, boxShadow: "0 8px 18px rgba(37,99,235,0.22)" }} dangerouslySetInnerHTML={{ __html: svg(f.icon, 23) }} />
                 <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{f.title}</div>
                 <div style={{ fontSize: 15, color: "var(--text-sub)", lineHeight: 1.6 }}>{f.desc}</div>
@@ -226,9 +250,13 @@ export default function Home() {
         {/* ⚠️ 카드 사이 화살표를 "카드 안"에 두면 안 된다 — 카드에 overflow:hidden이 있어 잘려서
                아예 보이지 않는다(실측으로 확인). 그래서 격자(grid) 자체에 얹고 칸 사이 여백 좌표를
                계산해 놓는다(globals.css의 .landing-step-arrow). 카드가 3열이 아닐 땐 숨긴다. */}
+        {/* ⚠️ 아래 카드에는 테두리를 **남긴다**(특징·역할 카드와 다른 점). 그 두 섹션은 배경이
+               푸른빛(--landing-bg)이라 흰 카드가 저절로 구분되지만, 이 섹션은 배경이 없어
+               **순수 흰 바탕**이다. 카드 위쪽도 흰색이라 테두리를 지우면 그림자만 남는데,
+               그림자 8%로는 밝은 사무실 모니터에서 카드 경계가 보이지 않는다(검수 지적). */}
         <div className="landing-steps" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 16 }}>
           {steps.map((s, i) => (
-            <div key={s.title} style={{ position: "relative", background: "#fff", border: "1px solid var(--border)", borderRadius: 16, padding: "28px 26px", overflow: "hidden", boxShadow: "0 4px 16px rgba(17,24,39,0.04)" }}>
+            <div key={s.title} style={{ position: "relative", background: "var(--landing-card,#fff)", border: "1px solid var(--landing-border-strong,#CBD9F0)", borderRadius: 16, padding: "28px 26px", overflow: "hidden", boxShadow: "0 8px 30px var(--landing-shadow)" }}>
               <span style={{ position: "absolute", top: 8, right: 18, fontSize: 64, fontWeight: 800, color: "#F1F5FB", lineHeight: 1, userSelect: "none" }}>{i + 1}</span>
               <div style={{ position: "relative", width: 48, height: 48, borderRadius: 13, background: "linear-gradient(135deg,#2563EB,#60A5FA)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18, boxShadow: "0 8px 18px rgba(37,99,235,0.22)" }} dangerouslySetInnerHTML={{ __html: svg(s.icon, 23) }} />
               <div style={{ position: "relative", fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{s.title}</div>
@@ -241,7 +269,9 @@ export default function Home() {
       </section>
 
       {/* 역할별 */}
-      <section id="roles" style={{ background: "var(--bg)", borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)", scrollMarginTop: 68 }}>
+      {/* 위 features 섹션과 **똑같은 값**이다(48px 고정인 이유도 거기 주석 참고).
+          앞(도입 3단계)·뒤(숫자 밴드)가 흰 바탕이라 양 끝을 흰색으로 둔다. 한쪽만 고치지 말 것. */}
+      <section id="roles" style={{ background: "linear-gradient(180deg,#FFFFFF 0,var(--landing-bg,#F5F8FF) 48px,var(--landing-bg,#F5F8FF) calc(100% - 48px),#FFFFFF 100%)", scrollMarginTop: 68 }}>
         <div style={{ maxWidth: WRAP, margin: "0 auto", padding: "clamp(56px,8vw,88px) 24px" }}>
           <div style={{ textAlign: "center", marginBottom: "clamp(32px,5vw,48px)" }}>
             <h2 style={h2}>직원도, 관리자도 각자 필요한 만큼만</h2>
@@ -283,9 +313,12 @@ export default function Home() {
             {/* eslint-disable-next-line @next/next/no-img-element -- 크기가 고정된 장식용 SVG. 최적화 대상 아님 */}
             <img src="/shield-check.svg" alt="" width={240} height={240} />
           </div>
+          {/* ⚠️ 아래 질문 카드에도 3단계 카드와 같은 이유로 테두리를 **남긴다** — FAQ 섹션도 배경이
+                 없어 순수 흰 바탕이다. 게다가 이건 눌러서 접었다 펴는 **버튼**이라, 경계가 사라지면
+                 누를 수 있다는 것 자체를 알 수 없게 된다(검수 지적: 질문 4개가 한 덩어리로 보임). */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {faqs.map((f, i) => (
-              <details key={f.q} className="faq" open={i === 0} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "4px 20px", boxShadow: "0 2px 10px rgba(17,24,39,0.04)" }}>
+              <details key={f.q} className="faq" open={i === 0} style={{ background: "#fff", border: "1px solid var(--landing-border-strong,#CBD9F0)", borderRadius: 12, padding: "4px 20px", boxShadow: "0 4px 20px var(--landing-shadow)" }}>
                 <summary style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "16px 0", fontSize: 16, fontWeight: 700 }}>
                   <span>{f.q}</span>
                   <span className="faq-chevron" style={{ color: "#9CA3AF", flexShrink: 0, width: 18, height: 18, display: "inline-flex" }} dangerouslySetInnerHTML={{ __html: svg('<path d="m6 9 6 6 6-6"/>', 18) }} />
@@ -318,7 +351,7 @@ export default function Home() {
       </section>
 
       {/* 푸터 */}
-      <footer style={{ borderTop: "1px solid var(--border)" }}>
+      <footer style={{ borderTop: "1px solid var(--landing-border,#DCE5F4)" }}>
         <div style={{ maxWidth: WRAP, margin: "0 auto", padding: "28px 24px", display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={logoBox(24, 6, 13)}>근</div>
@@ -327,7 +360,7 @@ export default function Home() {
           {/* ⚠️ 이용약관·개인정보처리방침은 아직 페이지가 없다. 눌러도 아무 데도 안 가는 링크는 만들지 않는다.
                  페이지가 생기면 여기 글자를 <Link>로 바꾸면 된다. */}
           <div style={{ fontSize: 13, color: "#9CA3AF" }}>© 2026 근태관리 · 이용약관 · 개인정보처리방침</div>
-          <a href="#top" aria-label="맨 위로" style={{ width: 38, height: 38, borderRadius: "50%", border: "1px solid var(--border)", background: "#fff", color: "var(--text-sub)", display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }} dangerouslySetInnerHTML={{ __html: svg('<path d="m18 15-6-6-6 6"/>', 18) }} />
+          <a href="#top" aria-label="맨 위로" style={{ width: 38, height: 38, borderRadius: "50%", border: "1px solid var(--landing-border,#DCE5F4)", background: "#fff", color: "var(--text-sub)", display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }} dangerouslySetInnerHTML={{ __html: svg('<path d="m18 15-6-6-6 6"/>', 18) }} />
         </div>
       </footer>
     </div>
@@ -359,7 +392,7 @@ function TrendChart({ gradientId = "trendFill" }: { gradientId?: string }) {
   const area = `M${pts[0].x},${pts[0].y} ${pts.slice(1).map((p) => `L${p.x},${p.y}`).join(" ")} L${pts[pts.length - 1].x},${BOTTOM} L${pts[0].x},${BOTTOM} Z`;
 
   return (
-    <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px 10px" }}>
+    <div style={{ background: "#fff", border: "1px solid var(--landing-border,#DCE5F4)", borderRadius: 10, padding: "14px 16px 10px" }}>
       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>주간 평균 실근무시간</div>
       <div style={{ fontSize: 12, color: "var(--text-sub)", marginBottom: 8 }}>최근 6주 · 시간</div>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }} role="img" aria-label="최근 6주 주간 평균 실근무시간 추이(예시)">
@@ -402,7 +435,7 @@ function AuthDonut() {
     offset: -(authMix.slice(0, i).reduce((sum, p) => sum + p.pct, 0) / total) * C,
   }));
   return (
-    <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px 10px" }}>
+    <div style={{ background: "#fff", border: "1px solid var(--landing-border,#DCE5F4)", borderRadius: 10, padding: "14px 16px 10px" }}>
       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>인증 방식 비율</div>
       <div style={{ fontSize: 12, color: "var(--text-sub)", marginBottom: 6 }}>직원이 고른 출퇴근 방식</div>
       <div style={{ display: "flex", justifyContent: "center" }}>
@@ -432,7 +465,7 @@ function RoleCard({ title, sub, items, iconPath, device }: { title: string; sub:
     // 최소 높이(폰 목업 292px이 잘리지 않게)는 globals.css의 .landing-role-card에 있다.
     // ⚠️ 인라인으로 두면 안 된다 — 기기 그림이 사라지는 좁은 화면(≤640px)에서 해제할 방법이 없어
     //    그림도 없는 카드 아래에 56px짜리 빈 띠가 남는다(검수 지적).
-    <div className="landing-role-card" style={{ position: "relative", overflow: "hidden", background: "#fff", border: "1px solid var(--border)", borderRadius: 16, padding: "28px 26px", boxShadow: "0 4px 16px rgba(17,24,39,0.04)" }}>
+    <div className="landing-role-card" style={{ position: "relative", overflow: "hidden", background: "var(--landing-card,#fff)", borderRadius: 16, padding: "28px 26px", boxShadow: "0 8px 30px var(--landing-shadow)" }}>
       {device === "phone" ? <PhoneMock /> : <LaptopMock />}
       <div className={device === "phone" ? "landing-role-body" : "landing-role-body-lg"}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
