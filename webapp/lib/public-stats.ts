@@ -29,6 +29,10 @@ export const TREND_DAYS = 7;
 const MIN_COMPANIES = 5; // 회사가 몇 곳만 되면 합계에서 개별 회사 값을 되짚기 쉬워진다
 const MIN_EMPLOYEES = 20;
 const MIN_RECORDS = 50; // 최근 TREND_DAYS일 출퇴근 기록 수
+// 도넛(출퇴근 방식 비율)의 **분모** 최소치. 직원 수와 별개로 세야 한다 —
+// ⚠️ 직원이 20명이어도 방식을 고른 사람이 1명이면 도넛은 "얼굴인증 100%"가 되고,
+//    그건 통계가 아니라 **그 한 사람의 생체정보 동의 선택**을 공개하는 것이다(검수 지적).
+const MIN_METHOD_PICKED = 10;
 
 export type LandingStats = {
   /** false면 화면은 미리보기(KPI·차트)를 렌더하지 않는다 */
@@ -87,6 +91,9 @@ export async function getLandingStats(): Promise<LandingStats> {
     //    예전엔 `OR: [clockIn>=, clockOut>=]`이라 색인이 무력화되어 회사의 **전 기간** 근태를 훑었다(검수 지적).
     //    이틀 여유를 두는 이유: 밤샘·자정 넘김 근무처럼 출근이 구간 밖이고 퇴근만 안에 걸린 기록을 놓치지 않기 위함.
     //    (이틀보다 오래 열린 기록은 effectiveEnd가 출근일 자정으로 잘라내므로 어차피 이 구간에 기여하지 않는다.)
+    // ⚠️ 이 "이틀"은 lib/worktime.ts가 **열린 기록을 24시간 안으로 묶어 준다**는 사실과 짝이다
+    //    (openSessionSince·MAX_SHIFT_MS). 그 상수를 48시간 이상으로 올리면 여기도 함께 늘려야 한다 —
+    //    안 늘리면 앞 구간 집계가 조용히 적게 잡혀 **증감 배지가 실제보다 좋게** 나온다(검수 지적).
     const scanFrom = new Date(prev0.getTime() - 2 * 86400000);
 
     const [employees, employeesNewThisMonth, rows, byMethod] = await Promise.all([
@@ -131,7 +138,9 @@ export async function getLandingStats(): Promise<LandingStats> {
     let work7Min = 0, work7PrevMin = 0;
     for (const a of atts) {
       const mins = workedMinutes(a, effectiveEnd(a.clockIn, a.clockOut, now));
-      if (a.clockIn >= day0) work7Min += mins;
+      // `<= now`: 위 countEvent와 **같은 경계 규칙**을 쓴다. 한쪽에만 상한이 있으면 미래 시각 기록이
+      //   생겼을 때 두 집계가 어긋난다(지금 미래 기록을 만드는 경로는 없지만 규칙은 맞춰 둔다 — 검수 지적).
+      if (a.clockIn >= day0 && a.clockIn <= now) work7Min += mins;
       // 앞 구간도 인증 건수와 같은 자리에서 자른다(위 prevEnd 주석 참고 — 상시 감소 배지 방지).
       else if (a.clockIn >= prev0 && a.clockIn < prevEnd) work7PrevMin += mins;
     }
@@ -150,8 +159,9 @@ export async function getLandingStats(): Promise<LandingStats> {
     const faceN = byMethod.find((m) => m.authMethod === "face")?._count._all ?? 0;
     const gpsN = byMethod.find((m) => m.authMethod === "gps")?._count._all ?? 0;
     const pickedN = faceN + gpsN;
+    // ⚠️ 분모가 MIN_METHOD_PICKED 미만이면 비율 자체를 만들지 않는다(n=1의 "100%"는 통계가 아니다).
     const facePct = pickedN > 0 ? Math.round((faceN / pickedN) * 100) : 0;
-    const authMix = pickedN > 0
+    const authMix = pickedN >= MIN_METHOD_PICKED
       ? [{ label: "얼굴인증", pct: facePct }, { label: "GPS", pct: 100 - facePct }]
       : [];
 
@@ -164,7 +174,9 @@ export async function getLandingStats(): Promise<LandingStats> {
       auth7 >= MIN_RECORDS &&
       ids.length >= MIN_COMPANIES &&
       employees >= MIN_EMPLOYEES &&
-      authMix.length > 0; // 도넛이 빌 때 차트 오른쪽이 흰 여백으로 남는 것도 함께 막는다
+      // authMix는 분모(방식을 고른 사람 수)가 MIN_METHOD_PICKED 이상일 때만 채워진다.
+      // 도넛이 빌 때 차트 오른쪽이 흰 여백으로 남는 것도 이 조건이 함께 막는다.
+      authMix.length > 0;
 
     return {
       enough,

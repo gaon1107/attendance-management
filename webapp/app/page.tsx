@@ -211,8 +211,10 @@ export default async function Home() {
           </div>
 
           {/* 제품 미리보기 — **전부 실제 DB 통계**(lib/public-stats.ts). 목업 값 금지.
-              ⚠️ live.enough가 false면 이 블록 전체를 렌더하지 않는다. 실고객이 없거나 최근 7일 인증이
-                 0건이면 "0건 + 바닥에 붙은 평평한 선"이 판매용 첫 화면에 뜨기 때문이다(2026-08-09 결정).
+              ⚠️ live.enough가 false면 이 블록 전체를 렌더하지 않는다. 두 가지 이유가 겹쳐 있다:
+                 ① 기록이 없으면 "0건 + 바닥에 붙은 평평한 선"이 판매용 첫 화면에 뜬다(2026-08-09 결정).
+                 ② 🔴 표본이 작으면 합계가 곧 특정 회사·특정 개인의 근태 정보가 된다.
+                 실제 기준은 lib/public-stats.ts의 MIN_* 상수(회사 5·직원 20·기록 50·방식 고른 사람 10)다.
               ⚠️ 예전에 맨 위에 있던 브라우저 창 흉내 줄(신호등 3점·주소·"예시 화면·가상 데이터"·"실시간")은
                  **지웠다** — 실데이터로 바뀌어 "가상 데이터" 표기가 사실과 달라졌고, 사장님이 이 줄 자체를
                  걷어내라고 확정했다(2026-08-09). 되살릴 일이 생기면 가상 데이터 표기부터 다시 판단할 것. */}
@@ -424,7 +426,7 @@ export default async function Home() {
   );
 }
 
-// ── 꺾은선 차트 (일별 출퇴근 인증 추이) ──
+// ── 꺾은선 차트 (일별 출퇴근 기록 추이) ──
 // 라이브러리 없이 SVG로 직접 그린다.
 // ⚠️ viewBox를 실제 표시 비율(가로가 세로의 약 5배)에 맞춰 놓고 preserveAspectRatio는 기본값을 쓴다.
 //    예전처럼 320×120 + preserveAspectRatio="none"으로 하면 가로로 1.9배 늘어나 **점이 타원**이 되고
@@ -449,8 +451,12 @@ function TrendChart({ trend, gradientId = "trendFill" }: { trend: { label: strin
   // 값이 전부 0이어도 0으로 나누지 않게 || 1. (실제로는 enough 조건 때문에 전부 0인 경우는 오지 않는다)
   const rough = hi / 4 || 1;
   const mag = Math.pow(10, Math.floor(Math.log10(rough)));
-  // Math.max(1, …): 건수 지표라 눈금이 "1,001.5건"처럼 소수로 찍히지 않게 1 이상으로 묶는다(검수 지적).
-  const step = Math.max(1, ([1, 2, 2.5, 5, 10].find((m) => m * mag >= rough) ?? 10) * mag);
+  // ⚠️ 2.5는 **자리수(mag)가 10 이상일 때만** 후보로 쓴다. mag=1에서 2.5가 뽑히면 눈금이
+  //    "0 / 2.5 / 5 / 7.5"로 소수가 되어 **"출퇴근 기록 2.5건"**이 된다. 하루 9~10건일 때
+  //    걸리는데, 직원 4~5명 규모에서 가장 흔한 값이다(검수 지적 — hi/4로 바꾸면서 새로 생긴 결함).
+  const cand = mag >= 10 ? [1, 2, 2.5, 5, 10] : [1, 2, 5, 10];
+  // Math.max(1, …): 건수 지표라 눈금 간격이 1보다 작아지지 않게 묶는다(hi가 1~3일 때).
+  const step = Math.max(1, (cand.find((m) => m * mag >= rough) ?? 10) * mag);
   const MAX = Math.max(step, Math.ceil(hi / step) * step); // 최댓값이 눈금에 딱 걸려도 칸이 0이 되지 않게
   const span = MAX - MIN; // MIN=0, MAX≥step이라 0이 될 수 없다
   const yOf = (v: number) => BOTTOM - ((v - MIN) / span) * (BOTTOM - TOP);
@@ -483,7 +489,7 @@ function TrendChart({ trend, gradientId = "trendFill" }: { trend: { label: strin
     return `${d} C${r1(a.x + ta.x)},${clampY(a.y + ta.y)} ${r1(p.x - tb.x)},${clampY(p.y - tb.y)} ${p.x},${p.y}`;
   }, `M${pts[0].x},${pts[0].y}`);
   const area = `${curve} L${pts[pts.length - 1].x},${BOTTOM} L${pts[0].x},${BOTTOM} Z`;
-  // 말풍선으로 값을 보여줄 지점 = **가장 인증이 많았던 날**(실데이터라 미리 정할 수 없다).
+  // 말풍선으로 값을 보여줄 지점 = **가장 기록이 많았던 날**(실데이터라 미리 정할 수 없다).
   // ⚠️ 양 끝(첫날·마지막날)은 고르지 않는다 — 말풍선이 차트 좌우로 잘린다. 그래서 안쪽 점들 중에서만
   //    고르고, 점이 3개 미만이면 안쪽 점이 없으므로 말풍선을 달지 않는다(mark = null).
   // ⚠️ 0건인 점은 절대 가리키지 않는다. 안쪽 점이 전부 0이면 reduce가 그중 첫 점(0건)을 돌려주므로
@@ -494,7 +500,7 @@ function TrendChart({ trend, gradientId = "trendFill" }: { trend: { label: strin
 
   return (
     <div style={{ background: "#fff", border: "1px solid var(--landing-border,#DCE5F4)", borderRadius: 12, padding: "16px 18px 12px" }}>
-      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>일별 출퇴근 인증</div>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>일별 출퇴근 기록</div>
       {/* "최근 N일"의 N은 실제로 그린 점 개수에서 뽑는다(손으로 적으면 기간을 바꿀 때 거짓말이 된다) */}
       <div style={{ fontSize: 12, color: "var(--text-sub)", marginBottom: 10 }}>최근 {trend.length}일 · 전체 사용자 합계(건)</div>
       <div className="landing-chart-plot">
@@ -510,7 +516,7 @@ function TrendChart({ trend, gradientId = "trendFill" }: { trend: { label: strin
             ⚠️ 말풍선을 바깥(.landing-chart-plot)에 두면 왼쪽 눈금 자리(padding)까지 100%에 들어가
                가로 위치가 점보다 오른쪽으로 밀린다. */}
         <div style={{ position: "relative" }}>
-          <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }} role="img" aria-label={`최근 ${trend.length}일 일별 출퇴근 인증 건수 추이. ${trend.map((t) => `${t.label} ${t.count.toLocaleString("ko-KR")}건`).join(", ")}`}>
+          <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }} role="img" aria-label={`최근 ${trend.length}일 일별 출퇴근 기록 수 추이. ${trend.map((t) => `${t.label} ${t.count.toLocaleString("ko-KR")}건`).join(", ")}`}>
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0" stopColor="#2563EB" stopOpacity="0.20" />
