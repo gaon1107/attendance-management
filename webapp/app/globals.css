@@ -276,6 +276,43 @@ details.faq[open] > summary .faq-chevron { transform: rotate(180deg); }
 
 /* 미리보기 카드 안 차트 2개 (꺾은선 | 도넛) */
 .landing-chart-grid { display: grid; grid-template-columns: 1.7fr 1fr; gap: 12px; }
+/* 도넛이 빠지는 경우(아직 아무도 출퇴근 방식을 고르지 않음)엔 꺾은선이 폭을 다 쓴다.
+   이 규칙이 없으면 꺾은선은 63%만 쓰고 오른쪽 37%가 흰 여백으로 남는다(검수 지적). */
+.landing-chart-grid > :only-child { grid-column: 1 / -1; }
+
+/* 꺾은선 차트의 그림 영역. 왼쪽 34px은 눈금 숫자 자리(page.tsx가 여기에 절대배치로 얹는다).
+   ⚠️ 아래 .landing-chart-x의 padding-left와 **같은 값**이어야 x축 날짜가 격자와 어긋나지 않는다. */
+/* container-type: inline-size — 아래 @container가 "화면 폭"이 아니라 **이 차트 자체의 폭**으로 판단하게 한다.
+   화면 폭 기준(@media)만으로는 부족하다: 901px에서 차트가 2열로 나뉘면 폭이 434px·높이 84px까지 낮아져
+   27px짜리 말풍선이 차트의 3분의 1을 덮는다(검수 지적). 지원하지 않는 옛 브라우저에서는 규칙이 무시되고
+   말풍선이 그대로 보이는 정도로만 나빠진다(깨지지 않는다). */
+.landing-chart-plot { position: relative; padding-left: 34px; container-type: inline-size; }
+.landing-ytick {
+  position: absolute; left: 0; width: 30px; transform: translateY(-50%);
+  text-align: right; font-size: 11px; color: #9CA3AF;
+  font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none;
+}
+/* 값 말풍선. top은 가리키는 점의 높이(%)이고 아래로 10px 내려 점 밑에 붙는다.
+   ⚠️ 위(-100%)로 올리면 가장 높은 점을 가리킬 때 카드 밖으로 잘린다. */
+.landing-chart-tip {
+  position: absolute; transform: translate(-50%, 10px);
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 9px; border-radius: 8px;
+  background: #fff; border: 1px solid var(--landing-border-strong, #CBD9F0);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12);
+  font-size: 11px; font-weight: 600; color: var(--text-sub);
+  white-space: nowrap; pointer-events: none;
+}
+/* ⚠️ 이 @container는 **위 .landing-chart-tip 규칙보다 뒤에** 있어야 한다. 앞에 두면 우선순위가 같아
+      뒤에 오는 `display: inline-flex`가 이겨서 아무 효과가 없다(실측으로 확인 — 902px에서 안 숨었다). */
+@container (max-width: 480px) {
+  .landing-chart-tip { display: none; }
+}
+.landing-chart-x {
+  display: flex; justify-content: space-between;
+  padding-left: 34px; margin-top: 4px;
+  font-size: 11px; color: #9CA3AF; font-variant-numeric: tabular-nums;
+}
 
 /* 직원/관리자 카드 안 기기 그림 — 글 오른쪽에 자리를 비워 두고 그 자리에 얹는다 */
 .landing-role-body { padding-right: 152px; }
@@ -298,8 +335,10 @@ details.faq[open] > summary .faq-chevron { transform: rotate(180deg); }
   .landing-nav { display: none; }
   .landing-faq-grid { grid-template-columns: 1fr; }
   .landing-faq-art { display: none; }
-}
-@media (max-width: 700px) {
+  /* ⚠️ 예전엔 700px에서 접었다. 700~900px 구간에서 꺾은선이 폭의 63%(약 378px)만 받으면
+        높이가 66px까지 낮아져 **눈금 숫자 4줄이 서로 붙고 말풍선이 차트를 다 덮는다**(실측).
+        한 줄로 접으면 같은 700px에서도 폭 579px·높이 112px가 나와 여유가 생긴다.
+        **눈금·말풍선을 빼면 이 값을 700으로 되돌려도 된다.** */
   .landing-chart-grid { grid-template-columns: 1fr; }
 }
 /* 카드가 한 줄로 접히면 기기 그림이 글을 가릴 만큼 좁아진다 → 그림을 빼고 여백도 되돌린다 */
@@ -308,6 +347,17 @@ details.faq[open] > summary .faq-chevron { transform: rotate(180deg); }
   .landing-role-body, .landing-role-body-lg { padding-right: 0; }
   /* 기기 그림이 사라졌으니 바닥값도 해제한다 — 안 그러면 카드 아래에 빈 띠만 남는다 */
   .landing-role-card { min-height: 0; }
+
+  /* 차트가 이보다 좁아지면(폰) 높이가 100px 아래로 떨어져 눈금 숫자가 서로 붙고,
+     24px짜리 말풍선이 차트 높이의 3분의 1을 덮는다 → 둘 다 뺀다. 선·점·면은 그대로 남는다.
+     ⚠️ 눈금을 빼면 왼쪽 34px 자리도 함께 되돌려야 차트가 카드 폭을 다 쓴다(세 줄이 한 짝). */
+  .landing-ytick, .landing-chart-tip { display: none; }
+  .landing-chart-plot { padding-left: 0; }
+  .landing-chart-x { padding-left: 0; }
+  /* 점의 반지름은 화면과 함께 줄어드는데(배율 0.43) 선 두께는 2.5px 고정이라 점이 선에 먹혀 사라진다.
+     강조점은 흰 테두리(2px 고정)가 파란 심을 덮어 "선이 끊긴 흰 얼룩"이 된다 → 점은 전부 뺀다.
+     ⚠️ 이 폭에서는 말풍선도 숨기므로 강조점만 남아 이유 없이 튀는 문제도 함께 사라진다(검수 지적). */
+  .landing-dot { display: none; }
 }
 
 

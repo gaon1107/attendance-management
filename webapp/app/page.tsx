@@ -2,6 +2,11 @@
 // ⚠️ 섹션 순서·구성은 기존 그대로 두고 "겉모습"만 목업에 맞췄다(2026-08-05 사장님 확정).
 //    좁은 화면에서 숨기고 접는 규칙은 globals.css의 `landing-*` 클래스에 있다(서버는 화면 크기를 모른다).
 import Link from "next/link";
+import { getLandingStats, TREND_DAYS } from "@/lib/public-stats";
+
+// 공개 페이지라 방문자마다 DB를 때리면 안 된다 → 5분마다 한 번만 다시 계산하고 그 사이는 같은 화면을 준다.
+// ⚠️ 이 값을 0으로 바꾸면 방문자 수만큼 집계 쿼리가 돈다(14일치 근태 기록 스캔). 낮추지 말 것.
+export const revalidate = 300;
 
 // ── 헤더 메뉴 — 실제로 존재하는 섹션에만 연결한다(빈 링크 금지) ──
 const nav = [
@@ -24,29 +29,41 @@ const chips = [
   { icon: '<path d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5z"/>', text: "근로기준법 자동 대응" },
 ];
 
-// ── 제품 미리보기 KPI (예시 수치) ──
-const peek = [
-  { label: "오늘 출근", value: "18명", tone: "var(--success)", icon: '<path d="M20 6 9 17l-5-5"/>' },
-  { label: "실근무 평균", value: "8.4h", tone: "var(--text-sub)", icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
-  { label: "초과근무", value: "44h", tone: "var(--warning)", icon: '<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>' },
-  { label: "법규 준수", value: "100%", tone: "var(--primary)", icon: '<path d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5z"/>' },
-];
+// ── 미리보기 KPI 4칸의 아이콘 (숫자·라벨은 lib/public-stats.ts가 DB에서 뽑아 온다) ──
+// 여기는 한 회사의 대시보드가 아니라 **근태관리 사용자 전체(회원사 합계) 통계**다(2026-08-08 결정).
+// 🔴 **이 화면의 숫자는 전부 실제 DB 값이다. 예시·목업 값을 다시 넣지 말 것**(2026-08-09 결정).
+//    보여줄 데이터가 모자라거나 표본이 작으면 lib/public-stats.ts가 `enough: false`를 주고
+//    이 미리보기는 렌더되지 않는다(표본이 작을 때 합계 = 특정 회사·개인 정보이므로).
+const PEEK_ICONS = {
+  auth: '<path d="M20 6 9 17l-5-5"/>',
+  company: '<path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01"/>',
+  employee: '<circle cx="9" cy="7" r="3"/><path d="M3 21v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1"/><path d="M19 8v6M22 11h-6"/>',
+  hours: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+};
 
-// ── 꺾은선 차트: 주간 평균 실근무시간 (예시) ──
-const trend = [
-  { label: "1주", hours: 41.2 },
-  { label: "2주", hours: 39.8 },
-  { label: "3주", hours: 42.1 },
-  { label: "4주", hours: 40.3 },
-  { label: "5주", hours: 38.9 },
-  { label: "6주", hours: 40.6 },
-];
+// 도넛 조각 색. ⚠️ 두 번째 색은 연파랑(#93C5FD)이었는데 첫 색과 같은 계열이라 조각 경계가 흐렸다 → 보라.
+//    보라(#8B5CF6)는 아래 차별점 카드 아이콘에 이미 쓰는 색이라 화면 전체 색 수는 늘지 않는다.
+const MIX_COLORS = ["var(--primary)", "#8B5CF6"];
 
-// ── 도넛 차트: 출퇴근 인증 방식 비율 (예시) — "강제하지 않는다"를 그대로 보여준다 ──
-const authMix = [
-  { label: "얼굴인증", pct: 62, color: "var(--primary)" },
-  { label: "GPS", pct: 38, color: "#93C5FD" },
-];
+// 증감 배지 — 앞 기간과 비교해 "+12.5%" 같은 문구와 색을 만든다.
+// ⚠️ 앞 기간이 0이면 **비율을 만들 수 없다**(0으로 나누기). 그럴 때는 배지를 아예 달지 않는다 —
+//    "신규"·"+100%" 같은 말을 만들어 붙이면 없는 근거를 지어내는 셈이다.
+// ⚠️ minPrev: 앞 기간 값이 너무 작으면 비율이 의미를 잃는다(1시간 → 24시간이면 "+2,300%"가 붙는다).
+//    근거가 없는 건 아니지만 광고 화면에 쓸 수 있는 수치가 아니라 배지를 생략한다(검수 지적).
+function delta(now: number, prev: number, minPrev: number): { text: string; color: string } | null {
+  if (prev <= 0 || prev < minPrev) return null;
+  const pct = ((now - prev) / prev) * 100;
+  if (Math.abs(pct) < 0.05) return { text: "변동 없음", color: "var(--text-sub)" };
+  const rounded = (Math.round(Math.abs(pct) * 10) / 10).toFixed(1);
+  return pct > 0
+    ? { text: `+${rounded}%`, color: "var(--success)" }
+    : { text: `-${rounded}%`, color: "var(--danger)" };
+}
+
+// "이번 달 +N개사"처럼 개수 증가만 있는 배지(앞 기간 비교가 아니라 신규 등록 수). 0이면 달지 않는다.
+function newBadge(n: number, unit: string): { text: string; color: string } | null {
+  return n > 0 ? { text: `+${n.toLocaleString("ko-KR")}${unit}`, color: "var(--success)" } : null;
+}
 
 // ── WHY: 차별점 3개 ──
 const features = [
@@ -88,7 +105,22 @@ const WRAP = 1080;
 const svg = (path: string, size = 22) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
 
-export default function Home() {
+export default async function Home() {
+  // 홈화면 미리보기에 쓸 **실제 통계**. 실고객·최근 인증이 없으면 stats.enough=false로 오고,
+  // 그때는 미리보기 카드를 아예 렌더하지 않는다(0건·평평한 그래프를 판매 화면에 띄우지 않는다).
+  // ⚠️ 변수명이 `live`인 이유: 이 파일에는 아래쪽 숫자 밴드용 모듈 상수 `stats`가 이미 있다.
+  //    `stats`로 두면 그것을 덮어버려 밴드가 깨진다(실제로 한 번 깨뜨렸다).
+  const live = await getLandingStats();
+  const peek = [
+    // ⚠️ "최근 N일"의 N은 손으로 적지 않고 TREND_DAYS에서 가져온다 — 집계 기간과 글자가 어긋나지 않게.
+    // ⚠️ 라벨이 "인증"이 아니라 **"출퇴근 기록"**인 이유: [근태 정정]으로 관리자가 만든 기록은
+    //    얼굴·GPS 인증을 거치지 않았는데 같이 세어진다. "인증"이라 쓰면 과대 표현이다(검수 지적).
+    // ⚠️ "가입한 회사"인 이유: 해지·이탈·미사용 회사를 걸러낼 표시가 아직 없어서 "사용 중"이라 쓸 수 없다.
+    { label: `최근 ${TREND_DAYS}일 출퇴근 기록`, value: live.auth7, unit: "건", badge: delta(live.auth7, live.auth7Prev, 30), badgeSub: `지난 ${TREND_DAYS}일 대비`, tone: "var(--primary)", icon: PEEK_ICONS.auth },
+    { label: "가입한 회사", value: live.companies, unit: "개사", badge: newBadge(live.companiesNewThisMonth, "개사"), badgeSub: "이번 달", tone: "var(--text)", icon: PEEK_ICONS.company },
+    { label: "등록 직원", value: live.employees, unit: "명", badge: newBadge(live.employeesNewThisMonth, "명"), badgeSub: "이번 달", tone: "var(--text)", icon: PEEK_ICONS.employee },
+    { label: `최근 ${TREND_DAYS}일 실근무`, value: live.work7Hours, unit: "시간", badge: delta(live.work7Hours, live.work7PrevHours, 40), badgeSub: `지난 ${TREND_DAYS}일 대비`, tone: "var(--text)", icon: PEEK_ICONS.hours },
+  ];
   return (
     <div id="top" style={{ minHeight: "100vh", background: "#FFFFFF", color: "var(--text)" }}>
       {/* 헤더 */}
@@ -178,22 +210,16 @@ export default function Home() {
             </div>
           </div>
 
-          {/* 제품 미리보기 */}
+          {/* 제품 미리보기 — **전부 실제 DB 통계**(lib/public-stats.ts). 목업 값 금지.
+              ⚠️ live.enough가 false면 이 블록 전체를 렌더하지 않는다. 실고객이 없거나 최근 7일 인증이
+                 0건이면 "0건 + 바닥에 붙은 평평한 선"이 판매용 첫 화면에 뜨기 때문이다(2026-08-09 결정).
+              ⚠️ 예전에 맨 위에 있던 브라우저 창 흉내 줄(신호등 3점·주소·"예시 화면·가상 데이터"·"실시간")은
+                 **지웠다** — 실데이터로 바뀌어 "가상 데이터" 표기가 사실과 달라졌고, 사장님이 이 줄 자체를
+                 걷어내라고 확정했다(2026-08-09). 되살릴 일이 생기면 가상 데이터 표기부터 다시 판단할 것. */}
           {/* ⚠️ 그림자만 --landing-shadow(8%)를 안 쓰고 13%로 따로 준다 — 이 카드는 화면에서 가장 큰
                  덩어리라 같은 8%로는 흰 히어로 바탕 위에서 떠 보이지 않는다(다른 카드보다 진하게). */}
+          {live.enough && (
           <div style={{ position: "relative", zIndex: 1, marginTop: "clamp(40px,6vw,64px)", borderRadius: 16, background: "var(--landing-bg,#F5F8FF)", overflow: "hidden", textAlign: "left", boxShadow: "0 24px 60px rgba(37,99,235,0.13)" }}>
-            <div style={{ height: 38, display: "flex", alignItems: "center", gap: 6, padding: "0 14px", borderBottom: "1px solid var(--landing-border,#DCE5F4)", background: "#fff" }}>
-              <span style={dot()} />
-              <span style={dot()} />
-              <span style={dot()} />
-              {/* 좁은 화면에서 이 주소가 줄바꿈되면 옆의 "예시 화면" 표기가 38px 줄 밖으로 밀린다 → 말줄임 처리 */}
-              <span style={{ marginLeft: 12, fontSize: 13, color: "#9CA3AF", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>app.근태관리.co.kr</span>
-              {/* ⚠️ 아래 수치는 전부 예시다. 실제 고객 성과처럼 보이면 표시광고법 문제가 되므로 반드시 표기한다. */}
-              <span style={{ marginLeft: 10, padding: "2px 8px", borderRadius: 10, background: "#F3F4F6", fontSize: 11, fontWeight: 700, color: "#6B7280", whiteSpace: "nowrap" }}>예시 화면</span>
-              <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "var(--success)" }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--success)" }} />실시간
-              </span>
-            </div>
             <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
               {/* ⚠️ 미리보기 **안쪽** 카드들(아래 KPI 4칸·차트 2개)은 테두리를 지우지 않는다.
                      여기는 바깥 카드 바탕이 푸른빛(--landing-bg)이라 흰 칸이 배경과는 구분되지만,
@@ -201,21 +227,39 @@ export default function Home() {
                      경계가 사라지는 건 아니므로 약한 쪽(--landing-border)으로 충분하다. */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
                 {peek.map((p) => (
-                  <div key={p.label} style={{ background: "#fff", border: "1px solid var(--landing-border,#DCE5F4)", borderRadius: 10, padding: "16px 18px" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div key={p.label} style={{ background: "#fff", border: "1px solid var(--landing-border,#DCE5F4)", borderRadius: 12, padding: "16px 18px 14px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 8 }}>
                       <span style={{ fontSize: 13, color: "var(--text-sub)" }}>{p.label}</span>
-                      <span style={{ color: p.tone, width: 15, height: 15, display: "inline-flex" }} dangerouslySetInnerHTML={{ __html: svg(p.icon, 15) }} />
+                      <span style={{ color: p.tone, width: 15, height: 15, display: "inline-flex", flexShrink: 0 }} dangerouslySetInnerHTML={{ __html: svg(p.icon, 15) }} />
                     </div>
-                    <div style={{ fontSize: 24, fontWeight: 700, color: p.tone === "var(--text-sub)" ? "var(--text)" : p.tone, fontVariantNumeric: "tabular-nums" }}>{p.value}</div>
+                    {/* 단위(건·명·시간)를 값에서 떼어 작게 붙인다 — 숫자만 크게 남아 눈에 먼저 들어온다.
+                        alignItems: "baseline"이라 24px 숫자와 13px 단위의 밑선이 맞는다.
+                        ⚠️ whiteSpace: nowrap — 실데이터는 자릿수가 자라므로(예: 6자리) 좁은 칸에서
+                           단위가 아래 줄로 떨어지지 않게 묶어 둔다(검수 지적). */}
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 3, whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 24, fontWeight: 700, color: p.tone, fontVariantNumeric: "tabular-nums" }}>{p.value.toLocaleString("ko-KR")}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-sub)" }}>{p.unit}</span>
+                    </div>
+                    {/* 증감 배지 — "정지된 표"가 아니라 살아 있는 화면으로 읽히게 하는 요소.
+                        ⚠️ 색·문구는 delta()·newBadge()가 실제 증감으로 만든다. 비교할 앞 기간 값이 없으면
+                           배지 자체가 없다(없는 근거를 지어내지 않는다). */}
+                    {p.badge && (
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 5, marginTop: 7, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: p.badge.color, fontVariantNumeric: "tabular-nums" }}>{p.badge.text}</span>
+                        <span style={{ fontSize: 11, color: "#9CA3AF" }}>{p.badgeSub}</span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
               <div className="landing-chart-grid">
-                <TrendChart />
-                <AuthDonut />
+                <TrendChart trend={live.trend} />
+                {/* 아직 아무도 인증 방식을 고르지 않았으면 도넛은 그릴 것이 없다 → 꺾은선만 한 줄로 넓게 */}
+                {live.authMix.length > 0 && <AuthDonut authMix={live.authMix} />}
               </div>
             </div>
           </div>
+          )}
         </section>
       </div>
 
@@ -380,53 +424,130 @@ export default function Home() {
   );
 }
 
-// ── 꺾은선 차트 (주간 평균 실근무시간) ──
+// ── 꺾은선 차트 (일별 출퇴근 인증 추이) ──
 // 라이브러리 없이 SVG로 직접 그린다.
 // ⚠️ viewBox를 실제 표시 비율(가로가 세로의 약 5배)에 맞춰 놓고 preserveAspectRatio는 기본값을 쓴다.
 //    예전처럼 320×120 + preserveAspectRatio="none"으로 하면 가로로 1.9배 늘어나 **점이 타원**이 되고
 //    선 두께가 방향마다 달라진다(검수 지적).
-// ⚠️ y축 범위는 데이터에서 뽑는다. 예전엔 36~44로 고정이라 값이 그 밖으로 나가면 점이 칸을 벗어났다.
+// ⚠️ y축 범위는 데이터에서 뽑되 **"보기 좋은 간격"(1·2·2.5·5·10 ×10ⁿ)으로 올림·내림**한다.
+//    눈금 숫자를 화면에 적기 때문이다. 예전처럼 최소·최대에 25%씩 덧대면 눈금이 868·1104처럼 나온다.
+// ⚠️ 눈금 숫자와 말풍선은 **SVG가 아니라 HTML**로 얹는다. SVG 안에 넣으면 viewBox와 함께 줄어들어
+//    폰에서 글자가 5px까지 작아진다. HTML로 두면 크기가 고정되고, 세로 위치를 %로 주면
+//    차트가 어떤 폭이든 격자선과 정확히 같은 높이에 붙는다.
 // ⚠️ gradientId: SVG의 id는 문서 전체에서 하나뿐이어야 한다. 이 차트를 한 페이지에 두 번 놓을 일이
 //    생기면 두 번째에는 반드시 다른 id를 넘겨야 색이 섞이지 않는다(서버 컴포넌트라 useId를 못 쓴다).
-function TrendChart({ gradientId = "trendFill" }: { gradientId?: string }) {
+function TrendChart({ trend, gradientId = "trendFill" }: { trend: { label: string; count: number }[]; gradientId?: string }) {
   if (trend.length < 2) return null; // 점이 1개 이하면 선을 그릴 수 없다(0개면 아래 계산에서 오류)
-  const W = 580, H = 112, PAD_L = 12, PAD_R = 12, TOP = 10, BOTTOM = 98;
-  const vals = trend.map((t) => t.hours);
-  const lo = Math.min(...vals), hi = Math.max(...vals);
-  const pad = (hi - lo) * 0.25 || 1; // 값이 모두 같아도 0으로 나누지 않게
-  const MIN = lo - pad, MAX = hi + pad;
+  const W = 580, H = 112, PAD_L = 8, PAD_R = 8, TOP = 12, BOTTOM = 96;
+  const vals = trend.map((t) => t.count);
+  const hi = Math.max(...vals);
+  // 🔴 **y축은 반드시 0에서 시작한다.** 예전엔 최솟값 근처에서 시작했는데(잘린 축), 그러면
+  //    [3,3,3,3,3,3,4]처럼 1건 차이가 **화면 높이만큼 치솟은 것처럼** 보인다(검수 지적 — 데이터 과장).
+  //    여기는 광고 화면이고 지표가 "건수"라 0 기준이 정직하다. **MIN을 다시 데이터에 맞추지 말 것.**
+  const MIN = 0;
+  // 눈금 간격: (최댓값 / 4)를 넘는 가장 작은 "보기 좋은 수" → 눈금이 3~5개로 떨어진다.
+  // 값이 전부 0이어도 0으로 나누지 않게 || 1. (실제로는 enough 조건 때문에 전부 0인 경우는 오지 않는다)
+  const rough = hi / 4 || 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+  // Math.max(1, …): 건수 지표라 눈금이 "1,001.5건"처럼 소수로 찍히지 않게 1 이상으로 묶는다(검수 지적).
+  const step = Math.max(1, ([1, 2, 2.5, 5, 10].find((m) => m * mag >= rough) ?? 10) * mag);
+  const MAX = Math.max(step, Math.ceil(hi / step) * step); // 최댓값이 눈금에 딱 걸려도 칸이 0이 되지 않게
+  const span = MAX - MIN; // MIN=0, MAX≥step이라 0이 될 수 없다
+  const yOf = (v: number) => BOTTOM - ((v - MIN) / span) * (BOTTOM - TOP);
+  const pctOf = (y: number) => Math.round((y / H) * 1000) / 10; // SVG y → 상자 높이 대비 %
+  const r1 = (n: number) => Math.round(n * 10) / 10;
   const stepX = (W - PAD_L - PAD_R) / (trend.length - 1);
-  const pts = trend.map((t, i) => {
-    const x = PAD_L + i * stepX;
-    const y = BOTTOM - ((t.hours - MIN) / (MAX - MIN)) * (BOTTOM - TOP);
-    return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, ...t };
+  const pts = trend.map((t, i) => ({ x: r1(PAD_L + i * stepX), y: r1(yOf(t.count)), ...t }));
+  // 눈금은 0부터 step씩 MAX까지.
+  const ticks = Array.from({ length: Math.round((MAX - MIN) / step) + 1 }, (_, i) => MIN + step * i);
+
+  // 부드러운 곡선(카디널 스플라인): 각 점의 기울기를 "앞뒤 점을 이은 방향"으로 잡아 베지어 제어점을 만든다.
+  // 직선으로 이으면(예전 polyline) 각이 져 보였다.
+  // ⚠️ 곡선은 점 사이를 **없는 값으로 메운 그림**이다. 이 차트는 "하루 합계"의 흐름을 보여주는
+  //    용도라 그 정도 매끄러움은 허용하지만, **정확한 수치를 읽어야 하는 화면**(리포트·법정 근로기록)
+  //    에는 쓰지 말 것 — 점 사이 값이 실제보다 높거나 낮게 읽힌다.
+  const tan = pts.map((p, i) => {
+    const prev = pts[i - 1] ?? p, next = pts[i + 1] ?? p;
+    const d = i === 0 || i === pts.length - 1 ? 3 : 6; // 끝점은 한쪽 이웃만 있으므로 나누는 값이 다르다
+    return { x: (next.x - prev.x) / d, y: (next.y - prev.y) / d };
   });
-  const line = pts.map((p) => `${p.x},${p.y}`).join(" ");
-  const area = `M${pts[0].x},${pts[0].y} ${pts.slice(1).map((p) => `L${p.x},${p.y}`).join(" ")} L${pts[pts.length - 1].x},${BOTTOM} L${pts[0].x},${BOTTOM} Z`;
+  // 제어점의 높이를 TOP~BOTTOM 안으로 가두는 **보험**이다. 원리상 제어점은 (BOTTOM−TOP)/6 = 14단위까지
+  // 점 밖으로 벗어날 수 있어, 값이 급하게 튀는 데이터에서는 곡선이 상자를 넘길 여지가 있다.
+  // ⚠️ 다만 **현재 7일 실데이터 범위에서는 한 번도 개입하지 않는다**(2차 검수에서 베지어를 구간당 200점
+  //    샘플링해 확인: 클램프 유무와 곡선 y범위가 완전히 동일). 즉 지금 모양에는 영향이 없다.
+  // ⚠️ 클램프가 실제로 작동하면 그 점의 좌우 접선 대칭이 깨져 **미세한 각(kink)**이 생긴다 —
+  //    "상자 밖으로 나감"을 "살짝 각짐"으로 바꾸는 거래다.
+  const clampY = (y: number) => r1(Math.min(BOTTOM, Math.max(TOP, y)));
+  const curve = pts.slice(1).reduce((d, p, i) => {
+    const a = pts[i], ta = tan[i], tb = tan[i + 1];
+    return `${d} C${r1(a.x + ta.x)},${clampY(a.y + ta.y)} ${r1(p.x - tb.x)},${clampY(p.y - tb.y)} ${p.x},${p.y}`;
+  }, `M${pts[0].x},${pts[0].y}`);
+  const area = `${curve} L${pts[pts.length - 1].x},${BOTTOM} L${pts[0].x},${BOTTOM} Z`;
+  // 말풍선으로 값을 보여줄 지점 = **가장 인증이 많았던 날**(실데이터라 미리 정할 수 없다).
+  // ⚠️ 양 끝(첫날·마지막날)은 고르지 않는다 — 말풍선이 차트 좌우로 잘린다. 그래서 안쪽 점들 중에서만
+  //    고르고, 점이 3개 미만이면 안쪽 점이 없으므로 말풍선을 달지 않는다(mark = null).
+  // ⚠️ 0건인 점은 절대 가리키지 않는다. 안쪽 점이 전부 0이면 reduce가 그중 첫 점(0건)을 돌려주므로
+  //    "8.04 · 0건" 말풍선이 붙는다 — 실제로 도입 직후(활동이 오늘 하루만 있을 때) 가장 흔한 상태다(검수 지적).
+  const inner = pts.slice(1, -1);
+  const best = inner.length > 0 ? inner.reduce((b, p) => (p.count > b.count ? p : b), inner[0]) : null;
+  const mark = best && best.count > 0 ? best : null;
 
   return (
-    <div style={{ background: "#fff", border: "1px solid var(--landing-border,#DCE5F4)", borderRadius: 10, padding: "14px 16px 10px" }}>
-      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>주간 평균 실근무시간</div>
-      <div style={{ fontSize: 12, color: "var(--text-sub)", marginBottom: 8 }}>최근 6주 · 시간</div>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }} role="img" aria-label="최근 6주 주간 평균 실근무시간 추이(예시)">
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#2563EB" stopOpacity="0.22" />
-            <stop offset="1" stopColor="#2563EB" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {/* vectorEffect="non-scaling-stroke": 선 두께를 화면 크기와 무관하게 유지한다.
-            없으면 폰(차트 폭 252px)에서 선이 1.1px까지 얇아져 거의 안 보인다(검수 지적). */}
-        {[TOP, (TOP + BOTTOM) / 2, BOTTOM].map((y) => (
-          <line key={y} x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="#EEF2F7" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+    <div style={{ background: "#fff", border: "1px solid var(--landing-border,#DCE5F4)", borderRadius: 12, padding: "16px 18px 12px" }}>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>일별 출퇴근 인증</div>
+      {/* "최근 N일"의 N은 실제로 그린 점 개수에서 뽑는다(손으로 적으면 기간을 바꿀 때 거짓말이 된다) */}
+      <div style={{ fontSize: 12, color: "var(--text-sub)", marginBottom: 10 }}>최근 {trend.length}일 · 전체 사용자 합계(건)</div>
+      <div className="landing-chart-plot">
+        {/* 왼쪽 눈금 숫자 — 좁은 화면에선 CSS가 숨긴다(글자끼리 붙어 읽을 수 없어진다).
+            aria-hidden: 아래 SVG의 aria-label이 이미 값을 읽어준다. 안 붙이면 화면읽기 프로그램이
+            숫자만 문맥 없이 한 번 더 읽는다(검수 지적). 말풍선도 같은 이유로 숨긴다. */}
+        {ticks.map((v) => (
+          <span key={v} className="landing-ytick" aria-hidden="true" style={{ top: `${pctOf(yOf(v))}%` }}>
+            {v.toLocaleString("ko-KR")}
+          </span>
         ))}
-        <path d={area} fill={`url(#${gradientId})`} />
-        <polyline points={line} fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-        {pts.map((p) => (
-          <circle key={p.label} cx={p.x} cy={p.y} r="4.5" fill="#fff" stroke="var(--primary)" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />
-        ))}
-      </svg>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
+        {/* 이 상자는 SVG와 크기가 같다 — 말풍선의 % 좌표 기준이 된다.
+            ⚠️ 말풍선을 바깥(.landing-chart-plot)에 두면 왼쪽 눈금 자리(padding)까지 100%에 들어가
+               가로 위치가 점보다 오른쪽으로 밀린다. */}
+        <div style={{ position: "relative" }}>
+          <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }} role="img" aria-label={`최근 ${trend.length}일 일별 출퇴근 인증 건수 추이. ${trend.map((t) => `${t.label} ${t.count.toLocaleString("ko-KR")}건`).join(", ")}`}>
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor="#2563EB" stopOpacity="0.20" />
+                <stop offset="1" stopColor="#2563EB" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            {/* vectorEffect="non-scaling-stroke": 선 두께를 화면 크기와 무관하게 유지한다.
+                없으면 폰(차트 폭 252px)에서 선이 1.1px까지 얇아져 거의 안 보인다(검수 지적). */}
+            {ticks.map((v) => (
+              <line key={v} x1={PAD_L} y1={r1(yOf(v))} x2={W - PAD_R} y2={r1(yOf(v))} stroke="#EEF2F7" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+            ))}
+            <path d={area} fill={`url(#${gradientId})`} />
+            <path d={curve} fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+            {/* 점: 예전엔 6개 모두 흰 속·굵은 테두리라 다 똑같이 튀어 시선이 흩어졌다.
+                → 평소 점은 작게 꽉 채우고, 말풍선이 가리키는 점 하나만 크게 + 흰 테두리로 강조한다.
+                ⚠️ 점의 반지름은 화면 폭에 따라 **같이 줄어든다**(선 두께만 non-scaling-stroke로 고정).
+                   폰(차트 폭 249px = 배율 0.43)에서 지름이 2.7px까지 줄어 2.5px 선에 먹혀 사라지고,
+                   강조점의 흰 테두리는 2px 고정이라 파란 심을 덮어 **선이 끊긴 흰 얼룩**으로 보였다(검수 지적).
+                   → 폰에서는 CSS(.landing-dot)로 점을 전부 숨긴다. 선·면만 남아 오히려 깔끔하고,
+                     그 폭에서는 말풍선도 숨기므로 강조점만 남아 이유 없이 튀는 문제도 함께 사라진다. */}
+            {pts.map((p) => (
+              p === mark ? null : <circle className="landing-dot" key={p.label} cx={p.x} cy={p.y} r="3.2" fill="var(--primary)" />
+            ))}
+            {mark && <circle className="landing-dot" cx={mark.x} cy={mark.y} r="5.2" fill="var(--primary)" stroke="#fff" strokeWidth="2" vectorEffect="non-scaling-stroke" />}
+          </svg>
+          {/* 값 말풍선 — 점 **아래쪽**에 놓는다. 가장 높은 점을 가리킬 때 위에 놓으면 카드 밖으로 잘린다. */}
+          {mark && (
+            <div className="landing-chart-tip" aria-hidden="true" style={{ left: `${r1((mark.x / W) * 100)}%`, top: `${pctOf(mark.y)}%` }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--primary)", flexShrink: 0 }} />
+              {mark.label} · {mark.count.toLocaleString("ko-KR")}건
+            </div>
+          )}
+        </div>
+      </div>
+      {/* aria-hidden: 위 SVG의 aria-label이 날짜·건수를 이미 문장으로 읽어준다. 여기까지 노출하면
+          화면읽기 프로그램이 "8.01 8.02 …"를 문맥 없이 한 번 더 읽는다(검수 지적). */}
+      <div className="landing-chart-x" aria-hidden="true">
         {trend.map((t) => (
           <span key={t.label}>{t.label}</span>
         ))}
@@ -436,7 +557,7 @@ function TrendChart({ gradientId = "trendFill" }: { gradientId?: string }) {
 }
 
 // ── 도넛 차트 (출퇴근 인증 방식 비율) ──
-function AuthDonut() {
+function AuthDonut({ authMix }: { authMix: { label: string; pct: number }[] }) {
   const R = 40, C = 2 * Math.PI * R;
   // 각 조각의 시작 위치(앞 조각들의 합)를 그리기 전에 미리 계산해 둔다.
   // ⚠️ map 안에서 변수를 누적하면 리액트 규칙 위반이다(렌더 중 값 변경 금지) — 린트가 잡는다.
@@ -444,27 +565,41 @@ function AuthDonut() {
   const total = authMix.reduce((sum, p) => sum + p.pct, 0) || 1;
   const segs = authMix.map((a, i) => ({
     ...a,
+    // 색은 화면 쪽 상수(MIX_COLORS)에서 순서대로 가져온다 — 집계 함수는 색을 모른다.
+    // 조각이 색 개수보다 많아지면 마지막 색을 돌려 쓴다(색이 없어 투명해지는 것 방지).
+    color: MIX_COLORS[Math.min(i, MIX_COLORS.length - 1)],
     dash: (a.pct / total) * C,
     offset: -(authMix.slice(0, i).reduce((sum, p) => sum + p.pct, 0) / total) * C,
   }));
   return (
-    <div style={{ background: "#fff", border: "1px solid var(--landing-border,#DCE5F4)", borderRadius: 10, padding: "14px 16px 10px" }}>
+    <div style={{ background: "#fff", border: "1px solid var(--landing-border,#DCE5F4)", borderRadius: 12, padding: "16px 18px 12px" }}>
       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>인증 방식 비율</div>
-      <div style={{ fontSize: 12, color: "var(--text-sub)", marginBottom: 6 }}>직원이 고른 출퇴근 방식</div>
+      <div style={{ fontSize: 12, color: "var(--text-sub)", marginBottom: 8 }}>전체 사용자가 고른 출퇴근 방식</div>
       <div style={{ display: "flex", justifyContent: "center" }}>
-        <svg viewBox="0 0 110 110" width="106" height="106" role="img" aria-label="출퇴근 인증 방식 비율: 얼굴인증 62퍼센트, GPS 38퍼센트(예시)">
+        {/* ⚠️ 링 두께 19 + 반지름 R(40)이면 링의 바깥 끝이 40+9.5=49.5로 viewBox 반지름 55 안에 들어온다.
+               **R + 두께/2 가 55를 넘으면 링이 잘린다** — 둘 중 하나를 키울 때 반드시 같이 확인할 것. */}
+        {/* aria-label은 authMix에서 만든다 — 손으로 "62퍼센트"라 적어두면 비율을 고쳤을 때 라벨이 거짓이 된다(검수 지적) */}
+        <svg viewBox="0 0 110 110" width="118" height="118" role="img" aria-label={`출퇴근 인증 방식 비율: ${authMix.map((a) => `${a.label} ${a.pct}퍼센트`).join(", ")}`}>
           <g transform="rotate(-90 55 55)">
-            <circle cx="55" cy="55" r={R} fill="none" stroke="#F1F5F9" strokeWidth="14" />
+            <circle cx="55" cy="55" r={R} fill="none" stroke="#F1F5F9" strokeWidth="19" />
             {segs.map((a) => (
-              <circle key={a.label} cx="55" cy="55" r={R} fill="none" stroke={a.color} strokeWidth="14" strokeDasharray={`${a.dash} ${C - a.dash}`} strokeDashoffset={a.offset} />
+              <circle key={a.label} cx="55" cy="55" r={R} fill="none" stroke={a.color} strokeWidth="19" strokeDasharray={`${a.dash} ${C - a.dash}`} strokeDashoffset={a.offset} />
             ))}
+          </g>
+          {/* 가운데를 비워 두면 도넛이 "덜 그려진 것"처럼 보인다 → 옅은 파란 원 + 사람 아이콘을 넣는다.
+              ⚠️ 위의 rotate(-90) 그룹 **밖**에 둬야 한다 — 안에 넣으면 아이콘이 90도 누워 버린다. */}
+          <circle cx="55" cy="55" r="23" fill="#EFF6FF" />
+          <g transform="translate(55 55) scale(1.05) translate(-12 -12)" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round">
+            <circle cx="12" cy="9.6" r="3.4" />
+            <path d="M5.9 19.4a6.2 6.2 0 0 1 12.2 0" />
           </g>
         </svg>
       </div>
-      <div style={{ display: "flex", justifyContent: "center", gap: 14, marginTop: 6, flexWrap: "wrap" }}>
-        {authMix.map((a) => (
+      <div style={{ display: "flex", justifyContent: "center", gap: 14, marginTop: 8, flexWrap: "wrap" }}>
+        {segs.map((a) => (
           <span key={a.label} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--text-sub)" }}>
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: a.color }} />
+            {/* 범례 점은 원형 — 도넛(둥근 조각)과 모양을 맞춘다. 색은 조각과 같은 segs에서 가져와야 어긋나지 않는다. */}
+            <span style={{ width: 9, height: 9, borderRadius: "50%", background: a.color }} />
             {a.label} {a.pct}%
           </span>
         ))}
@@ -553,6 +688,4 @@ const h2: React.CSSProperties = { fontSize: "clamp(24px,4vw,34px)", fontWeight: 
 function logoBox(size: number, radius: number, fontSize: number): React.CSSProperties {
   return { width: size, height: size, borderRadius: radius, background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize, fontWeight: 700, flexShrink: 0 };
 }
-function dot(): React.CSSProperties {
-  return { width: 10, height: 10, borderRadius: "50%", background: "var(--border)" };
-}
+// ※ 브라우저 창 흉내 줄(신호등 3점)을 걷어내면서 그 점을 만들던 dot() 함수도 함께 지웠다(2026-08-09).
