@@ -157,6 +157,11 @@ export async function getLandingStats(): Promise<LandingStats> {
     const gpsN = byMethod.find((m) => m.authMethod === "gps")?._count._all ?? 0;
     const pickedN = faceN + gpsN;
     // 아무도 방식을 고르지 않았으면(분모 0) 비율을 만들 수 없어 도넛을 비운다 — 화면은 꺾은선만 넓게 그린다.
+    // 🔴 **여기에는 최소 인원 기준이 없다.** 방식을 고른 사람이 1명이면 도넛은 "얼굴인증 100%"가 되고,
+    //    그건 통계가 아니라 **그 한 사람이 생체정보(얼굴) 이용에 동의했다는 사실**을 로그인 없이 공개하는 것이다
+    //    (얼굴=민감정보 — 상위 사규 6항). 예전에 `pickedN >= 10` 기준이 있었으나 2026-08-09에
+    //    "미리보기를 처음부터 보여줘" 지시로 다른 기준들과 함께 **되돌렸다**.
+    //    ⚠️ 사장님 확인 대기 항목이다(project-status.md 0-N) — 도넛만 최소 인원을 되살릴지 결정이 필요하다.
     const facePct = pickedN > 0 ? Math.round((faceN / pickedN) * 100) : 0;
     const authMix = pickedN > 0
       ? [{ label: "얼굴인증", pct: facePct }, { label: "GPS", pct: 100 - facePct }]

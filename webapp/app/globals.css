@@ -314,14 +314,10 @@ details.faq[open] > summary .faq-chevron { transform: rotate(180deg); }
   font-size: 11px; color: #9CA3AF; font-variant-numeric: tabular-nums;
 }
 
-/* 직원/관리자 카드 안 기기 그림 — 글 오른쪽에 자리를 비워 두고 그 자리에 얹는다.
-   ⚠️ 236px = 그림 폭 215(page.tsx의 ROLE_ART_W) + 오른쪽 여백 10 + 글과의 간격 11.
-      **page.tsx에서 그림 폭을 바꾸면 이 값도 같이 바꿀 것** — 안 그러면 글자가 그림 위로 올라탄다.
-   ※ 2026-08-09 이전에는 폰(152px)과 노트북(232px)이 서로 달랐다. 두 그림 크기를 같게 맞춰서
-      값도 하나로 통일했지만, 클래스는 둘 다 남겨 뒀다(나중에 한쪽만 키울 수 있게). */
-.landing-role-body { padding-right: 236px; }
-.landing-role-body-lg { padding-right: 236px; }
-/* 그림 높이가 최대 238px(+아래 여백 18)이라 카드가 그보다 낮으면 그림 위가 잘린다 → 바닥값을 준다 */
+/* 직원/관리자 카드 — 카드 안이 가로 2칸(글 | 그림)이라 글자가 그림 위로 올라탈 수가 없다.
+   ※ 2026-08-09 이전에는 그림을 절대배치로 얹고 `.landing-role-body{padding-right}`로 자리를 비웠는데,
+      **그림 폭과 그 값이 짝**이라 한쪽만 고치면 글자가 그림에 겹쳤다. 2칸 배치로 바꿔 그 규칙을 없앴다.
+   두 카드의 높이를 맞추기 위한 바닥값만 남긴다(그림 높이 최대 218px + 위아래 여백 56px = 274px). */
 .landing-role-card { min-height: 300px; }
 
 @media (max-width: 1200px) {
@@ -345,11 +341,10 @@ details.faq[open] > summary .faq-chevron { transform: rotate(180deg); }
         **눈금·말풍선을 빼면 이 값을 700으로 되돌려도 된다.** */
   .landing-chart-grid { grid-template-columns: 1fr; }
 }
-/* 카드가 한 줄로 접히면 기기 그림이 글을 가릴 만큼 좁아진다 → 그림을 빼고 여백도 되돌린다 */
+/* 카드가 한 줄로 접히면 그림 몫(230px)까지 나눠 쓸 폭이 안 나온다 → 그림을 뺀다(글이 폭을 다 쓴다) */
 @media (max-width: 640px) {
   .landing-device { display: none; }
-  .landing-role-body, .landing-role-body-lg { padding-right: 0; }
-  /* 기기 그림이 사라졌으니 바닥값도 해제한다 — 안 그러면 카드 아래에 빈 띠만 남는다 */
+  /* 그림이 사라졌으니 바닥값도 해제한다 — 안 그러면 카드 아래에 빈 띠만 남는다 */
   .landing-role-card { min-height: 0; }
 
   /* 차트가 이보다 좁아지면(폰) 높이가 100px 아래로 떨어져 눈금 숫자가 서로 붙고,

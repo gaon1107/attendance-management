@@ -105,8 +105,8 @@ const svg = (path: string, size = 22) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
 
 export default async function Home() {
-  // 홈화면 미리보기에 쓸 **실제 통계**. 실고객·최근 인증이 없으면 stats.enough=false로 오고,
-  // 그때는 미리보기 카드를 아예 렌더하지 않는다(0건·평평한 그래프를 판매 화면에 띄우지 않는다).
+  // 홈화면 미리보기에 쓸 **실제 통계**. 값이 0이어도 그대로 보여준다("처음부터 보여줘", 2026-08-09).
+  // 미리보기를 감추는 경우는 **DB 조회 실패(live.ok === false)** 하나뿐이다.
   // ⚠️ 변수명이 `live`인 이유: 이 파일에는 아래쪽 숫자 밴드용 모듈 상수 `stats`가 이미 있다.
   //    `stats`로 두면 그것을 덮어버려 밴드가 깨진다(실제로 한 번 깨뜨렸다).
   const live = await getLandingStats();
@@ -446,7 +446,10 @@ function TrendChart({ trend, gradientId = "trendFill" }: { trend: { label: strin
   //    여기는 광고 화면이고 지표가 "건수"라 0 기준이 정직하다. **MIN을 다시 데이터에 맞추지 말 것.**
   const MIN = 0;
   // 눈금 간격: (최댓값 / 4)를 넘는 가장 작은 "보기 좋은 수" → 눈금이 3~5개로 떨어진다.
-  // 값이 전부 0이어도 0으로 나누지 않게 || 1. (실제로는 enough 조건 때문에 전부 0인 경우는 오지 않는다)
+  // 🔴 `|| 1`은 **0으로 나누기를 막는 유일한 방어**다. 지우면 hi=0에서 Math.log10(0)=-Infinity →
+  //    mag=0 → step=NaN이 되어 차트가 즉시 깨진다. 그리고 **"전부 0"은 지금 실제로 일어나는 상태다**
+  //    (실고객이 아직 0개사라 KPI·추이가 전부 0). 예전 주석은 "감추는 조건 때문에 0인 경우는 안 온다"고
+  //    적혀 있었는데, 그 조건을 없앴으므로(2026-08-09) 거짓이 됐다. **절대 정리하지 말 것.**
   const rough = hi / 4 || 1;
   const mag = Math.pow(10, Math.floor(Math.log10(rough)));
   // ⚠️ 2.5는 **자리수(mag)가 10 이상일 때만** 후보로 쓴다. mag=1에서 2.5가 뽑히면 눈금이
@@ -612,17 +615,43 @@ function AuthDonut({ authMix }: { authMix: { label: string; pct: number }[] }) {
   );
 }
 
+// ── 역할 카드 ─────────────────────────────────────────────────────
+// 2026-08-09 사장님 지시로 오른쪽 그림을 제공 일러스트로 교체했다. 그러면서 **구조도 바꿨다**:
+//  · 예전: SVG 기기 테두리를 카드 오른쪽 아래에 **절대배치**로 얹고, 그 위에 우리 화면을 본뜬 UI
+//         (출근 버튼·관리자 메뉴바·KPI 칸)를 손으로 그려 넣었다. 글자가 그림 위로 올라타지 않게
+//         `padding-right`로 자리를 비워 뒀는데, **그림 폭과 그 값이 짝**이라 한쪽만 고치면 겹쳤다.
+//  · 지금: 카드 안을 **가로 2칸(글 | 그림)**으로 나눈다. 그림이 자기 자리를 차지하므로 겹칠 수가 없고
+//         `padding-right` 짝 맞추기도 필요 없다(그 CSS는 지웠다). 얹었던 UI도 삭제 —
+//         일러스트에 화면이 이미 그려져 있어 두 개가 겹쳤다.
+//
+// 그림은 사장님 원본(1536×1024)에서 **일러스트 한 덩어리씩 통째로** 잘랐다(후광 원 포함):
+//   role-employee.webp ← 원본 (90,168)에서 672×618 → 460px폭
+//   role-admin.webp    ← 원본 (834,176)에서 648×614 → 460px폭
+//   방식: 네 모서리 색을 배경으로 잡고 **허용오차 10 안쪽만 가장자리부터 채워** 투명 처리 → WebP(q82/알파90).
+// ⚠️ 배경 판정을 "순백(min≥252)"으로 하면 **거의 지워지지 않는다** — 원본 배경이 순백이 아니라
+//    연파랑(약 241,247,254)인 자리도 있어서다. 실제로 그렇게 했다가 투명 픽셀이 1.7%뿐이어서
+//    카드 위에 **연파랑 네모가 그대로 드러났다**(검수 지적). **반드시 모서리 실측색 + 허용오차로 할 것.**
+// ⚠️ 후광이 잘리지 않게 일러스트 **전체**를 감싸 자른다. 안쪽에서 자르면 후광 단면이 직선으로 남는다.
+// ⚠️ 허용오차를 40까지 올려 후광까지 지우면 기기를 더 크게 쓸 수 있지만, **일러스트가 상한다** —
+//    배지 주변 스캔 프레임과 방패(연파랑 ~200~220)가 갉아먹혔다(실제로 만들어 보고 확인). 10을 유지할 것.
+//
+// ⚠️ 그림 폭 200px의 근거: 카드 안쪽 폭 456 − 글 항목이 한 줄에 필요한 최대폭(실측 248) − 간격 18 = 190.
+//    여기에 10px 더해 200으로 잡았다(8개 항목 중 가장 긴 1개만 두 줄). **더 키우면 항목이 전부 두 줄이 된다**
+//    (230으로 했을 때 실측: 글자 폭 208 → 8개 전부 두 줄). 글을 늘리거나 줄이면 이 값을 다시 재야 한다.
+const ROLE_ART_W = 200;
 function RoleCard({ title, sub, items, iconPath, device }: { title: string; sub: string; items: string[]; iconPath: string; device: "phone" | "laptop" }) {
+  // 두 그림의 가로:세로가 조금 달라 각자 넘긴다(460×423 / 460×436)
+  const art = device === "phone"
+    ? { src: "/role-employee.webp", w: 460, h: 423 }
+    : { src: "/role-admin.webp", w: 460, h: 436 };
+  const h = Math.round((ROLE_ART_W * art.h) / art.w);
   return (
-    // 최소 높이(그림 236px + 아래 여백 18px이 잘리지 않게)는 globals.css의 .landing-role-card에 있다.
+    // 최소 높이는 globals.css의 .landing-role-card에 있다.
     // ⚠️ 인라인으로 두면 안 된다 — 기기 그림이 사라지는 좁은 화면(≤640px)에서 해제할 방법이 없어
     //    그림도 없는 카드 아래에 빈 띠가 남는다(검수 지적).
-    <div className="landing-role-card" style={{ position: "relative", overflow: "hidden", background: "var(--landing-card,#fff)", borderRadius: 16, padding: "28px 26px", boxShadow: "0 8px 30px var(--landing-shadow)" }}>
-      {/* 두 그림의 세로/가로 비율이 조금 달라 각자 넘긴다(430×471 / 430×477) */}
-      {device === "phone"
-        ? <RoleArt src="/role-employee.webp" ratio={430 / 471} />
-        : <RoleArt src="/role-admin.webp" ratio={430 / 477} />}
-      <div className={device === "phone" ? "landing-role-body" : "landing-role-body-lg"}>
+    <div className="landing-role-card" style={{ display: "flex", alignItems: "center", gap: 18, overflow: "hidden", background: "var(--landing-card,#fff)", borderRadius: 16, padding: "28px 26px", boxShadow: "0 8px 30px var(--landing-shadow)" }}>
+      {/* minWidth: 0 — 없으면 글자가 안 줄어들어 그림을 밀어내고 카드가 가로로 넘친다(격자 기본값 함정) */}
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
           <div style={{ width: 40, height: 40, borderRadius: 11, background: "linear-gradient(135deg,#2563EB,#60A5FA)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }} dangerouslySetInnerHTML={{ __html: svg(iconPath, 20) }} />
           <div>
@@ -639,30 +668,8 @@ function RoleCard({ title, sub, items, iconPath, device }: { title: string; sub:
           ))}
         </div>
       </div>
-    </div>
-  );
-}
-
-// ── 역할 카드 오른쪽 그림 ─────────────────────────────────────────
-// 2026-08-09: 예전에는 SVG 기기 테두리 위에 우리 화면을 본뜬 UI(출근 버튼·관리자 메뉴바·KPI 칸)를
-// **손으로 얹어** 만들었다. 사장님이 3D 일러스트를 주셔서 그림 한 장으로 갈아끼웠고,
-// 얹었던 UI는 함께 지웠다(일러스트에 화면이 이미 그려져 있어 두 개가 겹쳤다).
-//
-// 이미지는 사장님 원본(1536×1024, 흰 배경)에서 두 덩어리를 잘라 만들었다:
-//   role-employee.webp ← 원본 185,215 위치에서 470×515 (폰 + 얼굴인식 배지 + 방패)
-//   role-admin.webp    ← 원본 900,225 위치에서 460×510 (모니터 대시보드)
-// ⚠️ **테두리에 붙은 순백색만 투명 처리**했다(폰 화면 안쪽 흰색은 테두리와 이어지지 않아 살아남는다).
-//    통째로 흰 배경을 깔면 카드 바탕(위 흰색 → 아래 #F8FBFF 그라데이션) 위에 흰 네모가 드러난다.
-//    각 13~15KB. **원본을 다시 자를 일이 생기면 이 방식(가장자리 채우기)을 그대로 쓸 것.**
-//
-// ⚠️ 표시 폭 215px은 globals.css `.landing-role-body{padding-right}`와 **짝**이다.
-//    글자가 그림 위로 올라타지 않게 비워 둔 자리이므로, 폭을 바꾸면 그 값도 함께 바꿔야 한다.
-const ROLE_ART_W = 215;
-function RoleArt({ src, ratio }: { src: string; ratio: number }) {
-  return (
-    <div className="landing-device" style={{ position: "absolute", right: 10, bottom: 18, width: ROLE_ART_W, height: Math.round(ROLE_ART_W / ratio), pointerEvents: "none" }}>
       {/* eslint-disable-next-line @next/next/no-img-element -- 크기가 고정된 장식용 이미지. 최적화 대상 아님 */}
-      <img src={src} alt="" width={ROLE_ART_W} height={Math.round(ROLE_ART_W / ratio)} />
+      <img className="landing-device" src={art.src} alt="" width={ROLE_ART_W} height={h} loading="lazy" decoding="async" style={{ flexShrink: 0 }} />
     </div>
   );
 }
