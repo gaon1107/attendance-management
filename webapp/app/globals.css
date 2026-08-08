@@ -314,10 +314,14 @@ details.faq[open] > summary .faq-chevron { transform: rotate(180deg); }
   font-size: 11px; color: #9CA3AF; font-variant-numeric: tabular-nums;
 }
 
-/* 직원/관리자 카드 안 기기 그림 — 글 오른쪽에 자리를 비워 두고 그 자리에 얹는다 */
-.landing-role-body { padding-right: 152px; }
-.landing-role-body-lg { padding-right: 232px; }
-/* 폰 목업 높이가 292px이라 카드가 그보다 낮으면 윗 베젤이 잘린다 → 바닥값을 준다 */
+/* 직원/관리자 카드 안 기기 그림 — 글 오른쪽에 자리를 비워 두고 그 자리에 얹는다.
+   ⚠️ 236px = 그림 폭 215(page.tsx의 ROLE_ART_W) + 오른쪽 여백 10 + 글과의 간격 11.
+      **page.tsx에서 그림 폭을 바꾸면 이 값도 같이 바꿀 것** — 안 그러면 글자가 그림 위로 올라탄다.
+   ※ 2026-08-09 이전에는 폰(152px)과 노트북(232px)이 서로 달랐다. 두 그림 크기를 같게 맞춰서
+      값도 하나로 통일했지만, 클래스는 둘 다 남겨 뒀다(나중에 한쪽만 키울 수 있게). */
+.landing-role-body { padding-right: 236px; }
+.landing-role-body-lg { padding-right: 236px; }
+/* 그림 높이가 최대 238px(+아래 여백 18)이라 카드가 그보다 낮으면 그림 위가 잘린다 → 바닥값을 준다 */
 .landing-role-card { min-height: 300px; }
 
 @media (max-width: 1200px) {

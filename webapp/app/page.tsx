@@ -32,8 +32,7 @@ const chips = [
 // ── 미리보기 KPI 4칸의 아이콘 (숫자·라벨은 lib/public-stats.ts가 DB에서 뽑아 온다) ──
 // 여기는 한 회사의 대시보드가 아니라 **근태관리 사용자 전체(회원사 합계) 통계**다(2026-08-08 결정).
 // 🔴 **이 화면의 숫자는 전부 실제 DB 값이다. 예시·목업 값을 다시 넣지 말 것**(2026-08-09 결정).
-//    보여줄 데이터가 모자라거나 표본이 작으면 lib/public-stats.ts가 `enough: false`를 주고
-//    이 미리보기는 렌더되지 않는다(표본이 작을 때 합계 = 특정 회사·개인 정보이므로).
+//    값이 0이어도 그대로 보여준다("처음부터 보여줘", 2026-08-09). DB 조회가 실패했을 때만 감춘다.
 const PEEK_ICONS = {
   auth: '<path d="M20 6 9 17l-5-5"/>',
   company: '<path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01"/>',
@@ -211,16 +210,15 @@ export default async function Home() {
           </div>
 
           {/* 제품 미리보기 — **전부 실제 DB 통계**(lib/public-stats.ts). 목업 값 금지.
-              ⚠️ live.enough가 false면 이 블록 전체를 렌더하지 않는다. 두 가지 이유가 겹쳐 있다:
-                 ① 기록이 없으면 "0건 + 바닥에 붙은 평평한 선"이 판매용 첫 화면에 뜬다(2026-08-09 결정).
-                 ② 🔴 표본이 작으면 합계가 곧 특정 회사·특정 개인의 근태 정보가 된다.
-                 실제 기준은 lib/public-stats.ts의 MIN_* 상수(회사 5·직원 20·기록 50·방식 고른 사람 10)다.
+              ⚠️ live.ok가 false = **DB 조회 실패**일 때만 이 블록을 렌더하지 않는다(0으로 채운 화면을
+                 진짜 데이터처럼 보여주지 않으려고). 데이터가 적다는 이유로는 감추지 않는다 —
+                 "그냥 처음부터 보여줘"(2026-08-09 사장님 지시). 감추는 기준을 되살리려면 lib/public-stats.ts.
               ⚠️ 예전에 맨 위에 있던 브라우저 창 흉내 줄(신호등 3점·주소·"예시 화면·가상 데이터"·"실시간")은
                  **지웠다** — 실데이터로 바뀌어 "가상 데이터" 표기가 사실과 달라졌고, 사장님이 이 줄 자체를
                  걷어내라고 확정했다(2026-08-09). 되살릴 일이 생기면 가상 데이터 표기부터 다시 판단할 것. */}
           {/* ⚠️ 그림자만 --landing-shadow(8%)를 안 쓰고 13%로 따로 준다 — 이 카드는 화면에서 가장 큰
                  덩어리라 같은 8%로는 흰 히어로 바탕 위에서 떠 보이지 않는다(다른 카드보다 진하게). */}
-          {live.enough && (
+          {live.ok && (
           <div style={{ position: "relative", zIndex: 1, marginTop: "clamp(40px,6vw,64px)", borderRadius: 16, background: "var(--landing-bg,#F5F8FF)", overflow: "hidden", textAlign: "left", boxShadow: "0 24px 60px rgba(37,99,235,0.13)" }}>
             <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
               {/* ⚠️ 미리보기 **안쪽** 카드들(아래 KPI 4칸·차트 2개)은 테두리를 지우지 않는다.
@@ -616,11 +614,14 @@ function AuthDonut({ authMix }: { authMix: { label: string; pct: number }[] }) {
 
 function RoleCard({ title, sub, items, iconPath, device }: { title: string; sub: string; items: string[]; iconPath: string; device: "phone" | "laptop" }) {
   return (
-    // 최소 높이(폰 목업 292px이 잘리지 않게)는 globals.css의 .landing-role-card에 있다.
+    // 최소 높이(그림 236px + 아래 여백 18px이 잘리지 않게)는 globals.css의 .landing-role-card에 있다.
     // ⚠️ 인라인으로 두면 안 된다 — 기기 그림이 사라지는 좁은 화면(≤640px)에서 해제할 방법이 없어
-    //    그림도 없는 카드 아래에 56px짜리 빈 띠가 남는다(검수 지적).
+    //    그림도 없는 카드 아래에 빈 띠가 남는다(검수 지적).
     <div className="landing-role-card" style={{ position: "relative", overflow: "hidden", background: "var(--landing-card,#fff)", borderRadius: 16, padding: "28px 26px", boxShadow: "0 8px 30px var(--landing-shadow)" }}>
-      {device === "phone" ? <PhoneMock /> : <LaptopMock />}
+      {/* 두 그림의 세로/가로 비율이 조금 달라 각자 넘긴다(430×471 / 430×477) */}
+      {device === "phone"
+        ? <RoleArt src="/role-employee.webp" ratio={430 / 471} />
+        : <RoleArt src="/role-admin.webp" ratio={430 / 477} />}
       <div className={device === "phone" ? "landing-role-body" : "landing-role-body-lg"}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
           <div style={{ width: 40, height: 40, borderRadius: 11, background: "linear-gradient(135deg,#2563EB,#60A5FA)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }} dangerouslySetInnerHTML={{ __html: svg(iconPath, 20) }} />
@@ -642,48 +643,26 @@ function RoleCard({ title, sub, items, iconPath, device }: { title: string; sub:
   );
 }
 
-// ── 기기 목업 ─────────────────────────────────────────────────────
-// 그림(SVG) 위 "화면" 자리에 우리 화면을 본뜬 간단한 UI를 얹는다.
-// ⚠️ 화면 자리 좌표는 SVG 원본에서 온 값이다(폰 36,36~324,664 / 노트북 124,34~596,324).
-//    그림 파일을 다른 것으로 바꾸면 아래 left/top/width/height도 함께 다시 계산해야 한다.
-//    나중에 실제 화면 스크린샷이 준비되면 이 안쪽 내용만 <img>로 갈아끼우면 된다.
-function PhoneMock() {
-  const S = 150 / 360; // 원본 360px → 화면 표시 150px
+// ── 역할 카드 오른쪽 그림 ─────────────────────────────────────────
+// 2026-08-09: 예전에는 SVG 기기 테두리 위에 우리 화면을 본뜬 UI(출근 버튼·관리자 메뉴바·KPI 칸)를
+// **손으로 얹어** 만들었다. 사장님이 3D 일러스트를 주셔서 그림 한 장으로 갈아끼웠고,
+// 얹었던 UI는 함께 지웠다(일러스트에 화면이 이미 그려져 있어 두 개가 겹쳤다).
+//
+// 이미지는 사장님 원본(1536×1024, 흰 배경)에서 두 덩어리를 잘라 만들었다:
+//   role-employee.webp ← 원본 185,215 위치에서 470×515 (폰 + 얼굴인식 배지 + 방패)
+//   role-admin.webp    ← 원본 900,225 위치에서 460×510 (모니터 대시보드)
+// ⚠️ **테두리에 붙은 순백색만 투명 처리**했다(폰 화면 안쪽 흰색은 테두리와 이어지지 않아 살아남는다).
+//    통째로 흰 배경을 깔면 카드 바탕(위 흰색 → 아래 #F8FBFF 그라데이션) 위에 흰 네모가 드러난다.
+//    각 13~15KB. **원본을 다시 자를 일이 생기면 이 방식(가장자리 채우기)을 그대로 쓸 것.**
+//
+// ⚠️ 표시 폭 215px은 globals.css `.landing-role-body{padding-right}`와 **짝**이다.
+//    글자가 그림 위로 올라타지 않게 비워 둔 자리이므로, 폭을 바꾸면 그 값도 함께 바꿔야 한다.
+const ROLE_ART_W = 215;
+function RoleArt({ src, ratio }: { src: string; ratio: number }) {
   return (
-    <div className="landing-device" style={{ position: "absolute", right: 14, bottom: -34, width: 150, height: Math.round(700 * S), pointerEvents: "none" }}>
-      {/* eslint-disable-next-line @next/next/no-img-element -- 크기가 고정된 장식용 SVG. 최적화 대상 아님 */}
-      <img src="/mockup-phone.svg" alt="" width={150} height={Math.round(700 * S)} />
-      <div style={{ position: "absolute", left: Math.round(36 * S), top: Math.round(36 * S), width: Math.round(288 * S), height: Math.round(628 * S), borderRadius: Math.round(34 * S), overflow: "hidden", background: "#fff" }}>
-        <div style={{ height: 34, background: "linear-gradient(135deg,#2563EB,#3B82F6)" }} />
-        <div style={{ padding: "12px 11px" }}>
-          <div style={{ width: 62, height: 62, borderRadius: "50%", background: "#EFF6FF", border: "2px solid var(--primary)", margin: "4px auto 14px", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--primary)", fontSize: 12, fontWeight: 700 }}>출근</div>
-          <div style={{ height: 8, borderRadius: 4, background: "#E5E7EB", marginBottom: 6 }} />
-          <div style={{ height: 8, borderRadius: 4, background: "#F3F4F6", width: "72%", marginBottom: 14 }} />
-          <div style={{ height: 26, borderRadius: 6, background: "#F9FAFB", border: "1px solid var(--border)" }} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function LaptopMock() {
-  const S = 240 / 720; // 원본 720px → 화면 표시 240px
-  return (
-    <div className="landing-device" style={{ position: "absolute", right: -4, bottom: 22, width: 240, height: Math.round(460 * S), pointerEvents: "none" }}>
-      {/* eslint-disable-next-line @next/next/no-img-element -- 크기가 고정된 장식용 SVG. 최적화 대상 아님 */}
-      <img src="/mockup-laptop.svg" alt="" width={240} height={Math.round(460 * S)} />
-      <div style={{ position: "absolute", left: Math.round(124 * S), top: Math.round(34 * S), width: Math.round(472 * S), height: Math.round(290 * S), borderRadius: 3, overflow: "hidden", display: "flex", background: "var(--bg)" }}>
-        {/* 왼쪽 다크 네이비 = 실제 관리자 메뉴바 색(--rail) */}
-        <div style={{ width: 24, background: "var(--rail)", flexShrink: 0 }} />
-        <div style={{ flex: 1, padding: 6, display: "flex", flexDirection: "column", gap: 4 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 3 }}>
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} style={{ height: 18, borderRadius: 2, background: "#fff", border: "1px solid var(--border)" }} />
-            ))}
-          </div>
-          <div style={{ flex: 1, borderRadius: 2, background: "#fff", border: "1px solid var(--border)" }} />
-        </div>
-      </div>
+    <div className="landing-device" style={{ position: "absolute", right: 10, bottom: 18, width: ROLE_ART_W, height: Math.round(ROLE_ART_W / ratio), pointerEvents: "none" }}>
+      {/* eslint-disable-next-line @next/next/no-img-element -- 크기가 고정된 장식용 이미지. 최적화 대상 아님 */}
+      <img src={src} alt="" width={ROLE_ART_W} height={Math.round(ROLE_ART_W / ratio)} />
     </div>
   );
 }
