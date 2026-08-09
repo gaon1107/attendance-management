@@ -43,6 +43,14 @@ function eucKrFormBody(params: Record<string, string>): string {
     .join("&");
 }
 
+// 문자 발송이 쓸 수 있는 상태인가(.env 계정 3개가 모두 있는가).
+//  · [비밀번호 찾기]가 이 값으로 화면을 가른다: 미설정이면 문자 인증코드 방식을 아예 보여주지 않고
+//    기존 "관리자 승인" 방식으로 안내한다. 안 그러면 "코드를 보냈다"고 해놓고 영영 안 오는 화면이 된다.
+//  · 계정 값 자체는 절대 밖으로 내보내지 않는다 — 있고 없음만 알린다.
+export function smsConfigured(): boolean {
+  return account() !== null;
+}
+
 // .env 계정. 하나라도 없으면 null(→ 발송 안 함, 안전 실패).
 function account(): { id: string; pw: string; sender: string } | null {
   const id = process.env.IONE_SMS_ID;

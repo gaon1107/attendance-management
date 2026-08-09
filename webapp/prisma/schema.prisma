@@ -196,6 +196,7 @@ model User {
   attendances  Attendance[]
   leaveRequests LeaveRequest[]
   passwordResetRequests PasswordResetRequest[]
+  passwordResetCodes    PasswordResetCode[]
   // 출퇴근 인증방식: "face"(얼굴) | "gps"(GPS/위치). null=아직 선택 안 함. 얼굴은 강제 아님, 언제든 변경 가능.
   authMethod     String?
   // 생체정보(얼굴) 이용 동의 시각. 동의 철회 시 null로 되돌린다.
@@ -660,6 +661,43 @@ model PasswordResetRequest {
   @@index([userId, status])
 }
 
+// 비밀번호 찾기 인증코드 — 직원이 관리자 승인 없이 스스로 비밀번호를 되찾는 경로(문자 6자리).
+//  · 왜 필요한가: 위 PasswordResetRequest는 **관리자가 승인해야만** 임시비번이 나온다. 밤·주말에
+//    관리자가 안 보면 직원이 로그인하지 못하고, 근태 제품에서 로그인 불가 = 근로기록 누락이다.
+//  · 🔒 코드 원문은 저장하지 않는다(비밀번호와 같은 scrypt 해시). DB가 새도 코드를 알 수 없다.
+//  · 🔒 이 표가 만들어졌다고 비밀번호가 바뀌지는 않는다. 코드까지 맞힌 사람이 새 비밀번호를 정할 때만 바뀐다.
+//    (남의 이메일만 알면 그 계정을 잠글 수 있는 사고를 막는 핵심 설계 — lib/reset-code.ts 주석 참고)
+//  · add-only: 기존 관리자 승인 경로는 그대로 남는다(전화번호 없는 직원의 유일한 길이라 없애면 안 된다).
+model PasswordResetCode {
+  id        String   @id @default(cuid())
+  // 회사 격리·문자 발송기록(SmsLog) 대조용. SmsLog와 같이 관계는 두지 않고 값만 갖는다.
+  companyId String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  // 6자리 코드의 scrypt 해시("소금값:해시값"). 원문 미저장 — lib/password.ts의 hashPassword/verifyPassword 사용.
+  codeHash  String
+  // 🔒 발송 슬롯 — "userId_분번호". 유니크라 **같은 사람은 1분에 1건만 만들 수 있다**(DB가 보장).
+  //    ⚠️ 예전엔 "마지막 발송을 읽어보고 60초 지났으면 만든다"였는데, 동시에 500건이 들어오면
+  //       500건 전부 "마지막 발송 없음"을 읽고 통과해 문자 500건이 실제로 나갔다(검수 치명 4).
+  //       읽고-판단하고-쓰는 사이에 잠금이 없으면 어떤 상한도 동시 요청 앞에서 무의미하다.
+  slotKey   String   @unique
+  expiresAt DateTime
+  // 틀린 횟수. 상한을 넘으면 즉시 폐기한다(6자리=100만분의1이라 시도 제한이 실질적 방어선).
+  attemptCount Int   @default(0)
+  // 🔒 문자가 **실제로 나간** 시각. 하루 상한은 이 값이 있는 건만 센다.
+  //    ⚠️ 예전엔 만들어진 행을 전부 셌는데, 그러면 "한도에 걸려 아무 문자도 안 나간 시도"가
+  //       남긴 행이 다음 요청의 카운트를 다시 밀어올려 **24시간 창이 영원히 갱신**됐다(검수 치명 A).
+  //       발송사 장애 때 직원이 안내대로 몇 번 누르면 문자 한 통 못 받고 하루 잠기는 사고였다.
+  //       (login-throttle.ts가 "차단된 시도는 세지 않는다"로 이미 겪고 고친 것과 같은 유형)
+  sentAt        DateTime?
+  usedAt        DateTime? // 새 비밀번호 설정에 실제로 쓰인 시각. 값이 있으면 재사용 불가.
+  invalidatedAt DateTime? // 시도 초과·새 코드 발급으로 폐기된 시각. 값이 있으면 사용 불가.
+  createdAt DateTime @default(now())
+
+  // 살아있는 코드 찾기·하루 발송량 세기·재발송 간격 확인이 전부 (userId, createdAt)로 돈다.
+  @@index([userId, createdAt])
+}
+
 // 로그인 세션 — 로그인 시 발급하는 "출입증(토큰)". 브라우저 쿠키에 토큰만 담는다.
 model Session {
   id        String   @id @default(cuid())
@@ -786,8 +824,10 @@ model SmsLog {
   id        String   @id @default(cuid())
   companyId String
   userId    String?  // 임시비번=대상 직원 / 초대=null
-  kind      String   // "invite" | "temp_password"
-  refId     String?  // inviteId 또는 passwordResetRequestId (1회 제한 조회용)
+  kind      String   // "invite" | "temp_password" | "reset_code"(비밀번호 찾기 인증코드)
+  // inviteId | passwordResetRequestId | passwordResetCodeId (1회 제한 조회용).
+  // ⚠️ reset_code는 코드 1건마다 id가 새로 생기므로 아래 유니크와 절대 충돌하지 않는다(재발송이 필요한 종류).
+  refId     String?
   toNumber  String   // 수신번호(숫자만)
   // "pending"(보내는 중) | "success"(발송 성공) | "fail"(발송 실패, 과금 없음)
   //  | "unknown"(발송 도중 서버가 멈춰 결과를 확인할 수 없음 — 발송·과금 여부 불명. 실패로 단정하지 않는다)

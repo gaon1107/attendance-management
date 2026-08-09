@@ -105,6 +105,14 @@ function baseMetaLabel(meta: string): string {
     signup_blocked: "회원가입 시도 차단(과다 요청)",
     reset_request: "비밀번호 재설정 요청",
     reset_request_blocked: "재설정 요청 차단(과다 요청)",
+    // 비밀번호 찾기 문자 인증(lib/reset-code.ts·actions/password-reset.ts)
+    //  ⚠️ 액션에 새 meta를 넣으면 **반드시 여기도 함께 넣는다.** 빠뜨리면 [보안]-[접속기록] 화면과
+    //     엑셀에서 "무슨 일인지" 칸이 빈칸으로 나온다(같은 실수가 두 번 났다).
+    reset_code_sent: "비밀번호 찾기 인증번호 발송",
+    reset_code_wrong: "인증번호 오입력",
+    reset_code_blocked: "인증번호 요청 차단(과다 요청)",
+    reset_code_verify_blocked: "인증번호 확인 차단(과다 요청)",
+    password_reset_by_sms_code: "본인 비밀번호 재설정(문자 인증)",
     login_ip_throttled: "로그인 시도 차단(같은 IP 과다 실패)",
     // 생체정보 파기 경로(actions/authmethod.ts)
     admin_revoke: "관리자 파기",

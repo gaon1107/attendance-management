@@ -35,6 +35,11 @@ export const SIGNUP_WINDOW_MIN = 60;
 export const SIGNUP_MAX_PER_IP = 10;
 export const RESET_WINDOW_MIN = 60;
 export const RESET_MAX_PER_IP = 20;
+// 비밀번호 찾기 인증번호 **오입력**: 같은 IP에서 이만큼 틀리면 잠시 거부한다.
+//  · 코드 1건당 5회 상한은 이미 있지만, 그건 "코드 한 개"를 지킨다. 이건 "문 앞"을 지킨다.
+//  · 세는 대상(reset_code_wrong)은 코드당 최대 5건만 생기므로 이 기록 자체가 적재 통로가 되지 않는다.
+export const RESET_CODE_WINDOW_MIN = 60;
+export const RESET_CODE_MAX_PER_IP = 30;
 
 // 제한에 걸려 거부한 시도의 표시값. 이 표시가 붙은 기록은 **다시 세지 않는다**(자기 연장 방지).
 export const THROTTLED_META = "login_ip_throttled";
@@ -130,11 +135,12 @@ export async function loginAllowedForIp(ip: string | null, companyId: string | n
 /**
  * 로그인 없이 부를 수 있는 창구(가입·비밀번호 재설정)의 IP 제한.
  * 이 기록들은 companyId가 없을 수 있어(가입 전) 사내망 면제를 적용하지 않는다.
- * @param metaPrefix AccessEvent.meta의 접두어("signup" | "reset_request")
+ * @param metaPrefix AccessEvent.meta 값("signup" | "reset_request" | "reset_code_wrong").
+ *                  ⚠️ **정확일치**로 세므로 새 값을 넣을 때는 기록하는 쪽의 meta와 글자가 같아야 한다.
  */
 export async function publicActionAllowedForIp(
   ip: string | null,
-  metaPrefix: "signup" | "reset_request",
+  metaPrefix: "signup" | "reset_request" | "reset_code_wrong",
   max: number,
   windowMin: number,
   now: Date = new Date()
