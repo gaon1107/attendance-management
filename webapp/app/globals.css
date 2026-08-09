@@ -198,10 +198,10 @@ body {
 }
 
 /* ── 랜딩 FAQ 아코디언 (JS 없이 <details>로 동작) ── */
-details.faq > summary { list-style: none; cursor: pointer; }
-details.faq > summary::-webkit-details-marker { display: none; }
-details.faq > summary .faq-chevron { transition: transform 0.15s ease; }
-details.faq[open] > summary .faq-chevron { transform: rotate(180deg); }
+details.landing-faq > summary { list-style: none; cursor: pointer; }
+details.landing-faq > summary::-webkit-details-marker { display: none; }
+details.landing-faq > summary .faq-chevron { transition: transform 0.15s ease; }
+details.landing-faq[open] > summary .faq-chevron { transform: rotate(180deg); }
 
 /* ── 랜딩(홈) 화면 전용 ─────────────────────────────────────────────
    ⚠️ 여기 규칙은 **로그인하지 않은 홈화면(app/page.tsx)에서만** 쓴다.
@@ -228,7 +228,10 @@ details.faq[open] > summary .faq-chevron { transform: rotate(180deg); }
       곱하기 합성은 "흰색(1.0) × 배경색 = 배경색"이라 **흰 부분이 투명처럼 사라진다.**
       덕분에 이미지를 다시 뽑지 않고도 page.tsx의 히어로 파란 그라데이션 위에 얹을 수 있다.
       부작용: 그림 안의 밝은 부분도 배경색에 살짝 물든다. 물결·방패가 원래 파란 계열이라 자연스럽다.
-      ⚠️ 히어로 배경(page.tsx)과 **짝**이다. 배경을 흰색으로 되돌리면 이 blend는 있으나 마나가 된다.
+      ⚠️ 2026-08-09 색 정리로 히어로 배경이 다시 **거의 흰색(#FAFBFD→#FFFFFF)**이 됐다. 흰색 위에서는
+         곱해도 결과가 그대로라 이 blend는 **지금은 하는 일이 거의 없다**(#FAFBFD 구간에서 대비 1.01짜리
+         흰 네모를 지우는 정도). 그래도 **지우지 말 것** — 히어로 배경에 색을 다시 넣는 순간
+         이게 없으면 그림 두 장이 흰 네모로 드러난다(그래서 넣은 장치다).
    ⚠️ 1200px가 경계인 이유: 이보다 좁으면 오른쪽 그림이 제목 글자와 겹쳐 읽히지 않는다. 실측으로 정한 값. */
 /* 왼쪽 물결 — 화면 왼쪽 끝에 붙는다(.landing-hero-wrap이 화면 전체 폭).
    원본 hero-waves.webp 620×570, 잉크 범위 원본 x 0~579. 상자 280×257은 원본과 비율이 같다. */
@@ -308,6 +311,62 @@ details.faq[open] > summary .faq-chevron { transform: rotate(180deg); }
 .landing-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 @media (max-width: 880px) { .landing-stats { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 520px) { .landing-stats { grid-template-columns: 1fr; } }
+
+/* 카드에 마우스를 올렸을 때 살짝 떠오르는 효과 (2026-08-09 사장님 지시).
+   붙는 곳: 차별점 카드 3장 · 도입 3단계 카드 3장 · 역할 카드 2장 = **8장**. FAQ는 아래 따로.
+   ⚠️ 이름을 `landing-hover-card`로 한 이유: 이 파일에 이미 **`--landing-card`라는 색 변수**가 있어서
+      `.landing-card`로 지으면 둘이 헷갈린다(하나는 카드 배경색, 하나는 움직임).
+   ⚠️ 인라인 style로는 :hover를 쓸 수 없어 클래스로 뺐다.
+   ⚠️ `@media (hover: hover)` — 마우스가 없는 기기(폰·태블릿)를 제외한다. 터치로만 쓰는 화면에서는
+      한 번 누른 카드에 효과가 눌어붙어, 다른 곳을 누를 때까지 그 카드만 커진 채로 남기 때문이다.
+      ※ 다만 **터치스크린 달린 노트북**은 주 입력이 마우스라 이 조건에 걸린다. 그런 기기에서 손가락으로
+        누르면 눌어붙음이 남을 수 있다 — 카드가 눌러도 아무 일이 없는 요소라 피해는 미관뿐이다.
+   ⚠️ 이 카드들은 **눌러도 아무 일이 없다.** 그래서 손가락 커서(cursor:pointer)는 주지 않는다 —
+      커서까지 바꾸면 "누를 수 있다"고 오해하게 만든다. 살짝 뜨는 정도까지만.
+   ⚠️ 맨 아래 `prefers-reduced-motion` 블록은 **이 규칙보다 뒤에 있어야** 이긴다. 순서를 바꾸지 말 것.
+   🔴 **카드의 배경·테두리·그림자를 page.tsx의 인라인 style로 되돌리지 말 것.**
+      인라인 style은 CSS 클래스를 항상 이기기 때문에, 그 자리에 있으면 아래 :hover가
+      테두리·그림자를 **바꾸지 못한다**(실제로 그렇게 만들었다가 마우스를 올려도 아무 변화가
+      없는 것을 확인하고 여기로 옮겼다). 카드 8장의 공통 모양은 전부 이 규칙이 갖는다. */
+.landing-hover-card {
+  background: var(--landing-card, #fff);
+  border: 1px solid var(--landing-border-strong, #CBD9F0);
+  border-radius: 16px;
+  box-shadow: 0 8px 30px var(--landing-shadow);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+@media (hover: hover) {
+  .landing-hover-card:hover {
+    /* 🔴 **위로 띄우기(translateY)를 쓰면 안 된다.** 카드가 위로 올라가면 마우스가 반응하는 영역도
+       같이 올라가서, 커서를 **카드 맨 아래 가장자리**에 두면 이런 무한 반복이 생긴다:
+       올라감 → 커서가 카드 밖(칸 사이 16px 틈)이 됨 → 내려옴 → 다시 커서 안 → 올라감 …
+       화면이 덜덜 떨린다(검수 지적). 카드 3장을 좌우로 훑을 때 아래쪽을 스치면 바로 나온다.
+       그래서 **살짝 커지기(scale)**를 쓴다. 커지는 것은 반응 영역이 **넓어지기만** 하므로
+       커서가 밖으로 밀려날 일이 없다. 보이는 느낌은 "앞으로 다가온다"로 비슷하다.
+       ⚠️ 1.02(2%)를 넘기지 말 것 — 카드 사이 간격이 16px이라 그 이상 키우면 옆 카드를 침범한다. */
+    transform: scale(1.02);
+    box-shadow: 0 18px 42px rgba(37,99,235,0.18);
+    border-color: #93B4F5;              /* 평소 테두리(#CBD9F0)보다 한 단계 진한 파랑 */
+  }
+  details.landing-faq:hover { border-color: #93B4F5; box-shadow: 0 6px 24px rgba(37,99,235,0.13); }
+}
+/* FAQ는 **누르면 펼쳐지는 버튼**이라 성격이 다르다 → 커지게 하지 않고 테두리·그림자만 반응시킨다.
+   펼쳐진 항목이 마우스 따라 움직이면 읽던 글이 흔들려 오히려 불편하다.
+   🔴 위 카드와 같은 이유로 테두리·그림자를 여기서 갖는다(인라인으로 되돌리면 :hover가 무력해진다).
+   ⚠️ 클래스 이름이 `faq`가 아니라 **`landing-faq`인 이유**: 이 파일은 로그인 후 화면에도 적용된다.
+      `details.faq`처럼 흔한 이름에 색을 얹으면, 나중에 관리자 화면에서 같은 이름을 쓰는 순간
+      홈화면 전용 파란 톤이 따라붙는다. 이 파일의 규칙(홈화면 전용은 `landing-` 접두사)을 따른다. */
+details.landing-faq {
+  border: 1px solid var(--landing-border-strong, #CBD9F0);
+  box-shadow: 0 4px 20px var(--landing-shadow);
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+/* 화면 움직임을 줄이도록 설정한 분(어지럼증 등)에게는 **뜨는 움직임만** 뺀다.
+   색·그림자 변화는 남기므로 "반응이 없는 화면"이 되지는 않는다. */
+@media (prefers-reduced-motion: reduce) {
+  .landing-hover-card { transition: box-shadow .18s ease, border-color .18s ease; }
+  .landing-hover-card:hover { transform: none; }
+}
 
 /* 마지막 CTA(파란 밴드) 배경 — 2026-08-09 사장님이 만든 배너 그림.
    ⚠️ **인라인 style이 아니라 여기 두는 이유가 두 가지 있다.**

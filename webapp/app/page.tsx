@@ -138,7 +138,16 @@ export default async function Home() {
              경계가 필요하다. 색만 회색 → 파랑으로 맞추되 **진한 쪽(-strong)**을 쓴다.
              헤더 배경이 반투명(0.9)이라 아래로 지나가는 푸른 섹션이 비쳐 올라오는데, 옅은 쪽을
              쓰면 그 구간에서 선 대비가 1.10까지 떨어져 헤더와 본문이 붙어 보인다(검수 지적). */}
-      <header style={{ position: "sticky", top: 0, zIndex: 10, background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)", borderBottom: "1px solid var(--landing-border-strong,#CBD9F0)" }}>
+      {/* 🎨 2026-08-09 색 정리에 딸린 보완: 히어로 배경이 흰색이 되면 고정 메뉴바와 본문의 경계가
+             **1px 선 하나**만 남는다(사장님께 여쭤 두었던 0-A ① 항목이 바로 이것이다).
+             그래서 그림자를 더해 메뉴바가 본문 위에 떠 있는 것으로 읽히게 한다.
+             ⚠️ 처음엔 rgba(37,99,235,0.06)+blur 4px로 넣었는데, 계산해 보니 가장 진한 지점이
+                흰색 대비 **1.04**로 사실상 안 보였다(테두리 #CBD9F0이 1.43인 것과 비교). 그래서
+                검정 기운 8%로 올렸다. **이보다 더 옅게 내리면 없는 것과 같아진다.**
+             ⚠️ 스크롤 위치와 무관하게 항상 켜져 있다. 맨 위에서도 그림자가 보이는 게 싫으면
+                클라이언트 컴포넌트로 바꿔 스크롤 위치를 봐야 한다(지금은 서버 컴포넌트라 못 한다).
+             ⚠️ 히어로 배경을 다시 파랗게 되돌린다면 이 그림자는 빼도 된다(선만으로 충분해진다). */}
+      <header style={{ position: "sticky", top: 0, zIndex: 10, background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)", borderBottom: "1px solid var(--landing-border-strong,#CBD9F0)", boxShadow: "0 2px 8px rgba(15,23,42,0.08)" }}>
         <div style={{ maxWidth: WRAP, margin: "0 auto", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, padding: "0 24px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
             <div style={logoBox(28, 7, 15)}>근</div>
@@ -159,15 +168,18 @@ export default async function Home() {
       {/* 히어로 — 배경은 화면 끝까지, 글은 가운데. 오른쪽 그림은 넓은 화면에서만 보인다.
           오른쪽으로 삐져나온 그림을 잘라내는 처리는 globals.css의 `.landing-hero-wrap`에 있다
           (인라인 스타일로는 옛 사파리용 폴백 두 줄을 쓸 수 없다). */}
-      {/* ⚠️ 예전엔 이 배경이 흰색이었다. 배경 그림 두 조각이 **흰 바탕으로 구워진** 이미지라
-             (투명 PNG면 233KB, 흰 배경이면 23KB) 파란 그라데이션 위에 얹으면 흰 네모가 드러났기 때문이다.
-             2026-08-06: globals.css에서 그 두 그림에 `mix-blend-mode: multiply`(곱하기 합성)를 걸어
-             **흰색이 투명처럼 동작하게** 만들었다. 그래서 이제 파란 배경을 깔 수 있다.
-             ⚠️ 이 배경을 다시 손댈 땐 globals.css의 `.landing-hero-wrap::before` / `.landing-hero-inner::before`
-                blend 설정과 **짝**이라는 것을 기억할 것. blend를 빼면 흰 네모가 즉시 다시 보인다.
-             ⚠️ 시안처럼 왼쪽 위가 가장 파랗고 오른쪽 아래로 갈수록 흰색이 되게 165도로 기울였다.
-                아래쪽이 흰색인 이유: 바로 뒤에 오는 기능 섹션의 그라데이션도 흰색에서 시작하기 때문이다. */}
-      <div className="landing-hero-wrap" style={{ background: "linear-gradient(165deg,#E8F1FD 0%,#F2F7FF 45%,#FFFFFF 100%)" }}>
+      {/* 🎨 2026-08-09 색 정리: 연파랑 → **거의 흰색**.
+             섹션 배경으로 연파랑이 깔린 면적이 52.6%였고(실측), 그중 절반이 이 히어로였다(26.0%).
+             지금은 섹션 기준 12.2%(도입 3단계 한 곳)다.
+             #FAFBFD는 흰색에 아주 약간 회색이 섞인 값 — 완전한 흰색(#FFFFFF)이면 아래 미리보기 카드의
+             푸른빛 바탕(--landing-bg)이 붕 떠 보여서, 바닥을 아주 살짝만 낮춰 둔다.
+             ── 배경 그림 이야기 (2026-08-06 이력) ─────────────────────────────
+             배경 그림 두 조각(물결·사람)은 **흰 바탕으로 구워진** 이미지다(투명 PNG면 233KB, 흰 배경이면 23KB).
+             그래서 파란 배경 위에 얹으면 흰 네모가 드러났고, globals.css에서 두 그림에
+             `mix-blend-mode: multiply`(곱하기 합성)를 걸어 흰색이 투명처럼 동작하게 만들었다.
+             ⚠️ 지금은 배경이 거의 흰색이라 그 blend가 하는 일이 거의 없다. 그래도 **빼지 말 것** —
+                배경에 색을 다시 넣는 순간 흰 네모가 즉시 다시 보인다(globals.css의 짝 주석 참고). */}
+      <div className="landing-hero-wrap" style={{ background: "linear-gradient(180deg,#FAFBFD 0%,#FFFFFF 60%)" }}>
         <section className="landing-hero-inner" style={{ position: "relative", maxWidth: WRAP, margin: "0 auto", padding: "clamp(56px,10vw,104px) 24px clamp(48px,8vw,80px)", textAlign: "center" }}>
           {/* 배경 그림(물결 + 사람·방패)은 globals.css의 `.landing-hero-wrap::before`가 깐다.
               여기에 <img>로 두지 않는 이유: 글자 뒤에 깔리는 장식이라 문서 내용이 아니고,
@@ -178,12 +190,14 @@ export default async function Home() {
                  → 문구를 길게 고치거나 글꼴이 바뀌어도 겹치는 대신 **줄바꿈**이 된다(안전한 실패).
                  ⚠️ 이 값을 키우거나 없애면 특징칩 마지막 칸이 방패 그림 위로 올라탄다. */}
           <div style={{ position: "relative", zIndex: 1, maxWidth: 700, margin: "0 auto" }}>
-            {/* ⚠️ 배경색이 #D3E1FA인 이유: 히어로 배경이 파랗게 바뀌면서(2026-08-06) 예전 값 #E8F1FE는
-                   히어로 상단색 #E8F1FD와 **거의 같은 색**(대비 1.00)이 되어 배지가 통째로 묻혔다.
-                   #DCE8FA로 내려도 1.09라 여전히 약해 #D3E1FA(1.16)까지 내렸다. 알약 배경은 장식이라
-                   이 정도면 충분하다 — 실제로 읽히게 하는 건 진한 글자색(#1D4ED8)이다.
-                   시안에 맞춰 테두리와 초록 점은 뺐다.
-                   ⚠️ 히어로 배경색을 다시 바꾸면 이 값의 대비를 다시 계산할 것. */}
+            {/* ⚠️ 알약 배경색 #D3E1FA의 이력:
+                   2026-08-06 히어로가 파란 배경이던 시절, 예전 값 #E8F1FE가 히어로 상단색과 거의 같은 색
+                   (대비 1.00)이 되어 배지가 통째로 묻혔다 → #D3E1FA까지 내려 대비 1.16을 확보했다.
+                   2026-08-09 히어로가 다시 거의 흰색이 되면서 **같은 값의 대비가 1.32로 올라갔다**(계산).
+                   즉 예전보다 알약이 또렷하다. 묻히는 문제는 사라졌고, 장식치고 진하다 싶으면
+                   #DCE8FA(흰색 대비 1.22)쯤으로 한 단계 올려도 된다. 지금은 그대로 둔다.
+                   실제로 글자를 읽히게 하는 건 알약색이 아니라 진한 글자색(#1D4ED8)이다.
+                   ⚠️ 히어로 배경색을 또 바꾸면 이 대비를 다시 계산할 것. */}
             <div style={{ display: "inline-flex", alignItems: "center", height: 30, padding: "0 16px", background: "#D3E1FA", borderRadius: 16, marginBottom: 24, whiteSpace: "nowrap" }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: "#1D4ED8" }}>중소기업을 위한 근태관리 SaaS</span>
             </div>
@@ -279,27 +293,27 @@ export default async function Home() {
              헤더가 실제로 먹는 높이는 **61px**(안쪽 60 + 아래 테두리 1)이라 68은 여유가 7px뿐이다.
              **헤더 높이를 바꾸면 이 값도 함께 올릴 것.**
              globals.css의 html{scroll-padding-top}으로 하면 로그인 후 전 화면에 영향이 가므로 여기서만 준다. */}
-      {/* ⚠️ 배경 그라데이션의 위·아래 끝이 **흰색**인 이유: 이 섹션의 앞(히어로)과 뒤(도입 3단계)가
-             둘 다 흰 바탕이다. 예전엔 회색 단색 + 위쪽 구분선이라 색이 뚝 끊겼는데,
-             양 끝을 흰색으로 두면 선 없이도 색이 서서히 번져 시안처럼 한 장으로 이어진다.
-             **앞뒤 섹션의 배경을 바꾸면 이 0%/100% 색도 같이 바꿀 것.**
-          ⚠️ 색이 바뀌는 지점을 %가 아니라 **48px 고정**으로 둔 이유(2026-08-06 검수 반영):
-             ① %로 두면 섹션이 길어질수록 흰색 구간도 같이 길어진다. 폰(375px)에서 카드가 세로로
-                쌓이면 이 섹션 높이가 965px까지 늘어(실측) 82% 지점이 **마지막 카드 한가운데**에
-                걸리고, 테두리 없는 카드가 같은 흰색 배경에 묻혀 사라져 보인다.
-             ② px 중에서도 **48**인 이유: 이 섹션의 위아래 여백은 clamp(56px,8vw,88px)이라
-                **최소 56px**이다. 페이드를 그보다 좁게 잡아야 색이 변하는 구간이 여백 안에서만
-                끝나고 카드 영역을 침범하지 않는다(120px로 잡았더니 카드 아래 64px가 걸렸다 — 실측).
-                ⚠️ 섹션 패딩의 최소값을 줄이면 이 48px도 함께 줄일 것. */}
-      <section id="features" style={{ background: "linear-gradient(180deg,#FFFFFF 0,var(--landing-bg,#F5F8FF) 48px,var(--landing-bg,#F5F8FF) calc(100% - 48px),#FFFFFF 100%)", scrollMarginTop: 68 }}>
+      {/* 🎨 2026-08-09 색 정리(미리보기): 연파랑 배경 → **흰색**.
+             ⚠️ 배경을 지웠으면 **카드에 테두리를 반드시 살려야 한다**(아래 border). 이 카드들이 테두리 없이
+                버틴 이유가 바로 "배경이 푸른빛이라 흰 카드가 저절로 구분된다"였기 때문이다.
+                테두리 없이 배경만 희게 하면 흰 바탕에 흰 카드가 되어 윤곽이 녹는다 —
+                그림자(8%)만으로는 밝은 사무실 모니터에서 안 보인다는 것이 이 프로젝트의 기존 결론이다.
+                ⚠️ 테두리는 여기 인라인이 아니라 **globals.css의 `.landing-hover-card`**가 갖는다
+                   (인라인으로 두면 마우스 올림 효과가 테두리를 못 바꾼다).
+             ※ 예전 배경(연파랑 그라데이션)과 48px 페이드에 대한 설명은 아래 [도입 3단계] 섹션으로 옮겼다.
+                연파랑을 **섹션 배경**으로 쓰는 곳은 이제 거기 하나뿐이다.
+                (섹션 말고도 히어로 안 미리보기 카드 바탕에 같은 색 `--landing-bg`를 쓴다 — 그건 별개다.) */}
+      <section id="features" style={{ background: "#FFFFFF", scrollMarginTop: 68 }}>
         <div style={{ maxWidth: WRAP, margin: "0 auto", padding: "clamp(56px,8vw,88px) 24px" }}>
           <div style={{ textAlign: "center", marginBottom: "clamp(32px,5vw,48px)" }}>
             <div style={eyebrow}>WHY 근태관리</div>
             <h2 style={h2}>일하는 사람도, 관리하는 사람도 편하게</h2>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 16 }}>
+            {/* 카드의 배경·테두리·둥근모서리·그림자는 globals.css의 `.landing-hover-card`가 갖는다.
+                ⚠️ 인라인 style로 다시 옮기면 마우스 올림 효과가 죽는다(인라인이 CSS를 이긴다). */}
             {features.map((f) => (
-              <div key={f.title} style={{ background: "var(--landing-card,#fff)", borderRadius: 16, padding: "28px 26px", boxShadow: "0 8px 30px var(--landing-shadow)" }}>
+              <div key={f.title} className="landing-hover-card" style={{ padding: "28px 26px" }}>
                 <div style={{ width: 48, height: 48, borderRadius: 13, background: f.grad, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18, boxShadow: "0 8px 18px rgba(37,99,235,0.22)" }} dangerouslySetInnerHTML={{ __html: svg(f.icon, 23) }} />
                 <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{f.title}</div>
                 <div style={{ fontSize: 15, color: "var(--text-sub)", lineHeight: 1.6 }}>{f.desc}</div>
@@ -310,36 +324,56 @@ export default async function Home() {
       </section>
 
       {/* HOW IT WORKS — 3단계 */}
-      <section id="how" style={{ maxWidth: WRAP, margin: "0 auto", padding: "clamp(56px,8vw,88px) 24px", scrollMarginTop: 68 }}>
-        <div style={{ textAlign: "center", marginBottom: "clamp(32px,5vw,48px)" }}>
-          <div style={eyebrow}>HOW IT WORKS</div>
-          <h2 style={h2}>도입은 3단계면 충분해요</h2>
-        </div>
-        {/* ⚠️ 카드 사이 화살표를 "카드 안"에 두면 안 된다 — 카드에 overflow:hidden이 있어 잘려서
-               아예 보이지 않는다(실측으로 확인). 그래서 격자(grid) 자체에 얹고 칸 사이 여백 좌표를
-               계산해 놓는다(globals.css의 .landing-step-arrow). 카드가 3열이 아닐 땐 숨긴다. */}
-        {/* ⚠️ 아래 카드에는 테두리를 **남긴다**(특징·역할 카드와 다른 점). 그 두 섹션은 배경이
-               푸른빛(--landing-bg)이라 흰 카드가 저절로 구분되지만, 이 섹션은 배경이 없어
-               **순수 흰 바탕**이다. 카드 위쪽도 흰색이라 테두리를 지우면 그림자만 남는데,
-               그림자 8%로는 밝은 사무실 모니터에서 카드 경계가 보이지 않는다(검수 지적). */}
-        <div className="landing-steps" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 16 }}>
-          {steps.map((s, i) => (
-            <div key={s.title} style={{ position: "relative", background: "var(--landing-card,#fff)", border: "1px solid var(--landing-border-strong,#CBD9F0)", borderRadius: 16, padding: "28px 26px", overflow: "hidden", boxShadow: "0 8px 30px var(--landing-shadow)" }}>
-              <span style={{ position: "absolute", top: 8, right: 18, fontSize: 64, fontWeight: 800, color: "#F1F5FB", lineHeight: 1, userSelect: "none" }}>{i + 1}</span>
-              <div style={{ position: "relative", width: 48, height: 48, borderRadius: 13, background: "linear-gradient(135deg,#2563EB,#60A5FA)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18, boxShadow: "0 8px 18px rgba(37,99,235,0.22)" }} dangerouslySetInnerHTML={{ __html: svg(s.icon, 23) }} />
-              <div style={{ position: "relative", fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{s.title}</div>
-              <div style={{ position: "relative", fontSize: 15, color: "var(--text-sub)", lineHeight: 1.6 }}>{s.desc}</div>
-            </div>
-          ))}
-          <span className="landing-step-arrow landing-step-arrow-1" dangerouslySetInnerHTML={{ __html: svg('<path d="M9 6l6 6-6 6"/>', 20) }} />
-          <span className="landing-step-arrow landing-step-arrow-2" dangerouslySetInnerHTML={{ __html: svg('<path d="M9 6l6 6-6 6"/>', 20) }} />
+      {/* 🎨 2026-08-09 색 정리: 이 섹션이 **연파랑을 섹션 배경으로 쓰는 유일한 곳**이 됐다.
+             (히어로 안 미리보기 카드도 같은 색 `--landing-bg`를 바탕으로 쓴다 — 섹션이 아니라 카드다.)
+             왜 없애지 않고 여기로 모았나 — 히어로·차별점·역할을 전부 흰색으로 만들면 위에서 CTA까지
+             흰색이 6구간 연속이라 구간 구분이 사라지고 밋밋해진다. 연파랑을 한 군데로 몰아 주면
+             `흰 → 흰 → 🩵 → 흰 → 🔵밴드 → 흰 → 🔵CTA` 리듬이 생긴다.
+             ⚠️ 전에는 이 섹션 자체가 가운데 정렬 상자(maxWidth)였다. 배경을 깔려면 **화면 끝까지** 칠해야 해서
+                바깥에 섹션을 하나 더 두고 안쪽에 원래 상자를 넣는 구조로 바꿨다.
+                이 구조를 되돌리면 배경이 가운데 1080px에만 칠해지고 좌우가 흰색으로 남는다.
+             ⚠️ 배경 그라데이션의 위·아래 끝이 **흰색**인 이유: 앞(차별점)과 뒤(역할)가 둘 다 흰 바탕이다.
+                양 끝을 흰색으로 두면 선 없이도 색이 서서히 번져 한 장으로 이어진다.
+                **앞뒤 섹션 배경을 바꾸면 이 0%/100% 색도 같이 바꿀 것.**
+             ⚠️ 색이 바뀌는 지점을 %가 아니라 **48px 고정**으로 둔 이유(2026-08-06 검수 반영):
+                ① %로 두면 섹션이 길어질수록 흰색 구간도 같이 길어진다. 폰에서 카드가 세로로 쌓이면
+                   그 지점이 카드 한가운데에 걸려 카드가 배경에 묻힌다.
+                ② 48인 이유: 이 섹션의 위아래 여백이 최소 56px이라, 색이 변하는 구간이 그 여백 안에서
+                   끝나야 카드 영역을 침범하지 않는다(120px로 잡았더니 카드 아래 64px가 걸렸다 — 실측).
+                   ⚠️ 섹션 패딩의 최소값을 줄이면 이 48px도 함께 줄일 것. */}
+      <section id="how" style={{ background: "linear-gradient(180deg,#FFFFFF 0,var(--landing-bg,#F5F8FF) 48px,var(--landing-bg,#F5F8FF) calc(100% - 48px),#FFFFFF 100%)", scrollMarginTop: 68 }}>
+        <div style={{ maxWidth: WRAP, margin: "0 auto", padding: "clamp(56px,8vw,88px) 24px" }}>
+          <div style={{ textAlign: "center", marginBottom: "clamp(32px,5vw,48px)" }}>
+            <div style={eyebrow}>HOW IT WORKS</div>
+            <h2 style={h2}>도입은 3단계면 충분해요</h2>
+          </div>
+          {/* ⚠️ 카드 사이 화살표를 "카드 안"에 두면 안 된다 — 카드에 overflow:hidden이 있어 잘려서
+                 아예 보이지 않는다(실측으로 확인). 그래서 격자(grid) 자체에 얹고 칸 사이 여백 좌표를
+                 계산해 놓는다(globals.css의 .landing-step-arrow). 카드가 3열이 아닐 땐 숨긴다. */}
+          {/* 🔴 카드 테두리를 **지우면 안 된다.** "배경이 푸른빛이니 테두리 없이도 구분되겠지"는 틀렸다 —
+                 실제 대비를 계산하면 카드 위쪽(#FFFFFF) 대 섹션 바탕(#F5F8FF)이 **1.06**,
+                 카드 아래쪽(#F8FBFF) 대 바탕이 **1.02**다. 이 파일 위쪽 색 주석이 "1.17도 안 보인다"고
+                 박제해 둔 기준보다 한참 아래라, 테두리를 빼면 카드가 그냥 사라진다(검수 지적).
+                 테두리 자체는 globals.css의 `.landing-hover-card`가 갖는다. */}
+          <div className="landing-steps" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 16 }}>
+            {steps.map((s, i) => (
+              <div key={s.title} className="landing-hover-card" style={{ position: "relative", padding: "28px 26px", overflow: "hidden" }}>
+                <span style={{ position: "absolute", top: 8, right: 18, fontSize: 64, fontWeight: 800, color: "#F1F5FB", lineHeight: 1, userSelect: "none" }}>{i + 1}</span>
+                <div style={{ position: "relative", width: 48, height: 48, borderRadius: 13, background: "linear-gradient(135deg,#2563EB,#60A5FA)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18, boxShadow: "0 8px 18px rgba(37,99,235,0.22)" }} dangerouslySetInnerHTML={{ __html: svg(s.icon, 23) }} />
+                <div style={{ position: "relative", fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{s.title}</div>
+                <div style={{ position: "relative", fontSize: 15, color: "var(--text-sub)", lineHeight: 1.6 }}>{s.desc}</div>
+              </div>
+            ))}
+            <span className="landing-step-arrow landing-step-arrow-1" dangerouslySetInnerHTML={{ __html: svg('<path d="M9 6l6 6-6 6"/>', 20) }} />
+            <span className="landing-step-arrow landing-step-arrow-2" dangerouslySetInnerHTML={{ __html: svg('<path d="M9 6l6 6-6 6"/>', 20) }} />
+          </div>
         </div>
       </section>
 
       {/* 역할별 */}
-      {/* 위 features 섹션과 **똑같은 값**이다(48px 고정인 이유도 거기 주석 참고).
-          앞(도입 3단계)·뒤(숫자 밴드)가 흰 바탕이라 양 끝을 흰색으로 둔다. 한쪽만 고치지 말 것. */}
-      <section id="roles" style={{ background: "linear-gradient(180deg,#FFFFFF 0,var(--landing-bg,#F5F8FF) 48px,var(--landing-bg,#F5F8FF) calc(100% - 48px),#FFFFFF 100%)", scrollMarginTop: 68 }}>
+      {/* 🎨 2026-08-09 색 정리(미리보기): 연파랑 배경 → **흰색**.
+             ⚠️ 짝으로 아래 RoleCard에 테두리를 살렸다(차별점 카드와 같은 이유 — 그쪽 주석 참고). */}
+      <section id="roles" style={{ background: "#FFFFFF", scrollMarginTop: 68 }}>
         <div style={{ maxWidth: WRAP, margin: "0 auto", padding: "clamp(56px,8vw,88px) 24px" }}>
           <div style={{ textAlign: "center", marginBottom: "clamp(32px,5vw,48px)" }}>
             <h2 style={h2}>직원도, 관리자도 각자 필요한 만큼만</h2>
@@ -414,8 +448,10 @@ export default async function Home() {
                  없어 순수 흰 바탕이다. 게다가 이건 눌러서 접었다 펴는 **버튼**이라, 경계가 사라지면
                  누를 수 있다는 것 자체를 알 수 없게 된다(검수 지적: 질문 4개가 한 덩어리로 보임). */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {/* 아래 <details>의 테두리·그림자는 globals.css의 `details.landing-faq`가 갖는다
+                (마우스 올림 효과가 이기게 하려고). ⚠️ 인라인 style로 다시 옮기면 효과가 죽는다. */}
             {faqs.map((f, i) => (
-              <details key={f.q} className="faq" open={i === 0} style={{ background: "#fff", border: "1px solid var(--landing-border-strong,#CBD9F0)", borderRadius: 12, padding: "4px 20px", boxShadow: "0 4px 20px var(--landing-shadow)" }}>
+              <details key={f.q} className="landing-faq" open={i === 0} style={{ background: "#fff", borderRadius: 12, padding: "4px 20px" }}>
                 <summary style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "16px 0", fontSize: 16, fontWeight: 700 }}>
                   <span>{f.q}</span>
                   <span className="faq-chevron" style={{ color: "#9CA3AF", flexShrink: 0, width: 18, height: 18, display: "inline-flex" }} dangerouslySetInnerHTML={{ __html: svg('<path d="m6 9 6 6 6-6"/>', 18) }} />
@@ -673,7 +709,8 @@ function AuthDonut({ authMix }: { authMix: { label: string; pct: number }[] }) {
 // ⚠️ 허용오차를 40까지 올려 후광까지 지우면 기기를 더 크게 쓸 수 있지만, **일러스트가 상한다** —
 //    배지 주변 스캔 프레임과 방패(연파랑 ~200~220)가 갉아먹혔다(실제로 만들어 보고 확인). 10을 유지할 것.
 //
-// ⚠️ 그림 폭 200px의 근거: 카드 안쪽 폭 456 − 글 항목이 한 줄에 필요한 최대폭(실측 248) − 간격 18 = 190.
+// ⚠️ 그림 폭 200px의 근거: 카드 안쪽 폭 454 − 글 항목이 한 줄에 필요한 최대폭(실측 248) − 간격 18 = 188.
+//    (456이었다가 2026-08-09에 카드 테두리 1px×2가 생기면서 **454로 2px 줄었다** — 검수 지적)
 //    여기에 10px 더해 200으로 잡았다(8개 항목 중 가장 긴 1개만 두 줄). **더 키우면 항목이 전부 두 줄이 된다**
 //    (230으로 했을 때 실측: 글자 폭 208 → 8개 전부 두 줄). 글을 늘리거나 줄이면 이 값을 다시 재야 한다.
 const ROLE_ART_W = 200;
@@ -687,7 +724,9 @@ function RoleCard({ title, sub, items, iconPath, device }: { title: string; sub:
     // 최소 높이는 globals.css의 .landing-role-card에 있다.
     // ⚠️ 인라인으로 두면 안 된다 — 기기 그림이 사라지는 좁은 화면(≤640px)에서 해제할 방법이 없어
     //    그림도 없는 카드 아래에 빈 띠가 남는다(검수 지적).
-    <div className="landing-role-card" style={{ display: "flex", alignItems: "center", gap: 18, overflow: "hidden", background: "var(--landing-card,#fff)", borderRadius: 16, padding: "28px 26px", boxShadow: "0 8px 30px var(--landing-shadow)" }}>
+    // 🎨 2026-08-09 색 정리(미리보기)로 테두리를 살렸다 — 이 카드가 놓이는 [역할별] 섹션 배경이
+    //    연파랑에서 흰색으로 바뀌었기 때문이다. 테두리가 없으면 흰 바탕에 흰 카드가 된다.
+    <div className="landing-role-card landing-hover-card" style={{ display: "flex", alignItems: "center", gap: 18, overflow: "hidden", padding: "28px 26px" }}>
       {/* minWidth: 0 — 없으면 글자가 안 줄어들어 그림을 밀어내고 카드가 가로로 넘친다(격자 기본값 함정) */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
