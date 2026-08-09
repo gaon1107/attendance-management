@@ -15,6 +15,7 @@ import { resolveShift, isLateByShift, isEarlyLeaveByShift } from "@/lib/shift";
 import { toISODate } from "@/lib/period";
 import { countUncheckedAnomalies } from "@/lib/anomaly";
 import { purgeWorkRecordsDaily } from "@/lib/work-record-retention";
+import { trialStatus, trialLastDay, formatKoreanDate, TRIAL_DAYS } from "@/lib/trial";
 import { DashboardCalendar } from "./DashboardCalendar";
 import { LatestNoticeModal } from "./LatestNoticeModal";
 import type { DayData } from "@/app/schedule/ScheduleCalendar";
@@ -54,6 +55,7 @@ export default async function DashboardPage() {
   const company = await prisma.company.findUnique({
     where: { id: me.companyId },
     select: {
+      createdAt: true, // 가입 시각 = 무료 체험 시작(lib/trial.ts). 별도 칸을 두지 않는다.
       workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true, holidayAutoOn: true,
       overtimeAlertOn: true, overtimeWarnHours: true,
       securityCheckedAt: true,
@@ -284,8 +286,44 @@ export default async function DashboardPage() {
     </div>
   );
 
+  // ── 무료 체험 남은 기간 띠 (사장님 지시 2026-08-09) ─────────────────────
+  //  · 이 화면은 관리자 전용이라(위 role 검사) **직원에게는 보이지 않는다.**
+  //  · ⚠️ 지금은 **알리기만 한다.** 만료돼도 아무 기능도 막지 않는다 — 결제 수단이 아직 없어서,
+  //    막으면 고객이 돈을 낼 방법도 없이 회사 근태가 멈춘다. 차단은 결제 화면과 한 세트로 만든다(lib/trial.ts).
+  //  · company가 없으면(있을 수 없지만 select 결과가 null일 수 있는 타입) 띠를 그리지 않는다.
+  const trial = company ? trialStatus(company.createdAt) : null;
+  const trialTone = !trial
+    ? null
+    : trial.expired
+      ? { bg: "#FEF2F2", border: "#FECACA", fg: "#991B1B" }   // 끝남
+      : trial.daysLeft <= 7
+        ? { bg: "#FFF7ED", border: "#FED7AA", fg: "#9A3412" } // 얼마 안 남음
+        : { bg: "#EFF6FF", border: "#BFDBFE", fg: "#1E40AF" }; // 넉넉함
+
   return (
     <AppShell user={me} active="dashboard" title="대시보드" subtitle={me.company.name} right={datePill}>
+      {trial && trialTone && (
+        <div
+          role="status"
+          style={{
+            marginBottom: 16, padding: "12px 16px", borderRadius: 10,
+            background: trialTone.bg, border: `1px solid ${trialTone.border}`, color: trialTone.fg,
+            fontSize: 14, lineHeight: 1.6, wordBreak: "keep-all", overflowWrap: "break-word",
+          }}
+        >
+          {trial.expired ? (
+            <>
+              <strong>{TRIAL_DAYS}일 무료 체험이 끝났습니다</strong>
+              {` (${formatKoreanDate(trialLastDay(trial.endsAt))}까지). 결제 안내를 준비 중이며, 그때까지는 그대로 사용하실 수 있습니다.`}
+            </>
+          ) : (
+            <>
+              <strong>{`무료 체험 ${trial.daysLeft}일 남음`}</strong>
+              {` — ${formatKoreanDate(trialLastDay(trial.endsAt))}까지 무료로 쓰실 수 있습니다.`}
+            </>
+          )}
+        </div>
+      )}
       <div className="dash-split">
         {/* 왼쪽 */}
         <div style={{ minWidth: 0 }}>
