@@ -634,7 +634,14 @@ export default async function Home() {
                 ⚠️ **관리자는 세지 않는다**(2026-08-09 사장님 지시). 그래서 단위가 "계정"이 아니라 "직원"이다 —
                    아래 각주와 반드시 같은 말이어야 한다.
                 ⚠️ 가격 블록을 뺀 뒤로 **부가세 표기가 있는 곳은 이 제목뿐이다.** 여기서 빼지 말 것. */}
-            <h2 style={h2}>직원 수만큼만, 직원 1명당 월 {PRICE_PER_PERSON.toLocaleString("ko-KR")}원(부가세 별도)</h2>
+            {/* ⚠️ "(부가세 별도)"만 작게 — 강조할 말이 아니라는 사장님 지시(2026-08-09).
+                   다만 **지우거나 흐리게 만들지는 않는다.** 표시광고상 가격 옆에서 읽혀야 하고,
+                   가격 블록을 뺀 뒤로 이 표기가 있는 곳은 페이지에서 여기 하나뿐이다.
+                   색은 본문색 그대로 두고 크기·굵기만 낮춘다(--text-sub로 바꾸면 대비가 더 떨어진다). */}
+            <h2 style={h2}>
+              직원 수만큼만, 직원 1명당 월 {PRICE_PER_PERSON.toLocaleString("ko-KR")}원
+              <span style={{ fontSize: "clamp(13px,1.7vw,16px)", fontWeight: 600, marginLeft: 4, whiteSpace: "nowrap" }}>(부가세 별도)</span>
+            </h2>
             <p style={{ marginTop: 12, marginBottom: 0, fontSize: 16, color: "var(--text-sub)", lineHeight: 1.65 }}>
               최소 인원도, 단말기 구입비도 없습니다. 30일 동안 먼저 써 보세요.
             </p>
