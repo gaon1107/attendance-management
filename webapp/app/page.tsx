@@ -120,8 +120,19 @@ export default async function Home() {
     { label: "등록 직원", value: live.employees, unit: "명", badge: newBadge(live.employeesNewThisMonth, "명"), badgeSub: "이번 달", tone: "var(--text)", icon: PEEK_ICONS.employee },
     { label: `최근 ${TREND_DAYS}일 실근무`, value: live.work7Hours, unit: "시간", badge: delta(live.work7Hours, live.work7PrevHours, 40), badgeSub: `지난 ${TREND_DAYS}일 대비`, tone: "var(--text)", icon: PEEK_ICONS.hours },
   ];
+  // ⚠️ 아래 최상위 <div>의 wordBreak: "keep-all" — 한글 줄바꿈을 **낱말 단위**로 묶는다(2026-08-09 사장님 지시).
+  //    브라우저 기본값은 한글을 글자 단위로 아무데나 끊어서 "근로기준법은 자 / 동으로",
+  //    "실제로 일 / 한 시간만", "원하는 방식 선 / 택"처럼 낱말 한가운데가 갈라졌다(홈화면 7군데 실측).
+  // ⚠️ overflowWrap: "break-word"는 **짝으로 함께 둔다** — keep-all만 주면 띄어쓰기 없는 긴 낱말이
+  //    칸보다 길 때 그대로 삐져나간다. break-word는 "그 낱말 하나가 줄을 통째로 써도 안 들어갈 때만"
+  //    예외로 끊어 준다.
+  //    ⚠️ 단, break-word는 **칸 폭이 이미 정해진 곳에서만** 통한다. 표·격자처럼 내용에 맞춰 칸 폭이
+  //       정해지는 자리에서는 긴 낱말이 칸을 밀어내 가로 스크롤이 생길 수 있다(그건 "anywhere"가 막는다).
+  //       지금 이 페이지에는 사람이 입력한 글자가 없어서(통계는 전부 숫자) 문제가 되지 않는다.
+  //       나중에 회사명 같은 **입력값을 이 페이지에 찍게 되면** 그 자리는 anywhere로 바꿀 것.
+  // ⚠️ 이 페이지(홈화면) 안에만 적용된다. 로그인 후 화면에도 주고 싶으면 globals.css에서 따로 줄 것.
   return (
-    <div id="top" style={{ minHeight: "100vh", background: "#FFFFFF", color: "var(--text)" }}>
+    <div id="top" style={{ minHeight: "100vh", background: "#FFFFFF", color: "var(--text)", wordBreak: "keep-all", overflowWrap: "break-word" }}>
       {/* 헤더 */}
       {/* ⚠️ 헤더 아래 선과 푸터 위 선은 **남긴다** — 스크롤할 때 고정된 헤더와 본문이 겹쳐 보이므로
              경계가 필요하다. 색만 회색 → 파랑으로 맞추되 **진한 쪽(-strong)**을 쓴다.
@@ -348,12 +359,28 @@ export default async function Home() {
 
       {/* 숫자 밴드 */}
       <section style={{ maxWidth: WRAP, margin: "0 auto", padding: "clamp(48px,7vw,72px) 24px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 16, background: "linear-gradient(120deg,#2563EB 0%,#3B82F6 55%,#6366F1 100%)", borderRadius: 20, padding: "clamp(32px,4vw,44px) 24px", boxShadow: "0 18px 40px rgba(37,99,235,0.25)" }}>
+        {/* ⚠️ 칸을 나누는 규칙(4칸 → 2×2 → 1줄)은 globals.css의 `.landing-stats`에 있다.
+               인라인 style로는 "화면이 좁아지면"(@media)을 쓸 수 없어서 클래스로 뺐다.
+               아이콘을 왼쪽으로 옮기면서 한 칸에 필요한 폭이 커져, 예전 auto-fit(minmax 160px)으로는
+               4칸이 되는 지점의 여유가 0.7px밖에 안 남는다(=라벨이 두 줄로 갈라진다).
+               접는 지점을 정한 계산은 전부 그 CSS 주석에 적어 뒀다. */}
+        <div className="landing-stats" style={{ background: "linear-gradient(120deg,#2563EB 0%,#3B82F6 55%,#6366F1 100%)", borderRadius: 20, padding: "clamp(32px,4vw,44px) 24px", boxShadow: "0 18px 40px rgba(37,99,235,0.25)" }}>
           {stats.map((s) => (
-            <div key={s.label} style={{ textAlign: "center", color: "#fff" }}>
-              <div style={{ width: 40, height: 40, margin: "0 auto 10px", borderRadius: 12, background: "rgba(255,255,255,0.18)", display: "flex", alignItems: "center", justifyContent: "center" }} dangerouslySetInnerHTML={{ __html: svg(s.icon, 20) }} />
-              <div style={{ fontSize: "clamp(28px,4vw,38px)", fontWeight: 800, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>{s.value}</div>
-              <div style={{ fontSize: 14, color: "rgba(255,255,255,0.85)", marginTop: 6 }}>{s.label}</div>
+            // 아이콘은 왼쪽, 숫자·설명은 그 오른쪽에 위아래로(2026-08-09 사장님 시안).
+            // ⚠️ justifyContent: "center" — 덩어리 자체는 칸 가운데에 두고, **덩어리 안에서만** 왼쪽정렬한다.
+            //    flex-start로 바꾸면 네 덩어리의 왼쪽 끝은 칼같이 맞지만(칸 폭이 1fr로 같으므로) 남는 여백이
+            //    전부 오른쪽에 몰려 밴드가 왼쪽으로 쏠려 보인다. center는 그 반대로, 여백을 양쪽에 나누는
+            //    대신 **네 덩어리의 글자 시작선이 최대 8px까지 어긋난다**(칸마다 내용 폭이 달라서).
+            //    시안이 "글자 시작선이 나란한" 그림이면 flex-start로 바꿀 것 — 지금은 시안대로 center다.
+            <div key={s.label} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, color: "#fff" }}>
+              {/* ⚠️ flexShrink: 0 — 칸이 좁아질 때 아이콘 상자가 찌그러져 타원이 되는 것을 막는다 */}
+              <div style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 12, background: "rgba(255,255,255,0.18)", display: "flex", alignItems: "center", justifyContent: "center" }} dangerouslySetInnerHTML={{ __html: svg(s.icon, 20) }} />
+              <div style={{ textAlign: "left" }}>
+                {/* ⚠️ lineHeight: 1.1 — 기본 줄높이(1.5)면 38px 글자 위아래에 빈 틈이 10px씩 생겨
+                       숫자와 설명이 멀어 보인다. 시안처럼 붙이려면 줄높이를 조여야 한다. */}
+                <div style={{ fontSize: "clamp(28px,4vw,38px)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{s.value}</div>
+                <div style={{ fontSize: 14, color: "rgba(255,255,255,0.85)", marginTop: 4 }}>{s.label}</div>
+              </div>
             </div>
           ))}
         </div>
