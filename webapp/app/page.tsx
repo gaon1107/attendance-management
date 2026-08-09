@@ -64,12 +64,66 @@ function newBadge(n: number, unit: string): { text: string; color: string } | nu
   return n > 0 ? { text: `+${n.toLocaleString("ko-KR")}${unit}`, color: "var(--success)" } : null;
 }
 
-// ── WHY: 차별점 3개 ──
+// ── WHY: 차별점 ──
+// 🔴 2026-08-09: 세 개를 같은 크기 카드로 늘어놓으니 **뭐가 우리 무기인지 눈으로 알 수 없다**는
+//    외부 디자인 리뷰를 받아, 첫 번째(실근무시간)만 큰 블록으로 올리고 나머지 둘은 카드로 내렸다.
+//
+// 🔴 **문구를 고친 이유 — 예전 문구는 사실이 아니었다(2026-08-09 코드 확인).**
+//    예전: "출퇴근·외출·**자리비움**을 **자동 반영**해 …"
+//    실제: `lib/worktime.ts` 계산식은 **(퇴근 − 출근) − 외출시간 합**이 전부다.
+//      · "자리비움"을 자동으로 감지해 빼는 기능은 **없다**(유휴시간 차감 코드 없음 — 전수 검색).
+//        직원이 [외출] 버튼을 눌러 기록해야 빠진다(app/attendance/OnboardingTour.tsx도 그렇게 안내한다).
+//      · `pc-agent`는 **퇴근 후 PC를 잠그는 기능**이지 실근무 측정이 아니다.
+//      · 휴게(점심)도 별도 계산이 아니라 외출 기록으로 잡힌다(lib/break-rule.ts 주석).
+//    → 그래서 "자동 감지"가 아니라 **"기록하면 자동으로 빼서 계산한다"**로 정정했다.
+//    ⚠️ PC 활동 기반 자동 측정은 로드맵에 있는 것(2026-07-15 결정)이지 **지금 있는 기능이 아니다.**
+//       그 기능이 실제로 붙기 전에는 이 문구에 "자동 감지"를 다시 넣지 말 것(표시광고 위험).
+const featureLead = {
+  badge: "핵심 차별점",
+  title: "정직한 실근무시간",
+  desc: "출근·퇴근 시각의 차이만 세지 않습니다. 외출·복귀를 기록하면 그 시간을 빼고 실제로 일한 시간만 계산합니다.",
+  // 🔴 세 줄 모두 **코드로 증명되는 것만** 적는다(검수에서 한 줄이 되짚혔다).
+  //   ① 처음엔 "자리를 비운 만큼"이라고 썼는데, 그건 방금 지운 "자리비움 자동 감지"를 말만 바꿔
+  //      되살린 것이었다. 실제로는 **[외출] 버튼으로 기록한 시간만** 빠진다(lib/worktime.ts).
+  //   ② `effectiveEnd`가 미퇴근 기록의 계산상 종료를 최대 약 24시간으로 자른다(lib/worktime.ts).
+  //      화면에도 '미퇴근'으로 표시한다(records·DetailTable·인쇄·엑셀 4곳 확인).
+  //   ③ **"실근무시간은"으로 주어를 좁혔다.** 실근무 계산식은 실제로 한 곳(workedMinutes)에서 나오지만,
+  //      지각·조퇴 판정은 records·reports·dashboard가 각자 구현한 4벌이다(webapp/CLAUDE.md).
+  //      주어를 안 좁히면 "판정까지 하나"로 읽혀 거짓이 된다(검수 지적).
+  points: [
+    "[외출]로 기록한 시간만큼은 근무로 세지 않습니다",
+    "퇴근을 깜빡한 기록은 '미퇴근'으로 표시 — 수백 시간으로 부풀지 않습니다",
+    "실근무시간은 모든 화면·리포트·법정 근로기록이 같은 계산식을 씁니다",
+  ],
+};
+
+// 위 큰 블록 아래에 2열로 놓는 나머지 차별점.
 const features = [
-  { icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', grad: "linear-gradient(135deg,#3B82F6,#60A5FA)", title: "정직한 실근무시간", desc: "출퇴근·외출·자리비움을 자동 반영해 실제로 일한 시간만 집계합니다. 부풀리거나 누락될 일이 없어요." },
   { icon: '<path d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/>', grad: "linear-gradient(135deg,#6366F1,#8B5CF6)", title: "법규 자동 준수", desc: "주 12시간 초과근무 한도를 실시간으로 관리하고, 근로시간 기록을 3년간 안전하게 보존합니다." },
   { icon: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 10h.01M15 10h.01M9.5 15a3.5 3.5 0 0 0 5 0"/>', grad: "linear-gradient(135deg,#0EA5E9,#38BDF8)", title: "강제 없는 얼굴인증", desc: "얼굴인증과 GPS 중 직원이 직접 선택합니다. 동의는 강제가 아니며 언제든 철회·삭제할 수 있어요." },
 ];
+
+// ── 큰 블록 오른쪽 그림: 하루 시간 띠 (그림 파일이 아니라 네모 몇 개로 그린다) ──
+// 09:00 출근 → 18:00 퇴근 = 540분. 그중 [외출]로 기록한 100분(점심 60 + 외출 40) → 실근무 440분.
+// ⚠️ 이 숫자는 **설명용 예시**다. 화면에도 "예시"라고 적어 둔다(진짜 통계로 오해하지 않게).
+// ⚠️ 회색 조각은 "자동으로 빠지는 시간"이 아니라 **직원이 [외출]로 기록한 시간**이다.
+//    점심도 마찬가지다 — 휴게를 자동으로 빼 주는 기능은 없다(lib/break-rule.ts: "실근무시간을 바꾸지 않는다").
+//    그래서 라벨에 "(외출 기록)"을 붙이고 띠 아래에도 한 줄로 밝힌다(검수 지적: 그림이 본문 조건을 배신함).
+// ⚠️ **여기 min 값을 고칠 때 손으로 함께 고쳐야 하는 것은 시각 표기(09:00·12:00 …)뿐이다.**
+//    "9시간"·"7시간 20분"·"1시간 40분"은 아래 DayBar가 이 배열에서 **계산**한다(직접 적지 말 것).
+const daySegments: { min: number; work: boolean; label: string }[] = [
+  { min: 180, work: true, label: "근무 09:00–12:00" },
+  { min: 60, work: false, label: "점심(외출 기록) 12:00–13:00" },
+  { min: 200, work: true, label: "근무 13:00–16:20" },
+  { min: 40, work: false, label: "외출 기록 16:20–17:00" },
+  { min: 60, work: true, label: "근무 17:00–18:00" },
+];
+// ⚠️ 합계를 손으로 적지 않고 **더해서 구한다** — 예전엔 540을 따로 적어 뒀는데, 조각을 고치면
+//    합이 어긋나 띠가 넘치거나(찌그러짐) 모자라도(오른쪽 빈칸) **에러 없이 그림만 틀린다**(검수 지적).
+const DAY_SPAN_MIN = daySegments.reduce((a, s) => a + s.min, 0);
+const DAY_START = "09:00", DAY_END = "18:00";
+// 분 → "N시간" / "N시간 M분". 앱 다른 곳(lib/format.ts formatMinutes)과 같은 규칙으로 적는다.
+const hhmm = (min: number) => (min % 60 === 0 ? `${min / 60}시간` : `${Math.floor(min / 60)}시간 ${min % 60}분`);
 
 // ── HOW IT WORKS: 도입 3단계 ──
 const steps = [
@@ -309,6 +363,29 @@ export default async function Home() {
             <div style={eyebrow}>WHY 근태관리</div>
             <h2 style={h2}>일하는 사람도, 관리하는 사람도 편하게</h2>
           </div>
+          {/* ── 큰 블록: 핵심 차별점 하나만 크게 (2026-08-09) ──
+              왼쪽에 글, 오른쪽에 "하루 시간 띠" 그림. 좁아지면 globals.css가 위아래로 접는다.
+              ⚠️ 여기엔 마우스 올림 효과를 주지 않는다 — 카드가 아니라 **읽는 내용**이라,
+                 움직이면 글을 읽는 동안 거슬린다. */}
+          {/* ⚠️ 아래 카드들과의 간격(28)을 카드끼리의 간격(16)보다 넓게 둔다 —
+                 같으면 큰 블록과 카드가 "같은 무리"로 보여 위계가 사라진다(검수 지적). */}
+          <div className="landing-feature-lead" style={{ marginBottom: 28, padding: "clamp(24px,3vw,34px)", borderRadius: 16, border: "1px solid var(--landing-border-strong,#CBD9F0)", background: "var(--landing-card,#fff)", boxShadow: "0 8px 30px var(--landing-shadow)" }}>
+            <div>
+              <div style={{ display: "inline-flex", alignItems: "center", height: 26, padding: "0 12px", borderRadius: 13, background: "#D3E1FA", color: "#1D4ED8", fontSize: 12, fontWeight: 700, marginBottom: 14 }}>{featureLead.badge}</div>
+              <h3 style={{ fontSize: "clamp(21px,2.6vw,27px)", fontWeight: 700, letterSpacing: "-0.02em", margin: "0 0 12px" }}>{featureLead.title}</h3>
+              <p style={{ fontSize: 16, color: "var(--text-sub)", lineHeight: 1.65, margin: "0 0 18px" }}>{featureLead.desc}</p>
+              <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+                {featureLead.points.map((p) => (
+                  <li key={p} style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
+                    <span style={{ color: "var(--success)", flexShrink: 0, width: 18, height: 18, display: "inline-flex", marginTop: 1 }} dangerouslySetInnerHTML={{ __html: svg('<path d="M20 6 9 17l-5-5"/>', 18) }} />
+                    <span style={{ fontSize: 15, lineHeight: 1.5 }}>{p}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <DayBar />
+          </div>
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 16 }}>
             {/* 카드의 배경·테두리·둥근모서리·그림자는 globals.css의 `.landing-hover-card`가 갖는다.
                 ⚠️ 인라인 style로 다시 옮기면 마우스 올림 효과가 죽는다(인라인이 CSS를 이긴다). */}
@@ -494,6 +571,80 @@ export default async function Home() {
           <a href="#top" aria-label="맨 위로" style={{ width: 38, height: 38, borderRadius: "50%", border: "1px solid var(--landing-border,#DCE5F4)", background: "#fff", color: "var(--text-sub)", display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }} dangerouslySetInnerHTML={{ __html: svg('<path d="m18 15-6-6-6 6"/>', 18) }} />
         </div>
       </footer>
+    </div>
+  );
+}
+
+// ── 하루 시간 띠 (차별점 큰 블록의 오른쪽 그림) ──
+// "출퇴근 시각의 차이"와 "실제로 일한 시간"을 같은 폭으로 나란히 놓아 차이를 눈으로 보여준다.
+// ⚠️ 그림 파일이 아니라 **네모(div) 몇 개**로 그린다: 숫자를 고칠 때 이미지를 다시 만들 필요가 없고,
+//    옆에 붙는 시각·시간 글자가 진짜 글자라 화면 확대·번역에서 그대로 읽힌다.
+//    다만 **띠 자체(색 조각)는 화면낭독기가 읽을 수 없으므로** 띠 묶음에 role="img"과 설명을 달아 둔다.
+//    (예전엔 조각마다 title만 달았는데, title은 낭독기·터치기기에서 전달되지 않는다 — 검수 지적)
+// ⚠️ 화면에 보이는 시간 숫자는 **전부 daySegments에서 계산**한다. 직접 적지 말 것.
+function DayBar() {
+  const workMin = daySegments.filter((s) => s.work).reduce((a, s) => a + s.min, 0);
+  const offMin = DAY_SPAN_MIN - workMin;
+  const pct = (min: number) => `${((min / DAY_SPAN_MIN) * 100).toFixed(2)}%`;
+  const rowLabel: React.CSSProperties = { fontSize: 13, color: "var(--text-sub)", marginBottom: 7 };
+  const barBox: React.CSSProperties = { display: "flex", height: 34, borderRadius: 8, overflow: "hidden" };
+  const 설명 = `예시. ${DAY_START} 출근, ${DAY_END} 퇴근으로 ${hhmm(DAY_SPAN_MIN)}. 그중 외출로 기록한 ${hhmm(offMin)}을 빼면 실제로 일한 시간은 ${hhmm(workMin)}.`;
+  return (
+    <div>
+      {/* ⚠️ "예시"라고 반드시 밝힌다 — 이 화면의 다른 숫자(미리보기 카드)는 전부 실제 집계값이라,
+             표기가 없으면 이 숫자도 실적으로 오해된다(2026-08-09 사장님의 "목업 데이터 금지" 지시).
+             ⚠️ 색을 #9CA3AF(대비 2.5)에서 --text-sub(4.8)로 올리고 12px로 키웠다. 이건 장식이 아니라
+                **면책 표시**라, 본문보다 흐리면 광고 심사에서 가장 먼저 지적받는다(검수 지적). */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 14 }}>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>같은 하루, 두 가지 계산</span>
+        <span style={{ fontSize: 12, color: "var(--text-sub)", border: "1px solid var(--landing-border,#DCE5F4)", borderRadius: 10, padding: "2px 8px" }}>예시</span>
+      </div>
+
+      <div role="img" aria-label={설명}>
+        <div style={rowLabel}>출근·퇴근 시각의 차이</div>
+        <div aria-hidden style={{ ...barBox, background: "#E5EAF3" }} />
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, marginBottom: 20, fontSize: 12, color: "var(--text-sub)" }}>
+          <span>{DAY_START} 출근</span>
+          <span style={{ fontWeight: 700, color: "var(--text)" }}>{hhmm(DAY_SPAN_MIN)}</span>
+          <span>{DAY_END} 퇴근</span>
+        </div>
+
+        <div style={rowLabel}>실제로 일한 시간</div>
+        <div aria-hidden style={barBox}>
+          {daySegments.map((s) => (
+            <div
+              key={s.label}
+              title={s.label}   /* 마우스로 짚었을 때만 뜨는 보조 설명. 이것에 정보를 의존하지 않는다 */
+              style={{
+                width: pct(s.min),
+                background: s.work ? "linear-gradient(180deg,#3B82F6,#2563EB)" : "#E5EAF3",
+              }}
+            />
+          ))}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 12, color: "var(--text-sub)" }}>
+          <span>{DAY_START} 출근</span>
+          <span style={{ fontWeight: 700, color: "var(--primary)" }}>{hhmm(workMin)}</span>
+          <span>{DAY_END} 퇴근</span>
+        </div>
+      </div>
+
+      {/* 🔴 회색이 "자동으로 빠지는 시간"으로 오해되지 않게 한 줄 밝힌다. 휴게(점심)를 자동으로 빼 주는
+             기능은 없다 — 직원이 [외출]로 기록해야 빠진다(lib/break-rule.ts). */}
+      <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 12, lineHeight: 1.5 }}>
+        회색은 직원이 <b style={{ color: "var(--text)" }}>[외출]</b>로 기록한 시간입니다(점심 포함).
+      </div>
+
+      {/* 색 설명 — 색만으로 구분하면 색을 구별하기 어려운 분이 읽을 수 없다.
+          ⚠️ 괄호 안 시간은 손으로 적지 않고 계산한다(조각을 고쳐도 어긋나지 않게). */}
+      <div style={{ display: "flex", gap: 16, marginTop: 12, fontSize: 12, color: "var(--text-sub)", flexWrap: "wrap" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: "linear-gradient(180deg,#3B82F6,#2563EB)", display: "inline-block" }} />일한 시간 ({hhmm(workMin)})
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: "#E5EAF3", display: "inline-block" }} />점심·외출 ({hhmm(offMin)})
+        </span>
+      </div>
     </div>
   );
 }

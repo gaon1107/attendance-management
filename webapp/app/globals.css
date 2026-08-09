@@ -312,6 +312,21 @@ details.landing-faq[open] > summary .faq-chevron { transform: rotate(180deg); }
 @media (max-width: 880px) { .landing-stats { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 520px) { .landing-stats { grid-template-columns: 1fr; } }
 
+/* 차별점 큰 블록 — 왼쪽 글 / 오른쪽 하루 시간 띠 (2026-08-09).
+   ⚠️ 900px에서 접는 이유는 **왼쪽 글칸**이다. 오른쪽 띠 그림이 아니다.
+      띠는 좁아져도 멀쩡하다 — 실제로 접힌 뒤 375px 화면에서 띠 폭이 279px인데 시각 표시(09:00 출근 /
+      9시간 / 18:00 퇴근)가 55px씩 벌어져 있다(실측). 문제는 왼쪽이다: 2단에서 글칸이 좁아지면
+      체크 3줄이 각각 두 줄로 늘어나 블록이 세로로 길어지고 읽기 불편해진다.
+      900px에서 글칸은 약 377px이고, 이보다 더 좁히면 그 현상이 시작된다.
+      ⚠️ "띠가 좁아서 접는다"고 적어 두면 다음 사람이 "띠는 380px면 되니 700px까지 2단 유지"라고
+         고치게 된다 — 그러면 글칸이 340px로 뭉개진다(검수 지적으로 정정한 주석이다).
+   ⚠️ 왼쪽 글이 `1.05fr`로 아주 살짝 넓다 — 글이 그림보다 길어서 눈으로 균형을 맞춘 값이다.
+      (5%는 22px 정도라 줄 수를 바꿀 만한 크기는 아니다. 큰 의미를 두지 말 것.) */
+.landing-feature-lead { display: grid; grid-template-columns: 1.05fr 1fr; gap: clamp(24px,3vw,40px); align-items: center; }
+@media (max-width: 900px) {
+  .landing-feature-lead { grid-template-columns: 1fr; }
+}
+
 /* 카드에 마우스를 올렸을 때 살짝 떠오르는 효과 (2026-08-09 사장님 지시).
    붙는 곳: 차별점 카드 3장 · 도입 3단계 카드 3장 · 역할 카드 2장 = **8장**. FAQ는 아래 따로.
    ⚠️ 이름을 `landing-hover-card`로 한 이유: 이 파일에 이미 **`--landing-card`라는 색 변수**가 있어서
