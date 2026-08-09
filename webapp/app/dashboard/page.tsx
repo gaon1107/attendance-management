@@ -1,6 +1,7 @@
 // 관리자 대시보드 — 오늘 우리 회사 직원들의 출퇴근 현황을 한눈에 본다. (리뉴얼 디자인)
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
@@ -13,6 +14,7 @@ import { loadShiftContext } from "@/lib/shift-server";
 import { resolveShift, isLateByShift, isEarlyLeaveByShift } from "@/lib/shift";
 import { toISODate } from "@/lib/period";
 import { countUncheckedAnomalies } from "@/lib/anomaly";
+import { purgeWorkRecordsDaily } from "@/lib/work-record-retention";
 import { DashboardCalendar } from "./DashboardCalendar";
 import { LatestNoticeModal } from "./LatestNoticeModal";
 import type { DayData } from "@/app/schedule/ScheduleCalendar";
@@ -22,6 +24,10 @@ export default async function DashboardPage() {
   if (!me) redirect("/login");
   if (me.mustChangePassword) redirect("/change-password");
   if (me.role !== "admin") redirect("/attendance");
+
+  // 보관기간(3년)이 지난 근로기록 파기 — 하루 1회만 실제로 돈다. 관리자가 매일 여는 화면이라 여기에 매단다.
+  //  · after() = 화면을 다 보낸 뒤 실행 → 삭제가 오래 걸려도 대시보드가 늦게 뜨지 않는다(PC관리 화면과 같은 방식).
+  after(() => purgeWorkRecordsDaily());
 
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);

@@ -288,6 +288,10 @@ model Attendance {
   @@index([companyId, clockIn])
   @@index([userId, clockIn])
   @@index([userId, clockOut])
+  // 파기 전용 색인 — 3년 파기 쿼리는 companyId 없이 clockIn만 본다(파기는 전사 일괄).
+  // 위 복합 색인은 선두가 companyId/userId라 못 탄다 → 없으면 매일 이 표를 통째로 훑는다.
+  // (AccessEvent가 같은 이유로 createdAt 단독 색인을 둔 것과 같은 처방)
+  @@index([clockIn])
 }
 
 // 출퇴근 촬영 사진 + 위조 판독(라이브니스) 기록 — 얼굴 출퇴근 1회당 1건.
@@ -385,6 +389,7 @@ model LeaveRequest {
   //      ※ "내 신청 목록"(orderBy createdAt)은 userId 필터만 이 색인을 타고 정렬은 못 탄다(createdAt≠startDate).
   @@index([companyId, status])
   @@index([userId, startDate])
+  @@index([endDate]) // 파기 전용 — 3년 파기가 endDate만으로 훑는다(위 색인은 선두가 companyId/userId라 못 탐)
 }
 
 // 사내 공지사항 — 관리자가 작성하고 모든 직원이 열람한다.
@@ -431,6 +436,7 @@ model AttendanceCorrection {
   //  · [userId, targetDate] — 그 직원의 그 날짜 정정 이력
   @@index([companyId, status])
   @@index([userId, targetDate])
+  @@index([targetDate]) // 파기 전용 — 3년 파기가 targetDate만으로 훑는다
 }
 
 // 외출/외근 신청 — 직원이 사전 신청하고 결재자(관리자 또는 부서장 결재선)가 승인/반려한다.
@@ -459,6 +465,7 @@ model OutingRequest {
   createdAt    DateTime  @default(now())
 
   @@index([companyId, status])
+  @@index([targetDate]) // 파기 전용 — 3년 파기가 targetDate만으로 훑는다
 }
 
 // 재택근무 신청 — 직원이 특정 기간(하루~여러 날) 재택근무를 사전 신청하고 결재자가 승인/반려한다.
@@ -482,6 +489,7 @@ model RemoteWorkRequest {
   createdAt    DateTime  @default(now())
 
   @@index([companyId, status])
+  @@index([endDate]) // 파기 전용 — 3년 파기가 endDate만으로 훑는다
 }
 
 // 초과근무(야근) 사전신청 — 직원이 야근 예정을 사전 신청하고 결재자가 승인/반려한다.
@@ -507,6 +515,7 @@ model OvertimeRequest {
   createdAt    DateTime  @default(now())
 
   @@index([companyId, status])
+  @@index([targetDate]) // 파기 전용 — 3년 파기가 targetDate만으로 훑는다
 }
 
 // 출장 신청 — 직원이 출장(기간·출장지)을 사전 신청하고 결재자가 승인/반려한다.
@@ -530,6 +539,7 @@ model BusinessTripRequest {
   createdAt    DateTime  @default(now())
 
   @@index([companyId, status])
+  @@index([endDate]) // 파기 전용 — 3년 파기가 endDate만으로 훑는다
 }
 
 // 신청서 첨부파일 — 외출/외근·재택·초과근무·출장 신청에 붙이는 파일(다형 참조: requestType+requestId).
@@ -550,6 +560,8 @@ model RequestAttachment {
   createdAt    DateTime @default(now())
 
   @@index([companyId, requestType, requestId])
+  // 파기 전용 — 3년 파기는 companyId 없이 (requestType, requestId)로 지운다(위 색인은 선두가 companyId라 못 탐)
+  @@index([requestType, requestId])
 }
 
 // 개인 결재선 템플릿 — 회사가 approvalMode="custom"일 때, 직원이 신청 종류별로 저장해 둔 결재자 순서.
@@ -590,6 +602,7 @@ model ApprovalStep {
   createdAt      DateTime  @default(now())
 
   @@index([companyId, requestType, requestId]) // 한 신청의 단계들 조회
+  @@index([requestType, requestId])            // 파기 전용 — 3년 파기는 companyId 없이 지운다
   @@index([approverUserId, status])            // 결재함(내 차례) 조회
   // 🔴 결재함·사이드바 배지는 여러 신청의 단계를 "유형 구분 없이" 한 번에 가져온다(requestId 묶음 조회).
   //    위 인덱스는 가운데 칸(requestType)을 안 쓰면 companyId까지만 걸려서, 회사의 3년치 결재기록을
@@ -844,6 +857,7 @@ model ShiftAssignment {
   createdAt DateTime @default(now())
   @@unique([userId, date])
   @@index([companyId, date])
+  @@index([date]) // 파기 전용 — 3년 파기가 date만으로 훑는다
 }
 
 // 근무표 변경 이력(감사) — 셀프수정 추적·되돌리기 근거.
@@ -858,6 +872,7 @@ model ShiftChangeLog {
   actorId   String   // 수정 실행자 userId
   createdAt DateTime @default(now())
   @@index([companyId, createdAt])
+  @@index([date]) // 파기 전용 — 3년 파기가 date만으로 훑는다
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -942,6 +957,33 @@ model AgentPurgeLog {
   // 한 번에 지울 건수가 상한을 넘어 **중단**했는지. 서버 시계 이상·버그로 전 회사 기록이
   // 통째로 날아가는 사고를 막는 브레이크다(중단되면 사람이 확인할 때까지 아무것도 지우지 않는다).
   aborted   Boolean  @default(false)
+  note      String?
+
+  @@index([ranAt])
+}
+
+// [근로기록 3년 파기] 실행 이력 — AgentPurgeLog와 같은 목적·같은 원칙(건수만, 회사 구분 없음).
+//  · 표를 따로 두는 이유: "하루 1회"의 기준을 이 표의 마지막 실행 시각으로 삼는데,
+//    PC-OFF 파기와 한 표를 쓰면 한쪽이 돈 날 다른 쪽이 건너뛴다(서로의 실행을 자기 실행으로 착각).
+//  · 파기 대상은 lib/work-record-retention.ts 참조(출퇴근 계열 / 신청·결재 계열 / 교대 계열).
+model WorkRecordPurgeLog {
+  id        String   @id @default(cuid())
+  ranAt     DateTime @default(now())
+  // 이번 실행의 파기 기준선(= 실행시각 − 3년). 두 가지 역할을 한다.
+  //  ① 증빙 — "어느 기간까지 지웠는지"가 없으면 파기 대장으로서 값이 없다.
+  //  ② 완충 — 다음 실행은 이 값보다 최대 90일까지만 앞으로 나아간다(서버 시계가 튀어도 한 번에 3년치가
+  //     날아가지 않게). 건수 상한만으로는 직원 수가 적은 회사를 못 지킨다(5인 사업장은 3년치가 상한에 한참 못 미친다).
+  //  nullable인 이유: **중단된 회차에는 일부러 비워 둔다.** 그 기간을 끝까지 처리하지 못했으므로
+  //  다음 실행이 같은 기간을 다시 봐야 한다. 새 기준선을 남기면 못 지운 구간을 건너뛰게 된다.
+  cutoffAt  DateTime?
+  attendanceDeleted Int @default(0) // 출퇴근 기록(딸린 외출·사진기록 포함하지 않은 부모 건수)
+  requestDeleted    Int @default(0) // 휴가·정정·외출·재택·야근·출장 신청(딸린 결재단계·첨부 제외한 부모 건수)
+  shiftDeleted      Int @default(0) // 교대 배정·변경 기록
+  fileDeleted       Int @default(0) // 실제로 지운 디스크 파일 수(얼굴사진 + 신청 첨부)
+  // 실행 중 오류로 중단했는지. true면 위 건수는 **중단 전까지 실제로 지운 수**다(0이 아닐 수 있다).
+  aborted   Boolean  @default(false)
+  // 1회 상한까지 채워 **아직 남았는지**. true면 잠시 뒤 이어서 지운다(하루를 기다리지 않는다).
+  more      Boolean  @default(false)
   note      String?
 
   @@index([ranAt])

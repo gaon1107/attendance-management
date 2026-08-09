@@ -89,6 +89,40 @@ export async function purgeUserPhotos(userId: string): Promise<number> {
   return done;
 }
 
+// [근로기록 3년 파기 전용] 사진 **파일만** 지운다.
+//  · unlinkAndMark와 달리 fileDeletedAt 표시를 남기지 않는다 — 부를 때 기록 행 자체가 곧 삭제되기 때문이다
+//    (없어질 행에 표시를 찍는 쓰기는 낭비다). 표시가 필요한 90일 파기는 계속 unlinkAndMark를 쓴다.
+//  · 저장 폴더를 아는 곳이 여기뿐이므로 여기에 둔다(work-record-retention.ts가 경로를 다시 계산하면
+//    .env CLOCK_PHOTO_DIR을 바꿨을 때 한쪽만 따라가 파일이 남는다).
+//
+// 🔴 **실패를 삼키지 않고 그대로 돌려준다**(검수 중간 2). 삼키면 파일은 디스크에 남고 그 파일을 가리키던
+//    유일한 단서(DB 행)만 사라져, 누구 얼굴인지도 모르는 암호화 사진이 영원히 남는다. 그건 파기가 아니다.
+//    윈도우 서버에서는 백신·백업이 파일을 잡고 있어 EPERM이 흔하므로 실제로 일어날 수 있는 일이다.
+export type PhotoFileDeleteResult = {
+  deleted: number;  // 이번에 실제로 지운 파일 수
+  absent: number;   // 이미 없던 파일(90일 파기가 먼저 지운 정상 상태) — 3년 된 사진은 대개 여기에 해당한다
+  failed: string[]; // 지우려 했으나 실패한 파일명. 호출부는 이 사진이 딸린 부모를 이번 회차에 지우면 안 된다.
+};
+export async function deleteClockPhotoFiles(fileNames: string[]): Promise<PhotoFileDeleteResult> {
+  const out: PhotoFileDeleteResult = { deleted: 0, absent: 0, failed: [] };
+  if (fileNames.length === 0) return out;
+  const dir = storageDir();
+  for (const f of fileNames) {
+    // DB에서 온 이름이라도 방어(readClockPhoto와 같은 검사) — 경로 구분자·상위 이동이 섞였으면 손대지 않는다.
+    // ⚠️ 이 경우는 failed로 세지 않는다: 우리가 만든 이름이 아니라 **영원히 찾을 수 없는** 파일이므로,
+    //    실패로 처리하면 그 부모 기록이 영원히 파기되지 않는다(더 나쁜 상태).
+    if (!/^[0-9a-f-]+\.enc$/i.test(f)) { out.absent++; continue; }
+    try {
+      await fs.unlink(path.join(dir, f));
+      out.deleted++;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") out.absent++; // 이미 없음 = 정상
+      else out.failed.push(f);
+    }
+  }
+  return out;
+}
+
 // 파일을 지우고 "파기 완료" 표시를 남기는 공통 처리(P-4).
 //  · 예전엔 사진 한 장마다 UPDATE를 한 번씩 날려, 수천 장이면 쓰기가 수천 번 일어났다.
 //    SQLite는 파일 하나에 쓰기가 하나뿐이라 그 사이 다른 요청(출퇴근 등)이 밀린다.

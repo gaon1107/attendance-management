@@ -57,11 +57,30 @@ export async function readAttachmentFile(companyId: string, storedName: string):
 }
 
 // 저장 파일을 삭제한다(첨부 삭제·신청 취소 시). 파일이 이미 없어도 조용히 넘어간다.
-export async function deleteAttachmentFile(companyId: string, storedName: string): Promise<void> {
+//
+// 결과를 돌려주는 이유(검수 중간 2·3): 3년 파기가 "실제로 지운 파일 수"를 파기 대장에 남기고,
+// **지우지 못한 첨부가 있으면 그 신청을 이번 회차에 지우지 않기** 위해서다(행만 지우면 주인 없는 파일이 남는다).
+// ※ 기존 호출부(신청 취소·첨부 삭제)는 반환값을 쓰지 않는다 — 그대로 동작한다(순수 확장).
+export type FileDeleteOutcome =
+  | "deleted"  // 이번에 실제로 지움
+  | "absent"   // 이미 없음(정상) 또는 이름이 우리 규칙과 달라 애초에 찾을 수 없음
+  | "failed";  // 지우려 했으나 실패 — 재시도 가치가 있다
+export async function deleteAttachmentFile(companyId: string, storedName: string): Promise<FileDeleteOutcome> {
+  let dir: string;
   try {
     assertStoredName(storedName);
+    // ⚠️ companyDir도 여기서 부른다(safeId가 던진다). 아래 try 안에서 부르면 그 예외가 unlink 실패로 둔갑해
+    //    "failed"가 나가고, 그 신청은 영원히 파기되지 않는다.
+    dir = companyDir(companyId);
   } catch {
-    return; // 이름이 이상하면 손대지 않음
+    // 이름·식별자가 우리 규칙과 다르면 손대지 않는다. failed가 아니라 absent로 보는 이유는 clock-photo와 같다 —
+    // 영원히 찾을 수 없는 파일을 실패로 처리하면 그 신청이 영원히 파기되지 않는다.
+    return "absent";
   }
-  await fs.unlink(path.join(companyDir(companyId), storedName)).catch(() => null);
+  try {
+    await fs.unlink(path.join(dir, storedName));
+    return "deleted";
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "ENOENT" ? "absent" : "failed";
+  }
 }
