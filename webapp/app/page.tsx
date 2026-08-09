@@ -394,8 +394,21 @@ export default async function Home() {
         </div>
         <div className="landing-faq-grid">
           <div className="landing-faq-art" style={{ textAlign: "center" }}>
-            {/* eslint-disable-next-line @next/next/no-img-element -- 크기가 고정된 장식용 SVG. 최적화 대상 아님 */}
-            <img src="/shield-check.svg" alt="" width={240} height={240} />
+            {/* ⚠️ 2026-08-09 사장님이 만든 3D 방패 그림으로 교체(예전 shield-check.svg는 삭제).
+                   원본 PNG 1254×1254·1.0MB → 720×720 WebP 16KB. 화면 표시는 240px이라 3배 화면까지 선명하다.
+                   ⚠️ 예전 SVG는 **벡터**라 어떤 배율에서도 선명했지만 이건 사진 형식이다. 그래서 2배가 아니라
+                      3배(720px)로 뽑았다 — 화면 배율 225% 같은 어중간한 값에서도 뭉개지지 않게.
+                   다시 만들려면 `node scripts/make-landing-images.mjs`(자르는 규칙까지 그 파일에 있다).
+                ⚠️ 이 그림은 **투명 배경이 아니라 거의 흰색(254)** 이다. 지금은 이 섹션 바탕도 흰색(255)이라
+                   눈에 띄지 않는다(차이 1). 히어로 그림들처럼 `mix-blend-mode: multiply`를 걸어 흰색을 지우는
+                   방법도 있지만 **여기서는 일부러 안 썼다** — 흰 바탕 위에서는 곱해도 결과가 똑같아 효과가 없고,
+                   안드로이드의 강제 다크모드에서는 배경만 어두워지고 그림은 그대로라 오히려 그림이 뭉개진다.
+                   ⚠️ 나중에 이 섹션 배경을 **흰색이 아닌 색**으로 바꾸면 그때는 옅은 네모가 드러난다.
+                      그때 multiply를 쓰려면 globals.css 규칙대로 `isolation: isolate`와 짝으로 넣을 것.
+                ⚠️ loading="lazy" — 이 그림은 첫 화면 밖(페이지 아래쪽)이고 900px 이하에서는 아예 감춰진다.
+                   이게 없으면 브라우저가 먼저 받으려 들어 히어로 표시가 늦어진다(검수 지적). */}
+            {/* eslint-disable-next-line @next/next/no-img-element -- 크기가 고정된 장식용 그림. 최적화 대상 아님 */}
+            <img src="/shield-check.webp" alt="" width={240} height={240} loading="lazy" decoding="async" />
           </div>
           {/* ⚠️ 아래 질문 카드에도 3단계 카드와 같은 이유로 테두리를 **남긴다** — FAQ 섹션도 배경이
                  없어 순수 흰 바탕이다. 게다가 이건 눌러서 접었다 펴는 **버튼**이라, 경계가 사라지면
@@ -417,15 +430,13 @@ export default async function Home() {
       {/* 마지막 CTA (파란 밴드) */}
       {/* 위쪽 패딩이 0이라 scrollMarginTop을 넉넉히(84) 준다 — 68이면 파란 박스 윗부분이 헤더에 가린다 */}
       <section id="contact" style={{ maxWidth: WRAP, margin: "0 auto", padding: "0 24px clamp(56px,8vw,88px)", scrollMarginTop: 84 }}>
-        <div style={{ position: "relative", overflow: "hidden", background: "linear-gradient(120deg,#1D4ED8 0%,#2563EB 50%,#4F46E5 100%)", borderRadius: 22, padding: "clamp(48px,7vw,72px) 24px", textAlign: "center", boxShadow: "0 20px 44px rgba(37,99,235,0.28)" }}>
-            {/* 배경 도트 패턴 */}
-            <span style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(rgba(255,255,255,0.16) 1.5px, transparent 1.6px)", backgroundSize: "18px 18px", pointerEvents: "none" }} />
-            {/* 네 모서리 스캔 프레임 */}
-            <span style={{ position: "absolute", top: 22, left: 24, color: "rgba(255,255,255,0.45)", width: 30, height: 30, display: "inline-flex", pointerEvents: "none" }} dangerouslySetInnerHTML={{ __html: svg('<path d="M4 10V6a2 2 0 0 1 2-2h4"/>', 30) }} />
-            <span style={{ position: "absolute", top: 22, right: 24, color: "rgba(255,255,255,0.45)", width: 30, height: 30, display: "inline-flex", pointerEvents: "none" }} dangerouslySetInnerHTML={{ __html: svg('<path d="M14 4h4a2 2 0 0 1 2 2v4"/>', 30) }} />
-            <span style={{ position: "absolute", bottom: 22, left: 24, color: "rgba(255,255,255,0.45)", width: 30, height: 30, display: "inline-flex", pointerEvents: "none" }} dangerouslySetInnerHTML={{ __html: svg('<path d="M4 14v4a2 2 0 0 0 2 2h4"/>', 30) }} />
-            <span style={{ position: "absolute", bottom: 22, right: 24, color: "rgba(255,255,255,0.45)", width: 30, height: 30, display: "inline-flex", pointerEvents: "none" }} dangerouslySetInnerHTML={{ __html: svg('<path d="M20 14v4a2 2 0 0 1-2 2h-4"/>', 30) }} />
-
+        {/* ⚠️ 2026-08-09 사장님이 만든 배너 그림으로 배경 교체. 그림 안에 **물결·왼쪽 점무늬·오른쪽
+               얼굴스캔 그림이 이미 그려져 있어서**, 코드로 그리던 ①배경 도트 패턴 ②네 모서리 스캔 프레임 4개를
+               **지웠다**(같이 두면 장식이 겹쳐 지저분해진다). 되살리려면 이 커밋을 되돌리면 된다.
+            ⚠️ 배경 지정은 전부 globals.css의 `.landing-cta`에 있다(인라인으로 두면 안 되는 이유도 거기 적었다).
+               ⚠️ position: "relative"는 **그 CSS가 좁은 화면에서 까는 점무늬(::before)의 기준**이다. 빼지 말 것.
+            ⚠️ 그림을 다시 만들려면 `node scripts/make-landing-images.mjs` (자르는 규칙까지 그 파일에 있다). */}
+        <div className="landing-cta" style={{ position: "relative", overflow: "hidden", borderRadius: 22, padding: "clamp(48px,7vw,72px) 24px", textAlign: "center", boxShadow: "0 20px 44px rgba(37,99,235,0.28)" }}>
             <div style={{ position: "relative" }}>
               <h2 style={{ fontSize: "clamp(24px,4vw,34px)", fontWeight: 700, letterSpacing: "-0.02em", margin: "0 0 14px", color: "#fff" }}>오늘부터 근태를 정직하게</h2>
               <p style={{ fontSize: 16, color: "rgba(255,255,255,0.85)", margin: "0 0 28px" }}>5분이면 회사 계정을 만들고 직원을 초대할 수 있어요.</p>
