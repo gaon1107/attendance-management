@@ -125,6 +125,41 @@ const DAY_START = "09:00", DAY_END = "18:00";
 // 분 → "N시간" / "N시간 M분". 앱 다른 곳(lib/format.ts formatMinutes)과 같은 규칙으로 적는다.
 const hhmm = (min: number) => (min % 60 === 0 ? `${min / 60}시간` : `${Math.floor(min / 60)}시간 ${min % 60}분`);
 
+// ── 기존 방식과의 비교표 (2026-08-09) ──
+// 🔴 **경쟁사 이름을 쓰지 않는다.** "시프티는 ✗" 같은 표는 ①상대가 기능을 추가하면 우리 화면이
+//    바로 거짓이 되고 ②비교광고 분쟁의 대상이 된다. 그래서 회사가 아니라 **일하는 방식**과 비교한다.
+// 🔴 우리 칸에 적는 것은 **코드로 확인된 것만** 적는다:
+//    · 외출 제외 계산 = lib/worktime.ts (퇴근−출근−외출)
+//    · 주 52시간·초과근무 한도 = lib/overtime.ts / overtime-week.ts
+//    · 3년 보관·내보내기 = 법정 근로기록 화면 + reports/export(엑셀)
+//    · 얼굴/GPS 선택 = auth-method (강제 금지가 이 프로젝트의 법적 가드레일)
+//    ⚠️ 여기에 "자리비움 자동 감지" 같은 **없는 기능**을 넣지 말 것.
+// ⚠️ 남의 칸은 단정하지 않는다. 단말기 제품마다 기능이 달라 "제품마다 다름"으로 적고,
+//    표 아래에 "제품·운영 방식에 따라 다를 수 있습니다"를 반드시 남긴다.
+// ⚠️ 왼쪽 두 칸(남의 방식)은 **확실하지 않으면 전부 "제품마다 다름"**으로 통일한다.
+//    일부만 단정하면 "왜 여기만 단정했냐"는 반문에 답할 논리가 없다(검수 지적).
+//    예: 요즘 지문·카드 단말기는 클라우드 저장도 흔하고, 지문+카드+얼굴을 함께 지원하는 제품도 많다.
+const compareCols = ["종이·엑셀 수기", "지문·카드 단말기", "근태관리"] as const;
+const OURS_COL = compareCols.length - 1; // 우리 칸(마지막 열) — 헤더·본문이 같은 값을 보게 한 곳에서 정한다
+// ⚠️ cells를 **3칸 고정 튜플**로 둔다. string[]로 두면 칸 수가 어긋나도 타입검사가 못 잡아
+//    체크 표시가 엉뚱한 칸에 찍히고 key가 undefined가 된다(검수 지적).
+const compareRows: { label: string; cells: readonly [string, string, string]; noCheck?: boolean }[] = [
+  { label: "출퇴근 기록 방법", cells: ["사람이 직접 적음", "단말기 앞에서 찍음", "웹·모바일에서 버튼 한 번"] },
+  { label: "외출 시간을 빼고 계산", cells: ["손으로 계산", "제품마다 다름", "기록하면 자동 계산"] },
+  // 🔴 "실시간으로 관리"라고 썼다가 되짚혔다. 계산은 지금(now)까지로 정확하지만(lib/overtime.ts),
+  //    **자동 새로고침·알림이 없다** — 관리자가 화면을 열어야 보인다. 그래서 "자동 집계 + 경고 표시".
+  { label: "주 52시간·초과근무 한도", cells: ["직접 챙겨야 함", "제품마다 다름", "자동 집계 + 한도 경고 표시"] },
+  // 🔴 원래 "법정 근로기록 **3년** 보관"이라고 썼는데 **근거가 없다**(검수 지적, 코드 전수 확인):
+  //    근태 기록을 3년 뒤 파기하거나 3년을 보장하는 코드가 하나도 없다. 자동 파기가 있는 것은
+  //    PC-OFF 사건기록·출퇴근 사진·접근기록 3가지뿐이다(lib/pcoff-retention.ts, clock-photo.ts, access-log.ts).
+  //    ⚠️ "3년"은 홈화면 다른 3곳(숫자 밴드·FAQ·차별점 카드)에도 남아 있다 — 그건 이번 범위 밖이라
+  //       사장님께 보고만 했다. 파기 배치를 만들기 전에는 **표에 숫자를 쓰지 말 것.**
+  { label: "근로기록 보관·내보내기", cells: ["파일을 직접 관리", "제품마다 다름", "자동 보관 + 언제든 내보내기"] },
+  { label: "직원이 인증 방식을 고름", cells: ["해당 없음", "제품마다 다름", "얼굴·GPS 중 직원이 선택"] },
+  // noCheck: 종이·엑셀도 "없음"이라 우리만 체크가 붙으면 억지스럽다(검수 지적) → 이 줄만 체크를 뺀다.
+  { label: "단말기 구입·설치 비용", cells: ["없음", "필요", "없음(웹 구독)"], noCheck: true },
+];
+
 // ── HOW IT WORKS: 도입 3단계 ──
 const steps = [
   { icon: '<path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01"/>', title: "회사 계정 만들기", desc: "이메일로 5분이면 가입. 회사 근무시간과 사업장 위치만 설정하면 준비 끝." },
@@ -365,11 +400,13 @@ export default async function Home() {
           </div>
           {/* ── 큰 블록: 핵심 차별점 하나만 크게 (2026-08-09) ──
               왼쪽에 글, 오른쪽에 "하루 시간 띠" 그림. 좁아지면 globals.css가 위아래로 접는다.
-              ⚠️ 여기엔 마우스 올림 효과를 주지 않는다 — 카드가 아니라 **읽는 내용**이라,
-                 움직이면 글을 읽는 동안 거슬린다. */}
-          {/* ⚠️ 아래 카드들과의 간격(28)을 카드끼리의 간격(16)보다 넓게 둔다 —
+              ⚠️ 처음엔 **일부러 마우스 올림 효과를 빼 뒀다**(카드가 아니라 읽는 내용이라 움직이면
+                 거슬릴까 봐). 사장님이 "여기만 효과가 없다"고 하셔서 **다른 카드와 똑같이** 맞췄다.
+              ⚠️ 그래서 배경·테두리·둥근모서리·그림자를 인라인에서 뺐다 — `.landing-hover-card`가 갖는다.
+                 인라인으로 되돌리면 이 블록만 또 테두리·그림자가 안 변한다(인라인이 CSS를 이긴다).
+              ⚠️ 아래 카드들과의 간격(28)을 카드끼리의 간격(16)보다 넓게 둔다 —
                  같으면 큰 블록과 카드가 "같은 무리"로 보여 위계가 사라진다(검수 지적). */}
-          <div className="landing-feature-lead" style={{ marginBottom: 28, padding: "clamp(24px,3vw,34px)", borderRadius: 16, border: "1px solid var(--landing-border-strong,#CBD9F0)", background: "var(--landing-card,#fff)", boxShadow: "0 8px 30px var(--landing-shadow)" }}>
+          <div className="landing-feature-lead landing-hover-card" style={{ marginBottom: 28, padding: "clamp(24px,3vw,34px)" }}>
             <div>
               <div style={{ display: "inline-flex", alignItems: "center", height: 26, padding: "0 12px", borderRadius: 13, background: "#D3E1FA", color: "#1D4ED8", fontSize: 12, fontWeight: 700, marginBottom: 14 }}>{featureLead.badge}</div>
               <h3 style={{ fontSize: "clamp(21px,2.6vw,27px)", fontWeight: 700, letterSpacing: "-0.02em", margin: "0 0 12px" }}>{featureLead.title}</h3>
@@ -396,6 +433,68 @@ export default async function Home() {
                 <div style={{ fontSize: 15, color: "var(--text-sub)", lineHeight: 1.6 }}>{f.desc}</div>
               </div>
             ))}
+          </div>
+
+          {/* ── 기존 방식과의 비교표 ──
+              ⚠️ 표는 좁은 화면에서 줄일 수 없다(칸이 4개라 글자가 세로로 무너진다).
+                 그래서 **표만 가로로 밀어 보는 상자**에 담는다. 페이지 자체는 가로 스크롤이 생기지 않는다.
+              ⚠️ 마우스 올림 효과(.landing-hover-card)는 주지 않는다 — 표는 읽는 것이고,
+                 움직이면 가로로 밀어 보는 동작과 충돌한다. */}
+          <div style={{ marginTop: 40 }}>
+            <div style={{ textAlign: "center", marginBottom: 18 }}>
+              <h3 id="cmp-title" style={{ fontSize: "clamp(19px,2.4vw,24px)", fontWeight: 700, letterSpacing: "-0.02em", margin: "0 0 6px" }}>지금 쓰시는 방식과 무엇이 다른가요?</h3>
+              <p style={{ fontSize: 14, color: "var(--text-sub)", margin: 0 }}>회사 이름이 아니라 <b style={{ color: "var(--text)" }}>일하는 방식</b>으로 비교했습니다.</p>
+            </div>
+            {/* ⚠️ tabIndex/role/aria-labelledby — 좁은 화면에서 표를 **키보드로도 밀어 볼 수 있게** 한다.
+                   이게 없으면 마우스를 못 쓰는 분은 3·4번째 칸을 영영 볼 수 없다(크롬은 알아서 해 주지만
+                   파이어폭스·사파리는 아니다 — 검수 지적). aria-labelledby는 위 제목을 표 이름으로 쓴다. */}
+            <div className="landing-compare-scroll" tabIndex={0} role="region" aria-labelledby="cmp-title">
+              <table style={{ width: "100%", minWidth: 640, borderCollapse: "separate", borderSpacing: 0, fontSize: 14 }}>
+                <thead>
+                  <tr>
+                    <th scope="col" style={{ ...cmpCell, textAlign: "left", color: "var(--text-sub)", fontWeight: 600, background: "transparent", borderTop: 0, borderLeft: 0 }}>비교 항목</th>
+                    {compareCols.map((c, i) => {
+                      const ours = i === OURS_COL;
+                      return (
+                        // ⚠️ 머리줄은 전부 borderTop: 0 — 그래야 ①가로선이 첫 칸부터 통일되고
+                        //    ②파란 배경 위에 옅은 회색 선이 얼룩처럼 얹히지 않는다(검수 지적).
+                        // ⚠️ 색이 #2563EB→#3B82F6이었는데 오른쪽 끝에서 흰 글자 대비가 3.68까지 떨어졌다
+                        //    (14px 굵은 글씨는 4.5 이상 필요) → 한 단계 진하게 낮췄다.
+                        <th key={c} scope="col" style={{ ...cmpCell, fontWeight: 700, borderTop: 0, borderRight: i === compareCols.length - 1 ? "1px solid var(--landing-border,#DCE5F4)" : undefined, color: ours ? "#fff" : "var(--text-sub)", background: ours ? "linear-gradient(135deg,#1D4ED8,#2563EB)" : "var(--landing-bg,#F5F8FF)", borderTopLeftRadius: 10, borderTopRightRadius: 10 }}>{c}</th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {compareRows.map((r, ri) => {
+                    // 표 바깥 테두리를 닫는다 — cmpCell은 위·왼쪽 선만 그리므로 마지막 줄·마지막 칸에
+                    // 아래·오른쪽 선을 따로 넣지 않으면 격자가 열린 채로 끝난다(검수 지적).
+                    const last = ri === compareRows.length - 1;
+                    const edge = "1px solid var(--landing-border,#DCE5F4)";
+                    return (
+                    <tr key={r.label}>
+                      <th scope="row" style={{ ...cmpCell, textAlign: "left", fontWeight: 600, borderLeft: 0, borderBottom: last ? edge : undefined }}>{r.label}</th>
+                      {r.cells.map((v, i) => {
+                        const ours = i === OURS_COL;
+                        return (
+                          <td key={compareCols[i]} style={{ ...cmpCell, borderRight: i === r.cells.length - 1 ? edge : undefined, borderBottom: last ? edge : undefined, color: ours ? "var(--text)" : "var(--text-sub)", fontWeight: ours ? 700 : 400, background: ours ? "rgba(37,99,235,0.06)" : "transparent" }}>
+                            {/* 우리 칸에만 체크 표시. ⚠️ 색만으로 구분하지 않기 위해 아이콘을 함께 둔다.
+                                ⚠️ noCheck 줄은 뺀다 — 남의 칸과 결과가 같은데 우리만 체크면 억지스럽다. */}
+                            {ours && !r.noCheck && <span aria-hidden style={{ color: "var(--success)", width: 15, height: 15, display: "inline-flex", verticalAlign: "-2px", marginRight: 5 }} dangerouslySetInnerHTML={{ __html: svg('<path d="M20 6 9 17l-5-5"/>', 15) }} />}
+                            {v}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {/* 🔴 이 한 줄을 지우지 말 것 — 남의 제품 기능을 단정하지 않는다는 표시다(비교광고 방어) */}
+            <p style={{ fontSize: 12, color: "var(--text-sub)", margin: "12px 0 0", lineHeight: 1.6 }}>
+              ※ 왼쪽 두 칸은 일반적인 운영 방식을 정리한 것으로, 실제 제품·운영 방식에 따라 다를 수 있습니다.
+            </p>
           </div>
         </div>
       </section>
@@ -901,6 +1000,22 @@ function RoleCard({ title, sub, items, iconPath, device }: { title: string; sub:
     </div>
   );
 }
+
+// 비교표 칸 공통 — 칸마다 같은 값을 적지 않으려고 한 곳에 모은다.
+// ⚠️ borderCollapse를 쓰지 않고(그러면 둥근 모서리가 안 먹는다) **위·왼쪽 선만** 그려 격자를 만든다.
+//    그래서 바깥 테두리는 JSX에서 따로 닫아 준다:
+//      · 머리줄 전체 borderTop: 0   (가로선 시작점을 맞추고, 파란 헤더 위 회색 얼룩을 없앤다)
+//      · 맨 왼쪽 칸 borderLeft: 0   (세로선 시작점)
+//      · 마지막 열 borderRight, 마지막 줄 borderBottom  (안 넣으면 격자가 열린 채 끝난다)
+//    ⚠️ 예전 주석은 "맨 위 줄과 맨 왼쪽 칸에서 지운다"고만 적어 뒀는데, 실제로는 머리줄 첫 칸 하나만
+//       지워져 있어 가로선이 중간부터 시작하고 오른쪽·아래가 열려 있었다(검수 지적 → 위처럼 고쳤다).
+const cmpCell: React.CSSProperties = {
+  padding: "13px 14px",
+  textAlign: "center",
+  borderTop: "1px solid var(--landing-border,#DCE5F4)",
+  borderLeft: "1px solid var(--landing-border,#DCE5F4)",
+  verticalAlign: "middle",
+};
 
 const eyebrow: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: "var(--primary)", marginBottom: 10, letterSpacing: "0.02em" };
 const h2: React.CSSProperties = { fontSize: "clamp(24px,4vw,34px)", fontWeight: 700, letterSpacing: "-0.02em", margin: 0 };

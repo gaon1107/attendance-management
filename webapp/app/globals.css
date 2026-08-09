@@ -312,6 +312,17 @@ details.landing-faq[open] > summary .faq-chevron { transform: rotate(180deg); }
 @media (max-width: 880px) { .landing-stats { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 520px) { .landing-stats { grid-template-columns: 1fr; } }
 
+/* 기존 방식 비교표를 담는 상자 (2026-08-09).
+   ⚠️ 표는 칸이 4개라 좁은 화면에서 줄일 수 없다(글자가 세로로 무너진다). 그래서 **표만** 가로로
+      밀어 보게 한다. 이 상자가 없으면 표가 페이지를 밀어 **화면 전체에 가로 스크롤**이 생긴다.
+   ⚠️ 표 자체의 min-width(640px)와 짝이다. 한쪽만 바꾸면 넓은 화면에서 표가 찌그러지거나
+      좁은 화면에서 밀어 볼 수 없게 된다.
+   ⚠️ "밀어서 볼 수 있다"는 힌트를 따로 두지 않았다. 윈도우·안드로이드는 스크롤바가 보이지만
+      **맥·아이폰은 손대기 전까지 스크롤바가 뜨지 않아**, 표가 잘린 줄 모를 수 있다(검수 지적).
+      필요하면 오른쪽 끝에 옅은 페이드(그라데이션)를 여기에 추가할 것.
+   ⚠️ 키보드로도 밀 수 있어야 한다 — 그 처리는 page.tsx에서 tabIndex/role/aria-labelledby로 한다. */
+.landing-compare-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
 /* 차별점 큰 블록 — 왼쪽 글 / 오른쪽 하루 시간 띠 (2026-08-09).
    ⚠️ 900px에서 접는 이유는 **왼쪽 글칸**이다. 오른쪽 띠 그림이 아니다.
       띠는 좁아져도 멀쩡하다 — 실제로 접힌 뒤 375px 화면에서 띠 폭이 279px인데 시각 표시(09:00 출근 /
@@ -328,7 +339,8 @@ details.landing-faq[open] > summary .faq-chevron { transform: rotate(180deg); }
 }
 
 /* 카드에 마우스를 올렸을 때 살짝 떠오르는 효과 (2026-08-09 사장님 지시).
-   붙는 곳: 차별점 카드 3장 · 도입 3단계 카드 3장 · 역할 카드 2장 = **8장**. FAQ는 아래 따로.
+   붙는 곳(총 **8장**): 차별점 큰 블록 1 + 차별점 카드 2 + 도입 3단계 카드 3 + 역할 카드 2. FAQ는 아래 따로.
+   ※ 차별점은 원래 카드 3장이었는데 2026-08-09에 하나가 큰 블록으로 올라가 2장이 됐다.
    ⚠️ 이름을 `landing-hover-card`로 한 이유: 이 파일에 이미 **`--landing-card`라는 색 변수**가 있어서
       `.landing-card`로 지으면 둘이 헷갈린다(하나는 카드 배경색, 하나는 움직임).
    ⚠️ 인라인 style로는 :hover를 쓸 수 없어 클래스로 뺐다.
