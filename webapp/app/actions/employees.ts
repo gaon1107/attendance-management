@@ -2,6 +2,7 @@
 // 직원 등록 — 관리자만 가능. 같은 회사 소속으로 직원 계정을 만든다.
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
+import { generateTempPassword, TEMP_PASSWORD_TTL_MS } from "@/lib/temp-password";
 import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { parseDays, daysToCsv } from "@/lib/workdays";
@@ -10,10 +11,14 @@ import { canDeactivate, canManageAccount } from "@/lib/owner-rules";
 import { logAdminAction } from "@/lib/audit";
 import { openSessionSince } from "@/lib/worktime";
 
+// 반환값에 tempPassword가 실린다 — 관리자가 직원에게 전달해야 하는 값이라 **한 번은 보여줘야** 한다.
+// (평문이 남는 곳은 이 응답뿐이다. DB에는 해시만 저장된다.)
+export type EmployeePasswordResult = { error?: string; ok?: boolean; tempPassword?: string; name?: string };
+
 export async function addEmployee(
-  _prev: { error?: string; ok?: boolean },
+  _prev: EmployeePasswordResult,
   formData: FormData
-): Promise<{ error?: string; ok?: boolean }> {
+): Promise<EmployeePasswordResult> {
   const me = await getCurrentUser();
   if (!me || me.role !== "admin") {
     return { error: "권한이 없습니다." };
@@ -21,14 +26,17 @@ export async function addEmployee(
 
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const password = String(formData.get("password") ?? "");
 
-  if (!name || !email || !password) {
-    return { error: "모든 항목을 입력해주세요." };
+  if (!name || !email) {
+    return { error: "이름과 이메일을 입력해주세요." };
   }
-  if (password.length < 8) {
-    return { error: "비밀번호는 8자 이상이어야 합니다." };
-  }
+  // 🔴 2026-08-09: 관리자가 비밀번호를 **타이핑하지 않는다**. 서버가 무작위로 만든다.
+  //    예전에는 관리자가 직접 정했고, 그래서 두 가지 문제가 있었다:
+  //    ① 관리자가 직원 비밀번호를 **알게 된다** → 그 계정으로 로그인해 대신 출퇴근을 찍을 수 있다.
+  //       "정직한 실근무시간"이 제품의 핵심 가치인데 그 근거가 무너진다.
+  //    ② 크롬이 이 폼을 로그인 폼으로 보고 **관리자 본인 비밀번호를 채워 넣는** 사고가 있었다(2026-08-05).
+  //       입력칸 자체가 없어지면 그 사고는 원천적으로 불가능해진다.
+  const password = generateTempPassword();
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -55,8 +63,13 @@ export async function addEmployee(
     },
   });
 
+  // 🔴 [검수 치명 3] 계정 생성도 감사 대상이다 — 누가 언제 어떤 계정을 만들었는지 남긴다.
+  //    ⚠️ 이름만 남긴다. 비밀번호 값은 절대 넣지 않는다(lib/audit.ts 규약).
+  await logAdminAction(me, "config", `employee_add:${name}`);
+
   revalidatePath("/employees");
-  return { ok: true };
+  // 평문 임시 비번은 여기서만 나간다 — 관리자가 직원에게 전달해야 하므로 한 번은 보여줘야 한다.
+  return { ok: true, tempPassword: password, name };
 }
 
 // 직원 이름 수정 — 관리자만. 반드시 내 회사 소속 직원만 수정(회사 격리).
@@ -260,15 +273,16 @@ export async function reactivateEmployee(formData: FormData): Promise<void> {
 // 직원 비밀번호 재설정 — 관리자만. 직원이 비번을 잊었을 때 새 임시 비번을 정해준다.
 // 보안: 재설정하면 그 직원의 기존 로그인 세션도 무효화(새 비번으로 다시 로그인).
 export async function resetEmployeePassword(
-  _prev: { error?: string; ok?: boolean },
+  _prev: EmployeePasswordResult,
   formData: FormData
-): Promise<{ error?: string; ok?: boolean }> {
+): Promise<EmployeePasswordResult> {
   const me = await getCurrentUser();
   if (!me || me.role !== "admin") return { error: "권한이 없습니다." };
 
   const id = String(formData.get("id") ?? "");
-  const password = String(formData.get("password") ?? "");
-  if (password.length < 8) return { error: "새 비밀번호는 8자 이상이어야 합니다." };
+  // 🔴 2026-08-09: 관리자가 새 비밀번호를 **타이핑하지 않는다**(addEmployee와 같은 이유).
+  //    예전에는 관리자가 정한 글자가 그대로 **영구 비밀번호**가 됐다 — 세 경로 중 유일하게
+  //    "첫 로그인 때 바꾸기"조차 걸리지 않아, 관리자가 아는 비밀번호가 그 계정에 영원히 남았다.
 
   const target = await prisma.user.findFirst({ where: { id, companyId: me.companyId } });
   if (!target) return { error: "직원을 찾을 수 없습니다." };
@@ -278,24 +292,63 @@ export async function resetEmployeePassword(
     if (!g.ok) return { error: g.reason };
   }
 
-  await prisma.user.update({
-    where: { id: target.id },
-    data: {
-      passwordHash: hashPassword(password),
-      failedLoginCount: 0,
-      lockedUntil: null,
-      // 🔴 [후속 검수 치명 3] 임시 비밀번호 만료 표시를 반드시 지운다.
-      //    안 지우면, 예전에 발급한 임시 비밀번호의 만료 시각이 남아 있어
-      //    관리자가 새로 정해준 **정확한 비밀번호로도 "기한이 지났습니다"라며 로그인이 거부**된다.
-      //    (직원도 관리자도 원인을 알 수 없는 영구 로그인 불가 상태가 된다)
-      mustChangePassword: false,
-      tempPasswordExpiresAt: null,
-    },
-  });
-  await prisma.session.deleteMany({ where: { userId: target.id } });
+  // 🔴 [검수 치명 1] **본인에게는 발급할 수 없다.** 아래에서 그 계정의 세션을 전부 지우므로,
+  //    자기 자신에게 누르면 **새 비밀번호를 화면에서 보기도 전에 로그아웃**된다(재렌더가 로그인 화면으로 튕긴다).
+  //    관리자가 1명뿐인 회사라면 비밀번호 찾기도 관리자 승인식이라 **회사가 통째로 잠긴다.**
+  //    (owner-rules.ts는 "본인 계정은 개별 액션이 판단한다"고 위임해 두었다 — 여기가 그 판단 자리다.)
+  if (target.id === me.id) {
+    return { error: "본인 비밀번호는 여기서 바꿀 수 없습니다. [내 정보] 화면에서 직접 변경해 주세요." };
+  }
+  // 🔒 [검수 중간 1] 퇴사자에게는 발급하지 않는다(재설정 요청 처리 경로와 같은 기준).
+  //    화면은 이미 숨기지만 화면은 방어가 아니다 — 다른 탭에서 퇴사 처리된 뒤 눌리는 경우가 실제로 생긴다.
+  //    또 퇴사자에게 48시간 기한이 붙으면, 나중에 **복직시켰을 때** 기한이 이미 지나 있어
+  //    정확한 비밀번호로도 로그인이 거부된다(복직 처리는 이 값을 지우지 않는다).
+  if (target.deactivatedAt) {
+    return { error: "퇴사 처리된 직원입니다. 먼저 복직 처리해 주세요." };
+  }
+
+  const tempPassword = generateTempPassword();
+  // 🔴 [검수 중간 4] 세 개의 쓰기를 **한 묶음으로** 처리한다. 중간에 끊기면
+  //    "비밀번호는 바뀌었는데 옛 로그인은 살아 있는" 상태가 되고, 관리자는 새 값을 받지도 못한다.
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: target.id },
+      data: {
+        passwordHash: hashPassword(tempPassword),
+        failedLoginCount: 0,
+        lockedUntil: null,
+        // 첫 로그인 때 반드시 새 비밀번호를 정하게 한다.
+        //  ⚠️ 이것으로 "관리자가 아는 값이 즉시 무력화된다"고 말할 수는 없다(검수 치명 3) —
+        //     **직원보다 관리자가 먼저 로그인하면** 관리자가 그 화면에서 비밀번호를 자기가 아는 값으로
+        //     확정할 수 있다. 그래서 아래 감사기록이 반드시 함께 있어야 한다.
+        mustChangePassword: true,
+        // 48시간 기한(비밀번호 재설정 발급과 같은 기준). 관리자가 구두로 전달하는 값이라
+        // 무기한으로 두면 "관리자가 아는 비밀번호"가 계속 유효한 채로 남는다.
+        //  ⚠️ 예전 주석은 "만료 표시를 반드시 **지운다**"였다. 그때는 관리자가 정한 값이 영구
+        //     비밀번호였기 때문이고(기한이 남아 있으면 정확한 비밀번호로도 로그인이 거부됐다),
+        //     지금은 그 값 자체가 임시 비밀번호라 **반대로 기한을 세우는 것이 맞다.**
+        tempPasswordExpiresAt: new Date(Date.now() + TEMP_PASSWORD_TTL_MS),
+      },
+    }),
+    prisma.session.deleteMany({ where: { userId: target.id } }),
+    // 🔴 [검수 중간 3] 그 직원이 낸 대기 중인 재설정 요청도 함께 닫는다.
+    //    안 닫으면 관리자 대시보드에 요청 배지가 남고, 나중에 그걸 보고 한 번 더 발급하는 순간
+    //    **방금 전달한 비밀번호가 무효**가 된다("알려준 대로 쳤는데 안 된다"의 원인).
+    prisma.passwordResetRequest.updateMany({
+      where: { userId: target.id, status: "pending" },
+      data: { status: "resolved", resolvedAt: new Date() },
+    }),
+  ]);
+
+  // 🔴 [검수 치명 3] 남의 로그인 자격증명을 통째로 바꾸는 행위다. 기록이 없으면
+  //    나중에 "이 출퇴근을 정말 본인이 찍었나"를 회사도 직원도 증명할 수 없다.
+  //    ⚠️ 대상 이름만 남긴다 — 비밀번호 값은 절대 넣지 않는다(lib/audit.ts 규약).
+  await logAdminAction(me, "config", `password_reset:${target.name}`);
 
   revalidatePath(`/employees/${id}`);
-  return { ok: true };
+  revalidatePath("/employees");
+  revalidatePath("/dashboard");
+  return { ok: true, tempPassword, name: target.name };
 }
 
 // 직원 근무요일 예외 저장 — 관리자만. 빈 값이면 "회사 기본 따름"(null). 회사 격리.

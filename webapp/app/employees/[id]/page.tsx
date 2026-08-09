@@ -225,8 +225,11 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         <AnnualLeaveForm id={emp.id} autoDays={leaveAutoDays} override={emp.annualLeaveOverride} hasHireDate={!!emp.hireDate} />
       </div>
 
-      {/* 비밀번호 재설정 (재직중일 때만) */}
-      {active && (
+      {/* 비밀번호 재설정 (재직중 + **본인이 아닐 때만**)
+          ⚠️ 본인을 제외하는 이유: 발급하면 그 계정의 세션이 전부 삭제된다. 자기 자신에게 누르면
+             새 비밀번호를 화면에서 보기도 전에 로그아웃돼 계정이 잠긴다(검수 치명 1).
+             서버(resetEmployeePassword)도 같은 검사를 한다 — 화면은 방어가 아니라 안내다. */}
+      {active && emp.id !== me.id && (
         <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24 }}>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>비밀번호 재설정</div>
           <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
