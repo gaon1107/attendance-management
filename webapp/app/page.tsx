@@ -13,6 +13,7 @@ const nav = [
   { label: "기능", href: "#features" },
   { label: "도입 절차", href: "#how" },
   { label: "직원/관리자", href: "#roles" },
+  { label: "요금제", href: "#pricing" },
   { label: "자주 묻는 질문", href: "#faq" },
   // ⚠️ 원래 "문의하기"였으나 이 섹션에 이메일·전화·문의폼이 하나도 없어 라벨을 바꿨다.
   //    연락처가 정해지면 CTA 밴드에 넣고 라벨을 "문의하기"로 되돌린다.
@@ -186,6 +187,28 @@ const faqs = [
   { q: "5인 미만 사업장도 쓸 수 있나요?", a: "네. 인원 수 제한 없이 사용할 수 있습니다. 5인 이상 사업장에 필요한 근로시간 기록·보존 기능도 기본으로 제공합니다." },
   { q: "기존 급여 프로그램과 연동되나요?", a: "실근무시간·근태 데이터를 내보낼 수 있어 급여 정산에 활용할 수 있습니다. 주요 급여 서비스와의 직접 연동은 순차적으로 추가하고 있습니다." },
   { q: "근로시간 기록은 얼마나 보관되나요?", a: "근로기준법에 따라 3년간 안전하게 보관하며, 언제든 법정 근로기록으로 내보낼 수 있습니다." },
+];
+
+// ── 요금제 (사장님 확정 2026-08-09) ──
+//   ① 무료: 30일 체험  ② 1인당 1,000원 **부가세 별도**  ③ 최소 결제 인원 없음  ④ 경쟁사 가격은 적지 않음
+//   ⚠️ 가격은 고객과의 약속이다. 이 숫자·조건을 바꿀 때는 **반드시 사장님 확인**을 받는다.
+//   ⚠️ "부가세 별도"는 표시광고 상 반드시 함께 보여야 한다(빼면 1,100원을 1,000원이라 광고한 셈이 된다).
+const PRICE_PER_PERSON = 1000;
+// 여기 적는 것은 **실제로 있는 기능만**이다(홈화면 비교표와 같은 원칙).
+//  · 없는 기능을 적으면 그대로 허위광고가 된다. 새 줄을 넣기 전에 코드에 그 기능이 있는지 확인할 것.
+//  · "관리자 수 무제한" 같은 문구는 쓰지 않는다 — 관리자도 계정이라 인원에 포함된다(아래 note로 명시).
+const priceIncludes = [
+  "얼굴인증·GPS 출퇴근 — 직원이 직접 고름(강제 없음)",
+  "실근무시간 자동 계산 — 외출 기록만큼 빼고 셈",
+  "주 52시간·초과근무 자동 집계 + 한도 경고 표시",
+  "근로기록 보관 + 엑셀 내보내기",
+  // ⚠️ "야근"이 아니라 **초과근무**다 — 제품 안 라벨이 전부 그렇다(lib/pending-approvals.ts).
+  //    홈화면에서 "야근 신청"을 본 고객은 로그인 후 그 메뉴를 찾지 못한다.
+  "휴가·근태정정·외출·재택·초과근무·출장 신청과 결재",
+  // ⚠️ [PC 자동 잠금]은 일부러 뺐다(검수 지적). 기능은 있지만 **고객이 받을 방법이 아직 없다** —
+  //    윈도우 전용 설치 프로그램인데 배포 파일(.exe/.zip)이 제품 어디에도 없고, 교대근무 회사는
+  //    아예 동작하지 않는다(lib/pcoff-policy.ts: shift_unsupported). 받을 수 없는 것을 요금에
+  //    포함시키면 허위광고다. **배포 경로가 생기면 조건과 함께 다시 넣을 것.**
 ];
 
 const WRAP = 1080;
@@ -594,6 +617,77 @@ export default async function Home() {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* 요금제 — 상품이 하나뿐이라 요금제도 하나다. 등급표(Basic/Pro)를 만들지 않는다.
+             ⚠️ 배경을 흰색으로 두는 이유: 바로 위가 진한 파란 숫자 밴드다. 여기까지 색을 깔면
+                파란 덩어리가 두 개 붙어 화면이 무거워진다(2026-08-09 색 정리의 취지).
+             ⚠️ 카드의 배경·테두리·둥근모서리·그림자는 인라인에 두지 않는다 — `.landing-hover-card`가 갖는다.
+                인라인으로 주면 마우스 올림 효과가 **조용히 안 먹는다**(인라인이 CSS를 이긴다). */}
+      <section id="pricing" style={{ background: "#FFFFFF", scrollMarginTop: 68 }}>
+        <div style={{ maxWidth: WRAP, margin: "0 auto", padding: "clamp(48px,7vw,72px) 24px" }}>
+          <div style={{ textAlign: "center", marginBottom: "clamp(28px,4vw,40px)" }}>
+            <div style={eyebrow}>요금제</div>
+            {/* ⚠️ "쓴 만큼만"이라고 쓰지 않는다 — 종량제(출근한 날만 과금)로 읽힌다. 실제는 계정 수 × 정액이다.
+                ⚠️ 제목에도 "부가세 별도"를 넣는다 — 제목만 캡처·검색결과로 돌아다닐 때 1,000원만 남기 때문. */}
+            <h2 style={h2}>계정 수만큼만, 1계정당 월 {PRICE_PER_PERSON.toLocaleString("ko-KR")}원(부가세 별도)</h2>
+            <p style={{ marginTop: 12, marginBottom: 0, fontSize: 16, color: "var(--text-sub)", lineHeight: 1.65 }}>
+              최소 인원도, 단말기 구입비도 없습니다. 30일 동안 먼저 써 보세요.
+            </p>
+          </div>
+
+          <div className="landing-hover-card" style={{ maxWidth: 720, margin: "0 auto", padding: "clamp(28px,4vw,40px)" }}>
+            {/* 가격 — baseline으로 맞춘다. center로 두면 "원"과 "/1인·월"이 큰 숫자 한가운데에 붙어 뜬다. */}
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: "clamp(40px,7vw,60px)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, color: "var(--primary)", fontVariantNumeric: "tabular-nums" }}>
+                {PRICE_PER_PERSON.toLocaleString("ko-KR")}원
+              </span>
+              <span style={{ fontSize: 17, fontWeight: 700, color: "var(--text-sub)" }}>/ 1계정 · 월</span>
+            </div>
+            {/* ⚠️ 이 줄을 지우지 말 것 — 부가세 별도를 안 밝히면 1,100원을 1,000원이라 광고한 것이 된다. */}
+            <div style={{ textAlign: "center", marginTop: 8, fontSize: 14, color: "var(--text-sub)" }}>부가세 별도</div>
+
+            {/* ⚠️ 예시를 **계정 기준**으로 적는다. 예전엔 "직원 3명 = 3,000원"이라고 썼는데, 아래 각주의
+                   "관리자도 센다"와 정면으로 어긋났다(가장 흔한 구성인 사장님1+직원3이면 실제로는 4,000원 —
+                   눈에 가장 잘 띄는 굵은 글씨가 33% 싼 값을 말하고 있었다. 검수 치명 2). */}
+            <div style={{ marginTop: 18, padding: "12px 16px", borderRadius: 10, background: "var(--landing-bg,#F5F8FF)", textAlign: "center", fontSize: 15, fontWeight: 700 }}>
+              최소 결제 인원 없음 — 관리자 1명 + 직원 3명이면 4계정, 월 {(PRICE_PER_PERSON * 4).toLocaleString("ko-KR")}원
+            </div>
+
+            <div style={{ height: 1, background: "var(--landing-border,#DCE5F4)", margin: "clamp(22px,3vw,28px) 0" }} />
+
+            {/* ⚠️ "전부 들어 있습니다"라고 단정하지 않는다 — 문자 발송(아이원24)처럼 건당 비용이 붙는 외부
+                   서비스가 있고, 얼굴서버 라이선스 단가도 계약 사항이라 코드로 확인되지 않는다(검수 중간 3). */}
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>이 가격에 들어 있는 것</div>
+            <ul className="landing-price-feats">
+              {priceIncludes.map((t) => (
+                <li key={t} style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 15, color: "var(--text)", lineHeight: 1.6 }}>
+                  {/* aria-hidden — 화면낭독기에 뜻 없는 그래픽을 6번 읽히지 않게(비교표 체크와 같은 처리).
+                      색은 --success(초록) — 같은 뜻("포함/해당됨")의 체크가 비교표·차별점에서 초록이라 맞춘다. */}
+                  <span aria-hidden style={{ flexShrink: 0, marginTop: 3, color: "var(--success)", display: "inline-flex" }} dangerouslySetInnerHTML={{ __html: svg('<path d="M20 6 9 17l-5-5"/>', 18) }} />
+                  <span>{t}</span>
+                </li>
+              ))}
+            </ul>
+
+            <div style={{ marginTop: "clamp(24px,3vw,32px)", textAlign: "center" }}>
+              <Link href="/signup" style={{ height: 52, padding: "0 30px", display: "inline-flex", alignItems: "center", borderRadius: 10, background: "var(--primary)", color: "#fff", fontSize: 16, fontWeight: 700, textDecoration: "none", boxShadow: "0 10px 24px rgba(37,99,235,0.28)" }}>
+                30일 무료로 시작하기
+              </Link>
+            </div>
+            {/* 각주 — 결제가 붙는 순간 분쟁이 되는 지점만 미리 밝힌다.
+                ⚠️ "1인"이 무엇인지 정의하지 않으면 100% 클레임이 난다(검수 치명 3). 계정 종류가 셋이다:
+                   회사 대표계정(isOwner=true, 스키마 주석이 "사람이 아니다") / 관리자 / 직원, 그리고 퇴사자는
+                   deactivatedAt이 찍혀 로그인도 집계도 빠지지만 **계정 행은 남는다**. 셀 것과 안 셀 것을 둘 다 적는다.
+                ⚠️ "자동으로 결제되지 않습니다"는 **지금 사실이다** — 가입 때 결제수단을 받지 않고 청구 코드가 없다.
+                   결제가 붙으면 이 문장부터 다시 볼 것(그대로 두면 그날 거짓말이 된다). */}
+            <p style={{ marginTop: 14, marginBottom: 0, textAlign: "center", fontSize: 13, color: "var(--text-sub)", lineHeight: 1.7 }}>
+              재직 중인 관리자·직원 계정 수로 계산합니다(회사 대표계정·퇴사 처리된 계정은 빼고 셉니다)
+              <br />
+              체험 기간이 끝나도 자동으로 결제되지 않습니다 · 지문·카드 인식기 같은 단말기 구입 비용이 없습니다
+            </p>
+          </div>
         </div>
       </section>
 
