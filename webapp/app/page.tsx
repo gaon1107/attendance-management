@@ -190,13 +190,14 @@ const faqs = [
 ];
 
 // ── 요금제 (사장님 확정 2026-08-09) ──
-//   ① 무료: 30일 체험  ② 1인당 1,000원 **부가세 별도**  ③ 최소 결제 인원 없음  ④ 경쟁사 가격은 적지 않음
+//   ① 무료: 30일 체험  ② **직원** 1명당 1,000원 **부가세 별도**  ③ 최소 결제 인원 없음  ④ 경쟁사 가격은 적지 않음
+//   ⑤ **관리자는 과금 대상이 아니다**(2026-08-09 사장님 지시로 변경 — 처음엔 관리자도 세는 안이었다).
 //   ⚠️ 가격은 고객과의 약속이다. 이 숫자·조건을 바꿀 때는 **반드시 사장님 확인**을 받는다.
 //   ⚠️ "부가세 별도"는 표시광고 상 반드시 함께 보여야 한다(빼면 1,100원을 1,000원이라 광고한 셈이 된다).
+//      가격 블록을 뺀 뒤로 그 표기가 있는 곳은 **제목(h2) 하나뿐**이다.
 const PRICE_PER_PERSON = 1000;
 // 여기 적는 것은 **실제로 있는 기능만**이다(홈화면 비교표와 같은 원칙).
 //  · 없는 기능을 적으면 그대로 허위광고가 된다. 새 줄을 넣기 전에 코드에 그 기능이 있는지 확인할 것.
-//  · "관리자 수 무제한" 같은 문구는 쓰지 않는다 — 관리자도 계정이라 인원에 포함된다(아래 note로 명시).
 const priceIncludes = [
   "얼굴인증·GPS 출퇴근 — 직원이 직접 고름(강제 없음)",
   "실근무시간 자동 계산 — 외출 기록만큼 빼고 셈",
@@ -629,34 +630,21 @@ export default async function Home() {
         <div style={{ maxWidth: WRAP, margin: "0 auto", padding: "clamp(48px,7vw,72px) 24px" }}>
           <div style={{ textAlign: "center", marginBottom: "clamp(28px,4vw,40px)" }}>
             <div style={eyebrow}>요금제</div>
-            {/* ⚠️ "쓴 만큼만"이라고 쓰지 않는다 — 종량제(출근한 날만 과금)로 읽힌다. 실제는 계정 수 × 정액이다.
-                ⚠️ 제목에도 "부가세 별도"를 넣는다 — 제목만 캡처·검색결과로 돌아다닐 때 1,000원만 남기 때문. */}
-            <h2 style={h2}>계정 수만큼만, 1계정당 월 {PRICE_PER_PERSON.toLocaleString("ko-KR")}원(부가세 별도)</h2>
+            {/* ⚠️ "쓴 만큼만"이라고 쓰지 않는다 — 종량제(출근한 날만 과금)로 읽힌다. 실제는 인원 수 × 정액이다.
+                ⚠️ **관리자는 세지 않는다**(2026-08-09 사장님 지시). 그래서 단위가 "계정"이 아니라 "직원"이다 —
+                   아래 각주와 반드시 같은 말이어야 한다.
+                ⚠️ 가격 블록을 뺀 뒤로 **부가세 표기가 있는 곳은 이 제목뿐이다.** 여기서 빼지 말 것. */}
+            <h2 style={h2}>직원 수만큼만, 직원 1명당 월 {PRICE_PER_PERSON.toLocaleString("ko-KR")}원(부가세 별도)</h2>
             <p style={{ marginTop: 12, marginBottom: 0, fontSize: 16, color: "var(--text-sub)", lineHeight: 1.65 }}>
               최소 인원도, 단말기 구입비도 없습니다. 30일 동안 먼저 써 보세요.
             </p>
           </div>
 
           <div className="landing-hover-card" style={{ maxWidth: 720, margin: "0 auto", padding: "clamp(28px,4vw,40px)" }}>
-            {/* 가격 — baseline으로 맞춘다. center로 두면 "원"과 "/1인·월"이 큰 숫자 한가운데에 붙어 뜬다. */}
-            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
-              <span style={{ fontSize: "clamp(40px,7vw,60px)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, color: "var(--primary)", fontVariantNumeric: "tabular-nums" }}>
-                {PRICE_PER_PERSON.toLocaleString("ko-KR")}원
-              </span>
-              <span style={{ fontSize: 17, fontWeight: 700, color: "var(--text-sub)" }}>/ 1계정 · 월</span>
-            </div>
-            {/* ⚠️ 이 줄을 지우지 말 것 — 부가세 별도를 안 밝히면 1,100원을 1,000원이라 광고한 것이 된다. */}
-            <div style={{ textAlign: "center", marginTop: 8, fontSize: 14, color: "var(--text-sub)" }}>부가세 별도</div>
-
-            {/* ⚠️ 예시를 **계정 기준**으로 적는다. 예전엔 "직원 3명 = 3,000원"이라고 썼는데, 아래 각주의
-                   "관리자도 센다"와 정면으로 어긋났다(가장 흔한 구성인 사장님1+직원3이면 실제로는 4,000원 —
-                   눈에 가장 잘 띄는 굵은 글씨가 33% 싼 값을 말하고 있었다. 검수 치명 2). */}
-            <div style={{ marginTop: 18, padding: "12px 16px", borderRadius: 10, background: "var(--landing-bg,#F5F8FF)", textAlign: "center", fontSize: 15, fontWeight: 700 }}>
-              최소 결제 인원 없음 — 관리자 1명 + 직원 3명이면 4계정, 월 {(PRICE_PER_PERSON * 4).toLocaleString("ko-KR")}원
-            </div>
-
-            <div style={{ height: 1, background: "var(--landing-border,#DCE5F4)", margin: "clamp(22px,3vw,28px) 0" }} />
-
+            {/* ⚠️ 2026-08-09 사장님 지시로 **가격 블록을 통째로 뺐다**(큰 1,000원 + "/1계정·월" + "부가세 별도"
+                   + "최소 결제 인원 없음" 상자). 바로 위 제목과 안내문이 같은 말을 이미 하고 있어 반복이었다.
+                   → 가격·부가세 표기는 이제 **제목(h2) 한 곳**이 책임진다. 제목에서 "(부가세 별도)"를 빼면
+                     페이지 어디에도 부가세 안내가 없어져 표시광고 문제가 된다. 반드시 함께 유지할 것. */}
             {/* ⚠️ "전부 들어 있습니다"라고 단정하지 않는다 — 문자 발송(아이원24)처럼 건당 비용이 붙는 외부
                    서비스가 있고, 얼굴서버 라이선스 단가도 계약 사항이라 코드로 확인되지 않는다(검수 중간 3). */}
             <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>이 가격에 들어 있는 것</div>
@@ -677,13 +665,15 @@ export default async function Home() {
               </Link>
             </div>
             {/* 각주 — 결제가 붙는 순간 분쟁이 되는 지점만 미리 밝힌다.
-                ⚠️ "1인"이 무엇인지 정의하지 않으면 100% 클레임이 난다(검수 치명 3). 계정 종류가 셋이다:
-                   회사 대표계정(isOwner=true, 스키마 주석이 "사람이 아니다") / 관리자 / 직원, 그리고 퇴사자는
-                   deactivatedAt이 찍혀 로그인도 집계도 빠지지만 **계정 행은 남는다**. 셀 것과 안 셀 것을 둘 다 적는다.
+                ⚠️ "1명"이 무엇인지 정의하지 않으면 100% 클레임이 난다(검수 치명 3). 계정 종류가 셋이다:
+                   회사 대표계정(isOwner=true, 스키마 주석이 "사람이 아니다") / 관리자(role="admin") / 직원,
+                   그리고 퇴사자는 deactivatedAt이 찍혀 로그인도 집계도 빠지지만 **계정 행은 남는다**.
+                   셀 것과 안 셀 것을 둘 다 적는다.
+                ⚠️ **관리자는 세지 않는다**(2026-08-09 사장님 지시). 위 제목과 반드시 같은 말이어야 한다.
                 ⚠️ "자동으로 결제되지 않습니다"는 **지금 사실이다** — 가입 때 결제수단을 받지 않고 청구 코드가 없다.
                    결제가 붙으면 이 문장부터 다시 볼 것(그대로 두면 그날 거짓말이 된다). */}
             <p style={{ marginTop: 14, marginBottom: 0, textAlign: "center", fontSize: 13, color: "var(--text-sub)", lineHeight: 1.7 }}>
-              재직 중인 관리자·직원 계정 수로 계산합니다(회사 대표계정·퇴사 처리된 계정은 빼고 셉니다)
+              재직 중인 직원 수로 계산합니다(관리자·회사 대표계정·퇴사 처리된 계정은 빼고 셉니다)
               <br />
               체험 기간이 끝나도 자동으로 결제되지 않습니다 · 지문·카드 인식기 같은 단말기 구입 비용이 없습니다
             </p>
