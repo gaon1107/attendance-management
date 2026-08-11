@@ -6,7 +6,11 @@ import { readCompanyDoc } from "@/lib/company-doc";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const me = await getCurrentUser();
-  if (!me) return NextResponse.json({ message: "로그인이 필요합니다." }, { status: 401 });
+  // ⚠️ 이 주소는 화면의 <a href>로 **브라우저가 직접 여는** 링크다(CompanyDocsForm.tsx).
+  //    로그인이 풀린 뒤 클릭하면 예전엔 새 탭에 `{"message":"로그인이 필요합니다."}` 라는 날 텍스트만
+  //    떴다(검수 중간 5). 관리자 세션이 12시간 유휴로 끊기게 되면서 매일 아침 겪을 수 있는 경로라
+  //    로그인 화면으로 보낸다. (사람이 여는 GET이므로 리다이렉트가 맞다)
+  if (!me) return NextResponse.redirect(new URL("/login", _req.url));
   if (me.role !== "admin") return NextResponse.json({ message: "관리자만 볼 수 있습니다." }, { status: 403 });
 
   const { id } = await params;

@@ -34,6 +34,13 @@ export type LiveData = {
 };
 
 const REFRESH_SEC = 30;
+// 🔴 사람 손길이 이만큼 없으면 자동 새로고침을 멈춘다(검수 치명 1).
+//    왜: 이 화면은 30초마다 서버를 다시 부르는데, 서버가 불릴 때마다 "마지막 활동 시각"이 갱신된다.
+//    관리자가 현황판을 띄워둔 채 퇴근하면 **12시간 미사용 자동 로그아웃이 영원히 발동하지 않는다.**
+//    (M-16이 겨냥한 "사무실 PC를 켜둔 채 퇴근"이 정확히 이 화면이다. 탭이 앞에 있으면 모니터를 꺼도
+//     document.hidden은 false라 기존 절전 조건으로도 안 걸렸다.)
+//    멈춘 뒤에도 [새로고침] 버튼이나 화면 조작 한 번이면 다시 돈다 — 보고 있는 사람에겐 영향이 없다.
+const IDLE_STOP_MS = 15 * 60 * 1000;
 
 export function LiveClient({ data }: { data: LiveData }) {
   const router = useRouter();
@@ -46,11 +53,34 @@ export function LiveClient({ data }: { data: LiveData }) {
     autoRef.current = auto;
   }, [auto]);
 
-  // 30초마다 서버 데이터 재요청. 탭이 숨겨져 있으면 건너뛴다(부하 절약).
+  // 마지막으로 사람이 이 화면을 만진 시각.
+  // ⚠️ 초기값을 렌더 중에 Date.now()로 넣으면 안 된다(렌더는 순수해야 한다 — lint 에러).
+  //    effect 안에서 채운다. 화면이 열린 순간이 곧 "방금 만졌다"이므로 의미도 같다.
+  const lastActiveRef = useRef(0);
+  const [idleStopped, setIdleStopped] = useState(false);
+  useEffect(() => {
+    lastActiveRef.current = Date.now();
+    const touch = () => {
+      lastActiveRef.current = Date.now();
+      setIdleStopped(false);
+    };
+    const events: (keyof WindowEventMap)[] = ["mousemove", "mousedown", "keydown", "wheel", "touchstart", "focus"];
+    for (const ev of events) window.addEventListener(ev, touch, { passive: true });
+    return () => {
+      for (const ev of events) window.removeEventListener(ev, touch);
+    };
+  }, []);
+
+  // 30초마다 서버 데이터 재요청. 탭이 숨겨져 있거나 사람이 오래 안 만졌으면 건너뛴다.
   useEffect(() => {
     const id = setInterval(() => {
       if (!autoRef.current) return;
       if (typeof document !== "undefined" && document.hidden) return;
+      if (Date.now() - lastActiveRef.current > IDLE_STOP_MS) {
+        // 사람이 없다 → 새로고침을 멈춘다. 그래야 세션도 정상적으로 유휴 만료된다.
+        setIdleStopped(true);
+        return;
+      }
       router.refresh();
     }, REFRESH_SEC * 1000);
     return () => clearInterval(id);
@@ -72,7 +102,14 @@ export function LiveClient({ data }: { data: LiveData }) {
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 16 }}>
         <span style={{ fontSize: 13, color: "var(--text-sub)" }}>
           기준 시각 <b style={{ color: "var(--text)" }}>{data.generatedAt}</b>
-          <span style={{ marginLeft: 6 }}>· {REFRESH_SEC}초마다 자동 갱신</span>
+          {idleStopped ? (
+            /* 사람이 오래 안 만져 멈춘 상태임을 알린다 — 안 알리면 "화면이 멈췄다"는 오해를 산다. */
+            <span style={{ marginLeft: 6, color: "#92400E", fontWeight: 700 }}>
+              · 자동 갱신 일시중지 (화면을 한 번 클릭하면 다시 시작)
+            </span>
+          ) : (
+            <span style={{ marginLeft: 6 }}>· {REFRESH_SEC}초마다 자동 갱신</span>
+          )}
         </span>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: "var(--text-sub)", cursor: "pointer" }}>

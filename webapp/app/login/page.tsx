@@ -1,29 +1,32 @@
-"use client";
-// 로그인 화면 — 회원가입과 같은 담백한 카드 폼.
-import { useActionState } from "react";
-import Link from "next/link";
-import { login } from "@/app/actions/auth";
+// 로그인 화면.
+// ⚠️ 서버 컴포넌트인 이유: "지금 누가 로그인돼 있는지"는 쿠키를 읽어야 알 수 있고, 그건 서버에서만 된다.
+//    (검수 M-15 경고 배너용 — 상세는 LoginForm.tsx 주석)
+import { unstable_rethrow } from "next/navigation";
+import { getCurrentUser } from "@/lib/session";
+import { LoginForm } from "./LoginForm";
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  height: 44,
-  padding: "0 14px",
-  border: "1px solid #D1D5DB",
-  borderRadius: 8,
-  fontFamily: "inherit",
-  fontSize: 16,
-  color: "var(--text)",
-  outline: "none",
-};
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: 13,
-  fontWeight: 700,
-  marginBottom: 8,
-};
+// 🔒 이 화면은 이제 **로그인한 사람의 실명**을 담는다(경고 배너). 절대 캐시되면 안 된다.
+//    캐시되면 A의 이름이 든 화면이 B에게 그대로 나갈 수 있다(사무실이 공인 IP·프록시를 함께 쓰는
+//    중소기업이 타겟이라 가정이 아니다). 프레임워크가 알아서 동적 처리하더라도, 앞단 프록시·CDN까지
+//    막으려면 명시가 필요하다.
+export const dynamic = "force-dynamic";
 
-export default function LoginPage() {
-  const [state, formAction, pending] = useActionState(login, {});
+export default async function LoginPage() {
+  // allowMustChange: 임시 비밀번호 상태로 여기 온 사람도 "로그인돼 있음"으로 알려줘야 한다
+  //  (그 상태에서 다른 계정으로 로그인해도 기존 세션은 똑같이 날아간다).
+  //  ※ 조회가 실패해도 로그인 화면 자체는 떠야 한다 — 배너만 생략한다.
+  let signedInName: string | null = null;
+  let mustChange = false;
+  try {
+    const me = await getCurrentUser({ allowMustChange: true });
+    signedInName = me?.name ?? null;
+    mustChange = me?.mustChangePassword ?? false;
+  } catch (e) {
+    // ⚠️ Next가 "이 페이지는 동적이다"를 알리려고 던지는 내부 에러까지 삼키면 안 된다(검수 중간 7).
+    //    삼키면 이 화면이 조용히 정적 페이지가 되어 **남의 이름이 박힌 HTML**이 돌아다닐 수 있다.
+    unstable_rethrow(e);
+    console.warn("[login] 현재 로그인 사용자 조회 실패(배너 생략):", e instanceof Error ? e.message : String(e));
+  }
 
   return (
     <div
@@ -68,59 +71,7 @@ export default function LoginPage() {
           padding: "36px 36px 32px",
         }}
       >
-        <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 6 }}>로그인</div>
-        <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 28 }}>
-          계정 정보로 로그인하면 역할에 맞는 화면으로 이동합니다.
-        </div>
-
-        <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          <div>
-            <label style={labelStyle}>이메일</label>
-            <input name="email" type="email" placeholder="admin@skytech.co.kr" style={inputStyle} />
-          </div>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-              <label style={{ ...labelStyle, marginBottom: 0 }}>비밀번호</label>
-              <Link href="/forgot-password" style={{ fontSize: 12, fontWeight: 700, color: "var(--text-sub)", textDecoration: "none" }}>
-                비밀번호를 잊으셨나요?
-              </Link>
-            </div>
-            <input name="password" type="password" placeholder="비밀번호" style={inputStyle} />
-          </div>
-
-          {state?.error && (
-            <div style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700 }}>
-              {state.error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={pending}
-            style={{
-              height: 52,
-              marginTop: 4,
-              border: "none",
-              borderRadius: 10,
-              background: "var(--primary)",
-              color: "#fff",
-              fontFamily: "inherit",
-              fontSize: 16,
-              fontWeight: 700,
-              cursor: pending ? "default" : "pointer",
-              opacity: pending ? 0.6 : 1,
-            }}
-          >
-            {pending ? "로그인 중..." : "로그인"}
-          </button>
-        </form>
-
-        <div style={{ textAlign: "center", fontSize: 13, color: "var(--text-sub)", marginTop: 24 }}>
-          아직 계정이 없으세요?{" "}
-          <Link href="/signup" style={{ color: "var(--primary)", fontWeight: 700, textDecoration: "none" }}>
-            회사 회원가입
-          </Link>
-        </div>
+        <LoginForm signedInName={signedInName} mustChange={mustChange} />
       </div>
     </div>
   );

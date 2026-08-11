@@ -705,6 +705,14 @@ model Session {
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   expiresAt DateTime
+  // ── 마지막 활동 시각(유휴 만료용, 검수 M-16). 관리자만 유휴 검사를 받는다. ──
+  //  · 왜 필요한가: 관리자는 남의 개인정보·생체정보·급여를 본다. 사무실 PC를 켜둔 채 퇴근하면
+  //    그 상태가 30일 유지됐다. "언제까지"가 아니라 "안 쓰면 끊는" 기준이 하나 더 필요하다.
+  //  · nullable(add-only): 기존 세션은 값이 없다 → 처음 접근할 때 현재 시각으로 채운다.
+  //    (없다고 끊어버리면 이 기능을 켜는 순간 로그인해 둔 사람이 전부 튕긴다)
+  //  · ⚠️ 화면 열 때마다 쓰면 안 된다. getCurrentUser는 한 화면에서 여러 번 불린다
+  //    → lib/session.ts가 IDLE_TOUCH_MIN(5분)에 한 번만 갱신한다.
+  lastSeenAt DateTime?
   createdAt DateTime @default(now())
 
   // 퇴사·비밀번호 변경·임시비번 발급 때마다 "그 사람 세션 전부 삭제"가 도는 자리(P-2).

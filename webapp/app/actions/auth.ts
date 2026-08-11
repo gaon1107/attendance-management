@@ -279,7 +279,8 @@ export async function login(
     });
   }
 
-  await createSession(user.id);
+  // 역할을 이미 손에 들고 있으므로 넘겨준다 — createSession이 같은 행을 다시 읽지 않게(검수 중간 8).
+  await createSession(user.id, { role: user.role, isOwner: user.isOwner });
   // 접속기록: 로그인 성공 1건.
   await recordAccess({ companyId: user.companyId, userId: user.id, actorName: user.name, emailTried: email, kind: "login", result: "success", ip, userAgent });
   // 임시 비밀번호로 로그인했으면 먼저 새 비밀번호를 정하도록 강제한다.

@@ -52,6 +52,26 @@ export async function setAdminRole(
         where: { id: rule.target.id },
         data: { role: makeAdmin ? "admin" : "employee" },
       });
+
+      // 🔒 관리자로 올릴 때 그 사람의 기존 세션도 관리자 기준에 맞춘다(검수 중간 3).
+      //  · 왜 필요한가: 세션 유지 기간은 **로그인한 순간의 역할**로 정해진다. 이 제품의 정상 경로는
+      //    "직원으로 가입 → 나중에 관리자로 지정"이라, 손대지 않으면 실무 관리자 대부분이
+      //    30일짜리 세션을 그대로 들고 관리자가 된다(M-16의 절반이 조용히 무효가 된다).
+      //  · ① 마지막 활동 시각을 지금으로 → **승격 즉시 튕기지 않게 한다.** 어제 저녁 이후 앱을 안 연
+      //    직원을 아침에 승격시키면, 이게 없으면 그 직원은 출근을 찍으려는 그 요청에서 로그아웃된다.
+      //    (이 파일 위 주석의 "갑자기 튕기지 않는다"는 약속을 지키기 위한 처리다.)
+      //  · ② 만료가 7일보다 멀면 7일로 당긴다. 이미 7일 안이면 건드리지 않는다.
+      //  · 권한을 **내릴 때**는 손대지 않는다 — 직원이 되면 기준이 느슨해질 뿐이라 위험이 없고,
+      //    쓰던 화면에서 튕기지 않는 편이 낫다.
+      if (makeAdmin) {
+        const now = new Date();
+        const cap = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+        await tx.session.updateMany({ where: { userId: rule.target.id }, data: { lastSeenAt: now } });
+        await tx.session.updateMany({
+          where: { userId: rule.target.id, expiresAt: { gt: cap } },
+          data: { expiresAt: cap },
+        });
+      }
       return { ok: makeAdmin ? "관리자로 지정했습니다." : "관리자 권한을 해제했습니다." };
     });
   } catch (e) {

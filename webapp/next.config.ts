@@ -28,6 +28,10 @@ const nextConfig: NextConfig = {
     },
   },
   async headers() {
+    // ⚠️ 여기서 `Cache-Control`을 지정해도 **동적 페이지에는 적용되지 않는다.** Next가 자기 값
+    //    (`no-cache, must-revalidate`)으로 덮어쓴다 — 실측으로 확인했다(X-Frame-Options 등 다른
+    //    헤더는 정상 적용됨). 로그인 화면 캐시 금지는 **배포 앞단 프록시**에서 걸어야 한다.
+    //    → docs/09_test/배포전_체크리스트.md 참고. (검수 중간 6)
     return [{ source: "/:path*", headers: securityHeaders }];
   },
 };
