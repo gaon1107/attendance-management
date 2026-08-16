@@ -242,28 +242,53 @@ details.landing-faq[open] > summary .faq-chevron { transform: rotate(180deg); }
        right: 50% + 370px → 글상자(가운데에서 350px)보다 20px 왼쪽에서 끝난다 = 글자와 안 겹침
        max-width: 620px   → 원본 크기. 더 키우면 세로가 570px을 넘어 미리보기 카드까지 내려온다
        aspect-ratio       → 가로가 정해지면 세로는 원본 비율(620:570)로 따라온다
-     ⚠️ 오른쪽 끝을 글상자에 매어 놨으므로 page.tsx의 `maxWidth: 700`을 바꾸면 여기 370px도 함께 바꿀 것. */
+     ⚠️ 370px의 내력: 예전에는 글이 **가운데 정렬**이고 글상자가 `maxWidth: 700`(=가운데에서 350px)이라,
+        370px이면 글자보다 20px 왼쪽에서 끝나 **글자와 절대 안 겹쳤다**.
+        2026-08-17 히어로가 2단이 되면서 글이 왼쪽 칸(가운데에서 약 516px 왼쪽)까지 나오므로
+        **이제는 물결이 글자 뒤에 깔린다.** 덮이지 않는 이유는 `.landing-hero-cols`의 z-index 1뿐이다
+        (물결은 z-index 0). 물결이 아주 옅고 multiply라 읽는 데 지장이 없어 그대로 둔다.
+        ⚠️ 글자가 읽기 힘들어지면 여기 370px을 키워(=물결을 더 왼쪽에서 끊어) 뒤로 물릴 것. */
   content: ""; position: absolute; left: 0; right: calc(50% + 370px); top: 40px;
   max-width: 620px; height: auto; aspect-ratio: 620 / 570;
   z-index: 0; pointer-events: none;
   background: url("/hero-waves.webp") no-repeat left top / contain;
   mix-blend-mode: multiply; /* 흰 바탕 제거 — 위 주석 참고. 지우면 흰 네모가 드러난다 */
 }
-/* 오른쪽 사람·방패 — 글 상자(최대 1080px) 기준으로 붙인다(뷰포트 기준이 아니다).
-   ── 이 숫자들을 바꾸려면 아래를 먼저 읽을 것 ──
-   원본 이미지: hero-art.webp 727×570. 그림(잉크)이 실제로 있는 범위는 원본 x 237~696 (=32.6%~95.7%).
-   CSS 상자 380×298은 원본과 가로세로 비율이 같아서 `contain` 여백이 0이다.
-     → 화면에 그려지는 잉크의 왼쪽 끝 = (상자 오른쪽 +70 -380) + 123.9px = **화면 가운데 + 354px**
-       (글상자가 1080px로 고정된 구간에서는 화면 폭과 **무관한 상수**다)
-     → 상자 오른쪽 끝 15.7px는 이미지의 흰 여백이라, 좁은 화면에서 잘려도 그림 손실이 아니다.
-   ⚠️ 겹침 방지는 이 값 하나로 지키는 게 아니라 page.tsx의 `maxWidth: 700`(글상자)과 **짝**이다.
-      둘 중 하나만 고치면 글자가 그림 위로 올라탄다.
-   ⚠️ 이미지를 다시 뽑으면 위 비율(32.6% / 727×570)이 달라져 이 좌표가 전부 무효가 된다. 다시 계산할 것. */
-.landing-hero-inner::before {
-  content: ""; position: absolute; right: -70px; top: 60px; width: 380px; height: 298px;
-  z-index: 0; pointer-events: none;
-  background: url("/hero-art.webp") no-repeat center / contain;
-  mix-blend-mode: multiply; /* 흰 바탕 제거 — 물결 쪽과 같은 이유. 둘 다 있어야 톤이 맞는다 */
+/* ── 히어로 2단 배치 (2026-08-17) ──
+   예전에는 글이 가운데 정렬이고 오른쪽 그림(hero-art.webp)은 `.landing-hero-inner::before`로
+   **배경에 깔리는 장식**이었다. 그때는 겹침을 page.tsx의 `maxWidth: 700`(글상자)과 여기 `354px`
+   (그림 잉크 시작점)이 **짝**으로 막았고, 한쪽만 고치면 글자가 그림 위로 올라탔다.
+   지금은 격자로 칸을 나눠 **겹칠 자리 자체가 없다** — 그래서 그 규칙 두 개를 함께 걷어냈다.
+   ⚠️ 되돌릴 일이 생기면 그 짝을 함께 되살릴 것(한쪽만 되살리면 겹친다). 옛 그림 파일은
+      public/hero-art.webp 에 그대로 있다.
+
+   칸 비율 1.15 : 1 을 고른 계산 (고칠 일이 생기면 이 식을 다시 쓸 것)
+     글상자 1080 − 좌우 패딩 48 = 1032, 칸 사이 36 → 왼쪽 약 532px / 오른쪽 약 464px.
+     h1은 clamp(30px,5.5vw,52px)이라 946px 이상에서 52px로 고정된다. 가장 긴 줄
+     "강제하지 않는 얼굴인증"이 52px에서 약 587px이라 **532px 칸에서는 두 줄로 갈라진다**(의도한 것).
+     `word-break: keep-all`이 걸려 있어 "강제하지 않는 / 얼굴인증"처럼 낱말 단위로 끊긴다.
+     ⚠️ h1을 한 줄로 붙이고 싶으면 왼쪽 칸이 600px는 되어야 한다(= 오른쪽 그림이 396px로 작아진다).
+        둘 다 가질 수는 없다. */
+.landing-hero-cols {
+  /* z-index 1 — 왼쪽 물결(::before, z-index 0)이 글자 뒤로 가게 한다. 빼면 물결이 글자를 덮는다. */
+  position: relative; z-index: 1;
+  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 36px; align-items: center;
+}
+/* 정렬을 인라인 style이 아니라 여기에 두는 이유: 1단으로 접힐 때 가운데로 되돌려야 하는데
+   **인라인 style은 CSS가 못 이긴다**(이 프로젝트에서 여러 번 겪은 함정). */
+.landing-hero-copy { text-align: left; }
+.landing-hero-row { justify-content: flex-start; }
+
+/* ⚠️ mix-blend-mode: multiply — hero-person.webp도 **투명 배경이 아니라 흰 바탕으로 구워져** 있다.
+      곱하기 합성이 "흰색 × 배경색 = 배경색"이라 흰 부분이 투명처럼 사라진다. **지우면 흰 네모가 드러난다.**
+      짝인 `isolation: isolate`는 위 `.landing-hero-wrap`에 이미 있다(둘이 한 짝이다).
+   ⚠️ width 100% — 원본 1279×854를 칸 폭에 맞춰 줄인다. 칸이 464px이면 2.8배라 고해상도 화면에서도 선명하다.
+      칸 밖으로 삐져나가게 키우지 않는 이유: 그림의 잉크가 상자 폭의 1.3%~98.7%를 꽉 채우고 있어서,
+      조금만 삐져나가도 좁은 화면에서 오른쪽 위치핀이 잘린다(.landing-hero-wrap이 overflow를 자른다). */
+.landing-hero-figure img {
+  display: block; width: 100%; height: auto;
+  mix-blend-mode: multiply;
 }
 
 /* FAQ — 넓은 화면에선 방패 그림 + 질문 목록 2단, 좁아지면 그림을 빼고 한 줄로 */
@@ -501,9 +526,23 @@ details.landing-faq {
 .landing-role-card { min-height: 300px; }
 
 @media (max-width: 1200px) {
-  /* 좁은 화면에선 두 그림 모두 뺀다 — 글자와 겹칠 자리가 안 나온다.
-     (기준은 미디어쿼리 폭 = 스크롤바를 포함한 폭. 실제 내용 폭은 이보다 약 15px 작다) */
-  .landing-hero-wrap::before, .landing-hero-inner::before { display: none; }
+  /* 왼쪽 물결을 뺀다 — 이 아래로는 글상자가 화면 왼쪽 끝에 가까워져 물결이 글자를 덮는다.
+     (기준은 미디어쿼리 폭 = 스크롤바를 포함한 폭. 실제 내용 폭은 이보다 약 15px 작다)
+     ⚠️ 예전엔 오른쪽 그림(.landing-hero-inner::before)도 여기서 함께 뺐다. 그 그림은 2026-08-17에
+        배경 장식에서 **문서 안의 <img>**로 바뀌었고, 접는 지점도 960px로 따로 잡혔다(아래 참고). */
+  .landing-hero-wrap::before { display: none; }
+}
+/* ⚠️ 960px에서 히어로를 1단으로 접는다 — 이 아래로는 왼쪽 칸이 약 420px까지 좁아져
+      h1("강제하지 않는 얼굴인증")이 세 줄로 갈라지고 그림도 380px 아래로 내려간다.
+      1단으로 접으면 글이 폭을 다 쓰므로 줄 수가 오히려 줄어든다.
+   ⚠️ 그림은 **감춘다**(글 아래로 내리지 않는다). 좁은 화면에서 그림을 남기면 첫 화면에서
+      [무료로 시작하기] 버튼이 접히는 선 아래로 밀려난다 — 랜딩에서 가장 손해가 큰 자리다.
+      모바일에도 그림을 넣고 싶어지면 `display: block`으로 되살리되 **버튼 아래**에 놓을 것. */
+@media (max-width: 960px) {
+  .landing-hero-cols { grid-template-columns: 1fr; }
+  .landing-hero-copy { text-align: center; }
+  .landing-hero-row { justify-content: center; }
+  .landing-hero-figure { display: none; }
 }
 /* ⚠️ 이 880px은 page.tsx의 3단계 격자 `minmax(260px,1fr)`에 매여 있다.
       3열이 유지되는 가장 좁은 폭 = 260×3 + 여백 32 + 좌우 패딩 48 = 860px. 여유 20px을 더해 880으로 잡았다.

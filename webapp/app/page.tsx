@@ -294,16 +294,22 @@ export default async function Home() {
              ⚠️ 지금은 배경이 거의 흰색이라 그 blend가 하는 일이 거의 없다. 그래도 **빼지 말 것** —
                 배경에 색을 다시 넣는 순간 흰 네모가 즉시 다시 보인다(globals.css의 짝 주석 참고). */}
       <div className="landing-hero-wrap" style={{ background: "linear-gradient(180deg,#FAFBFD 0%,#FFFFFF 60%)" }}>
-        <section className="landing-hero-inner" style={{ position: "relative", maxWidth: WRAP, margin: "0 auto", padding: "clamp(56px,10vw,104px) 24px clamp(48px,8vw,80px)", textAlign: "center" }}>
+        {/* ⚠️ textAlign을 인라인에서 뺐다(2026-08-17). 넓은 화면은 2단(글 왼쪽·그림 오른쪽)이라 왼쪽 정렬,
+               좁아지면 1단으로 접으며 가운데 정렬로 돌아가야 하는데 **인라인 style은 CSS가 못 이긴다.**
+               그래서 정렬은 전부 globals.css의 `.landing-hero-copy`가 갖는다. */}
+        <section className="landing-hero-inner" style={{ position: "relative", maxWidth: WRAP, margin: "0 auto", padding: "clamp(56px,10vw,104px) 24px clamp(48px,8vw,80px)" }}>
           {/* 배경 그림(물결 + 사람·방패)은 globals.css의 `.landing-hero-wrap::before`가 깐다.
               여기에 <img>로 두지 않는 이유: 글자 뒤에 깔리는 장식이라 문서 내용이 아니고,
               좁은 화면에서 통째로 빼야 하는데 그건 CSS만 할 수 있기 때문이다. */}
-          {/* ⚠️ maxWidth: 700 — 오른쪽 배경 그림과 글자가 겹치지 않게 하는 **안전장치**다.
-                 그림의 잉크가 시작되는 지점은 화면 가운데에서 오른쪽으로 354px 되는 곳이고(화면 폭과 무관한 값),
-                 이 상자를 700px로 묶으면 어떤 글줄도 가운데에서 350px을 넘지 못한다.
-                 → 문구를 길게 고치거나 글꼴이 바뀌어도 겹치는 대신 **줄바꿈**이 된다(안전한 실패).
-                 ⚠️ 이 값을 키우거나 없애면 특징칩 마지막 칸이 방패 그림 위로 올라탄다. */}
-          <div style={{ position: "relative", zIndex: 1, maxWidth: 700, margin: "0 auto" }}>
+          {/* ── 2단 히어로 (2026-08-17) ──
+                 예전에는 글이 **가운데 정렬**이고 그림은 `.landing-hero-inner::before`로 오른쪽 뒤에
+                 깔리는 배경 장식이었다. 그때는 겹침을 `maxWidth: 700`(글상자)과 CSS의 `354px`(그림 잉크
+                 시작점)이 **짝**으로 막았다 — 한쪽만 고치면 글자가 그림 위로 올라탔다.
+                 지금은 **격자로 칸을 나눠** 겹칠 자리 자체를 없앴다. 그래서 그 두 숫자가 사라졌다.
+                 ⚠️ 되돌릴 일이 생기면 그 짝을 함께 되살릴 것(한쪽만 되살리면 겹친다).
+                 ⚠️ 좁은 화면(≤960px)에서 1단으로 접는 규칙은 globals.css에 있다 — 서버는 화면 크기를 모른다. */}
+          <div className="landing-hero-cols">
+          <div className="landing-hero-copy">
             {/* ⚠️ 알약 배경색 #D3E1FA의 이력:
                    2026-08-06 히어로가 파란 배경이던 시절, 예전 값 #E8F1FE가 히어로 상단색과 거의 같은 색
                    (대비 1.00)이 되어 배지가 통째로 묻혔다 → #D3E1FA까지 내려 대비 1.16을 확보했다.
@@ -323,7 +329,9 @@ export default async function Home() {
             <p style={{ fontSize: "clamp(16px,2.4vw,19px)", color: "var(--text-sub)", lineHeight: 1.6, margin: "0 auto 32px", maxWidth: 560 }}>
               출퇴근부터 휴가·급여 연동까지. 직원을 감시하지 않으면서 근로기준법은 자동으로 지키는 근태관리.
             </p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
+            {/* ⚠️ justifyContent를 인라인에서 뺐다 — 2단일 땐 왼쪽, 1단으로 접히면 가운데여야 하는데
+                   인라인 style은 CSS가 못 이긴다. `.landing-hero-row`가 갖는다(칩 줄도 같다). */}
+            <div className="landing-hero-row" style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
               <Link href="/signup" style={{ height: 52, padding: "0 28px", display: "inline-flex", alignItems: "center", gap: 8, borderRadius: 10, background: "linear-gradient(135deg,#2563EB,#3B82F6)", color: "#fff", fontSize: 16, fontWeight: 700, whiteSpace: "nowrap", textDecoration: "none", boxShadow: "0 12px 26px rgba(37,99,235,0.32)" }}>
                 무료로 시작하기
                 <span style={{ width: 17, height: 17, display: "inline-flex" }} dangerouslySetInnerHTML={{ __html: svg('<path d="M5 12h14M13 6l6 6-6 6"/>', 17) }} />
@@ -338,7 +346,7 @@ export default async function Home() {
                    ⚠️ 여기 바로 위에 있던 회색 안내문구("신용카드 없이 5분이면 시작 · 5인 이상 …")는
                       시안에 없어 뺐다. 되살리려면 이 자리에 다시 넣으면 된다(내용은 커밋 메시지에 있음).
                       "5분이면 설정 완료"는 아래 칩에 이미 있어 정보가 사라지지는 않는다. */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 22, justifyContent: "center", marginTop: 34 }}>
+            <div className="landing-hero-row" style={{ display: "flex", flexWrap: "wrap", gap: 22, marginTop: 34 }}>
               {chips.map((c) => (
                 <div key={c.text} style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 36, fontSize: 13, fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>
                   <span style={{ color: "var(--primary)", width: 15, height: 15, display: "inline-flex" }} dangerouslySetInnerHTML={{ __html: svg(c.icon, 15) }} />
@@ -346,6 +354,23 @@ export default async function Home() {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* 오른쪽 3D 일러스트 (2026-08-17 사장님 제작, ChatGPT 이미지).
+              원본 1536×1024 PNG 1.2MB → public/hero-person.webp 1279×854 30.7KB.
+              다시 만들려면 `node scripts/make-hero-art.mjs "<원본.png>"` (자르는 규칙까지 그 파일에 있다).
+              ⚠️ 이 그림은 **투명 배경이 아니라 흰 바탕으로 구워져** 있다. globals.css의
+                 `.landing-hero-figure img`가 mix-blend-mode: multiply로 흰 부분을 지운다 —
+                 **그 blend를 지우면 흰 네모가 즉시 드러난다**(물결 그림과 같은 장치).
+              ⚠️ alt=""인 이유: 옆 글자가 같은 내용을 이미 말하고 있어 화면낭독기가 두 번 읽을 필요가 없다.
+                 다만 예전 배경(::before)과 달리 **문서에 있는 <img>**라, 좁은 화면에서 숨기는 일은
+                 globals.css가 한다(서버는 화면 크기를 모른다).
+              ⚠️ loading="eager" + fetchPriority="high" — 첫 화면에 보이는 그림이다. lazy로 두면
+                 스크롤 없이 보이는 자리가 잠깐 비어 있다(FAQ 방패와 반대 이유). */}
+          <div className="landing-hero-figure">
+            {/* eslint-disable-next-line @next/next/no-img-element -- 크기가 고정된 장식용 그림. 최적화 대상 아님 */}
+            <img src="/hero-person.webp" alt="" width={1279} height={854} loading="eager" fetchPriority="high" decoding="async" />
+          </div>
           </div>
 
           {/* 제품 미리보기 — **전부 실제 DB 통계**(lib/public-stats.ts). 목업 값 금지.
