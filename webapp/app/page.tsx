@@ -309,7 +309,12 @@ export default async function Home() {
         {/* ⚠️ textAlign을 인라인에서 뺐다(2026-08-17). 넓은 화면은 2단(글 왼쪽·그림 오른쪽)이라 왼쪽 정렬,
                좁아지면 1단으로 접으며 가운데 정렬로 돌아가야 하는데 **인라인 style은 CSS가 못 이긴다.**
                그래서 정렬은 전부 globals.css의 `.landing-hero-copy`가 갖는다. */}
-        <section className="landing-hero-inner" style={{ position: "relative", maxWidth: WRAP, margin: "0 auto", padding: "clamp(56px,10vw,104px) 24px clamp(48px,8vw,80px)" }}>
+        {/* ⚠️ 아래 여백을 clamp(48,8vw,80) → clamp(36,5vw,56)으로 줄였다(2026-08-17).
+               미리보기 카드 아래에서 다음 섹션 제목까지 **168px**이 비어 있어 히어로와 본문이
+               끊겨 보였다(실측: 여기 80 + #features 위 88). 아래 #features의 위 여백도 함께 줄여
+               112px로 맞춘다 — **두 값이 짝이다. 한쪽만 고치면 다시 어긋난다.**
+               ⚠️ 위 여백(104px)은 그대로 둔다. 고정 헤더(61px) 바로 아래라 여기를 줄이면 답답해진다. */}
+        <section className="landing-hero-inner" style={{ position: "relative", maxWidth: WRAP, margin: "0 auto", padding: "clamp(56px,10vw,104px) 24px clamp(36px,5vw,56px)" }}>
           {/* 배경 그림(물결 + 사람·방패)은 globals.css의 `.landing-hero-wrap::before`가 깐다.
               여기에 <img>로 두지 않는 이유: 글자 뒤에 깔리는 장식이라 문서 내용이 아니고,
               좁은 화면에서 통째로 빼야 하는데 그건 CSS만 할 수 있기 때문이다. */}
@@ -456,7 +461,12 @@ export default async function Home() {
                 연파랑을 **섹션 배경**으로 쓰는 곳은 이제 거기 하나뿐이다.
                 (섹션 말고도 히어로 안 미리보기 카드 바탕에 같은 색 `--landing-bg`를 쓴다 — 그건 별개다.) */}
       <section id="features" style={{ background: "#FFFFFF", scrollMarginTop: 68 }}>
-        <div style={{ maxWidth: WRAP, margin: "0 auto", padding: "clamp(56px,8vw,88px) 24px" }}>
+        {/* ⚠️ 위 여백만 clamp(40,5vw,56)으로 줄였다(2026-08-17) — **히어로 아래 여백과 짝**이다.
+               둘을 합쳐 168px이던 빈 공간을 112px로 줄인 것이니 한쪽만 되돌리지 말 것.
+               아래 여백은 clamp(56,8vw,88) 그대로다 — 다음 섹션(#how)과의 간격은 문제가 없었다.
+               ⚠️ 위·아래를 따로 주는 섹션은 여기뿐이다(#roles·#pricing은 상하 같은 값). 히어로 바로
+                  다음이라는 특수 사정 때문이고, 다른 섹션에 이 패턴을 복사하지 말 것. */}
+        <div style={{ maxWidth: WRAP, margin: "0 auto", padding: "clamp(40px,5vw,56px) 24px clamp(56px,8vw,88px)" }}>
           <div style={{ textAlign: "center", marginBottom: "clamp(32px,5vw,48px)" }}>
             <div style={eyebrow}>WHY 근태관리</div>
             <h2 style={h2}>일하는 사람도, 관리하는 사람도 편하게</h2>
@@ -542,7 +552,12 @@ export default async function Home() {
                         //    (카드를 더 진하게 하는 길은 막혀 있다 — 위 카드 주석의 대비 4.22 이야기 참고).
                         //    덤으로 글자 대비도 4.55 → 4.83으로 올라간다.
                         //    ⚠️ **이 흰색은 감싼 카드와 짝이다.** 카드를 없애면 흰 섹션 위 흰 머리줄이 되어 사라진다.
-                        <th key={c} scope="col" style={{ ...cmpCell, fontWeight: 700, borderTop: 0, borderRight: i === compareCols.length - 1 ? "1px solid var(--landing-border,#DCE5F4)" : undefined, color: ours ? "#fff" : "var(--text-sub)", background: ours ? "linear-gradient(135deg,#1D4ED8,#2563EB)" : "#FFFFFF", borderTopLeftRadius: 10, borderTopRightRadius: 10 }}>{c}</th>
+                        // ⚠️ 우리 칸 좌우에 2px 파란 기둥을 세운다 — 아래 <td>와 이어져 **열 하나가 카드처럼**
+                        //    보이게 하는 장치다(2026-08-17). 머리줄이 그 카드의 지붕이라 위 모서리만 둥글다.
+                        //    ⚠️ 이 2px은 <td> 쪽 2px과 **같은 값이어야** 기둥이 어긋나지 않는다. 함께 고칠 것.
+                        //    ⚠️ 그림자로 띄우지 않은 이유: 셀이 6줄이라 셀마다 그림자가 겹쳐 지저분해지고,
+                        //       가로로 밀어 보는 상자(.landing-compare-scroll) 안이라 좌우가 잘린다.
+                        <th key={c} scope="col" style={{ ...cmpCell, fontWeight: 700, borderTop: 0, borderLeft: ours ? "2px solid #1D4ED8" : cmpCell.borderLeft, borderRight: ours ? "2px solid #1D4ED8" : undefined, color: ours ? "#fff" : "var(--text-sub)", background: ours ? "linear-gradient(135deg,#1D4ED8,#2563EB)" : "#FFFFFF", borderTopLeftRadius: 10, borderTopRightRadius: 10 }}>{c}</th>
                       );
                     })}
                   </tr>
@@ -559,7 +574,15 @@ export default async function Home() {
                       {r.cells.map((v, i) => {
                         const ours = i === OURS_COL;
                         return (
-                          <td key={compareCols[i]} style={{ ...cmpCell, borderRight: i === r.cells.length - 1 ? edge : undefined, borderBottom: last ? edge : undefined, color: ours ? "var(--text)" : "var(--text-sub)", fontWeight: ours ? 700 : 400, background: ours ? "rgba(37,99,235,0.06)" : "transparent" }}>
+                          // ⚠️ 2026-08-17: 우리 칸을 **떠 있는 카드**처럼 만든다(머리줄 <th>와 한 짝).
+                          //    · 바탕을 rgba(37,99,235,0.06) → **흰색**으로. 감싼 카드(#F5F8FF) 위에 흰 기둥이
+                          //      서면서 한 단계 앞으로 나와 보인다. 글자 대비도 15.5 → 17.4로 올라간다.
+                          //    · 좌우에 2px 파란 기둥. **머리줄의 2px과 같은 값이어야** 기둥이 어긋나지 않는다.
+                          //      머리줄은 #1D4ED8(그라데이션 시작색), 본문은 #2563EB(주색) — 위에서 아래로
+                          //      옅어지는 흐름이라 일부러 다르게 뒀다. 둘을 같게 만들면 지붕과 기둥이 딱 끊겨 보인다.
+                          //    · 마지막 줄에만 아래 모서리를 둥글게 = 카드의 바닥. borderCollapse가 separate라
+                          //      td에 border-radius가 먹는다(collapse로 바꾸면 둥근 모서리가 사라진다).
+                          <td key={compareCols[i]} style={{ ...cmpCell, borderLeft: ours ? "2px solid #2563EB" : cmpCell.borderLeft, borderRight: ours ? "2px solid #2563EB" : undefined, borderBottom: last ? (ours ? "2px solid #2563EB" : edge) : undefined, borderBottomLeftRadius: last && ours ? 10 : undefined, borderBottomRightRadius: last && ours ? 10 : undefined, color: ours ? "var(--text)" : "var(--text-sub)", fontWeight: ours ? 700 : 400, background: ours ? "#FFFFFF" : "transparent" }}>
                             {/* 우리 칸에만 체크 표시. ⚠️ 색만으로 구분하지 않기 위해 아이콘을 함께 둔다.
                                 ⚠️ noCheck 줄은 뺀다 — 남의 칸과 결과가 같은데 우리만 체크면 억지스럽다. */}
                             {ours && !r.noCheck && <span aria-hidden style={{ color: "var(--success)", width: 15, height: 15, display: "inline-flex", verticalAlign: "-2px", marginRight: 5 }} dangerouslySetInnerHTML={{ __html: svg('<path d="M20 6 9 17l-5-5"/>', 15) }} />}
