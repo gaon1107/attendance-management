@@ -15,10 +15,33 @@ const nav = [
   { label: "직원/관리자", href: "#roles" },
   { label: "요금제", href: "#pricing" },
   { label: "자주 묻는 질문", href: "#faq" },
-  // ⚠️ 원래 "문의하기"였으나 이 섹션에 이메일·전화·문의폼이 하나도 없어 라벨을 바꿨다.
-  //    연락처가 정해지면 CTA 밴드에 넣고 라벨을 "문의하기"로 되돌린다.
-  { label: "지금 시작하기", href: "#contact" },
+  // 2026-08-17: 연락처(전화·이메일)를 CTA 밴드와 푸터에 넣었으므로 라벨을 "문의하기"로 되돌렸다.
+  // (한동안 "지금 시작하기"였던 이유: 그때는 이 섹션에 문의 수단이 하나도 없어 라벨이 거짓이었다.)
+  // ⚠️ CTA 밴드에서 연락처를 빼면 이 라벨도 함께 되돌릴 것 — 둘이 짝이다.
+  { label: "문의하기", href: "#contact" },
 ];
+
+// ── 사업자 정보 (전자상거래법 제10조 표시사항) ──
+// 출처: 사업자등록증(2026-05-11 발급) + 사장님이 알려주신 연락처.
+// 🔴 **대표자 생년월일은 절대 넣지 않는다** — 사업자등록증에는 있지만 개인정보이고 표시 의무도 아니다.
+// ⚠️ 통신판매업 신고번호가 아직 없다(사업자등록증에 없고 별도 신고 사항이다).
+//    유료 구독을 온라인으로 파는 이상 신고 대상일 가능성이 높다 — 번호가 나오면 아래에 한 줄 더할 것.
+// ⚠️ 이 값들은 **법적 표시 사항**이라 임의로 줄이거나 예쁘게 다듬지 말 것(주소는 등록증 표기 그대로다).
+// ⚠️ 2026-08-17 사장님 확인: 뉴가온 기존 홈페이지(newgaon.co.kr)와 두 곳이 달라 **등록증 쪽으로 확정**했다.
+//      주소   등록증 "동백중앙로 191…"  ← 채택   /  기존 홈페이지 "강남로 3…"
+//      대표자 등록증 "박성헌"           ← 채택   /  기존 홈페이지 "박성현"
+//    → 기존 홈페이지 쪽이 옛 정보/오타다. 그건 **다른 프로젝트**라 여기서 고치지 않았다(사장님께 보고함).
+const BIZ = {
+  name: "뉴가온",
+  ceo: "박성헌",
+  regNo: "710-07-03011",
+  address: "경기도 용인시 기흥구 동백중앙로 191, 8층 엠817호(중동, 씨티프라자)",
+  tel: "031-281-3980",
+  email: "psh01@newgaon.co.kr",
+  site: "www.newgaon.co.kr",
+};
+// tel: 링크에 넣을 번호(하이픈 제거). 화면에 보이는 글자는 하이픈이 있어야 읽기 쉽다.
+const TEL_HREF = `tel:${BIZ.tel.replace(/-/g, "")}`;
 
 // ── 히어로 아래 특징칩 4개 ──
 const chips = [
@@ -829,21 +852,67 @@ export default async function Home() {
               <h2 style={{ fontSize: "clamp(24px,4vw,34px)", fontWeight: 700, letterSpacing: "-0.02em", margin: "0 0 14px", color: "#fff" }}>오늘부터 근태를 정직하게</h2>
               <p style={{ fontSize: 16, color: "rgba(255,255,255,0.85)", margin: "0 0 28px" }}>5분이면 회사 계정을 만들고 직원을 초대할 수 있어요.</p>
               <Link href="/signup" style={{ height: 52, padding: "0 30px", display: "inline-flex", alignItems: "center", borderRadius: 10, background: "#fff", color: "var(--primary)", fontSize: 16, fontWeight: 700, textDecoration: "none", boxShadow: "0 10px 24px rgba(0,0,0,0.18)" }}>무료로 시작하기</Link>
+              {/* 문의 수단 (2026-08-17 추가) — 이 섹션은 헤더의 [문의하기] 메뉴가 가리키는 곳인데
+                  그동안 전화·이메일·문의폼이 하나도 없어 메뉴 이름이 거짓이었다. 둘은 짝이다.
+                  ⚠️ 번호·주소를 손으로 적지 않고 위 BIZ 값을 쓴다 — 여기와 푸터 두 곳에 같은 값을
+                     따로 적어 두면 한쪽만 고쳐 어긋난다(고객이 못 거는 번호가 남는다).
+                  ⚠️ 전화번호·이메일은 실제로 눌러 쓰는 정보라 **흰색 그대로** 둔다(파란 밴드 위 대비 5.17).
+                     앞의 "도입 문의"만 0.85로 낮춰 두 정보가 먼저 읽히게 한다. */}
+              <div style={{ marginTop: 24, display: "flex", flexWrap: "wrap", gap: "6px 14px", justifyContent: "center", alignItems: "baseline", fontSize: 14 }}>
+                <span style={{ color: "rgba(255,255,255,0.85)" }}>도입 문의</span>
+                <a href={TEL_HREF} style={{ color: "#fff", fontWeight: 700, textDecoration: "none" }}>{BIZ.tel}</a>
+                <span aria-hidden style={{ color: "rgba(255,255,255,0.6)" }}>·</span>
+                <a href={`mailto:${BIZ.email}`} style={{ color: "#fff", fontWeight: 700, textDecoration: "none" }}>{BIZ.email}</a>
+              </div>
             </div>
         </div>
       </section>
 
       {/* 푸터 */}
-      <footer style={{ borderTop: "1px solid var(--landing-border,#DCE5F4)" }}>
-        <div style={{ maxWidth: WRAP, margin: "0 auto", padding: "28px 24px", display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={logoBox(24, 6, 13)}>근</div>
-            <span style={{ fontSize: 14, fontWeight: 700 }}>근태관리</span>
+      {/* 🔴 아래 사업자 정보는 **법적 표시 사항**이다(전자상거래법 제10조). 유료 구독을 파는 이상
+             상호·대표자·사업자등록번호·주소·전화·이메일은 빼면 안 된다. 값은 위 BIZ 상수 한 곳에서만 온다.
+          ⚠️ 글자색이 #9CA3AF가 아니라 --text-sub(#6B7280)인 이유: #9CA3AF는 흰 바탕에서 대비가 **2.54**로
+             읽기 기준(4.5)에 한참 못 미친다. 읽을 수 없게 적어 두면 "표시했다"고 보기 어렵다.
+             --text-sub는 4.83이라 통과한다. **여기서 색을 더 흐리게 만들지 말 것.**
+          ⚠️ 대표자 **생년월일은 넣지 않는다** — 사업자등록증에는 있지만 개인정보이고 표시 의무도 아니다. */}
+      <footer style={{ borderTop: "1px solid var(--landing-border,#DCE5F4)", background: "#FFFFFF" }}>
+        <div style={{ maxWidth: WRAP, margin: "0 auto", padding: "28px 24px 34px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={logoBox(24, 6, 13)}>근</div>
+              <span style={{ fontSize: 14, fontWeight: 700 }}>근태관리</span>
+            </div>
+            {/* ⚠️ 이용약관·개인정보처리방침은 아직 페이지가 없다. 눌러도 아무 데도 안 가는 링크는 만들지 않는다.
+                   페이지가 생기면 여기 글자를 <Link>로 바꾸면 된다.
+                ⚠️ 개인정보처리방침은 **개인정보보호법상 의무**다(얼굴=민감정보를 다루므로 더더욱).
+                   페이지가 없는 지금 상태를 오래 두면 안 된다 — 사장님께 보고함. */}
+            <div style={{ fontSize: 13, color: "var(--text-sub)" }}>이용약관 · 개인정보처리방침</div>
+            <a href="#top" aria-label="맨 위로" style={{ width: 38, height: 38, borderRadius: "50%", border: "1px solid var(--landing-border,#DCE5F4)", background: "#fff", color: "var(--text-sub)", display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }} dangerouslySetInnerHTML={{ __html: svg('<path d="m18 15-6-6-6 6"/>', 18) }} />
           </div>
-          {/* ⚠️ 이용약관·개인정보처리방침은 아직 페이지가 없다. 눌러도 아무 데도 안 가는 링크는 만들지 않는다.
-                 페이지가 생기면 여기 글자를 <Link>로 바꾸면 된다. */}
-          <div style={{ fontSize: 13, color: "#9CA3AF" }}>© 2026 근태관리 · 이용약관 · 개인정보처리방침</div>
-          <a href="#top" aria-label="맨 위로" style={{ width: 38, height: 38, borderRadius: "50%", border: "1px solid var(--landing-border,#DCE5F4)", background: "#fff", color: "var(--text-sub)", display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }} dangerouslySetInnerHTML={{ __html: svg('<path d="m18 15-6-6-6 6"/>', 18) }} />
+
+          {/* 사업자 정보 — 줄바꿈을 flex+wrap에 맡긴다. 좁은 화면에서 항목 단위로 접히고,
+              가운뎃점(·)은 aria-hidden이라 화면낭독기가 "가운뎃점"을 읽지 않는다.
+              ⚠️ 주소는 한 덩어리라 쪼개지 않는다(등록증 표기 그대로여야 한다). */}
+          <div style={{ marginTop: 20, paddingTop: 18, borderTop: "1px solid var(--landing-border,#DCE5F4)", fontSize: 13, color: "var(--text-sub)", lineHeight: 1.8 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0 10px" }}>
+              <span>상호 <b style={{ fontWeight: 600 }}>{BIZ.name}</b></span>
+              <span aria-hidden>·</span>
+              <span>대표 {BIZ.ceo}</span>
+              <span aria-hidden>·</span>
+              <span>사업자등록번호 {BIZ.regNo}</span>
+            </div>
+            <div>{BIZ.address}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0 10px" }}>
+              <span>전화 <a href={TEL_HREF} style={{ color: "inherit" }}>{BIZ.tel}</a></span>
+              <span aria-hidden>·</span>
+              <span>이메일 <a href={`mailto:${BIZ.email}`} style={{ color: "inherit" }}>{BIZ.email}</a></span>
+              <span aria-hidden>·</span>
+              {/* ⚠️ 바깥 사이트로 나가는 링크라 target="_blank" + rel="noreferrer"를 짝으로 둔다.
+                     rel이 없으면 열린 페이지가 이 창을 조작할 수 있다(보안). */}
+              <span>홈페이지 <a href={`https://${BIZ.site}`} target="_blank" rel="noreferrer" style={{ color: "inherit" }}>{BIZ.site}</a></span>
+            </div>
+            <div style={{ marginTop: 10, color: "#9CA3AF" }}>© 2026 {BIZ.name}. All rights reserved.</div>
+          </div>
         </div>
       </footer>
     </div>
