@@ -3,6 +3,7 @@
 // 규격: POST form-urlencoded(본문 EUC-KR) / 응답 body 비어있으면 성공 / 90byte 이하=SMS·초과=LMS.
 // ※ 계정(발신ID·비번·발신번호)은 .env에서만 읽는다(하드코딩 금지). 미설정이면 안전하게 실패 반환.
 import iconv from "iconv-lite";
+import { normalizePhone } from "@/lib/phone";
 
 const SEND_URL = process.env.IONE_SMS_SEND_URL || "http://smsmsgr.ione24.com/slma_action_gaon.ashx";
 
@@ -16,10 +17,9 @@ export function isSmsType(text: string): boolean {
   return smsByteLength(text) <= 90;
 }
 
-// 전화번호에서 숫자만 남긴다(하이픈·공백 제거).
-export function normalizePhone(phone: string): string {
-  return (phone ?? "").replace(/[^0-9]/g, "");
-}
+// 전화번호에서 숫자만 남긴다 — **원본은 lib/phone.ts에 있다**(이 파일은 iconv-lite를 쓰는 서버 전용이라,
+// 화면 코드가 전화번호 도우미 때문에 이 파일을 부르지 않게 하려고 옮겼다). 기존 import 경로는 유지된다.
+export { normalizePhone } from "@/lib/phone";
 
 // EUC-KR form-urlencoded 값 인코딩: 값을 EUC-KR 바이트로 만든 뒤 퍼센트 인코딩(영숫자만 그대로, 공백은 +).
 function percentEncodeEucKr(value: string): string {

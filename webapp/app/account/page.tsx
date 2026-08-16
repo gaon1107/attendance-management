@@ -4,8 +4,11 @@ import { getCurrentUser } from "@/lib/session";
 import { AppShell } from "@/app/components/AppShell";
 import { ChangePasswordForm } from "./ChangePasswordForm";
 import { PcLinkCard } from "./PcLinkCard";
+import { RecoveryPhoneCard } from "./RecoveryPhoneCard";
 import { prisma } from "@/lib/db";
 import { isDeviceOnline } from "@/lib/agent-auth";
+import { maskPhone, isMobilePhone } from "@/lib/phone";
+import { OWNER_RECOVERY_ENABLED } from "@/lib/owner-recovery";
 
 const MY_EVENT_LIMIT = 20; // [내 PC 기록]에 보여줄 최근 건수(본인 데이터 열람권)
 
@@ -60,6 +63,19 @@ export default async function AccountPage() {
         <ChangePasswordForm />
       </div>
       </div>
+
+      {/* 🔑 회사 계정 전용 — 복구용 연락처. 회사 계정은 관리자도 대신 되찾아 줄 수 없어
+          이 번호가 유일한 복구 수단이다(상세는 actions/account.ts changeRecoveryPhone 주석). */}
+      {me.isOwner && (
+        <RecoveryPhoneCard
+          maskedPhone={me.phone ? maskPhone(me.phone) : null}
+          // ⚠️ 이미 저장된 번호가 유선(02·070 등)일 수 있다 — 가입 검증이 숫자 9~11자리만 봤기 때문.
+          //    "등록돼 있으니 안심"하다가 정작 필요할 때 문자를 못 받는 사고를 막는다(검수 치명 3).
+          usable={isMobilePhone(me.phone)}
+          // ⚠️ 문자 설정 여부가 아니라 **회사 계정 복구 개방 여부**로 판단한다(검수 치명 2).
+          recoveryEnabled={OWNER_RECOVERY_ENABLED}
+        />
+      )}
 
       {/* PC-OFF 연결 — 기존 두 카드 아래에 추가(기존 카드는 그대로) */}
       {/* 🔒 회사 계정에는 카드를 아예 그리지 않는다 — 연결코드 발급이 거부되므로 버튼만 남으면 무반응이 된다(검수 경미 2) */}

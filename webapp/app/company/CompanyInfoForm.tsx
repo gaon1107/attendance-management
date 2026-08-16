@@ -125,6 +125,13 @@ export function CompanyInfoForm({ initial }: { initial: CompanyInitial }) {
         </div>
         <div style={{ ...rowStyle, marginBottom: 0 }}>
           <Field label="담당 연락처" name="managerPhone" type="tel" defaultValue={initial.managerPhone} placeholder="010-1234-5678" />
+          {/* ⚠️ 이 번호는 **연락처 표시용**이다. 회사 계정 비밀번호를 되찾는 기준(복구용 연락처)과는
+              별개이며, 가입 이후 두 값은 갈라진다. 이 안내가 없으면 담당자가 바뀔 때 여기만 고치고
+              복구용 번호는 옛날 것으로 남아, 아무도 틀렸다는 걸 모른 채 회사가 잠긴다(검수 M-5). */}
+          <div style={{ gridColumn: "1 / -1", fontSize: 12, color: "var(--text-sub)", lineHeight: 1.6, marginTop: -6, wordBreak: "keep-all" }}>
+            ※ 위 담당 연락처는 <b>표시용</b>입니다. 회사 계정 비밀번호를 되찾을 때 쓰는{" "}
+            <b>복구용 연락처는 별도</b>이며, 회사 계정으로 로그인해 [계정 설정]에서 확인·변경합니다.
+          </div>
           <Field label="담당 이메일" name="managerEmail" type="email" defaultValue={initial.managerEmail} />
         </div>
       </div>

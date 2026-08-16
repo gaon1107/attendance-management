@@ -232,6 +232,12 @@ model User {
   department     Department? @relation(fields: [departmentId], references: [id])
   // 인적정보(선택) — 초대 가입 때 직원이 입력하거나, 관리자가 직원 상세에서 입력·수정한다. 없어도 무방.
   phone          String?   // 전화번호(연락처)
+  // 이 사람의 전화번호를 마지막으로 바꾼 시각. 지금은 회사 계정(복구용 연락처)만 채운다.
+  //  · 왜 미리 넣나: 회사 계정 복구를 열 때(로드맵 ③) **"번호를 바꾼 직후 며칠간은 복구 잠금"**이
+  //    필요하다. 공격자가 미리 번호를 심어 두고 개방일에 수확하는 것을 막는 표준 방어인데,
+  //    이 칸이 없으면 접속기록 2년치를 뒤져야 한다. add-only라 지금 넣는 비용이 압도적으로 싸다.
+  //  · 번호 변경 쿨다운(24시간 1회)의 기준값이기도 하다 — actions/account.ts 참고.
+  phoneChangedAt DateTime?
   position       String?   // 직급/직책 라벨 (예: 사원·대리·과장·부장). 표시용. 서열 비교는 jobGrade.level로.
   // 직급 서열(결재선용). 회사 직급표(JobGrade)의 한 직급을 가리킨다. null=미지정 → 직급 기반 결재선에서 제외.
   //  · add-only(nullable) — 기존 직원 전부 null = 기존 동작 그대로(회귀 0).

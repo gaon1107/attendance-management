@@ -113,6 +113,8 @@ function baseMetaLabel(meta: string): string {
     reset_code_blocked: "인증번호 요청 차단(과다 요청)",
     reset_code_verify_blocked: "인증번호 확인 차단(과다 요청)",
     password_reset_by_sms_code: "본인 비밀번호 재설정(문자 인증)",
+    // 회사 계정(마스터 열쇠)의 복구 기준이 바뀌는 사건 — 가장 무겁게 봐야 할 기록이다.
+    owner_recovery_phone_change: "회사 계정 복구용 연락처 변경",
     login_ip_throttled: "로그인 시도 차단(같은 IP 과다 실패)",
     // 생체정보 파기 경로(actions/authmethod.ts)
     admin_revoke: "관리자 파기",

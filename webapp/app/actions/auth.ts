@@ -4,6 +4,7 @@
 import { prisma } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { createSession, destroySession, getCurrentUser } from "@/lib/session";
+import * as POLICY from "@/lib/login-policy";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { isBlockedForCompany } from "@/lib/ip-block";
 import { loginAllowedForIp, publicActionAllowedForIp, recordThrottleHit, THROTTLED_META, SIGNUP_MAX_PER_IP, SIGNUP_WINDOW_MIN } from "@/lib/login-throttle";
@@ -152,9 +153,9 @@ export async function signup(
   redirect("/onboarding");
 }
 
-// 로그인 무차별 대입(비번 찍기) 방어 기준
-const MAX_FAILED = 5; // 연속 5회 실패하면
-const LOCK_MINUTES = 10; // 10분간 잠금
+// 로그인 무차별 대입(비번 찍기) 방어 기준 — **원본은 lib/login-policy.ts**(비밀번호를 확인하는
+// 다른 창구도 같은 숫자를 써야 로그인 잠금을 우회당하지 않는다 — 검수 M-2).
+const { MAX_FAILED, LOCK_MINUTES } = POLICY;
 
 // 존재하지 않는 이메일에도 해시 비교를 한 번 돌리기 위한 더미 값(검수 M-17).
 //  · 없는 계정이면 즉시 반환하던 예전 코드는 **응답 시간만으로 계정 존재를 알 수 있었다**(있으면 느리고 없으면 빠름).
