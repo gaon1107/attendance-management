@@ -115,6 +115,22 @@ function baseMetaLabel(meta: string): string {
     password_reset_by_sms_code: "본인 비밀번호 재설정(문자 인증)",
     // 회사 계정(마스터 열쇠)의 복구 기준이 바뀌는 사건 — 가장 무겁게 봐야 할 기록이다.
     owner_recovery_phone_change: "회사 계정 복구용 연락처 변경",
+    //  · 실패는 성공과 **다른 이름**을 쓴다. 같으면 접속기록에서 실패 시도까지 "변경 5건"처럼 읽혀
+    //    진짜 변경이 몇 번이었는지 알 수 없다.
+    owner_recovery_phone_denied: "회사 계정 복구용 연락처 변경 실패(비밀번호 오류)",
+    //  · 통지 문자가 못 나갔다는 뜻 = **"몰래 바뀌면 즉시 안다"는 탐지 장치가 그날 꺼졌다**는 뜻이다.
+    //    화면에는 이미 "발송 요청했습니다"가 나간 뒤라, 이 기록이 유일한 흔적이다.
+    owner_recovery_notice_failed: "회사 계정 연락처 변경 통지 발송 실패",
+    // 본인 비밀번호 변경(actions/account.ts changePassword) — 로그인과 같은 5회 잠금이 걸려 있다.
+    //  · 실패는 kind="login_fail"로 남긴다 — [이상접속]·[차단 후보]가 그 종류만 세기 때문(재검수 M-3).
+    password_change: "본인 비밀번호 변경",
+    password_change_denied: "본인 비밀번호 변경 실패(현재 비밀번호 오류)",
+    // ── 아래 5건은 액션이 기록하는데 사전에 없어 **화면·엑셀에서 공란**이던 것들(2026-08-16 전수 대조) ──
+    temp_password_expired: "임시 비밀번호 기한 만료",
+    password_reset: "관리자 비밀번호 재설정",
+    employee_add: "직원 추가",
+    deactivate_employee: "직원 비활성화(퇴사)",
+    outing_reasons: "외출 사유 목록 변경",
     login_ip_throttled: "로그인 시도 차단(같은 IP 과다 실패)",
     // 생체정보 파기 경로(actions/authmethod.ts)
     admin_revoke: "관리자 파기",

@@ -177,7 +177,7 @@ export async function login(
   }
   // 길이 상한(검수 2차 치명 2·중간 3) — 없으면 ①본문 크기만큼 긴 문자열이 접속기록에 2년 보관되고
   // ②그 값으로도 scrypt가 돌아 서버가 멈춘다. 정상 입력은 절대 넘지 않는 값이다.
-  if (email.length > 254 || password.length > 200) {
+  if (email.length > 254 || password.length > POLICY.PASSWORD_MAX_LEN) {
     return { error: "이메일 또는 비밀번호가 올바르지 않습니다." };
   }
 

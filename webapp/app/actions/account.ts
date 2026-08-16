@@ -6,15 +6,27 @@ import { getCurrentUser, createSession } from "@/lib/session";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { sendSms, smsConfigured } from "@/lib/sms";
 import { isMobilePhone, toLocalPhone, formatPhone } from "@/lib/phone";
-import { lockRemainMinutes, recordFail, recordSuccess } from "@/lib/login-policy";
+import { lockRemainMinutes, recordFail, recordSuccess, PASSWORD_MAX_LEN, PASSWORD_INPUT_HARD_LIMIT } from "@/lib/login-policy";
 import { headers } from "next/headers";
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 본인 비밀번호 변경. 두 화면이 쓴다:
+//   · [계정 설정]의 비밀번호 변경 카드 (모든 사용자)
+//   · [임시 비밀번호 강제 변경] 화면 (임시 비밀번호를 받은 직원이 반드시 거치는 길)
+//
+// 🔴 여기는 **비밀번호를 확인하는 창구**다 — 로그인과 똑같은 방어가 필요하다(2026-08-16 검수 치명).
+//    예전에는 잠금 확인도, 실패 횟수 집계도, 감사기록도, 길이 상한도 **하나도 없었다.**
+//    그래서 자리를 비운 사이 브라우저를 잡거나 세션을 훔친 사람이 이 창구를 반복 호출해
+//    **비밀번호를 무제한으로 찍을 수 있었다.** 계정이 이미 잠겨 있어도 여기서는 계속 찍혔다.
+//    알아낸 비밀번호로 아래 [복구용 연락처]까지 갈아끼울 수 있어, 그쪽에 정교하게 만든
+//    5회 잠금·감사기록·1분 간격이 **통째로 우회되는** 경로였다.
+// ═══════════════════════════════════════════════════════════════════════════
 export async function changePassword(
-  _prev: { error?: string; ok?: boolean },
+  _prev: { error?: string; ok?: boolean; relogin?: boolean },
   formData: FormData
-): Promise<{ error?: string; ok?: boolean }> {
+): Promise<{ error?: string; ok?: boolean; relogin?: boolean }> {
   // allowMustChange: 임시 비밀번호를 새 비밀번호로 바꾸는 액션 자체(9-C — 기본 차단이면 영영 못 바꾼다).
   const me = await getCurrentUser({ allowMustChange: true });
   if (!me) return { error: "로그인이 필요합니다." };
@@ -24,9 +36,63 @@ export async function changePassword(
   const confirm = String(formData.get("confirm") ?? "");
 
   if (!current || !next || !confirm) return { error: "모든 항목을 입력해주세요." };
+  // 🔒 길이 상한 — 없으면 본문 크기만큼 긴 문자열에도 scrypt가 돌아 **서버 전체가 멈춘다**
+  //    (1회 약 40ms 동안 다른 요청이 전부 대기). 로그인은 이미 막고 있는데 이 창구만 열려 있으면
+  //    로그인을 막은 의미가 없다(auth.ts 검수 2차 치명 2와 같은 위협).
+  //  ⚠️ **"현재 비밀번호"와 "새 비밀번호"의 상한이 다르다 — 일부러 그렇다**(재검수 M-1).
+  //     현재 비밀번호에까지 정책값(200)을 걸었더니, 과거에 200자 넘는 비밀번호로 가입한 사람이
+  //     **스스로 고칠 마지막 길**이 막혔다. 회사 계정이 그 처지가 되면 재설정 경로가 둘 다 막혀 있어
+  //     결과가 "회사 영구 잠금"이다. 대조용 입력은 넉넉히 받고, 새로 정하는 값만 정책으로 조인다.
+  if (current.length > PASSWORD_INPUT_HARD_LIMIT) {
+    return { error: "현재 비밀번호가 올바르지 않습니다." };
+  }
+  if (next.length > PASSWORD_MAX_LEN) {
+    return { error: `새 비밀번호는 ${PASSWORD_MAX_LEN}자 이하로 입력해주세요.` };
+  }
   if (next.length < 8) return { error: "새 비밀번호는 8자 이상이어야 합니다." };
   if (next !== confirm) return { error: "새 비밀번호 확인이 일치하지 않습니다." };
-  if (!verifyPassword(current, me.passwordHash)) return { error: "현재 비밀번호가 올바르지 않습니다." };
+
+  // 🔒 잠금 확인 — 로그인과 **같은 기준·같은 함수**를 쓴다.
+  //    ⚠️ 비밀번호를 대조하기 **전에** 검사한다. 잠긴 계정에까지 scrypt를 태우면
+  //       제한이 CPU를 한 푼도 아껴주지 못해, 제한 자체가 서비스 마비 통로가 된다.
+  const lockMins = lockRemainMinutes(me.lockedUntil);
+  if (lockMins !== null) {
+    return { error: `비밀번호를 여러 번 잘못 입력했습니다. 약 ${lockMins}분 뒤에 다시 시도해주세요.` };
+  }
+
+  const { ip, userAgent } = readClientMeta(await headers());
+
+  if (!verifyPassword(current, me.passwordHash)) {
+    // 실패를 **로그인과 같은 창구**로 센다(lib/login-policy.ts). 5회면 10분 잠금.
+    //  · 이 창구와 로그인은 같은 칸(failedLoginCount·lockedUntil)을 쓰므로, 한쪽에서 잠기면
+    //    다른 쪽도 함께 막힌다 — 창구를 갈아타며 찍는 우회가 불가능하다.
+    await recordFail(prisma, me);
+    // 🔴 기록의 종류를 **`login_fail`로 남긴다**(재검수 M-3). `config`(설정 변경)로 남기면
+    //    [이상접속] 알림·[차단 후보] 집계·[로그인 이력] 화면이 전부 `login_fail`만 세기 때문에
+    //    **비밀번호를 찍는 공격이 감시망에 한 번도 안 잡힌다.** 기록은 남는데 아무도 모르는 상태다.
+    //    무슨 창구였는지는 meta로 구분된다.
+    await recordAccess({
+      companyId: me.companyId, userId: me.id, actorName: me.name, emailTried: me.email,
+      kind: "login_fail", result: "fail", ip, userAgent, meta: "password_change_denied",
+    });
+    // 5회째에 잠겼다면 **그 자리에서 알려준다**(재검수 경미 2).
+    //  · 안 알려주면 사용자는 6번째 시도에서야 잠긴 걸 안다. 특히 [임시 비밀번호 강제 변경] 화면은
+    //    잠기는 순간 그 화면도 로그인 화면도 함께 막혀 10분간 갇히므로, 이유를 바로 말해줘야 한다.
+    //  · 로그인 창구에서는 이렇게 못 한다(계정이 실재한다는 사실이 새어 나간다). 여기는 이미
+    //    본인 세션으로 들어와 있는 사람이라 숨길 것이 없다.
+    const after = await prisma.user.findUnique({ where: { id: me.id }, select: { lockedUntil: true } });
+    const nowLocked = lockRemainMinutes(after?.lockedUntil);
+    if (nowLocked !== null) {
+      return { error: `비밀번호를 여러 번 잘못 입력했습니다. 약 ${nowLocked}분 뒤에 다시 시도해주세요.` };
+    }
+    return { error: "현재 비밀번호가 올바르지 않습니다." };
+  }
+  // 비밀번호가 맞았으면 실패 기록을 되돌린다(로그인 성공 처리와 동일).
+  //  · 안 되돌리면 여기서 쌓인 횟수가 남아, 며칠 뒤 **로그인에서 한 번만 틀려도** 즉시 잠긴다.
+  if (me.failedLoginCount !== 0 || me.lockedUntil) {
+    await recordSuccess(prisma, me.id);
+  }
+
   if (current === next) return { error: "새 비밀번호가 현재 비밀번호와 같습니다." };
   // 🔒 만료된 임시 비밀번호는 "현재 비밀번호"로도 못 쓴다(9-C 검수 경미 1).
   //    48시간 만료는 로그인 시(auth.ts)에만 걸려 있어서, 만료 전에 얻어둔 세션으로
@@ -46,10 +112,27 @@ export async function changePassword(
   //   예전에는 세션을 안 끊어서 훔쳐간 쪽이 30일간 그대로 쓸 수 있었다.
   //   (관리자가 비번을 재설정하는 경로는 이미 세션을 끊고 있었고, 본인 변경만 빠져 있었다)
   await prisma.session.deleteMany({ where: { userId: me.id } });
+
+  // 감사기록 — 남의 계정을 들여다보던 사람이 비밀번호를 바꿔 잠가버리는 일이 실제로 있다.
+  //  ⚠️ 비밀번호 값은 절대 남기지 않는다(사규 8). "바뀌었다"는 사실과 누가 했는지만.
+  await recordAccess({
+    companyId: me.companyId, userId: me.id, actorName: me.name, emailTried: me.email,
+    kind: "config", result: "success", ip, userAgent, meta: "password_change",
+  });
+
+  // 🔒 세션 재발급 — **실패해도 비밀번호는 이미 바뀌었다.**
+  //    여기가 [복구용 연락처] 쪽보다 훨씬 위험하다: 거기는 비밀번호가 그대로라 다시 로그인하면 되지만,
+  //    여기는 **옛 비밀번호가 이미 무효**다. "실패했다"고만 말하면 사용자는 새 비밀번호를 쓸 생각을
+  //    못 한 채 로그아웃된 상태로 남는다. 사실대로 "바뀌었으니 새 비밀번호로 다시 로그인하라"고 한다.
   // ⚠️ 역할을 반드시 넘긴다(재검수 중간 1). 안 넘기면 createSession이 다시 조회하는데, 그 조회가
   //    실패하면 **가장 짧은 정책(7일 + 12시간 유휴)**으로 떨어진다. 회사 계정이 그 정책을 타면
   //    lib/session.ts가 "절대 안 된다"고 못박은 상태(평소 안 쓰는 계정이 유휴 만료로 잠김)가 된다.
-  await createSession(me.id, { role: me.role, isOwner: me.isOwner });
+  try {
+    await createSession(me.id, { role: me.role, isOwner: me.isOwner });
+  } catch (e) {
+    console.error("[account] 비밀번호 변경 후 세션 재발급 실패:", e instanceof Error ? e.message : String(e));
+    return { ok: true, relogin: true };
+  }
 
   revalidatePath("/account");
   return { ok: true };

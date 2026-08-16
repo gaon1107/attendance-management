@@ -24,6 +24,21 @@ export function ChangePasswordForm() {
     if (state?.ok) formRef.current?.reset();
   }, [state?.ok]);
 
+  // 🔴 비밀번호는 바뀌었는데 로그인 상태만 끊긴 경우 — **폼을 아예 치운다**(재검수 질문3).
+  //    남겨두면 사용자가 다시 눌러 보고, 그때는 세션이 없어 "로그인이 필요합니다"라는 빨간 오류로
+  //    안내가 덮인다. 그러면 "역시 안 바뀌었구나" 하고 옛 비밀번호를 계속 시도하게 된다.
+  if (state?.ok && state.relogin) {
+    return (
+      <div style={{ fontSize: 14, color: "#B45309", fontWeight: 700, lineHeight: 1.7, wordBreak: "keep-all" }}>
+        비밀번호가 변경되었습니다. 다만 로그인 상태를 유지하지 못했습니다 —{" "}
+        <a href="/login" style={{ color: "#B45309", textDecoration: "underline" }}>
+          <b>새 비밀번호로 다시 로그인</b>
+        </a>
+        해 주세요.
+      </div>
+    );
+  }
+
   return (
     <form ref={formRef} action={formAction} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div>
