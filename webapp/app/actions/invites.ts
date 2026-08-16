@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { hashPassword } from "@/lib/password";
-import { PASSWORD_MAX_LEN } from "@/lib/login-policy";
+import { PASSWORD_MAX_LEN, EMAIL_MAX_LEN } from "@/lib/login-policy";
 import { getCurrentUser, createSession } from "@/lib/session";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { parseProfile, employeeNoTaken } from "@/lib/employee-profile";
@@ -56,6 +56,9 @@ export async function acceptInvite(
   const password = String(formData.get("password") ?? "");
 
   if (!name || !email || !password) return { error: "모든 항목을 입력해주세요." };
+  // 🔴 로그인은 254자를 넘는 이메일을 거부한다 — 여기서 막지 않으면 가입은 되는데
+  //    본인은 다시는 못 들어오는 계정이 만들어진다(검수 치명 1).
+  if (email.length > EMAIL_MAX_LEN) return { error: `이메일은 ${EMAIL_MAX_LEN}자 이하로 입력해주세요.` };
   if (password.length < 8) return { error: "비밀번호는 8자 이상이어야 합니다." };
   // 🔴 상한이 없으면 **로그인할 수 없는 계정**이 만들어진다 — 로그인은 200자에서 막기 때문이다.
   //    그 계정은 근태 기록만 남긴 채 본인이 다시는 못 들어온다.

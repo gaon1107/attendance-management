@@ -41,6 +41,8 @@ export async function recordAccess(e: AccessInput): Promise<void> {
         companyId: e.companyId ?? null,
         userId: e.userId ?? null,
         actorName: cut(e.actorName, 100),
+        // ⚠️ 이 값은 lib/login-policy.ts의 EMAIL_MAX_LEN보다 **작으면 안 된다**(검수 경미 2).
+        //    작아지면 2년 보관하는 감사기록의 이메일이 조용히 잘려 사고 조사 근거가 훼손된다.
         emailTried: cut(e.emailTried, 254),
         kind: e.kind,
         result: e.result,

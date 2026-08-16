@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { generateTempPassword, TEMP_PASSWORD_TTL_MS } from "@/lib/temp-password";
+import { EMAIL_MAX_LEN } from "@/lib/login-policy";
 import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { parseDays, daysToCsv } from "@/lib/workdays";
@@ -29,6 +30,14 @@ export async function addEmployee(
 
   if (!name || !email) {
     return { error: "이름과 이메일을 입력해주세요." };
+  }
+  // 🔴 로그인은 254자를 넘는 이메일을 거부한다(actions/auth.ts login) — 여기서 막지 않으면
+  //    직원은 만들어지는데 **그 직원이 영영 로그인하지 못한다**(검수 치명 1).
+  //    ⚠️ "관리자가 지우고 다시 만들면 된다"가 **아니다**(검수 경미 4). 계정 삭제 기능은 없고
+  //       퇴사 처리만 있으며, 이메일은 전역 유일값이라 **잘못 쓴 주소는 다시 쓸 수 없다.**
+  //       그때까지 쌓인 근태 기록도 그 죽은 계정에 남는다.
+  if (email.length > EMAIL_MAX_LEN) {
+    return { error: `이메일은 ${EMAIL_MAX_LEN}자 이하로 입력해주세요.` };
   }
   // 🔴 2026-08-09: 관리자가 비밀번호를 **타이핑하지 않는다**. 서버가 무작위로 만든다.
   //    예전에는 관리자가 직접 정했고, 그래서 두 가지 문제가 있었다:

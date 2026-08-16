@@ -50,6 +50,13 @@ export async function signup(
   if (!email.includes("@") || email.length < 5) {
     return { error: "이메일 형식이 올바르지 않습니다." };
   }
+  // 🔴 비밀번호와 **같은 이유**의 상한이다(검수 치명 1). 로그인은 254자를 넘으면 거부하므로,
+  //    여기서 막지 않으면 그 순간 **로그인할 수 없는 회사 계정**이 만들어진다 — 그리고 그 계정이
+  //    사업자등록번호를 선점해 같은 회사가 다시는 가입하지 못한다(= 회사 영구 잠금).
+  //    실수로 긴 글을 붙여넣는 것만으로도 일어난다.
+  if (email.length > POLICY.EMAIL_MAX_LEN) {
+    return { error: `이메일은 ${POLICY.EMAIL_MAX_LEN}자 이하로 입력해주세요.` };
+  }
   // 연락처는 숫자만 남겨 9~11자리인지만 본다(하이픈·공백 자유). 실제 소유 확인은 문자 인증 도입 시(2차).
   if (!/^\d{9,11}$/.test(managerPhone.replace(/[^0-9]/g, ""))) {
     return { error: "담당자 연락처를 올바르게 입력해주세요." };
@@ -186,7 +193,7 @@ export async function login(
   }
   // 길이 상한(검수 2차 치명 2·중간 3) — 없으면 ①본문 크기만큼 긴 문자열이 접속기록에 2년 보관되고
   // ②그 값으로도 scrypt가 돌아 서버가 멈춘다. 정상 입력은 절대 넘지 않는 값이다.
-  if (email.length > 254 || password.length > POLICY.PASSWORD_MAX_LEN) {
+  if (email.length > POLICY.EMAIL_MAX_LEN || password.length > POLICY.PASSWORD_MAX_LEN) {
     return { error: "이메일 또는 비밀번호가 올바르지 않습니다." };
   }
 

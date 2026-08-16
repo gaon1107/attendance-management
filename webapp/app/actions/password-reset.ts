@@ -7,7 +7,7 @@
 //     requestPasswordReset(직원 접수) → issueTempPassword(관리자 발급)
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
-import { PASSWORD_MAX_LEN } from "@/lib/login-policy";
+import { PASSWORD_MAX_LEN, EMAIL_MAX_LEN } from "@/lib/login-policy";
 import { generateTempPassword, TEMP_PASSWORD_TTL_MS } from "@/lib/temp-password";
 import { getCurrentUser } from "@/lib/session";
 import { canManageAccount } from "@/lib/owner-rules";
@@ -32,7 +32,7 @@ export async function requestPasswordReset(
   if (!email) return { error: "이메일을 입력해주세요." };
   // 형식·길이 검증(검수 치명 3) — 없으면 아무 문자열이나 접속기록에 저장돼 2년 보관된다.
   //  응답은 성공과 같게 유지한다(존재 여부 비노출 원칙).
-  if (email.length > 254 || !email.includes("@")) return { ok: true };
+  if (email.length > EMAIL_MAX_LEN || !email.includes("@")) return { ok: true };
 
   // 🔴 [검수 M-19] 로그인 없이 누구나 부를 수 있는 창구다 — 같은 IP에서 쏟아지는 요청을 막는다.
   //    막지 않으면 관리자 [직원 관리] 화면이 대기 요청으로 가득 차 진짜 요청이 묻힌다.
@@ -156,7 +156,7 @@ export async function sendResetCode(_prev: CodeState, formData: FormData): Promi
   // 입력 형식 오류는 알려준다 — 계정이 있든 없든 똑같이 나오는 판정이라 새어나갈 정보가 없다.
   // (조용히 성공 처리하면 오타 낸 사람이 오지 않을 문자를 5분간 기다린다 — 검수 중간 8)
   if (!email || !phoneTail) return { error: "이메일과 전화번호 뒷 4자리를 모두 입력해주세요." };
-  if (email.length > 254 || !email.includes("@")) return { error: "이메일 형식이 올바르지 않습니다." };
+  if (email.length > EMAIL_MAX_LEN || !email.includes("@")) return { error: "이메일 형식이 올바르지 않습니다." };
   if (!/^\d{4}$/.test(phoneTail)) return { error: "전화번호 뒷 4자리를 숫자로 입력해주세요." };
 
   // 🔴 로그인 없이 누구나 부르는 창구다 — 기존 재설정 요청과 **같은 IP 예산**을 쓴다(창구가 둘이라고
@@ -197,7 +197,7 @@ export async function verifyResetCode(_prev: CodeState, formData: FormData): Pro
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const code = String(formData.get("code") ?? "").trim();
   if (!email || !code) return { error: "인증번호를 입력해주세요." };
-  if (email.length > 254) return { error: CODE_FAIL_MSG };
+  if (email.length > EMAIL_MAX_LEN) return { error: CODE_FAIL_MSG };
 
   // 코드 1건당 5회 상한은 "코드 하나"를 지킨다. 이건 "문 앞"을 지킨다(검수 중간 7).
   //  · 세는 대상(reset_code_wrong)은 코드당 최대 5건만 생기므로 이 기록이 적재 통로가 되지 않는다.
@@ -233,7 +233,7 @@ export async function completeResetWithCode(_prev: CodeState, formData: FormData
   // 해시 계산 폭주 방지. ⚠️ 숫자를 여기 적어두지 않는다 — 창구마다 기준이 갈린 적이 있다(검수 N-2).
   if (next.length > PASSWORD_MAX_LEN) return { error: `새 비밀번호는 ${PASSWORD_MAX_LEN}자 이하로 입력해주세요.` };
   if (next !== confirm) return { error: "새 비밀번호 확인이 일치하지 않습니다." };
-  if (email.length > 254) return { error: CODE_FAIL_MSG };
+  if (email.length > EMAIL_MAX_LEN) return { error: CODE_FAIL_MSG };
 
   const guard = await guardCodeAttempts(email);
   if (guard) return guard;
