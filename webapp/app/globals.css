@@ -278,7 +278,18 @@ details.landing-faq[open] > summary .faq-chevron { transform: rotate(180deg); }
 /* 정렬을 인라인 style이 아니라 여기에 두는 이유: 1단으로 접힐 때 가운데로 되돌려야 하는데
    **인라인 style은 CSS가 못 이긴다**(이 프로젝트에서 여러 번 겪은 함정). */
 .landing-hero-copy { text-align: left; }
-.landing-hero-row { justify-content: flex-start; }
+.landing-hero-row { display: flex; flex-wrap: wrap; justify-content: flex-start; }
+
+/* 특징칩 4개 — 2단일 때 왼쪽 칸이 533px이라 그냥 두면 **3개 + 1개**로 갈라져
+   마지막 칩만 혼자 둘째 줄에 남는다(실측: 칩 합계 524px + 칸사이 66px = 590px > 533px).
+   그래서 넓은 화면에서만 2열 격자로 못박아 2×2로 가지런히 놓는다.
+   ⚠️ max-content — 칸 폭을 내용에 맞춘다. 1fr로 하면 두 칸이 칸 폭을 반씩 나눠 가져
+      글자 짧은 칩 오른쪽에 빈 공간이 크게 생긴다.
+   ⚠️ 961px부터인 이유: 960px 아래는 1단이라 글이 폭을 다 써서 4개가 한 줄에 들어간다.
+      거기서도 격자를 걸면 가운데 정렬이 깨진다(격자는 justify-content가 칸 배치를 바꾼다). */
+@media (min-width: 961px) {
+  .landing-hero-chips { display: grid; grid-template-columns: repeat(2, max-content); }
+}
 
 /* ⚠️ mix-blend-mode: multiply — hero-person.webp도 **투명 배경이 아니라 흰 바탕으로 구워져** 있다.
       곱하기 합성이 "흰색 × 배경색 = 배경색"이라 흰 부분이 투명처럼 사라진다. **지우면 흰 네모가 드러난다.**

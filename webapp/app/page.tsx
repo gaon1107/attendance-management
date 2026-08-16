@@ -329,9 +329,10 @@ export default async function Home() {
             <p style={{ fontSize: "clamp(16px,2.4vw,19px)", color: "var(--text-sub)", lineHeight: 1.6, margin: "0 auto 32px", maxWidth: 560 }}>
               출퇴근부터 휴가·급여 연동까지. 직원을 감시하지 않으면서 근로기준법은 자동으로 지키는 근태관리.
             </p>
-            {/* ⚠️ justifyContent를 인라인에서 뺐다 — 2단일 땐 왼쪽, 1단으로 접히면 가운데여야 하는데
-                   인라인 style은 CSS가 못 이긴다. `.landing-hero-row`가 갖는다(칩 줄도 같다). */}
-            <div className="landing-hero-row" style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+            {/* ⚠️ display·flexWrap·justifyContent를 인라인에서 뺐다 — 2단일 땐 왼쪽, 1단으로 접히면
+                   가운데여야 하고 칩 줄은 넓은 화면에서 격자로 바뀌는데, **인라인 style은 CSS가 못 이긴다.**
+                   `.landing-hero-row`가 갖는다(칩 줄도 같다). */}
+            <div className="landing-hero-row" style={{ gap: 12 }}>
               <Link href="/signup" style={{ height: 52, padding: "0 28px", display: "inline-flex", alignItems: "center", gap: 8, borderRadius: 10, background: "linear-gradient(135deg,#2563EB,#3B82F6)", color: "#fff", fontSize: 16, fontWeight: 700, whiteSpace: "nowrap", textDecoration: "none", boxShadow: "0 12px 26px rgba(37,99,235,0.32)" }}>
                 무료로 시작하기
                 <span style={{ width: 17, height: 17, display: "inline-flex" }} dangerouslySetInnerHTML={{ __html: svg('<path d="M5 12h14M13 6l6 6-6 6"/>', 17) }} />
@@ -346,7 +347,7 @@ export default async function Home() {
                    ⚠️ 여기 바로 위에 있던 회색 안내문구("신용카드 없이 5분이면 시작 · 5인 이상 …")는
                       시안에 없어 뺐다. 되살리려면 이 자리에 다시 넣으면 된다(내용은 커밋 메시지에 있음).
                       "5분이면 설정 완료"는 아래 칩에 이미 있어 정보가 사라지지는 않는다. */}
-            <div className="landing-hero-row" style={{ display: "flex", flexWrap: "wrap", gap: 22, marginTop: 34 }}>
+            <div className="landing-hero-row landing-hero-chips" style={{ gap: 22, marginTop: 34 }}>
               {chips.map((c) => (
                 <div key={c.text} style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 36, fontSize: 13, fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>
                   <span style={{ color: "var(--primary)", width: 15, height: 15, display: "inline-flex" }} dangerouslySetInnerHTML={{ __html: svg(c.icon, 15) }} />
