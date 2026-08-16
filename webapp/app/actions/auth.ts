@@ -38,6 +38,15 @@ export async function signup(
   if (password.length < 8) {
     return { error: "비밀번호는 8자 이상이어야 합니다." };
   }
+  // 🔴 상한이 없으면 **로그인할 수 없는 계정**이 만들어진다 — 로그인은 200자에서 막기 때문이다.
+  //    가입 직후엔 세션이 있어 [계정 설정]에서 고칠 수 있지만, 세션이 끊기면 되돌릴 길이 없다
+  //    (회사 계정은 재설정 경로 두 개에서 모두 제외되므로 결과가 "회사 영구 잠금"이다).
+  //    부수적으로 scrypt(수십 ms 동안 서버 전체를 멈추는 동기 연산)에 거대한 입력이 가는 것도 막지만,
+  //    거긴 IP 제한·사업자번호 확인을 지나야 닿으므로 **주된 이유는 "못 들어가는 계정" 쪽**이다.
+  //  ⚠️ 아래 IP 제한보다 **먼저** 본다 — 길이 오타 한 번에 가입 시도 횟수가 깎이면 안 된다.
+  if (password.length > POLICY.PASSWORD_MAX_LEN) {
+    return { error: `비밀번호는 ${POLICY.PASSWORD_MAX_LEN}자 이하로 입력해주세요.` };
+  }
   if (!email.includes("@") || email.length < 5) {
     return { error: "이메일 형식이 올바르지 않습니다." };
   }

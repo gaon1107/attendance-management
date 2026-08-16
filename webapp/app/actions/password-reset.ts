@@ -7,6 +7,7 @@
 //     requestPasswordReset(직원 접수) → issueTempPassword(관리자 발급)
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
+import { PASSWORD_MAX_LEN } from "@/lib/login-policy";
 import { generateTempPassword, TEMP_PASSWORD_TTL_MS } from "@/lib/temp-password";
 import { getCurrentUser } from "@/lib/session";
 import { canManageAccount } from "@/lib/owner-rules";
@@ -229,7 +230,8 @@ export async function completeResetWithCode(_prev: CodeState, formData: FormData
   if (!email || !code || !next || !confirm) return { error: "모든 항목을 입력해주세요." };
   // 비밀번호 규칙은 기존 변경 화면(actions/account.ts)과 같게 맞춘다 — 창구마다 기준이 다르면 안 된다.
   if (next.length < 8) return { error: "새 비밀번호는 8자 이상이어야 합니다." };
-  if (next.length > 200) return { error: "새 비밀번호가 너무 깁니다." }; // 해시 계산 폭주 방지
+  // 해시 계산 폭주 방지. ⚠️ 숫자를 여기 적어두지 않는다 — 창구마다 기준이 갈린 적이 있다(검수 N-2).
+  if (next.length > PASSWORD_MAX_LEN) return { error: `새 비밀번호는 ${PASSWORD_MAX_LEN}자 이하로 입력해주세요.` };
   if (next !== confirm) return { error: "새 비밀번호 확인이 일치하지 않습니다." };
   if (email.length > 254) return { error: CODE_FAIL_MSG };
 
