@@ -17,8 +17,15 @@ export function normalizePhone(phone: string | null | undefined): string {
  */
 export function toLocalPhone(phone: string | null | undefined): string {
   const p = normalizePhone(phone);
-  // 82로 시작하고 뒤가 0이 아니면 국가번호로 본다(예: 821012345678 → 01012345678).
-  if (p.startsWith("82") && p.length >= 11 && p[2] !== "0") return "0" + p.slice(2);
+  if (p.startsWith("82")) {
+    // ① 규격대로 앞 0을 뗀 형태: `+82 10-1234-5678` → 821012345678 → 01012345678
+    if (p[2] !== "0" && p.length >= 11) return "0" + p.slice(2);
+    // ② 사람이 손으로 쓰는 흔한 형태(0을 안 뗌): `+82 010-1234-5678` → 8201012345678 → 01012345678
+    //    · 이걸 안 받아주면 정상 번호인데 "휴대폰이 아니다"로 거부돼 사용자는 이유를 모른다(검수 N-6).
+    //    · 길이 12 이상일 때만 자른다 — 국내번호는 전부 0으로 시작하므로 "82…"로 시작하는 국내번호는
+    //      존재하지 않지만, 짧은 값을 잘라 엉뚱한 번호를 만들지 않도록 안전 조건을 둔다.
+    if (p[2] === "0" && p.length >= 12) return p.slice(2);
+  }
   return p;
 }
 
@@ -38,6 +45,24 @@ export function maskPhone(phone: string | null | undefined): string {
   //  · 뒤 4자리만으로도 본인은 "내 번호가 맞나"를 알 수 있다.
   if (p.length >= 8) return `****-${p.slice(-4)}`;
   return "***";
+}
+
+/**
+ * 하이픈을 넣은 **가리지 않은 전체 번호**("01012345678" → "010-1234-5678").
+ *
+ * 🔴 어디에 쓰나 — **저장 직전 "이 번호가 맞습니까?" 확인 화면에만** 쓴다(검수 N-1).
+ *    저장된 번호를 보여줄 때는 반드시 maskPhone을 쓴다. 이 함수를 화면 아무 데나 쓰면
+ *    복구용 연락처가 어깨 너머로 통째로 노출된다.
+ *
+ * 왜 필요한가: 저장한 뒤에는 `010-****-5678`로 가려 보여주기 때문에 **가운데 네 자리 오타를
+ *    눈으로 잡을 방법이 없다.** 틀린 번호가 들어가면 그게 곧 "복구 불가"인데, 변경 제한 때문에
+ *    바로 되돌리지도 못했다. 그래서 **가리기 전에 한 번** 전체를 보여주고 확인받는다.
+ */
+export function formatPhone(phone: string | null | undefined): string {
+  const p = toLocalPhone(phone);
+  if (/^01\d{9}$/.test(p)) return `${p.slice(0, 3)}-${p.slice(3, 7)}-${p.slice(7)}`; // 11자리
+  if (/^01\d{8}$/.test(p)) return `${p.slice(0, 3)}-${p.slice(3, 6)}-${p.slice(6)}`; // 10자리(011 등)
+  return p; // 모양을 모르면 지어내지 않는다
 }
 
 /**

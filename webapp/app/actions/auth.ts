@@ -153,9 +153,11 @@ export async function signup(
   redirect("/onboarding");
 }
 
-// 로그인 무차별 대입(비번 찍기) 방어 기준 — **원본은 lib/login-policy.ts**(비밀번호를 확인하는
-// 다른 창구도 같은 숫자를 써야 로그인 잠금을 우회당하지 않는다 — 검수 M-2).
-const { MAX_FAILED, LOCK_MINUTES } = POLICY;
+// 로그인 무차별 대입(비번 찍기) 방어 — **규칙 전체가 lib/login-policy.ts에 있다.**
+//  · 숫자(5회/10분)뿐 아니라 **판정 함수까지** 거기 것을 쓴다(검수 N-2). 예전에는 숫자만 가져오고
+//    "실패하면 어떻게 되는가"는 이 파일이 직접 계산해서, 같은 것을 쓴다던 lib 쪽 함수와 규칙이
+//    어긋나 있었다(잠글 때 횟수를 0으로 되돌리는지 여부가 달랐다).
+//  · 비밀번호를 확인하는 다른 창구(계정 설정의 복구용 연락처 변경 등)도 같은 함수를 쓴다.
 
 // 존재하지 않는 이메일에도 해시 비교를 한 번 돌리기 위한 더미 값(검수 M-17).
 //  · 없는 계정이면 즉시 반환하던 예전 코드는 **응답 시간만으로 계정 존재를 알 수 있었다**(있으면 느리고 없으면 빠름).
@@ -226,17 +228,11 @@ export async function login(
     //  ⚠️ IP 제한에 걸린 시도도 **똑같이 센다**(검수 2차 치명 1) — 예전엔 여기서 건너뛰었는데,
     //     그러면 공격자가 쓰레기 이메일 50건으로 스스로 제한을 켜 놓고 표적 계정을 무제한으로
     //     두드릴 수 있었다(계정 5회 잠금이 통째로 꺼짐). 이 저장소의 유일한 대입 방어를 지켜야 한다.
-    const alreadyLocked = !!user?.lockedUntil && user.lockedUntil > new Date();
-    if (user && !alreadyLocked) {
-      const failed = user.failedLoginCount + 1;
-      await prisma.user.update({
-        where: { id: user.id },
-        data:
-          failed >= MAX_FAILED
-            ? { failedLoginCount: 0, lockedUntil: new Date(Date.now() + LOCK_MINUTES * 60000) }
-            : { failedLoginCount: failed },
-      });
-    }
+    //  ⚠️ 잠금 여부 판정을 **코드가 아니라 DB가** 하게 맡긴다(재검수 치명 1).
+    //     여기서 쓰는 `user`는 위(185행)에서 읽은 사진이고, 그 뒤 비밀번호 대조(scrypt, 수십 ms)가 끼어 있다.
+    //     그 사이에 다른 요청이 5회째를 채워 잠갔다면, 코드가 "안 잠겼다"고 믿고 쓴 값이
+    //     **방금 걸린 잠금을 지운다.** 조건을 where에 넣으면 그 창이 닫힌다.
+    if (user) await POLICY.recordFail(prisma, user);
     // 접속기록: 실패 1건. 존재하지 않는 이메일이면 소속 회사를 알 수 없어 companyId=null(회사별 화면엔 안 보임).
     //  · 제한에 걸린 시도는 **1분에 1건만** 남긴다 — 무제한 적재로 진짜 기록을 밀어내지 않게(검수 2차 중간 2).
     //    같은 kind(login_fail)로 남기므로 [이상접속]·[차단 후보] 감시에도 그대로 잡힌다.
@@ -258,8 +254,10 @@ export async function login(
   }
 
   // 계정이 잠겨 있으면(연속 실패로 잠금) 비번이 맞아도 잠금 해제 시각까지 거부.
-  if (user.lockedUntil && user.lockedUntil > new Date()) {
-    const mins = Math.max(1, Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000));
+  //  · 남은 시간 계산도 lib/login-policy.ts 것을 쓴다 — 창구마다 "약 N분"이 다르게 나오지 않게(검수 N-2).
+  const lockMins = POLICY.lockRemainMinutes(user.lockedUntil);
+  if (lockMins !== null) {
+    const mins = lockMins;
     await recordAccess({ companyId: user.companyId, userId: user.id, actorName: user.name, emailTried: email, kind: "login_fail", result: "fail", ip, userAgent, meta: "locked" });
     return { error: `비밀번호를 여러 번 잘못 입력했습니다. 약 ${mins}분 뒤에 다시 시도해주세요.` };
   }
@@ -272,12 +270,11 @@ export async function login(
     return { error: "임시 비밀번호의 사용 기한(48시간)이 지났습니다. 비밀번호 재설정을 다시 요청해주세요." };
   }
 
-  // 성공 시: 실패 기록·잠금 초기화.
+  // 성공 시: 실패 기록·잠금 초기화(이것도 lib/login-policy.ts 창구를 쓴다 — 검수 N-2).
+  //  ⚠️ 이 쓰기에도 "지금 잠겨 있지 않을 때만" 조건이 걸려 있다 — 실패 쪽만 원자적으로 고치면
+  //     성공 쪽이 같은 모양으로 잠금을 지운다(재재검수 중간 4).
   if (user.failedLoginCount !== 0 || user.lockedUntil) {
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { failedLoginCount: 0, lockedUntil: null },
-    });
+    await POLICY.recordSuccess(prisma, user.id);
   }
 
   // 역할을 이미 손에 들고 있으므로 넘겨준다 — createSession이 같은 행을 다시 읽지 않게(검수 중간 8).

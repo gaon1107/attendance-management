@@ -236,7 +236,9 @@ model User {
   //  · 왜 미리 넣나: 회사 계정 복구를 열 때(로드맵 ③) **"번호를 바꾼 직후 며칠간은 복구 잠금"**이
   //    필요하다. 공격자가 미리 번호를 심어 두고 개방일에 수확하는 것을 막는 표준 방어인데,
   //    이 칸이 없으면 접속기록 2년치를 뒤져야 한다. add-only라 지금 넣는 비용이 압도적으로 싸다.
-  //  · 번호 변경 쿨다운(24시간 1회)의 기준값이기도 하다 — actions/account.ts 참고.
+  //  · 번호 변경 **최소 간격(1분)**을 DB가 원자적으로 강제하는 기준값이기도 하다 — actions/account.ts 참고.
+  //    (예전엔 "24시간 1회"였는데, 오타를 하루 동안 못 고치는 사고가 생겨 기준을 바꿨다.
+  //     지금 요금·스팸 방어는 "실제 문자 발송 건수(SmsLog) 24시간 3건"이 담당한다 — 검수 N-1.)
   phoneChangedAt DateTime?
   position       String?   // 직급/직책 라벨 (예: 사원·대리·과장·부장). 표시용. 서열 비교는 jobGrade.level로.
   // 직급 서열(결재선용). 회사 직급표(JobGrade)의 한 직급을 가리킨다. null=미지정 → 직급 기반 결재선에서 제외.
@@ -838,7 +840,11 @@ model SmsLog {
   id        String   @id @default(cuid())
   companyId String
   userId    String?  // 임시비번=대상 직원 / 초대=null
-  kind      String   // "invite" | "temp_password" | "reset_code"(비밀번호 찾기 인증코드)
+  // "invite" | "temp_password" | "reset_code"(비밀번호 찾기 인증코드)
+  //  | "recovery_notice"(회사 계정 복구용 연락처가 바뀌었다는 **옛 번호 통지**)
+  //     ⚠️ recovery_notice는 단순 기록이 아니라 **하루 발송 상한을 세는 기준**이다. 이 값을 바꾸거나
+  //        다른 곳에서 재사용하면 actions/account.ts의 상한이 조용히 풀린다.
+  kind      String
   // inviteId | passwordResetRequestId | passwordResetCodeId (1회 제한 조회용).
   // ⚠️ reset_code는 코드 1건마다 id가 새로 생기므로 아래 유니크와 절대 충돌하지 않는다(재발송이 필요한 종류).
   refId     String?
@@ -850,6 +856,9 @@ model SmsLog {
   createdAt DateTime @default(now())
 
   // 1회 제한을 DB에서 원자적으로 보장(동시 클릭 이중발송·이중과금 차단).
+  //  ⚠️ recovery_notice는 refId를 **항상 null**로 넣어 이 제약을 피해 간다(같은 회사에서 여러 건 필요).
+  //     SQLite가 NULL끼리를 서로 다른 값으로 보기 때문에 동작하는 것이다 — 그 종류에 refId 값을
+  //     넣거나 DB 엔진을 바꾸면 **두 번째 통지부터 P2002로 터진다.**
   //  · 발송 성공/진행중(pending)은 이 조합으로 1건만 존재 가능.
   //  · 발송 실패 시엔 액션이 refId를 null로 바꿔 슬롯을 풀어 재시도를 허용한다(실패=과금 없음).
   @@unique([companyId, kind, refId])

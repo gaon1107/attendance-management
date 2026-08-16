@@ -21,7 +21,21 @@ import { Prisma } from "@prisma/client";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { sendSms, normalizePhone, smsConfigured } from "@/lib/sms";
 import { recordAccess } from "@/lib/access-log";
+import { OWNER_RECOVERY_ENABLED } from "@/lib/owner-recovery";
 import { randomInt } from "crypto";
+
+/**
+ * 🔑 회사 계정(마스터 열쇠)을 이 경로에서 막을 것인가 — **스위치 하나로 두 곳이 함께 움직이게** 하는 창구.
+ *
+ * 🔴 왜 함수로 뺐나(검수 N-5): 예전엔 `user.isOwner`를 그냥 막아두고, "열려면 lib/owner-recovery.ts와
+ *    여기를 *같이* 고쳐라"를 **주석으로만** 부탁했다. 그러면 스위치만 켠 사람은
+ *    화면의 "아직 복구 안 됩니다" 경고가 사라진 것을 보고 "이제 되찾을 수 있다"고 믿는데,
+ *    실제로는 이 파일이 여전히 막고 있어 **인증번호가 영영 오지 않는다**(검수 치명 2의 부활).
+ *    이제 두 곳이 같은 상수를 보므로 그 어긋남이 구조적으로 불가능하다.
+ */
+function ownerBlocked(isOwner: boolean): boolean {
+  return isOwner && !OWNER_RECOVERY_ENABLED;
+}
 
 // ── 정책 값(전부 여기 한 곳에서만 고친다) ──────────────────────────────────
 /** 코드 유효시간. 짧을수록 안전하지만 문자 도착 지연을 감안해 5분. */
@@ -107,9 +121,9 @@ async function issueResetCodeInner(
   });
 
   // 아래는 전부 조용히 종료한다 — 사유를 하나라도 알려주면 계정·전화번호 확인 창구가 된다.
-  //  · 계정 없음 / 퇴사자 / 🔒 회사 계정(마스터 열쇠는 이 경로로 못 되찾는다)
+  //  · 계정 없음 / 퇴사자 / 🔒 회사 계정(스위치가 꺼져 있는 동안은 이 경로로 못 되찾는다)
   //  · 전화번호 뒷자리 불일치(전화번호 미등록이면 phoneTailMatches가 항상 false)
-  if (!user || user.deactivatedAt || user.isOwner) return;
+  if (!user || user.deactivatedAt || ownerBlocked(user.isOwner)) return;
   if (!phoneTailMatches(user.phone, phoneTail)) return;
 
   // ── 1분 1건: DB 유니크 슬롯으로 선점한다(actions/sms.ts의 P2002 선점 패턴과 같은 방식). ──
@@ -238,7 +252,7 @@ export async function checkResetCode(
     where: { email },
     select: { id: true, companyId: true, name: true, deactivatedAt: true, isOwner: true },
   });
-  if (!user || user.deactivatedAt || user.isOwner) return { ok: false };
+  if (!user || user.deactivatedAt || ownerBlocked(user.isOwner)) return { ok: false };
 
   const live = await findLiveCode(user.id, now);
   if (!live) return { ok: false };
