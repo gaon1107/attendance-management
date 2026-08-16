@@ -293,7 +293,19 @@ export default async function Home() {
              `mix-blend-mode: multiply`(곱하기 합성)를 걸어 흰색이 투명처럼 동작하게 만들었다.
              ⚠️ 지금은 배경이 거의 흰색이라 그 blend가 하는 일이 거의 없다. 그래도 **빼지 말 것** —
                 배경에 색을 다시 넣는 순간 흰 네모가 즉시 다시 보인다(globals.css의 짝 주석 참고). */}
-      <div className="landing-hero-wrap" style={{ background: "linear-gradient(180deg,#FAFBFD 0%,#FFFFFF 60%)" }}>
+      {/* 🎨 2026-08-17 배경 되살리기: #FAFBFD(거의 흰색) → 옅은 파랑 그라데이션.
+             2026-08-09에 파랑을 52.6% → 12.2%까지 걷어냈더니 화면이 허전해졌다는 사장님 지적을 받아
+             **일부만** 되돌린다(전부가 아니다). 지금은 섹션 기준 약 30%다.
+          ⚠️ 히어로 배경이 파래지면 함께 다시 봐야 하는 것들 (2026-08-17 전부 재계산했다):
+             · 아래 배지 알약 #D3E1FA — 상단색 #E8F0FE 위에서 대비 **1.15**. 2026-08-06에 파란 히어로에서
+               확보했던 1.16과 같은 수준이라 그대로 둔다. 실제로 글자를 읽히게 하는 건 알약색이 아니라
+               진한 글자색(#1D4ED8)이고, 그 대비는 배경과 **무관하게 동일**하다.
+             · 물결·인물 그림의 mix-blend-mode: multiply — **이제 진짜로 일한다.** 이걸 지우면 흰 네모 두 개가
+               즉시 드러난다(거의 흰색이던 시절엔 하는 일이 없어서 "그래도 지우지 말라"고만 적혀 있었다).
+             · 고정 헤더 그림자 — 헤더는 아래 흰 섹션 위로도 지나가므로 **그대로 둔다**(빼면 흰 구간에서
+               헤더와 본문 경계가 1px 선 하나만 남는다).
+             · "기능 둘러보기" 버튼(흰 배경) — 파란 바탕 위라 오히려 또렷해진다. 손대지 않는다. */}
+      <div className="landing-hero-wrap" style={{ background: "linear-gradient(180deg,#E8F0FE 0%,#F4F8FF 45%,#FFFFFF 100%)" }}>
         {/* ⚠️ textAlign을 인라인에서 뺐다(2026-08-17). 넓은 화면은 2단(글 왼쪽·그림 오른쪽)이라 왼쪽 정렬,
                좁아지면 1단으로 접으며 가운데 정렬로 돌아가야 하는데 **인라인 style은 CSS가 못 이긴다.**
                그래서 정렬은 전부 globals.css의 `.landing-hero-copy`가 갖는다. */}
@@ -491,7 +503,16 @@ export default async function Home() {
                  그래서 **표만 가로로 밀어 보는 상자**에 담는다. 페이지 자체는 가로 스크롤이 생기지 않는다.
               ⚠️ 마우스 올림 효과(.landing-hover-card)는 주지 않는다 — 표는 읽는 것이고,
                  움직이면 가로로 밀어 보는 동작과 충돌한다. */}
-          <div style={{ marginTop: 40 }}>
+          {/* 🎨 2026-08-17: 비교표를 **연파랑 카드**로 감쌌다.
+                 이 섹션(#features)은 흰 배경인데 차별점 블록 + 카드 2개 + 비교표까지 세로로 길어서
+                 스크롤하면 흰 화면이 계속 이어졌다(사장님 "횡하다"). 섹션 전체를 파랗게 하지 않고
+                 비교표만 감싼 이유: 비교표는 **별도 <section>이 아니라 이 섹션 안**이라, 화면 끝까지 가는
+                 배경을 주려면 구조를 갈라야 한다(위험). 카드로 감싸면 인라인 한 줄로 되고 되돌리기도 쉽다.
+              ⚠️ 카드색 #E8F0FD는 표 머리줄 색(--landing-bg #F5F8FF)보다 **진해야** 한다. 같거나 옅으면
+                 머리줄이 카드에 묻힌다. 지금 대비는 1.08 — 흰 배경 시절(1.06)보다 오히려 조금 낫다.
+              ⚠️ 안쪽 여백이 생기므로 좁은 화면에서 표가 밀어 볼 수 있는 폭이 그만큼 줄어든다.
+                 가로 스크롤은 `.landing-compare-scroll` 안에서만 생기므로 페이지는 여전히 안 밀린다. */}
+          <div style={{ marginTop: 40, background: "#E8F0FD", borderRadius: 16, padding: "clamp(22px,3vw,32px) clamp(16px,2.5vw,28px)" }}>
             <div style={{ textAlign: "center", marginBottom: 18 }}>
               <h3 id="cmp-title" style={{ fontSize: "clamp(19px,2.4vw,24px)", fontWeight: 700, letterSpacing: "-0.02em", margin: "0 0 6px" }}>지금 쓰시는 방식과 무엇이 다른가요?</h3>
               <p style={{ fontSize: 14, color: "var(--text-sub)", margin: 0 }}>회사 이름이 아니라 <b style={{ color: "var(--text)" }}>일하는 방식</b>으로 비교했습니다.</p>
@@ -652,7 +673,11 @@ export default async function Home() {
                 파란 덩어리가 두 개 붙어 화면이 무거워진다(2026-08-09 색 정리의 취지).
              ⚠️ 카드의 배경·테두리·둥근모서리·그림자는 인라인에 두지 않는다 — `.landing-hover-card`가 갖는다.
                 인라인으로 주면 마우스 올림 효과가 **조용히 안 먹는다**(인라인이 CSS를 이긴다). */}
-      <section id="pricing" style={{ background: "#FFFFFF", scrollMarginTop: 68 }}>
+      {/* 🎨 2026-08-17: 흰색 → 연파랑. 위 [도입 3단계]와 **똑같은 페이드 그라데이션**을 쓴다
+             (48px 구간에서 흰색↔연파랑을 흐리게 이어 붙여 섹션 경계에 딱딱한 선이 안 생기게 하는 장치).
+             ⚠️ 두 곳이 같은 식을 쓴다 — 한쪽만 고치면 두 섹션의 색이 어긋난다. 고칠 땐 둘 다 고칠 것.
+             ⚠️ 이 섹션 안 요금 카드는 흰색이라 연파랑 바탕 위에서 저절로 떠 보인다(테두리 그대로 유지). */}
+      <section id="pricing" style={{ background: "linear-gradient(180deg,#FFFFFF 0,var(--landing-bg,#F5F8FF) 48px,var(--landing-bg,#F5F8FF) calc(100% - 48px),#FFFFFF 100%)", scrollMarginTop: 68 }}>
         <div style={{ maxWidth: WRAP, margin: "0 auto", padding: "clamp(48px,7vw,72px) 24px" }}>
           <div style={{ textAlign: "center", marginBottom: "clamp(28px,4vw,40px)" }}>
             <div style={eyebrow}>요금제</div>
