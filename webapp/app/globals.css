@@ -273,15 +273,23 @@ details.landing-faq[open] > summary .faq-chevron { transform: rotate(180deg); }
      `word-break: keep-all`이 걸려 있어 "강제하지 않는 / 얼굴인증"처럼 낱말 단위로 끊긴다.
      ⚠️ h1을 한 줄로 붙이고 싶으면 왼쪽 칸이 600px는 되어야 한다(= 오른쪽 그림이 396px로 작아진다).
         둘 다 가질 수는 없다. */
+/* 🔴 **이 상자에 z-index를 주지 말 것.**
+      position이 static이 아닌 요소에 z-index를 주면 그 안이 **별도의 합성 칸(쌓임 맥락)**이 되고,
+      그러면 아래 그림의 mix-blend-mode: multiply가 **히어로 배경까지 닿지 못하고** 이 칸 안에서
+      끝난다 — 칸 안에는 칠해진 배경이 없으니 그림의 흰 바탕이 **흰 네모로 그대로 드러난다.**
+      2026-08-17에 실제로 그렇게 만들어 사장님께 지적받았다(히어로 배경이 흰색이던 동안에는
+      흰 네모가 흰 배경에 묻혀 보이지 않아서 눈치채지 못했다).
+      → 물결을 글자 뒤로 보내는 일은 아래 `.landing-hero-copy` 혼자 맡는다(그림 쪽은 건드리지 않는다). */
 .landing-hero-cols {
-  /* z-index 1 — 왼쪽 물결(::before, z-index 0)이 글자 뒤로 가게 한다. 빼면 물결이 글자를 덮는다. */
-  position: relative; z-index: 1;
+  position: relative;
   display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
   gap: 36px; align-items: center;
 }
 /* 정렬을 인라인 style이 아니라 여기에 두는 이유: 1단으로 접힐 때 가운데로 되돌려야 하는데
-   **인라인 style은 CSS가 못 이긴다**(이 프로젝트에서 여러 번 겪은 함정). */
-.landing-hero-copy { text-align: left; }
+   **인라인 style은 CSS가 못 이긴다**(이 프로젝트에서 여러 번 겪은 함정).
+   z-index 1 — 왼쪽 물결(.landing-hero-wrap::before, z-index 0)보다 글자를 위에 올린다.
+   ⚠️ 여기(글 쪽)에만 준다. 그림 쪽에 주면 위에 적은 흰 네모 문제가 그대로 재현된다. */
+.landing-hero-copy { position: relative; z-index: 1; text-align: left; }
 .landing-hero-row { display: flex; flex-wrap: wrap; justify-content: flex-start; }
 
 /* 특징칩 4개 — 2단일 때 왼쪽 칸이 533px이라 그냥 두면 **3개 + 1개**로 갈라져

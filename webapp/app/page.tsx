@@ -508,11 +508,16 @@ export default async function Home() {
                  스크롤하면 흰 화면이 계속 이어졌다(사장님 "횡하다"). 섹션 전체를 파랗게 하지 않고
                  비교표만 감싼 이유: 비교표는 **별도 <section>이 아니라 이 섹션 안**이라, 화면 끝까지 가는
                  배경을 주려면 구조를 갈라야 한다(위험). 카드로 감싸면 인라인 한 줄로 되고 되돌리기도 쉽다.
-              ⚠️ 카드색 #E8F0FD는 표 머리줄 색(--landing-bg #F5F8FF)보다 **진해야** 한다. 같거나 옅으면
-                 머리줄이 카드에 묻힌다. 지금 대비는 1.08 — 흰 배경 시절(1.06)보다 오히려 조금 낫다.
+              🔴 **카드색을 --landing-bg(#F5F8FF)보다 진하게 만들지 말 것.** 처음엔 #E8F0FD로 했는데,
+                 표 본문의 회색 글자(--text-sub #6B7280) 대비가 **4.22**로 떨어져 읽기 기준(4.5)을 밑돌았다
+                 (흰 배경 시절엔 4.83이었다 — 내가 만든 회귀였다). #F5F8FF에서 4.55로 겨우 넘긴다.
+                 → 이보다 조금이라도 진하게 하려면 **본문 글자색부터 진하게 바꿔야 한다.** 배경만 만지면 안 된다.
+              ⚠️ 카드가 --landing-bg와 같은 색이 되면서 표 머리줄이 묻히므로, **머리줄을 흰색으로 뒤집었다**
+                 (아래 <th> 참고). 이 카드와 그 흰 머리줄은 **짝**이다 — 카드를 빼면 흰 머리줄이 흰 섹션에
+                 묻혀 사라지므로, 되돌릴 땐 둘을 함께 되돌릴 것.
               ⚠️ 안쪽 여백이 생기므로 좁은 화면에서 표가 밀어 볼 수 있는 폭이 그만큼 줄어든다.
                  가로 스크롤은 `.landing-compare-scroll` 안에서만 생기므로 페이지는 여전히 안 밀린다. */}
-          <div style={{ marginTop: 40, background: "#E8F0FD", borderRadius: 16, padding: "clamp(22px,3vw,32px) clamp(16px,2.5vw,28px)" }}>
+          <div style={{ marginTop: 40, background: "var(--landing-bg,#F5F8FF)", borderRadius: 16, padding: "clamp(22px,3vw,32px) clamp(16px,2.5vw,28px)" }}>
             <div style={{ textAlign: "center", marginBottom: 18 }}>
               <h3 id="cmp-title" style={{ fontSize: "clamp(19px,2.4vw,24px)", fontWeight: 700, letterSpacing: "-0.02em", margin: "0 0 6px" }}>지금 쓰시는 방식과 무엇이 다른가요?</h3>
               <p style={{ fontSize: 14, color: "var(--text-sub)", margin: 0 }}>회사 이름이 아니라 <b style={{ color: "var(--text)" }}>일하는 방식</b>으로 비교했습니다.</p>
@@ -532,7 +537,12 @@ export default async function Home() {
                         //    ②파란 배경 위에 옅은 회색 선이 얼룩처럼 얹히지 않는다(검수 지적).
                         // ⚠️ 색이 #2563EB→#3B82F6이었는데 오른쪽 끝에서 흰 글자 대비가 3.68까지 떨어졌다
                         //    (14px 굵은 글씨는 4.5 이상 필요) → 한 단계 진하게 낮췄다.
-                        <th key={c} scope="col" style={{ ...cmpCell, fontWeight: 700, borderTop: 0, borderRight: i === compareCols.length - 1 ? "1px solid var(--landing-border,#DCE5F4)" : undefined, color: ours ? "#fff" : "var(--text-sub)", background: ours ? "linear-gradient(135deg,#1D4ED8,#2563EB)" : "var(--landing-bg,#F5F8FF)", borderTopLeftRadius: 10, borderTopRightRadius: 10 }}>{c}</th>
+                        // ⚠️ 2026-08-17: 남의 칸 머리줄 바탕을 --landing-bg(#F5F8FF) → **흰색**으로 뒤집었다.
+                        //    비교표를 감싼 카드가 --landing-bg와 같은 색이 되면서 머리줄이 카드에 묻혔기 때문이다
+                        //    (카드를 더 진하게 하는 길은 막혀 있다 — 위 카드 주석의 대비 4.22 이야기 참고).
+                        //    덤으로 글자 대비도 4.55 → 4.83으로 올라간다.
+                        //    ⚠️ **이 흰색은 감싼 카드와 짝이다.** 카드를 없애면 흰 섹션 위 흰 머리줄이 되어 사라진다.
+                        <th key={c} scope="col" style={{ ...cmpCell, fontWeight: 700, borderTop: 0, borderRight: i === compareCols.length - 1 ? "1px solid var(--landing-border,#DCE5F4)" : undefined, color: ours ? "#fff" : "var(--text-sub)", background: ours ? "linear-gradient(135deg,#1D4ED8,#2563EB)" : "#FFFFFF", borderTopLeftRadius: 10, borderTopRightRadius: 10 }}>{c}</th>
                       );
                     })}
                   </tr>
