@@ -312,7 +312,27 @@ details.landing-faq[open] > summary .faq-chevron { transform: rotate(180deg); }
 .landing-hero-figure img {
   display: block; width: 100%; height: auto;
   mix-blend-mode: multiply;
+  /* 마우스 따라 기울기가 뚝뚝 끊기지 않게 하는 완충. 각도 자체는 LandingHeroFigure.tsx가 쓴다. */
+  transition: transform .18s ease-out;
+  will-change: transform;
 }
+
+/* ── 히어로 그림의 움직임 (2026-08-17 사장님 확정, 미리보기로 고르셨다) ──
+     ① 등장: 페이지가 열릴 때 아래에서 한 번 떠오른다(여기 CSS가 담당, 0.9초·1회).
+     ② 기울기: 그 뒤로는 마우스 방향으로 최대 6° 기운다(LandingHeroFigure.tsx가 담당).
+   🔴 **움직임을 감싼 상자(.landing-hero-figure)에 걸지 말 것.** transform·perspective·z-index 중
+      무엇이든 그 상자에 주면 별도 합성 칸이 되어, 위의 `mix-blend-mode: multiply`가 히어로 배경까지
+      닿지 못하고 **그림 뒤에 흰 네모가 드러난다**(2026-08-17 미리보기에서 실제로 겪었다).
+      그래서 아래 규칙도 상자가 아니라 **`… img`**에 건다. 원근감 역시 `perspective` 속성이 아니라
+      transform 안의 `perspective()` 함수로 tsx가 준다(같은 이유).
+   ⚠️ 등장과 기울기는 **같은 transform 속성을 다툰다.** CSS 애니메이션이 인라인 style을 이기므로
+      등장 중에는 기울기가 쉬고, 끝나면 tsx가 `landing-hero-rise` 클래스를 떼어 되돌려준다.
+      → 이 클래스 이름을 바꾸려면 LandingHeroFigure.tsx도 함께 바꿀 것(둘이 짝이다). */
+@keyframes landing-hero-rise {
+  from { opacity: 0; transform: translateY(26px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.landing-hero-rise img { animation: landing-hero-rise .9s cubic-bezier(.22,1,.36,1) both; }
 
 /* FAQ — 넓은 화면에선 방패 그림 + 질문 목록 2단, 좁아지면 그림을 빼고 한 줄로 */
 .landing-faq-grid { display: grid; grid-template-columns: 260px 1fr; gap: 40px; align-items: center; }
@@ -460,6 +480,12 @@ details.landing-faq {
 @media (prefers-reduced-motion: reduce) {
   .landing-hover-card { transition: box-shadow .18s ease, border-color .18s ease; }
   .landing-hover-card:hover { transform: none; }
+  /* 히어로 그림 — 등장할 때 떠오르는 움직임을 끈다(그림은 그대로 보인다).
+     ⚠️ 마우스 따라 기울기는 **여기서 막을 수 없다** — 그건 tsx가 인라인 style로 쓰는 값이고
+        인라인 style은 CSS 규칙을 항상 이긴다. 그래서 LandingHeroFigure.tsx가 matchMedia로 직접 막는다.
+        (아래 transition: none은 혹시 남는 잔여 움직임까지 끊는 받침이다) */
+  .landing-hero-rise img { animation: none; }
+  .landing-hero-figure img { transition: none; }
 }
 
 /* 마지막 CTA(파란 밴드) 배경 — 2026-08-09 사장님이 만든 배너 그림.

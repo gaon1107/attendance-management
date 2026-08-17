@@ -3,6 +3,9 @@
 //    좁은 화면에서 숨기고 접는 규칙은 globals.css의 `landing-*` 클래스에 있다(서버는 화면 크기를 모른다).
 import Link from "next/link";
 import { getLandingStats, TREND_DAYS } from "@/lib/public-stats";
+// 히어로의 3D 일러스트 — 마우스 위치를 읽어야 해서 **그림 한 장만** 클라이언트 컴포넌트로 떼어 냈다.
+// 이 페이지는 그대로 서버 컴포넌트다(FAQ도 여전히 JS 없이 <details>로 동작한다).
+import { LandingHeroFigure } from "@/app/components/LandingHeroFigure";
 
 // 공개 페이지라 방문자마다 DB를 때리면 안 된다 → 5분마다 한 번만 다시 계산하고 그 사이는 같은 화면을 준다.
 // ⚠️ 이 값을 0으로 바꾸면 방문자 수만큼 집계 쿼리가 돈다(14일치 근태 기록 스캔). 낮추지 말 것.
@@ -407,11 +410,15 @@ export default async function Home() {
                  다만 예전 배경(::before)과 달리 **문서에 있는 <img>**라, 좁은 화면에서 숨기는 일은
                  globals.css가 한다(서버는 화면 크기를 모른다).
               ⚠️ loading="eager" + fetchPriority="high" — 첫 화면에 보이는 그림이다. lazy로 두면
-                 스크롤 없이 보이는 자리가 잠깐 비어 있다(FAQ 방패와 반대 이유). */}
-          <div className="landing-hero-figure">
-            {/* eslint-disable-next-line @next/next/no-img-element -- 크기가 고정된 장식용 그림. 최적화 대상 아님 */}
-            <img src="/hero-person.webp" alt="" width={1279} height={854} loading="eager" fetchPriority="high" decoding="async" />
-          </div>
+                 스크롤 없이 보이는 자리가 잠깐 비어 있다(FAQ 방패와 반대 이유).
+              ── 2026-08-17 움직임 추가 ─────────────────────────────
+              ① 페이지가 열릴 때 아래에서 한 번 떠오르고 ② 그 뒤로는 마우스 방향으로 최대 6° 기운다
+              (사장님이 미리보기에서 고르신 조합·세기다).
+              ⚠️ 마우스 위치를 읽어야 해서 **이 그림만** 클라이언트 컴포넌트로 떼어 냈다. 이 페이지 자체는
+                 그대로 서버 컴포넌트다. <img>의 속성(alt·크기·eager 등)은 그 파일로 그대로 옮겨 갔다.
+              🔴 그 파일과 globals.css에 **"움직임을 감싼 상자에 걸면 그림 뒤에 흰 네모가 드러난다"**는
+                 경고가 있다. 되돌리거나 손볼 때 반드시 먼저 읽을 것. */}
+          <LandingHeroFigure />
           </div>
 
           {/* 제품 미리보기 — **전부 실제 DB 통계**(lib/public-stats.ts). 목업 값 금지.
