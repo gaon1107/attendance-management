@@ -59,34 +59,46 @@ export function LandingScrollTop() {
         bottom: 88,
         // ⚠️ 헤더(z-index 10)보다 위에 둔다. 그래야 고정 헤더와 겹치는 순간에도 버튼이 가려지지 않는다.
         zIndex: 20,
-        width: 50,
-        height: 50,
-        borderRadius: "50%",
+        // 디자인 — 2026-08-17 사장님이 보내주신 시안(민트색 둥근 네모 + 이중 꺾쇠 + TOP 글자)에 맞췄다.
+        //   1차: 흰 원 + 회색 꺾쇠(푸터에 박혀 있어 거의 안 보였다)
+        //   2차: 파란 그라데이션 원(히어로 버튼과 같은 톤)
+        //   3차(지금): 민트색 둥근 네모 + 이중 꺾쇠 + TOP  ← 시안
+        // ⚠️ 글자("TOP")가 들어가서 원이 아니라 **네모**여야 한다. 원으로 되돌리면 글자 자리가 없다.
+        // ⚠️ 모서리 반경 12px은 시안의 비율(네모 한 변의 약 22%)을 56px에 맞춰 계산한 값이다.
+        //    반경을 키우면 원에 가까워져 시안과 달라진다.
+        width: 56,
+        height: 56,
+        borderRadius: 12,
         border: "none",
         cursor: "pointer",
-        // 디자인 — 히어로의 [무료로 시작하기] 버튼과 같은 파란 그라데이션으로 톤을 맞췄다
-        // (예전에는 흰 배경 + 회색 화살표라 푸터에서 거의 보이지 않았다).
-        background: "linear-gradient(135deg,#2563EB,#3B82F6)",
+        // ⚠️ 이 홈화면은 파란색 계열인데 이 버튼만 민트색이다 — **일부러 그렇다**(사장님 시안).
+        //    본문과 색이 달라야 화면 위에 떠 있는 도구라는 것이 한눈에 읽힌다.
+        background: hovered ? "#33B78D" : "#3FC79A",
         color: "#fff",
         display: "inline-flex",
+        flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
+        gap: 1,
         // 마우스를 올리면 살짝 커지며 그림자가 진해진다.
         // ⚠️ 위로 띄우기(translateY)를 쓰지 않는 이유는 globals.css의 카드 규칙과 같다 — 버튼이 올라가면
         //    반응 영역도 같이 올라가서 커서가 아래 가장자리에 있을 때 화면이 덜덜 떨린다.
         transform: hovered ? "scale(1.08)" : "scale(1)",
-        boxShadow: hovered ? "0 14px 32px rgba(37,99,235,0.45)" : "0 8px 22px rgba(37,99,235,0.32)",
+        boxShadow: hovered ? "0 14px 32px rgba(45,175,133,0.48)" : "0 8px 22px rgba(45,175,133,0.35)",
         // 나타날 때/사라질 때 부드럽게. 안 보일 때는 클릭도 막는다(pointerEvents).
         opacity: shown ? 1 : 0,
         pointerEvents: shown ? "auto" : "none",
-        transition: "opacity .2s ease, transform .18s ease, box-shadow .18s ease",
+        transition: "opacity .2s ease, transform .18s ease, box-shadow .18s ease, background-color .18s ease",
       }}
     >
-      {/* 위쪽 화살표 — 선 하나를 더해(막대 + 꺾쇠) 예전 꺾쇠 하나보다 방향이 분명하다 */}
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M12 19V6" />
-        <path d="m5.5 12.5 6.5-6.5 6.5 6.5" />
+      {/* 이중 꺾쇠(위) — 시안처럼 꺾쇠 두 개를 겹쳐 "위로 쭉"이라는 뜻을 강하게 준다.
+          ⚠️ 화면낭독기는 위 aria-label("맨 위로")만 읽으면 되므로 그림과 글자는 모두 aria-hidden이다.
+             (안 그러면 "맨 위로 TOP"처럼 두 번 읽힌다) */}
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="m5 13 7-7 7 7" />
+        <path d="m5 19 7-7 7 7" />
       </svg>
+      <span aria-hidden style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", lineHeight: 1 }}>TOP</span>
     </button>
   );
 }
