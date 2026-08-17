@@ -6,6 +6,8 @@ import { getLandingStats, TREND_DAYS } from "@/lib/public-stats";
 // 히어로의 3D 일러스트 — 마우스 위치를 읽어야 해서 **그림 한 장만** 클라이언트 컴포넌트로 떼어 냈다.
 // 이 페이지는 그대로 서버 컴포넌트다(FAQ도 여전히 JS 없이 <details>로 동작한다).
 import { LandingHeroFigure } from "@/app/components/LandingHeroFigure";
+// [맨 위로] 떠 있는 버튼 — 스크롤 위치를 알아야 해서 클라이언트 컴포넌트다(아래 푸터 뒤에 놓았다).
+import { LandingScrollTop } from "@/app/components/LandingScrollTop";
 
 // 공개 페이지라 방문자마다 DB를 때리면 안 된다 → 5분마다 한 번만 다시 계산하고 그 사이는 같은 화면을 준다.
 // ⚠️ 이 값을 0으로 바꾸면 방문자 수만큼 집계 쿼리가 돈다(14일치 근태 기록 스캔). 낮추지 말 것.
@@ -249,8 +251,16 @@ export default async function Home() {
   // 미리보기를 감추는 경우는 **DB 조회 실패(live.ok === false)** 하나뿐이다.
   // ⚠️ 변수명이 `live`인 이유: 이 파일에는 아래쪽 숫자 밴드용 모듈 상수 `stats`가 이미 있다.
   //    `stats`로 두면 그것을 덮어버려 밴드가 깨진다(실제로 한 번 깨뜨렸다).
-  const live = await getLandingStats();
-  const peek = [
+  //
+  // 🔵 **SHOW_LIVE_PREVIEW = false 로 미리보기를 덮어 두었다 (2026-08-17 사장님 지시).**
+  //    이유: 가입자가 아직 적어서 0에 가까운 숫자가 그대로 보이는 것이 오히려 손해다.
+  //          그래서 히어로 바로 아래에 WHY(차별점) 섹션이 오게 했다.
+  //    ▶ **다시 열려면 아래 값을 true 로만 바꾸면 된다.** 화면 코드·집계 코드는 지우지 않고 그대로 뒀다.
+  //    ⚠️ false인 동안에는 DB 집계(getLandingStats)도 아예 돌리지 않는다 — 보이지도 않는 화면 때문에
+  //       방문자마다 14일치 근태 기록을 스캔할 이유가 없다. 그래서 live 가 null 일 수 있다.
+  const SHOW_LIVE_PREVIEW = false;
+  const live = SHOW_LIVE_PREVIEW ? await getLandingStats() : null;
+  const peek = !live ? [] : [
     // ⚠️ "최근 N일"의 N은 손으로 적지 않고 TREND_DAYS에서 가져온다 — 집계 기간과 글자가 어긋나지 않게.
     // ⚠️ 라벨이 "인증"이 아니라 **"출퇴근 기록"**인 이유: [근태 정정]으로 관리자가 만든 기록은
     //    얼굴·GPS 인증을 거치지 않았는데 같이 세어진다. "인증"이라 쓰면 과대 표현이다(검수 지적).
@@ -307,7 +317,10 @@ export default async function Home() {
           </nav>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <Link href="/login" style={{ height: 40, padding: "0 16px", display: "flex", alignItems: "center", color: "#374151", fontSize: 15, fontWeight: 700, textDecoration: "none", borderRadius: 7 }}>로그인</Link>
-            <Link href="/signup" style={{ height: 40, padding: "0 18px", display: "flex", alignItems: "center", borderRadius: 7, background: "var(--primary)", color: "#fff", fontSize: 15, fontWeight: 700, whiteSpace: "nowrap", textDecoration: "none", boxShadow: "0 6px 16px rgba(37,99,235,0.28)" }}>무료로 시작하기</Link>
+            {/* ⚠️ 글자가 "무료로 시작하기"가 아니라 **"회원가입"**이다(2026-08-17 사장님 지시).
+                   여기는 [로그인] 바로 옆이라 두 버튼이 짝으로 읽히는 자리 — 무엇을 하는 버튼인지가 먼저다.
+                   히어로·요금제·맨 아래 배너의 "무료로 시작하기"는 **광고 문구**라 그대로 두었다(같이 바꾸지 말 것). */}
+            <Link href="/signup" style={{ height: 40, padding: "0 18px", display: "flex", alignItems: "center", borderRadius: 7, background: "var(--primary)", color: "#fff", fontSize: 15, fontWeight: 700, whiteSpace: "nowrap", textDecoration: "none", boxShadow: "0 6px 16px rgba(37,99,235,0.28)" }}>회원가입</Link>
           </div>
         </div>
       </header>
@@ -437,7 +450,9 @@ export default async function Home() {
                  걷어내라고 확정했다(2026-08-09). 되살릴 일이 생기면 가상 데이터 표기부터 다시 판단할 것. */}
           {/* ⚠️ 그림자만 --landing-shadow(8%)를 안 쓰고 13%로 따로 준다 — 이 카드는 화면에서 가장 큰
                  덩어리라 같은 8%로는 흰 히어로 바탕 위에서 떠 보이지 않는다(다른 카드보다 진하게). */}
-          {live.ok && (
+          {/* 🔵 2026-08-17: 위 SHOW_LIVE_PREVIEW 가 false라 지금은 이 블록이 통째로 렌더되지 않는다.
+                 (live 가 null이 되므로 아래 조건에서 걸린다) 되살리는 방법은 그 상수 옆 주석 참고. */}
+          {live && live.ok && (
           <div style={{ position: "relative", zIndex: 1, marginTop: "clamp(40px,6vw,64px)", borderRadius: 16, background: "var(--landing-bg,#F5F8FF)", overflow: "hidden", textAlign: "left", boxShadow: "0 24px 60px rgba(37,99,235,0.13)" }}>
             <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
               {/* ⚠️ 미리보기 **안쪽** 카드들(아래 KPI 4칸·차트 2개)은 테두리를 지우지 않는다.
@@ -901,7 +916,11 @@ export default async function Home() {
                 ⚠️ 개인정보처리방침은 **개인정보보호법상 의무**다(얼굴=민감정보를 다루므로 더더욱).
                    페이지가 없는 지금 상태를 오래 두면 안 된다 — 사장님께 보고함. */}
             <div style={{ fontSize: 13, color: "var(--text-sub)" }}>이용약관 · 개인정보처리방침</div>
-            <a href="#top" aria-label="맨 위로" style={{ width: 38, height: 38, borderRadius: "50%", border: "1px solid var(--landing-border,#DCE5F4)", background: "#fff", color: "var(--text-sub)", display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }} dangerouslySetInnerHTML={{ __html: svg('<path d="m18 15-6-6-6 6"/>', 18) }} />
+            {/* ⚠️ 여기 있던 [맨 위로] 동그란 버튼은 2026-08-17에 **화면에 떠서 따라다니는 버튼**으로 옮겼다
+                   (`<LandingScrollTop />`, 이 파일 맨 아래에 있다). 푸터에 박혀 있으면 맨 아래까지
+                   내려가야 보였기 때문이다 — 사장님 지시.
+                   ⚠️ 그래서 이 줄은 이제 항목이 **둘**이다(로고 | 이용약관). justifyContent가 space-between
+                      이라 이용약관이 오른쪽 끝으로 간다. 가운데로 되돌리고 싶으면 빈 칸을 하나 두어야 한다. */}
           </div>
 
           {/* 사업자 정보 — 줄바꿈을 flex+wrap에 맡긴다. 좁은 화면에서 항목 단위로 접히고,
@@ -929,6 +948,12 @@ export default async function Home() {
           </div>
         </div>
       </footer>
+
+      {/* [맨 위로] — 화면 오른쪽 아래에 떠서 스크롤을 따라오는 버튼(2026-08-17 사장님 지시).
+          예전에는 푸터 안에 박혀 있어 맨 아래까지 내려가야 보였다.
+          ⚠️ 스크롤 위치를 알아야 해서 클라이언트 컴포넌트다. 이 페이지 자체는 그대로 서버 컴포넌트다.
+          ⚠️ 화면 맨 위(480px 이내)에서는 스스로 숨는다 — 이미 맨 위인데 떠 있으면 군더더기다. */}
+      <LandingScrollTop />
     </div>
   );
 }
