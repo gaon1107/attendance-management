@@ -69,3 +69,47 @@ export async function recordOperatorSuccess(db: Db, operatorId: string, now: Dat
     data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: now },
   });
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  이 문 전체의 초당 상한 — **고객 서비스를 지키는 장치**다 (검수 M-3)
+//
+// 🔴 왜 필요한가
+//    기존 IP 단위 제한(lib/login-throttle.ts)은 접속자 IP를 알아야 작동하는데, IP는
+//    `TRUST_PROXY=1`(.env)일 때만 읽힌다(lib/ip.ts). 프록시를 세우기 전까지 그 제한은
+//    **아무 일도 하지 않고**, 거부 기록조차 남지 않는다(IP가 없으면 recordThrottleHit이 그냥 돌아간다).
+//    그 상태에서 이 문에 로그인 요청을 쏟으면 요청 1건마다
+//      ① scrypt 1회 — 약 40ms 동안 **서버 전체가 멈춘다**(동기 연산)
+//      ② 접속기록 1행 — 2년 보관
+//    가 생긴다. 초당 25건이면 서버가 사실상 정지 = **직원들이 출퇴근을 찍지 못한다.**
+//    운영자 한 문 때문에 고객 서비스가 멈추는 것은 어떤 경우에도 안 된다.
+//
+// 🔴 왜 이런 방식(프로세스 메모리)인가
+//    DB를 세는 방식은 "세는 것 자체가 DB 부하"라 폭주 상황에서 역효과다. 이건 **DB에 닿기 전에**
+//    끊는 것이 목적이므로 메모리에서 세야 한다.
+//    · 한계: 서버를 여러 대로 늘리면 대당 상한이 된다(대수만큼 곱해진다). 재시작하면 초기화된다.
+//      그래도 "아무 상한도 없음"보다 압도적으로 낫고, 진짜 방어는 배포 때 프록시에서 이 경로를
+//      사내 IP로 제한하는 것이다(docs/09_test/배포전_체크리스트.md).
+//
+// ⚠️ 숫자 근거: 이 문을 쓰는 사람은 **한두 명**이다. 1분에 30번을 넘길 이유가 없다
+//    (오타로 5회 틀리면 어차피 계정이 10분 잠긴다). 정상 사용자가 여기 걸릴 일은 없다.
+const DOOR_WINDOW_MS = 60 * 1000;
+const DOOR_MAX_PER_WINDOW = 30;
+/** 최근 시도 시각들(밀리초). 창을 벗어난 것은 볼 때마다 버린다 — 무한히 자라지 않는다. */
+let doorHits: number[] = [];
+
+/**
+ * 지금 이 문이 로그인 시도를 하나 더 받아도 되는가.
+ * **시도 자체를 세므로 호출하면 1건이 기록된다** — 비밀번호를 대조하기 전에 딱 한 번 부른다.
+ * @returns 받아도 되면 true, 상한을 넘었으면 false(호출부는 대조 없이 거부한다)
+ */
+export function operatorDoorAllows(now: number = Date.now()): boolean {
+  const cutoff = now - DOOR_WINDOW_MS;
+  // 창을 벗어난 기록 버리기 — 배열은 시간순이라 앞에서부터 자르면 된다.
+  let i = 0;
+  while (i < doorHits.length && doorHits[i] < cutoff) i++;
+  if (i > 0) doorHits = doorHits.slice(i);
+
+  if (doorHits.length >= DOOR_MAX_PER_WINDOW) return false;
+  doorHits.push(now);
+  return true;
+}

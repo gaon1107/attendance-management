@@ -14,7 +14,7 @@
 import { prisma } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { createOperatorSession, destroyOperatorSession, getCurrentOperator } from "@/lib/operator-session";
-import { recordOperatorFail, recordOperatorSuccess } from "@/lib/operator-policy";
+import { recordOperatorFail, recordOperatorSuccess, operatorDoorAllows } from "@/lib/operator-policy";
 import { lockRemainMinutes, EMAIL_MAX_LEN, PASSWORD_MAX_LEN } from "@/lib/login-policy";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { loginAllowedForIp, recordThrottleHit, THROTTLED_META } from "@/lib/login-throttle";
@@ -79,6 +79,18 @@ export async function operatorLogin(
   }
 
   const { ip, userAgent } = readClientMeta(await headers());
+
+  // 🔴 [검수 M-3] 이 문 전체의 초당 상한 — **DB에 닿기도 전에** 끊는다.
+  //    아래 IP 단위 제한은 접속자 IP를 알아야 작동하고, IP는 프록시를 세운 뒤에만 읽힌다.
+  //    그때까지 이 문은 인증 없이 scrypt(40ms 동안 서버 전체를 멈춤)를 돌릴 수 있는 창구가 되는데,
+  //    운영자 한 문 때문에 **직원들이 출퇴근을 못 찍는 일**은 없어야 한다. 근거는 operator-policy.ts.
+  //    ⚠️ 여기 걸린 요청은 DB 기록도 남기지 않는다 — 기록 자체가 폭주의 통로가 되기 때문이다.
+  //       대신 서버 로그에 한 줄 남긴다(사람이 보고 프록시 제한을 걸 근거).
+  if (!operatorDoorAllows()) {
+    console.warn("[operator] 로그인 시도가 1분 상한을 넘어 거부했습니다(운영자 문 보호). IP:", ip ?? "미상");
+    return { error: "요청이 너무 잦습니다. 잠시 후 다시 시도해주세요." };
+  }
+
   const op = await prisma.operator.findUnique({ where: { email } });
 
   // IP 단위 시도 제한 — 고객사 로그인과 **같은 기록(AccessEvent)·같은 임계치**를 쓴다.
@@ -105,7 +117,9 @@ export async function operatorLogin(
     if (op) await recordOperatorFail(prisma, op);
     if (ipThrottled) {
       // 제한에 걸린 시도는 1분에 1건만 남긴다 — 무제한 적재로 진짜 기록을 밀어내지 않게.
-      await recordThrottleHit({ ip, kind: "login_fail", meta: THROTTLED_META, emailTried: email, userAgent });
+      //  ⚠️ actorName을 함께 넘긴다(검수 E-1). 안 넘기면 **정작 공격이 진행되는 순간의 기록에서
+      //     표적 계정이 비어** 나중에 "누구를 두드렸는지"를 알 수 없다(auth.ts도 넘긴다).
+      await recordThrottleHit({ ip, kind: "login_fail", meta: THROTTLED_META, actorName: op ? `운영자 ${op.name}` : null, emailTried: email, userAgent });
     } else {
       await logOperator({ kind: "login_fail", result: "fail", name: op?.name ?? null, emailTried: email, meta: "operator_bad_credentials", ip, userAgent });
     }

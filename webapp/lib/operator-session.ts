@@ -56,7 +56,16 @@ export async function getCurrentOperator() {
 
   const session = await prisma.operatorSession.findUnique({
     where: { token },
-    include: { operator: true },
+    // 🔴 **필요한 칸만 가져온다**(검수 M-1). `include: { operator: true }`로 통째로 가져오면
+    //    반환값에 **비밀번호 해시·실패횟수·잠금시각**이 딸려 온다. 지금은 서버에서 이름만 그려서
+    //    새지 않지만, 다음 단계에서 이 값을 클라이언트 컴포넌트에 넘기는 순간(정렬·검색 화면)
+    //    브라우저로 가는 데이터에 **전 회원사를 보는 계정의 해시**가 실린다.
+    //    ⚠️ 칸을 늘릴 때도 passwordHash·failedLoginCount·lockedUntil은 넣지 말 것.
+    select: {
+      lastSeenAt: true,
+      expiresAt: true,
+      operator: { select: { id: true, email: true, name: true, active: true } },
+    },
   });
   if (!session) return null;
 
@@ -71,8 +80,11 @@ export async function getCurrentOperator() {
     await prisma.operatorSession.deleteMany({ where: { token } });
     return null;
   }
-  // 끈 계정(active=false)은 로그인 상태로 보지 않는다.
-  //  · 세션을 지우지는 않는다 — 다시 켜면 남은 시간 동안 그대로 쓸 수 있게(끄기는 되돌릴 수 있는 조치다).
+  // 끈 계정(active=false)은 로그인 상태로 보지 않는다 — 끄는 즉시 다음 화면 이동에서 끊긴다.
+  //  · 여기서 세션 행을 지우지는 않지만, 그렇다고 "다시 켜면 이어서 쓸 수 있다"는 뜻은 아니다
+  //    (검수 E-2). 꺼져 있는 동안에는 아래 lastSeenAt 갱신에 닿지 못하므로 30분이면 유휴로 죽는다.
+  //    게다가 scripts/create-operator.mjs 의 --off 는 세션 행까지 지운다. 즉 이 자리는
+  //    "DB를 손으로 고쳐 껐을 때"를 막는 방어선이다.
   if (!session.operator.active) return null;
 
   // 마지막 활동 시각 갱신 — **5분에 한 번만.**

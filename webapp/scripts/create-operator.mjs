@@ -1,10 +1,12 @@
 // 운영자(본사) 계정 만들기 / 비밀번호 바꾸기 — **서버에서 직접 실행하는 명령**이다.
 //
 // 사용법 (webapp 폴더에서):
-//   node scripts/create-operator.mjs "이메일" "비밀번호" "이름"
-//   node scripts/create-operator.mjs --list                 ← 지금 있는 운영자 계정 보기
-//   node scripts/create-operator.mjs --off "이메일"          ← 계정 끄기(지우지 않는다)
-//   node scripts/create-operator.mjs --on  "이메일"          ← 다시 켜기
+//   node scripts/create-operator.mjs "이메일" "비밀번호" "이름"          ← 새 계정
+//   node scripts/create-operator.mjs --reset "이메일" "새 비밀번호"      ← 비밀번호 바꾸기
+//   node scripts/create-operator.mjs --list                            ← 계정 목록(잠금 상태까지)
+//   node scripts/create-operator.mjs --unlock "이메일"                  ← 잠금만 풀기
+//   node scripts/create-operator.mjs --off "이메일"                     ← 계정 끄기(지우지 않는다)
+//   node scripts/create-operator.mjs --on  "이메일"                     ← 다시 켜기
 //
 // 🔴 화면(웹)에서 운영자 계정을 만들 수 있게 하지 않는다. **일부러 그렇다.**
 //    회원사 전체를 보는 계정을 만드는 통로는 그 자체가 가장 좋은 공격 표적이다.
@@ -23,12 +25,31 @@
 //    기록을 지우거나(Clear-History), 남아도 되는 PC에서만 실행할 것.
 //    ⛔ 비밀번호를 소스·문서·커밋에 적지 않는다(사규 8).
 import { PrismaClient } from "@prisma/client";
-import { hashPassword } from "../lib/password.ts";
-// 길이·잠금 정책 상수도 앱과 같은 곳에서 가져온다(여기 숫자를 다시 적으면 정책이 갈린다).
-import { EMAIL_MAX_LEN, PASSWORD_MAX_LEN } from "../lib/login-policy.ts";
 
-// 가입 화면과 같은 최소 길이(app/actions/auth.ts signup).
-const PASSWORD_MIN_LEN = 8;
+// 앱과 **같은** 암호화 함수·정책 상수를 불러온다. (여기서 다시 구현하거나 숫자를 다시 적으면 갈린다)
+//  ⚠️ 정적 import 대신 이렇게 감싼 이유(검수 E-11): `.ts` 파일을 그대로 불러오는 것은 Node 22.6
+//     이상에서만 된다. 예전 Node에서는 `Unknown file extension ".ts"`로 죽는데, 그 메시지만 보면
+//     **운영자 계정을 만들 방법이 없는 상황에서 원인을 짐작할 수 없다.** 그래서 사람 말로 알려준다.
+//  ⚠️ `../lib/login-policy.ts`·`../lib/password.ts`에 `@/lib/...` 형태(경로 별칭) import가 생기면
+//     이 스크립트가 즉시 깨진다 — Node는 그 별칭을 모른다. 두 파일에 손댈 때 이 사실을 기억할 것.
+let hashPassword, EMAIL_MAX_LEN, PASSWORD_MAX_LEN;
+try {
+  ({ hashPassword } = await import("../lib/password.ts"));
+  ({ EMAIL_MAX_LEN, PASSWORD_MAX_LEN } = await import("../lib/login-policy.ts"));
+} catch (e) {
+  console.error("✖ 앱 코드를 불러오지 못했습니다.");
+  console.error(`  지금 Node 버전: ${process.version} — 이 명령은 Node 22.6 이상이 필요합니다.`);
+  console.error("  (원본 오류: " + (e instanceof Error ? e.message : String(e)) + ")");
+  process.exit(1);
+}
+
+// 🔴 최소 길이를 고객사(8자, app/actions/auth.ts signup)보다 **높게 잡았다** (검수 M-7).
+//    고객사 계정은 한 회사만 보고 재설정 창구도 있다. 운영자는 **회사 칸막이를 넘어 전 회원사를
+//    보는 유일한 계정**이고 재설정 창구가 없다. 세션을 8시간·30분으로 더 엄하게 잡은 판단과
+//    같은 이유로 여기도 더 엄해야 앞뒤가 맞는다.
+//    ⚠️ 30분 유휴 때문에 하루에 몇 번씩 다시 입력하게 되는데, 그 불편이 "짧고 뻔한 비번"을
+//       유도한다. 그래서 길이는 숫자로 강제하고, 아래에서 통문장(띄어쓰기 포함)을 권한다.
+const PASSWORD_MIN_LEN = 12;
 
 const prisma = new PrismaClient();
 
@@ -41,12 +62,26 @@ function usage() {
   console.log(`
 운영자 계정 관리
 
-  node scripts/create-operator.mjs "이메일" "비밀번호" "이름"   계정 만들기(있으면 비밀번호·이름 변경)
-  node scripts/create-operator.mjs --list                      계정 목록 보기
-  node scripts/create-operator.mjs --off "이메일"               계정 끄기
-  node scripts/create-operator.mjs --on  "이메일"               계정 켜기
+  node scripts/create-operator.mjs "이메일" "비밀번호" "이름"        새 계정 만들기
+  node scripts/create-operator.mjs --reset "이메일" "새 비밀번호"    비밀번호 바꾸기
+  node scripts/create-operator.mjs --list                          계정 목록(잠금 상태까지)
+  node scripts/create-operator.mjs --unlock "이메일"                잠금만 풀기
+  node scripts/create-operator.mjs --off "이메일"                   계정 끄기
+  node scripts/create-operator.mjs --on  "이메일"                   계정 켜기
+
+  ※ 비밀번호는 ${PASSWORD_MIN_LEN}자 이상. 기억하기 쉬운 통문장을 권합니다(띄어쓰기도 됩니다).
 `);
   process.exit(1);
+}
+
+/** 로그인 화면이 받아주는 이메일인가 — ASCII만. */
+//  🔴 왜 필요한가(검수 E-7): 로그인 화면의 입력칸은 <input type="email">이라 브라우저가
+//     한글이 든 주소(예: 운영자@가온.kr)의 제출을 **아예 막는다.** 여기서 통과시키면
+//     "만들어졌지만 로그인 화면에서 제출조차 안 되는 계정"이 생기고, 재설정 창구가 없어
+//     서버에서 다시 만드는 수밖에 없다.
+function isAsciiEmail(v) {
+  // eslint-disable-next-line no-control-regex
+  return /^[\x20-\x7E]+$/.test(v);
 }
 
 async function main() {
@@ -61,11 +96,37 @@ async function main() {
       return;
     }
     console.log(`운영자 계정 ${rows.length}개`);
+    const now = new Date();
     for (const r of rows) {
       const state = r.active ? "사용중" : "중지";
       const last = r.lastLoginAt ? r.lastLoginAt.toLocaleString("ko-KR") : "로그인 이력 없음";
-      console.log(`  · ${r.email}  (${r.name})  [${state}]  마지막 로그인: ${last}`);
+      // 🔴 잠금 상태를 함께 보여준다(검수 E-4). 안 보여주면 잠금 때문에 못 들어가는 상황에서
+      //    목록에는 [사용중]으로만 보여 **원인을 알 수 없다**(재설정 창구가 없어 더 답답해진다).
+      const locked = r.lockedUntil && r.lockedUntil > now
+        ? `  ⚠ 잠김(약 ${Math.max(1, Math.ceil((r.lockedUntil.getTime() - now.getTime()) / 60000))}분 남음 — --unlock 으로 풀 수 있음)`
+        : r.failedLoginCount > 0
+          ? `  (연속 실패 ${r.failedLoginCount}회)`
+          : "";
+      console.log(`  · ${r.email}  (${r.name})  [${state}]  마지막 로그인: ${last}${locked}`);
     }
+    return;
+  }
+
+  // ── 잠금 풀기 ──
+  //  🔴 왜 별도 명령이 필요한가(검수 M-6): 원래는 비밀번호를 다시 정하는 것만이 유일한 해제 방법이었다.
+  //     그런데 잠금은 **남이 틀려서도** 걸린다(이메일은 추측하기 쉽다). 잠겼을 때마다 비밀번호를
+  //     새로 정하게 만들면, 사장님이 쓰던 비밀번호를 계속 바꿔야 한다. 잠금만 푸는 길을 따로 둔다.
+  if (a === "--unlock") {
+    const email = (b ?? "").trim().toLowerCase();
+    if (!email) usage();
+    const found = await prisma.operator.findUnique({ where: { email } });
+    if (!found) {
+      console.error(`✖ 그런 운영자 계정이 없습니다: ${email}`);
+      process.exit(1);
+    }
+    await prisma.operator.update({ where: { email }, data: { failedLoginCount: 0, lockedUntil: null } });
+    console.log(`✔ 잠금을 풀었습니다: ${email}`);
+    if (!found.active) console.log("  ⚠ 다만 이 계정은 지금 **꺼져 있습니다.** --on 으로 켜야 로그인됩니다.");
     return;
   }
 
@@ -92,12 +153,21 @@ async function main() {
   }
 
   // ── 만들기 / 비밀번호 변경 ──
-  const email = a.trim().toLowerCase();
-  const password = b ?? "";
-  const name = (c ?? "").trim();
+  //  🔴 기존 계정의 비밀번호를 바꿀 때는 **--reset 을 반드시 붙여야 한다**(검수 E-6).
+  //     예전에는 이메일만 맞으면 조용히 덮어썼다. 운영자가 두 명일 때 이메일을 잘못 적으면
+  //     **동료의 비밀번호가 소리 없이 바뀌고 그 사람의 로그인이 전부 끊긴다.** 재설정 창구가
+  //     없으므로 그 동료는 서버에 들어오지 않고는 복구할 수 없다. 실수 한 번의 대가가 너무 크다.
+  const isReset = a === "--reset";
+  const email = (isReset ? (b ?? "") : a).trim().toLowerCase();
+  const password = (isReset ? c : b) ?? "";
+  const name = (isReset ? "" : (c ?? "")).trim();
 
   if (!email.includes("@") || email.length < 5) {
     console.error("✖ 이메일 형식이 올바르지 않습니다.");
+    process.exit(1);
+  }
+  if (!isAsciiEmail(email)) {
+    console.error("✖ 이메일에 한글·특수문자가 들어 있습니다. 로그인 화면이 받아주지 않으므로 영문 주소를 써주세요.");
     process.exit(1);
   }
   // 🔴 앱의 로그인이 이 길이를 넘으면 **비밀번호를 보기도 전에 거부**한다.
@@ -117,6 +187,20 @@ async function main() {
   }
 
   const existing = await prisma.operator.findUnique({ where: { email } });
+
+  // 실수 방어 — "만들기"로 기존 계정을 덮어쓰거나, "--reset"으로 없는 계정을 고치려는 경우.
+  if (existing && !isReset) {
+    console.error(`✖ 이미 있는 계정입니다: ${email}`);
+    console.error(`  비밀번호를 바꾸려면 --reset 을 붙여주세요:`);
+    console.error(`    node scripts/create-operator.mjs --reset "${email}" "새 비밀번호"`);
+    console.error(`  (잠금만 풀려면  --unlock "${email}" )`);
+    process.exit(1);
+  }
+  if (!existing && isReset) {
+    console.error(`✖ 그런 운영자 계정이 없습니다: ${email} (새로 만들려면 --reset 없이 이름까지 적어주세요)`);
+    process.exit(1);
+  }
+
   const passwordHash = hashPassword(password);
 
   if (existing) {
@@ -124,7 +208,6 @@ async function main() {
       where: { email },
       data: {
         passwordHash,
-        ...(name ? { name } : {}),
         // 비밀번호를 새로 정했으니 실패 횟수·잠금을 함께 푼다(잠겨서 못 들어오는 상태를 이 명령으로 구제).
         failedLoginCount: 0,
         lockedUntil: null,
@@ -134,6 +217,14 @@ async function main() {
     //    사람이 이미 열어 둔 창으로 계속 들어와 있을 수 있다(비밀번호 변경의 목적이 사라진다).
     const gone = await prisma.operatorSession.deleteMany({ where: { operatorId: existing.id } });
     console.log(`✔ 비밀번호를 새로 정했습니다: ${email} (열려 있던 로그인 ${gone.count}건 해제)`);
+    // 🔴 꺼진 계정은 **되살리지 않는다**(검수 M-2). 끄기는 "이 사람은 이제 못 들어온다"는 의사표시라,
+    //    비밀번호를 바꿨다는 이유로 조용히 되살리면 그 의사표시가 뒤집힌다.
+    //    대신 크게 알려 준다 — 안 알려주면 "성공했다는데 로그인이 안 된다"가 되어, 재설정 창구가
+    //    없는 이 계정에서 몇 번 더 시도하다 5회 잠금까지 걸린다.
+    if (!existing.active) {
+      console.log("  ⚠ 이 계정은 지금 **꺼져 있어 로그인되지 않습니다.** 쓰려면 이어서:");
+      console.log(`      node scripts/create-operator.mjs --on "${email}"`);
+    }
   } else {
     if (!name) {
       console.error("✖ 새 계정은 이름도 함께 적어주세요. 예: node scripts/create-operator.mjs \"me@example.com\" \"비밀번호\" \"홍길동\"");
@@ -142,7 +233,8 @@ async function main() {
     await prisma.operator.create({ data: { email, passwordHash, name } });
     console.log(`✔ 운영자 계정을 만들었습니다: ${email} (${name})`);
   }
-  console.log("  → 로그인 주소: http://localhost:3000/operator/login");
+  // ⚠️ 주소를 박아 넣지 않는다(검수 E-5) — 실제 서버에서 실행하면 localhost는 틀린 안내가 된다.
+  console.log(`  → 로그인 주소: ${(process.env.APP_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "")}/operator/login`);
 }
 
 main()
