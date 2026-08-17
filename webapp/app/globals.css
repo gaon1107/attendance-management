@@ -332,7 +332,10 @@ details.landing-faq[open] > summary .faq-chevron { transform: rotate(180deg); }
   from { opacity: 0; transform: translateY(26px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.landing-hero-rise img { animation: landing-hero-rise .9s cubic-bezier(.22,1,.36,1) both; }
+/* ⚠️ 재생 시간 1.4초는 LandingHeroFigure.tsx의 **받침 타이머(2000ms)와 짝**이다.
+      여기를 늘리면 그 타이머도 함께 늘릴 것 — 타이머가 먼저 울리면 애니메이션이 도중에 잘려
+      그림이 최종 위치로 툭 튄다. (0.9초였는데 2026-08-17 사장님이 "좀 더 느리게"라고 하셔서 늘렸다) */
+.landing-hero-rise img { animation: landing-hero-rise 1.4s cubic-bezier(.22,1,.36,1) both; }
 
 /* FAQ — 넓은 화면에선 방패 그림 + 질문 목록 2단, 좁아지면 그림을 빼고 한 줄로 */
 .landing-faq-grid { display: grid; grid-template-columns: 260px 1fr; gap: 40px; align-items: center; }

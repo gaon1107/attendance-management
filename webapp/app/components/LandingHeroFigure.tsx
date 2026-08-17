@@ -21,8 +21,10 @@
 //    등장이 재생되는 0.9초 동안은 기울기를 쉬게 하고(entering), 끝나면 클래스를 떼어 되돌려준다.
 import { useEffect, useRef, useState } from "react";
 
-// 사장님이 미리보기(0~14°)에서 고른 값. 여기 하나만 바꾸면 세기가 바뀐다.
-const TILT_MAX_DEG = 6;
+// 기울기 세기. 여기 하나만 바꾸면 된다.
+// 2026-08-17: 미리보기에서 6°로 골랐으나 **실제 화면에서 보니 약하다**는 사장님 판단으로 10°로 올렸다.
+//             (미리보기 상자가 실제 히어로보다 작아 같은 각도가 더 커 보였던 것으로 보인다)
+const TILT_MAX_DEG = 10;
 
 export function LandingHeroFigure() {
   const imgRef = useRef<HTMLImageElement>(null);
@@ -36,7 +38,9 @@ export function LandingHeroFigure() {
     reduceRef.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     // 받침 — 브라우저가 animationend를 놓치거나(탭이 뒤에 있을 때 등) 동작 줄이기로 애니메이션이
     // 아예 없으면 이벤트가 오지 않는다. 그때 기울기가 영구히 잠기는 것을 막는다.
-    const t = setTimeout(() => setEntering(false), 1200);
+    // ⚠️ 이 2000ms는 globals.css의 등장 재생 시간(1.4초)보다 **넉넉히 길어야 한다.**
+    //    먼저 울리면 애니메이션이 도중에 잘려 그림이 최종 위치로 툭 튄다. 둘은 짝이다.
+    const t = setTimeout(() => setEntering(false), 2000);
     return () => clearTimeout(t);
   }, []);
 
