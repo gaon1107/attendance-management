@@ -1051,3 +1051,59 @@ model WorkRecordPurgeLog {
 
   @@index([ranAt])
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  운영자(본사) 백오피스 — 우리가 **회원사(고객 회사)를 관리**하는 쪽. 2026-08-18 신설.
+//
+//  🔴 이 두 표는 고객사 쪽(User·Session)과 **일부러 완전히 분리**했다. 왜인지 반드시 읽을 것:
+//   ① `User.role === "admin"` 검사가 **66개 파일 117군데**에 흩어져 있다. 여기에 "운영자" 역할을
+//      더하면 그 전부를 손봐야 하고, 한 군데만 빠져도 그 화면이 뚫리거나 튕긴다.
+//      (회사 계정도 같은 이유로 새 역할을 안 만들고 isOwner 표시만 더했다 — User 모델 주석 참고)
+//   ② `User`는 반드시 어느 회사에 속해야 한다(companyId 필수). 운영자는 소속 회사가 **없다.**
+//      억지로 넣으면 그 회사의 근태·통계에 운영자가 섞여 들어간다.
+//   ③ 분리해 두면 **기존 로그인·권한 코드를 한 줄도 고치지 않는다** = 기존 기능 회귀 위험 0.
+//
+//  🔴 운영자는 **회사 칸막이(companyId 격리)를 넘어 전체를 보는** 유일한 계정이다.
+//     그래서 정책을 고객사보다 **더 엄하게** 잡았다(lib/operator-session.ts: 8시간·30분 유휴).
+//  🔴 비밀번호 재설정 창구를 **일부러 만들지 않았다.** 잊으면 다른 운영자 계정으로 들어가거나
+//     scripts/create-operator.mjs 로 새로 만든다(서버에 직접 접근할 수 있는 사람만 가능 = 그게 방어다).
+// ════════════════════════════════════════════════════════════════════════════
+
+/// 운영자 계정. 처음부터 **여러 명**을 전제로 한다(직원이 늘면 계정을 더 만든다).
+model Operator {
+  id           String    @id @default(cuid())
+  email        String    @unique // 로그인 아이디. 소문자로 저장한다(대소문자 섞인 중복 계정 방지).
+  passwordHash String // lib/password.ts(scrypt) 형식 "소금값:해시값". 원문은 저장하지 않는다.
+  name         String // 화면에 보이는 이름(접속기록에도 이 이름을 스냅샷으로 남긴다).
+  // 계정을 지우지 않고 끄는 스위치. 퇴사·권한 회수 시 false. 세션 조회에서도 매번 확인한다
+  //  → 끄는 즉시(다음 화면 이동에서) 로그인 상태가 끊긴다.
+  active       Boolean   @default(true)
+  // 비밀번호 찍기 방어 — 고객사(User)와 **같은 정책**(5회 실패 → 10분 잠금, lib/login-policy.ts 상수).
+  //  ⚠️ 쓰기 방식도 그쪽과 같아야 한다(원자적 increment + where 조건). lib/operator-policy.ts 참고.
+  failedLoginCount Int   @default(0)
+  lockedUntil  DateTime?
+  lastLoginAt  DateTime? // 마지막 로그인 성공 시각. 안 쓰는 계정을 찾아 끄는 근거.
+  createdAt    DateTime  @default(now())
+  sessions     OperatorSession[]
+}
+
+/// 운영자 로그인 세션. 고객사 Session과 표를 나눈 이유는 위 ①~③과 같다.
+model OperatorSession {
+  id         String    @id @default(cuid())
+  token      String    @unique // 쿠키에 담기는 무작위 토큰(32바이트). @unique이 곧 조회 색인이다.
+  operatorId String
+  // ⚠️ 감사기록(AccessEvent)과 달리 여기는 외래키로 묶는다 — 세션은 "지금 로그인 중"이라는 상태일
+  //    뿐이어서 계정이 사라지면 함께 사라져야 한다(남아 있으면 유령 로그인이 된다).
+  operator   Operator  @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  // 마지막 활동 시각(유휴 만료용). 고객사 Session.lastSeenAt과 같은 이유·같은 절약 규칙(5분에 한 번만 쓴다).
+  //  ⚠️ nullable이 아니다 — 이 표는 지금 새로 만들므로 "값이 없는 옛 세션"이 존재할 수 없다.
+  //     (고객사 쪽은 기능을 나중에 켜서 nullable이어야 했다)
+  lastSeenAt DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+
+  // "이 운영자의 세션 전부 삭제"(비밀번호 변경·계정 끄기)가 도는 자리.
+  @@index([operatorId])
+  // 만료된 세션 청소용. 없으면 청소할 때마다 표를 통째로 훑는다(AccessEvent가 createdAt 단독 색인을 둔 것과 같은 처방).
+  @@index([expiresAt])
+}
