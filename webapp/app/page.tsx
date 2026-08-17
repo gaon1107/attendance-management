@@ -289,10 +289,17 @@ export default async function Home() {
              ⚠️ 히어로 배경을 다시 파랗게 되돌린다면 이 그림자는 빼도 된다(선만으로 충분해진다). */}
       <header style={{ position: "sticky", top: 0, zIndex: 10, background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)", borderBottom: "1px solid var(--landing-border-strong,#CBD9F0)", boxShadow: "0 2px 8px rgba(15,23,42,0.08)" }}>
         <div style={{ maxWidth: WRAP, margin: "0 auto", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, padding: "0 24px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            <div style={logoBox(28, 7, 15)}>근</div>
-            <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em" }}>근태관리</span>
-          </div>
+          {/* 로고 — 2026-08-17 사장님 지시로 파란 "근" 네모 + "근태관리" 글자를 걷어내고 가온 로고 그림으로 바꿨다.
+              (그 둘을 만들던 `logoBox()` 헬퍼도 쓰는 곳이 없어져 함께 지웠다. 푸터도 같이 바뀌었다.)
+              ⚠️ 이 로고는 **투명 배경 PNG에서 뽑은 webp**다. 히어로 그림들처럼 흰 바탕으로 구워져 있지
+                 않으므로 `mix-blend-mode: multiply`를 붙이지 말 것 — 붙이면 파란 심볼이 배경색에 물든다.
+              ⚠️ width/height 속성은 **원본 크기(144×120)**를 그대로 적는다. 브라우저가 그 비율로 자리를
+                 미리 잡아 주어 그림이 늦게 와도 메뉴가 밀리지 않는다. 화면에 그리는 크기는 style의 height다.
+              ⚠️ 헤더 높이가 60px이라 로고 40px + 위아래 10px 여백이다. 로고를 더 키우려면 헤더 높이부터
+                 늘려야 한다(안 그러면 로고가 메뉴바를 꽉 채워 답답해진다).
+              ⚠️ 다시 뽑으려면 `node scripts/make-logo.mjs` (원본 경로까지 그 파일에 적혀 있다). */}
+          {/* eslint-disable-next-line @next/next/no-img-element -- 크기가 고정된 로고. 최적화 대상 아님 */}
+          <img src="/logo.webp" alt="가온" width={144} height={120} style={{ height: 40, width: "auto", display: "block", flexShrink: 0 }} />
           <nav className="landing-nav">
             {nav.map((n) => (
               <a key={n.href} href={n.href}>{n.label}</a>
@@ -885,10 +892,10 @@ export default async function Home() {
       <footer style={{ borderTop: "1px solid var(--landing-border,#DCE5F4)", background: "#FFFFFF" }}>
         <div style={{ maxWidth: WRAP, margin: "0 auto", padding: "28px 24px 34px" }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={logoBox(24, 6, 13)}>근</div>
-              <span style={{ fontSize: 14, fontWeight: 700 }}>근태관리</span>
-            </div>
+            {/* 로고 — 위 헤더와 같은 그림. 푸터는 자리가 넉넉하지만 헤더보다 **작게** 둔다
+                   (푸터 로고가 헤더보다 크면 시선이 아래로 쏠린다). 주의사항은 헤더 쪽 주석 참고. */}
+            {/* eslint-disable-next-line @next/next/no-img-element -- 크기가 고정된 로고. 최적화 대상 아님 */}
+            <img src="/logo.webp" alt="가온" width={144} height={120} style={{ height: 34, width: "auto", display: "block", flexShrink: 0 }} />
             {/* ⚠️ 이용약관·개인정보처리방침은 아직 페이지가 없다. 눌러도 아무 데도 안 가는 링크는 만들지 않는다.
                    페이지가 생기면 여기 글자를 <Link>로 바꾸면 된다.
                 ⚠️ 개인정보처리방침은 **개인정보보호법상 의무**다(얼굴=민감정보를 다루므로 더더욱).
@@ -1272,7 +1279,6 @@ const cmpCell: React.CSSProperties = {
 const eyebrow: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: "var(--primary)", marginBottom: 10, letterSpacing: "0.02em" };
 const h2: React.CSSProperties = { fontSize: "clamp(24px,4vw,34px)", fontWeight: 700, letterSpacing: "-0.02em", margin: 0 };
 
-function logoBox(size: number, radius: number, fontSize: number): React.CSSProperties {
-  return { width: size, height: size, borderRadius: radius, background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize, fontWeight: 700, flexShrink: 0 };
-}
 // ※ 브라우저 창 흉내 줄(신호등 3점)을 걷어내면서 그 점을 만들던 dot() 함수도 함께 지웠다(2026-08-09).
+// ※ 파란 "근" 네모를 만들던 logoBox() 함수도 2026-08-17에 지웠다 — 헤더·푸터 로고가 모두 가온 로고
+//    그림(/logo.webp)으로 바뀌어 쓰는 곳이 없어졌다. 되살릴 일이 생기면 그 커밋에서 꺼내 올 것.
