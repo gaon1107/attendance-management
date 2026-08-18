@@ -1,5 +1,5 @@
 "use client";
-// 폰(좁은 화면) 전용 메뉴 서랍 — 상단바 [☰]로 열고, 뒷배경·[✕]·ESC·메뉴 선택으로 닫는다.
+// 좁은 화면(폰·태블릿) 전용 메뉴 서랍 — 상단바 [☰]로 열고, 뒷배경·[✕]·ESC·메뉴 선택으로 닫는다.
 //
 // ⚠️ 왜 클라이언트 컴포넌트인가:
 //    Sidebar는 **서버 컴포넌트**라 "열림/닫힘" 같은 클릭 상태를 스스로 가질 수 없다.
@@ -42,7 +42,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
     // 스크롤 잠금은 **CSS 클래스**로 건다(직접 style.overflow를 만지지 않는다).
     //  ⚠️ 이유: 서랍을 연 채 창이 넓어지면 서랍·닫기버튼이 CSS로 사라지는데, 그때 잠금이 남으면
     //     화면이 스크롤도 안 되고 닫을 방법도 없는 상태가 된다(검수 중간 2).
-    //     클래스 + @media(≤900px) 조합이면 넓어지는 순간 잠금이 **저절로** 풀린다(아래 matchMedia가
+    //     클래스 + @media(≤1200px) 조합이면 넓어지는 순간 잠금이 **저절로** 풀린다(아래 matchMedia가
     //     혹시 동작하지 않아도 안전). globals.css의 `body.nav-locked`와 짝이다.
     document.body.classList.add("nav-locked");
     const main = document.querySelector(".app-main");
@@ -59,15 +59,15 @@ export function NavProvider({ children }: { children: ReactNode }) {
 
   // 🔴 열어 둔 채로 화면이 넓어지면(태블릿 가로 회전·창 넓히기) CSS가 [☰]·[✕]·뒷배경을 모두
   //    숨겨 버려, 닫을 방법이 화면에서 사라지고 본문 스크롤만 잠긴 채 남는다(검수 중간 2).
-  //    → 서랍이 사라지는 폭(901px 이상)이 되면 상태도 같이 닫는다.
-  //    ⚠️ 이 901은 globals.css의 @media (max-width: 900px)와 짝이다. 한쪽만 바꾸면 다시 갇힌다.
+  //    → 서랍이 사라지는 폭(1201px 이상)이 되면 상태도 같이 닫는다.
+  //    ⚠️ 이 1201은 globals.css의 @media (max-width: 1200px)와 짝이다. 한쪽만 바꾸면 다시 갇힌다.
   useEffect(() => {
     if (!open) return;
-    //  ※ "열 때 이미 넓은 경우"는 따로 막지 않는다 — [☰] 자체가 ≤900px에서만 보이므로
+    //  ※ "열 때 이미 넓은 경우"는 따로 막지 않는다 — [☰] 자체가 ≤1200px에서만 보이므로
     //     넓은 화면에서는 애초에 열 수 없다(여기서 상태를 바꾸면 렌더가 두 번 돈다).
-    const mq = window.matchMedia("(min-width: 901px)");
+    const mq = window.matchMedia("(min-width: 1201px)");
     const closeIfWide = () => {
-      if (window.innerWidth > 900) setOpen(false);
+      if (window.innerWidth > 1200) setOpen(false);
     };
     const onChange = (e: MediaQueryListEvent) => {
       if (e.matches) setOpen(false);
@@ -107,7 +107,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** 상단바 왼쪽 [☰] 버튼. 폰(≤900px)에서만 보인다(보이고 숨기는 건 globals.css). */
+/** 상단바 왼쪽 [☰] 버튼. 좁은 화면(≤1200px)에서만 보인다(보이고 숨기는 건 globals.css). */
 export function NavOpenButton() {
   const ctx = useContext(NavCtx);
   if (!ctx) return null; // NavProvider 밖에서 잘못 쓰면 조용히 아무것도 안 그린다(화면이 깨지지 않게).
