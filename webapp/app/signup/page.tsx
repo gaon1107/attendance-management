@@ -104,20 +104,20 @@ export default function SignupPage() {
         <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <div>
             <label style={labelStyle}>회사명</label>
-            <input name="companyName" type="text" placeholder="㈜하늘테크" style={inputStyle} value={form.companyName} onChange={set("companyName")} />
+            <input name="companyName" type="text" placeholder="예시) ㈜하늘테크" style={inputStyle} value={form.companyName} onChange={set("companyName")} />
           </div>
           <div>
             <label style={labelStyle}>사업자등록번호</label>
-            <input name="bizRegNo" type="text" inputMode="numeric" placeholder="123-45-67890" style={inputStyle} value={form.bizRegNo} onChange={set("bizRegNo")} />
+            <input name="bizRegNo" type="text" inputMode="numeric" placeholder="예시) 123-45-67890" style={inputStyle} value={form.bizRegNo} onChange={set("bizRegNo")} />
             <div style={hintStyle}>국세청에 등록된 사업자인지 자동으로 확인합니다.</div>
           </div>
           <div>
             <label style={labelStyle}>담당자 이름</label>
-            <input name="managerName" type="text" placeholder="홍길동" style={inputStyle} value={form.managerName} onChange={set("managerName")} />
+            <input name="managerName" type="text" placeholder="예시) 홍길동" style={inputStyle} value={form.managerName} onChange={set("managerName")} />
           </div>
           <div>
             <label style={labelStyle}>담당자 연락처</label>
-            <input name="managerPhone" type="tel" inputMode="tel" placeholder="010-1234-5678" style={inputStyle} value={form.managerPhone} onChange={set("managerPhone")} />
+            <input name="managerPhone" type="tel" inputMode="tel" placeholder="예시) 010-1234-5678" style={inputStyle} value={form.managerPhone} onChange={set("managerPhone")} />
           </div>
           {/* ⚠️ autoComplete: 브라우저가 **로그인 화면에 저장해 둔 아이디·비밀번호를 여기 채우는 것**을 막는다.
               로그인 화면과 입력칸 이름(name="email"/"password")·종류가 똑같아, 크롬은 같은 로그인 칸으로 보고
@@ -132,7 +132,7 @@ export default function SignupPage() {
                  제출은 DOM에서 읽는다. 그래서 브라우저 힌트로 막는 이 방법이 맞다. */}
           <div>
             <label style={labelStyle}>회사 계정 이메일 (로그인 아이디)</label>
-            <input name="email" type="email" autoComplete="username" placeholder="admin@skytech.co.kr" style={inputStyle} value={form.email} onChange={set("email")} />
+            <input name="email" type="email" autoComplete="username" placeholder="예시) admin@skytech.co.kr" style={inputStyle} value={form.email} onChange={set("email")} />
           </div>
           <div>
             <label style={labelStyle}>비밀번호</label>
