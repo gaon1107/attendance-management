@@ -23,12 +23,12 @@ export function TripRequestForm() {
 
       <div>
         <label style={labelStyle}>출장지</label>
-        <input name="destination" type="text" required maxLength={200} placeholder="예: 부산 지사, 대전 고객사 등" style={inputStyle} />
+        <input name="destination" type="text" required maxLength={200} placeholder="예시) 부산 지사, 대전 고객사 등" style={inputStyle} />
       </div>
 
       <div>
         <label style={labelStyle}>목적/사유 (선택)</label>
-        <input name="reason" type="text" placeholder="예: 설비 점검, 계약 미팅 등" style={inputStyle} />
+        <input name="reason" type="text" placeholder="예시) 설비 점검, 계약 미팅 등" style={inputStyle} />
       </div>
 
       <AttachmentField requestType="trip" submit={state} />

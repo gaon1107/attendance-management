@@ -27,7 +27,7 @@ export function JobGradeManager({ grades }: { grades: GradeRow[] }) {
         <input
           name="name"
           type="text"
-          placeholder="직급 이름 (예: 대리)"
+          placeholder="직급 이름 (예시: 대리)"
           maxLength={30}
           style={{ flex: 1, minWidth: 160, height: 40, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 14, background: "#fff", color: "var(--text)" }}
         />

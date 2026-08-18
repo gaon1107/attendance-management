@@ -89,7 +89,7 @@ export function BlockedIpClient({
                 id="pattern"
                 name="pattern"
                 style={input}
-                placeholder="예: 1.2.3.4 (한 대) 또는 1.2.3 (1.2.3.* 전체)"
+                placeholder="예시) 1.2.3.4 (한 대) 또는 1.2.3 (1.2.3.* 전체)"
                 value={pattern}
                 onChange={(e) => setPattern(e.target.value)}
               />
@@ -109,7 +109,7 @@ export function BlockedIpClient({
                 id="reason"
                 name="reason"
                 style={input}
-                placeholder="예: 심야에 비밀번호 반복 시도"
+                placeholder="예시) 심야에 비밀번호 반복 시도"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
               />

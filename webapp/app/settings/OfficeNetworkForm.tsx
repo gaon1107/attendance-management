@@ -51,7 +51,7 @@ export function OfficeNetworkForm({
             type="text"
             value={ips}
             onChange={(e) => setIps(e.target.value)}
-            placeholder="예: 203.0.113.5, 203.0.113."
+            placeholder="예시) 203.0.113.5, 203.0.113."
             style={{ width: "100%", height: 44, padding: "0 14px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 15, outline: "none" }}
           />
         </div>

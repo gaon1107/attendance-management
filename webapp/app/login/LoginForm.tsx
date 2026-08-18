@@ -73,7 +73,7 @@ export function LoginForm({ signedInName, mustChange }: { signedInName: string |
       <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
         <div>
           <label style={labelStyle}>이메일</label>
-          <input name="email" type="email" placeholder="admin@skytech.co.kr" style={inputStyle} />
+          <input name="email" type="email" placeholder="예시) admin@skytech.co.kr" style={inputStyle} />
         </div>
         <div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>

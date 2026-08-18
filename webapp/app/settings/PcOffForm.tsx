@@ -112,7 +112,7 @@ export function PcOffForm({ initial }: Props) {
             <label htmlFor="pcoff-notify" style={labelStyle}>미리 알림 (분 전, 쉼표로 구분)</label>
             <input
               id="pcoff-notify" name="pcOffNotifyMins" type="text" value={notify}
-              onChange={(e) => setNotify(e.target.value)} placeholder="10,5" style={inputStyle}
+              onChange={(e) => setNotify(e.target.value)} placeholder="예시) 10,5" style={inputStyle}
             />
             <p style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 6, lineHeight: 1.5, wordBreak: "keep-all" }}>
               {notifyPreview.length > 0
@@ -156,7 +156,7 @@ export function PcOffForm({ initial }: Props) {
           <label htmlFor="pcoff-reasons" style={labelStyle}>일시사용 사유 목록 (쉼표로 구분)</label>
           <input
             id="pcoff-reasons" name="pcOffTempReasons" type="text" value={reasons}
-            onChange={(e) => setReasons(e.target.value)} placeholder="긴급 장애 대응, 고객 요청 마감, 결재자 부재, 기타" style={inputStyle}
+            onChange={(e) => setReasons(e.target.value)} placeholder="예시) 긴급 장애 대응, 고객 요청 마감, 결재자 부재, 기타" style={inputStyle}
           />
           <p style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 6, lineHeight: 1.5, wordBreak: "keep-all" }}>
             잠금화면에서 직원이 고를 항목입니다({reasonPreview.length}개). 항목 구분에 쓰이므로 <b>사유 안에 쉼표는 넣을 수 없습니다</b>.

@@ -313,7 +313,7 @@ function DayModal({ iso, data, canManageCompany, onClose }: { iso: string; data:
           {/* 추가 폼 — 관리자=회사 일정 / 직원=내 개인 일정 */}
           <form action={addEvAction} style={{ display: "flex", gap: 8 }}>
             <input type="hidden" name="date" value={iso} />
-            <input name="title" required placeholder={canManageCompany ? "회사 일정 내용(예: 월례회의)" : "내 일정 내용(예: 병원 예약)"} maxLength={100} style={{ flex: 1, height: 40, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 14, outline: "none" }} />
+            <input name="title" required placeholder={canManageCompany ? "회사 일정 내용(예시: 월례회의)" : "내 일정 내용(예시: 병원 예약)"} maxLength={100} style={{ flex: 1, height: 40, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 14, outline: "none" }} />
             <button type="submit" disabled={addEvPending} style={{ height: 40, padding: "0 18px", border: "none", borderRadius: 8, background: canManageCompany ? "var(--primary)" : PERSONAL_BG, color: "#fff", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: addEvPending ? "default" : "pointer", opacity: addEvPending ? 0.6 : 1, whiteSpace: "nowrap" }}>{canManageCompany ? "추가" : "내 일정 추가"}</button>
           </form>
           {!canManageCompany && <div style={{ fontSize: 11, color: "var(--text-sub)", marginTop: 6 }}>회사 일정·휴무일은 관리자만 등록합니다. 여기서 추가하면 <b>나만 보는 개인 일정</b>이 됩니다.</div>}
@@ -350,7 +350,7 @@ function NoticeCompose({ onDone, defaultDate }: { onDone: () => void; defaultDat
         <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#92400E", marginBottom: 6 }}>표시 날짜 <span style={{ fontWeight: 400, color: "var(--text-sub)" }}>(이 날짜 칸에 공지가 표시됩니다 · 기본 오늘)</span></label>
         <DatePicker name="date" defaultValue={defaultDate} allowClear={false} placeholder="날짜 선택" />
       </div>
-      <input name="title" type="text" placeholder="공지 제목 (예: 7월 워크샵 안내)" maxLength={100} style={inputStyle} />
+      <input name="title" type="text" placeholder="공지 제목 (예시: 7월 워크샵 안내)" maxLength={100} style={inputStyle} />
       <textarea name="body" rows={3} maxLength={5000} placeholder="공지 내용을 입력하세요." style={{ ...inputStyle, height: "auto", padding: "10px 12px", resize: "vertical", lineHeight: 1.6 }} />
       {state?.error && <div style={{ fontSize: 12, color: "var(--danger)", fontWeight: 700 }}>{state.error}</div>}
       {state?.ok && <div style={{ fontSize: 12, color: "var(--success)", fontWeight: 700 }}>공지를 등록했습니다.</div>}

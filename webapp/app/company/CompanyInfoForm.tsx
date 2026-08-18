@@ -69,9 +69,9 @@ export function CompanyInfoForm({ initial }: { initial: CompanyInitial }) {
       <div style={cardStyle}>
         <div style={cardTitle}>기본 정보</div>
         <div style={rowStyle}>
-          <Field label="회사명 *" name="name" defaultValue={initial.name} placeholder="㈜하늘테크" />
+          <Field label="회사명 *" name="name" defaultValue={initial.name} placeholder="예시) ㈜하늘테크" />
           <div>
-            <Field label="사업자등록번호" name="bizRegNo" defaultValue={initial.bizRegNo} placeholder="123-12-12345" />
+            <Field label="사업자등록번호" name="bizRegNo" defaultValue={initial.bizRegNo} placeholder="예시) 123-12-12345" />
             {/* 가입할 때 국세청에 확인한 결과. 확인 서버에 닿지 못했으면 "보류"로 남는다(가입은 막지 않는다). */}
             {initial.bizRegVerifiedLabel && (
               <div style={{ fontSize: 12, marginTop: 6, fontWeight: 700, color: initial.bizRegVerifiedLabel.includes("확인됨") ? "#15803D" : "#B45309" }}>
@@ -82,9 +82,9 @@ export function CompanyInfoForm({ initial }: { initial: CompanyInitial }) {
           <Field label="법인등록번호" name="corpRegNo" defaultValue={initial.corpRegNo} />
         </div>
         <div style={{ ...rowStyle, marginBottom: 0 }}>
-          <Field label="대표자" name="ceoName" defaultValue={initial.ceoName} placeholder="홍길동" />
-          <Field label="업태" name="bizType" defaultValue={initial.bizType} placeholder="제조업" />
-          <Field label="종목" name="bizItem" defaultValue={initial.bizItem} placeholder="금형" />
+          <Field label="대표자" name="ceoName" defaultValue={initial.ceoName} placeholder="예시) 홍길동" />
+          <Field label="업태" name="bizType" defaultValue={initial.bizType} placeholder="예시) 제조업" />
+          <Field label="종목" name="bizItem" defaultValue={initial.bizItem} placeholder="예시) 금형" />
         </div>
       </div>
 
@@ -94,7 +94,7 @@ export function CompanyInfoForm({ initial }: { initial: CompanyInitial }) {
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 14 }}>
           <div style={{ width: 160 }}>
             <label style={labelStyle}>우편번호</label>
-            <input name="zipCode" type="text" value={zipCode} onChange={(e) => setZipCode(e.target.value)} placeholder="12345" style={inputStyle} readOnly />
+            <input name="zipCode" type="text" value={zipCode} onChange={(e) => setZipCode(e.target.value)} placeholder="예시) 12345" style={inputStyle} readOnly />
           </div>
           <PostcodeButton onComplete={(z, a) => { setZipCode(z); setAddress(a); }} />
         </div>
@@ -107,11 +107,11 @@ export function CompanyInfoForm({ initial }: { initial: CompanyInitial }) {
           <input name="addressDetail" type="text" defaultValue={initial.addressDetail ?? ""} placeholder="동·층·호수 등" style={inputStyle} />
         </div>
         <div style={rowStyle}>
-          <Field label="대표전화" name="companyPhone" type="tel" defaultValue={initial.companyPhone} placeholder="02-1234-5678" />
+          <Field label="대표전화" name="companyPhone" type="tel" defaultValue={initial.companyPhone} placeholder="예시) 02-1234-5678" />
           <Field label="팩스" name="companyFax" type="tel" defaultValue={initial.companyFax} />
         </div>
         <div style={{ ...rowStyle, marginBottom: 0 }}>
-          <Field label="대표 이메일" name="companyEmail" type="email" defaultValue={initial.companyEmail} placeholder="info@company.co.kr" />
+          <Field label="대표 이메일" name="companyEmail" type="email" defaultValue={initial.companyEmail} placeholder="예시) info@company.co.kr" />
           <Field label="홈페이지" name="website" defaultValue={initial.website} placeholder="https://" />
         </div>
       </div>
@@ -120,11 +120,11 @@ export function CompanyInfoForm({ initial }: { initial: CompanyInitial }) {
       <div style={cardStyle}>
         <div style={cardTitle}>담당자 (근태 담당)</div>
         <div style={rowStyle}>
-          <Field label="담당자 이름" name="managerName" defaultValue={initial.managerName} placeholder="김담당" />
-          <Field label="직책" name="managerTitle" defaultValue={initial.managerTitle} placeholder="과장" />
+          <Field label="담당자 이름" name="managerName" defaultValue={initial.managerName} placeholder="예시) 김담당" />
+          <Field label="직책" name="managerTitle" defaultValue={initial.managerTitle} placeholder="예시) 과장" />
         </div>
         <div style={{ ...rowStyle, marginBottom: 0 }}>
-          <Field label="담당 연락처" name="managerPhone" type="tel" defaultValue={initial.managerPhone} placeholder="010-1234-5678" />
+          <Field label="담당 연락처" name="managerPhone" type="tel" defaultValue={initial.managerPhone} placeholder="예시) 010-1234-5678" />
           {/* ⚠️ 이 번호는 **연락처 표시용**이다. 회사 계정 비밀번호를 되찾는 기준(복구용 연락처)과는
               별개이며, 가입 이후 두 값은 갈라진다. 이 안내가 없으면 담당자가 바뀔 때 여기만 고치고
               복구용 번호는 옛날 것으로 남아, 아무도 틀렸다는 걸 모른 채 회사가 잠긴다(검수 M-5). */}

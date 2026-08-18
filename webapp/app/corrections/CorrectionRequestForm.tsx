@@ -57,7 +57,7 @@ export function CorrectionRequestForm() {
       </div>
       <div>
         <label style={labelStyle}>정정 사유</label>
-        <input name="reason" type="text" placeholder="예: 출근 체크를 깜빡했습니다" style={inputStyle} />
+        <input name="reason" type="text" placeholder="예시) 출근 체크를 깜빡했습니다" style={inputStyle} />
       </div>
 
       {state?.error && <div style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700 }}>{state.error}</div>}

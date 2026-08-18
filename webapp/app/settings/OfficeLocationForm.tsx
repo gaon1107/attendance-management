@@ -121,11 +121,11 @@ export function OfficeLocationForm({
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 140 }}>
             <label style={labelStyle}>위도(latitude)</label>
-            <input name="lat" type="text" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="37.5665" style={inputStyle} />
+            <input name="lat" type="text" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="예시) 37.5665" style={inputStyle} />
           </div>
           <div style={{ flex: 1, minWidth: 140 }}>
             <label style={labelStyle}>경도(longitude)</label>
-            <input name="lng" type="text" value={lng} onChange={(e) => setLng(e.target.value)} placeholder="126.9780" style={inputStyle} />
+            <input name="lng" type="text" value={lng} onChange={(e) => setLng(e.target.value)} placeholder="예시) 126.9780" style={inputStyle} />
           </div>
           <div style={{ width: 140 }}>
             <label style={labelStyle}>허용 반경(m)</label>

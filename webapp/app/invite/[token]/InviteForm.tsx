@@ -25,11 +25,11 @@ export function InviteForm({ token }: { token: string }) {
       <input type="hidden" name="token" value={token} />
       <div>
         <label style={labelStyle}>이름</label>
-        <input name="name" type="text" placeholder="홍길동" style={inputStyle} />
+        <input name="name" type="text" placeholder="예시) 홍길동" style={inputStyle} />
       </div>
       <div>
         <label style={labelStyle}>이메일</label>
-        <input name="email" type="email" placeholder="me@company.co.kr" style={inputStyle} />
+        <input name="email" type="email" placeholder="예시) me@company.co.kr" style={inputStyle} />
       </div>
       <div>
         <label style={labelStyle}>비밀번호 (8자 이상)</label>
@@ -43,11 +43,11 @@ export function InviteForm({ token }: { token: string }) {
         </div>
         <div>
           <label style={labelStyle}>전화번호</label>
-          <input name="phone" type="tel" autoComplete="tel" placeholder="010-1234-5678" style={inputStyle} />
+          <input name="phone" type="tel" autoComplete="tel" placeholder="예시) 010-1234-5678" style={inputStyle} />
         </div>
         <div>
           <label style={labelStyle}>사번</label>
-          <input name="employeeNo" type="text" placeholder="예: 2024-017" style={inputStyle} />
+          <input name="employeeNo" type="text" placeholder="예시) 2024-017" style={inputStyle} />
         </div>
         <div>
           <label style={labelStyle}>입사일</label>

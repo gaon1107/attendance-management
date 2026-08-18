@@ -24,7 +24,7 @@ export function NoticeForm() {
     >
       <div>
         <label style={labelStyle}>제목</label>
-        <input name="title" type="text" placeholder="예: 7월 워크샵 안내" style={inputStyle} />
+        <input name="title" type="text" placeholder="예시) 7월 워크샵 안내" style={inputStyle} />
       </div>
       <div>
         <label style={labelStyle}>내용</label>

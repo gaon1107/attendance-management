@@ -23,7 +23,7 @@ export function RemoteRequestForm() {
 
       <div>
         <label style={labelStyle}>사유 (선택)</label>
-        <input name="reason" type="text" placeholder="예: 자녀 돌봄, 원격 협업 등" style={inputStyle} />
+        <input name="reason" type="text" placeholder="예시) 자녀 돌봄, 원격 협업 등" style={inputStyle} />
       </div>
 
       <AttachmentField requestType="remote" submit={state} />

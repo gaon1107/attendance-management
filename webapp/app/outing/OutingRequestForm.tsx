@@ -52,12 +52,12 @@ export function OutingRequestForm() {
 
       <div>
         <label style={labelStyle}>행선지 (선택)</label>
-        <input name="place" type="text" placeholder="예: 거래처, 은행, 관공서 등" style={inputStyle} />
+        <input name="place" type="text" placeholder="예시) 거래처, 은행, 관공서 등" style={inputStyle} />
       </div>
 
       <div>
         <label style={labelStyle}>사유 (선택)</label>
-        <input name="reason" type="text" placeholder="예: 자재 수령, 업무 미팅 등" style={inputStyle} />
+        <input name="reason" type="text" placeholder="예시) 자재 수령, 업무 미팅 등" style={inputStyle} />
       </div>
 
       <AttachmentField requestType="outing" submit={state} />

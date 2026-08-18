@@ -53,7 +53,7 @@ export function RejectButton({
             required
             autoFocus
             rows={3}
-            placeholder="예: 해당 기간 인력이 부족하여 반려합니다."
+            placeholder="예시) 해당 기간 인력이 부족하여 반려합니다."
             style={{
               width: "100%",
               boxSizing: "border-box",

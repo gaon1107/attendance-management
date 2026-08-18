@@ -42,7 +42,7 @@ export function ProfileForm({
       <input type="hidden" name="id" value={id} />
       <div>
         <label style={labelStyle}>전화번호</label>
-        <input name="phone" type="tel" defaultValue={initialPhone} placeholder="010-1234-5678" style={inputStyle} />
+        <input name="phone" type="tel" defaultValue={initialPhone} placeholder="예시) 010-1234-5678" style={inputStyle} />
       </div>
       <div style={{ display: "flex", gap: 12 }}>
         <div style={{ flex: 1 }}>
@@ -54,7 +54,7 @@ export function ProfileForm({
         </div>
         <div style={{ flex: 1 }}>
           <label style={labelStyle}>사번</label>
-          <input name="employeeNo" type="text" defaultValue={initialEmployeeNo} placeholder="예: 2024-017" style={inputStyle} />
+          <input name="employeeNo" type="text" defaultValue={initialEmployeeNo} placeholder="예시) 2024-017" style={inputStyle} />
         </div>
       </div>
       <p style={{ fontSize: 12, color: "var(--text-sub)", marginTop: -4, lineHeight: 1.5 }}>

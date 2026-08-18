@@ -178,7 +178,7 @@ export function DepartmentManager({
 
       {/* 부서 추가 */}
       <form action={formAction} style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <input name="name" type="text" placeholder="부서 이름 (예: 영업팀)" style={{ ...inputStyle, flex: "1 1 200px" }} />
+        <input name="name" type="text" placeholder="부서 이름 (예시: 영업팀)" style={{ ...inputStyle, flex: "1 1 200px" }} />
         <button
           type="submit"
           disabled={pending}

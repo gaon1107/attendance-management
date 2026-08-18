@@ -217,7 +217,7 @@ function CodePanel({ onSwitchToAdmin }: { onSwitchToAdmin: () => void }) {
                 type="text"
                 inputMode="numeric"
                 maxLength={4}
-                placeholder="예: 5678"
+                placeholder="예시) 5678"
                 style={inputStyle}
                 value={phoneTail}
                 onChange={(e) => setPhoneTail(e.target.value.replace(/[^0-9]/g, ""))}

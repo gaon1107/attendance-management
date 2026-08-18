@@ -76,7 +76,7 @@ export function InviteLink({ path, inviteId, smsSent }: { path: string; inviteId
             inputMode="numeric"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            placeholder="받는 사람 휴대폰 번호 (예: 010-1234-5678)"
+            placeholder="받는 사람 휴대폰 번호 (예시: 010-1234-5678)"
             style={{ flex: 1, minWidth: 0, height: 36, padding: "0 12px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 13 }}
           />
           <button

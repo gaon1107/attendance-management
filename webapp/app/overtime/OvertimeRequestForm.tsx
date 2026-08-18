@@ -45,7 +45,7 @@ export function OvertimeRequestForm() {
 
       <div>
         <label style={labelStyle}>사유 (선택)</label>
-        <input name="reason" type="text" placeholder="예: 마감 대응, 긴급 장애 처리 등" style={inputStyle} />
+        <input name="reason" type="text" placeholder="예시) 마감 대응, 긴급 장애 처리 등" style={inputStyle} />
       </div>
 
       <AttachmentField requestType="overtime" submit={state} />

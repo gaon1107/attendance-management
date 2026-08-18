@@ -81,7 +81,7 @@ export function HolidayForm({
           <div style={{ width: 170 }}>
             <DatePicker name="date" placeholder="날짜 선택" allowClear={false} />
           </div>
-          <input name="name" type="text" required placeholder="휴무일 이름(예: 창립기념일)" maxLength={50} style={{ ...inputStyle, flex: 1, minWidth: 180 }} />
+          <input name="name" type="text" required placeholder="휴무일 이름(예시: 창립기념일)" maxLength={50} style={{ ...inputStyle, flex: 1, minWidth: 180 }} />
           <button type="submit" disabled={addPending}
             style={{ height: 44, border: "none", borderRadius: 8, background: "var(--primary)", color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: addPending ? "default" : "pointer", opacity: addPending ? 0.6 : 1, padding: "0 20px", whiteSpace: "nowrap" }}>
             {addPending ? "추가 중..." : "추가"}

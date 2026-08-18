@@ -219,7 +219,7 @@ export function RecoveryPhoneCard({
               name="phone"
               type="tel"
               inputMode="tel"
-              placeholder="010-1234-5678"
+              placeholder="예시) 010-1234-5678"
               autoComplete="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}

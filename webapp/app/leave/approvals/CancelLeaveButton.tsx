@@ -151,7 +151,7 @@ export function CancelLeaveButton({
             required
             autoFocus
             rows={3}
-            placeholder="예: 결재자가 잘못 승인하여 취소합니다."
+            placeholder="예시) 결재자가 잘못 승인하여 취소합니다."
             style={{
               width: "100%",
               boxSizing: "border-box",

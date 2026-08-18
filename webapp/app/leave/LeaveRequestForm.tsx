@@ -42,7 +42,7 @@ export function LeaveRequestForm() {
 
       <div>
         <label style={labelStyle}>사유 (선택)</label>
-        <input name="reason" type="text" placeholder="예: 개인 사정, 병원 진료 등" style={inputStyle} />
+        <input name="reason" type="text" placeholder="예시) 개인 사정, 병원 진료 등" style={inputStyle} />
       </div>
 
       {state?.error && <div style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700 }}>{state.error}</div>}
