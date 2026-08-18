@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { Sidebar, type NavKey } from "@/app/components/Sidebar";
 import { LogoutButton } from "@/app/components/LogoutButton";
 import { NotificationBell } from "@/app/components/NotificationBell";
+import { NavProvider, NavOpenButton } from "@/app/components/MobileNav";
 
 // ⚠️ isOwner를 여기 적어 두는 이유: 사이드바가 이 값으로 "내 근태" 묶음을 줄지 정한다.
 //    타입에 없으면 어느 화면에서 user를 줄여 넘겨도 tsc가 통과해, 회사 계정에 근태 메뉴가 조용히 되살아난다(검수 2차 10).
@@ -34,11 +35,15 @@ export function AppShell({
   if (user.mustChangePassword) redirect("/change-password");
 
   return (
-    <div className="app-row">
+    // NavProvider가 .app-row를 대신 그린다 — 폰에서 [☰]로 여는 메뉴 서랍의 열림 상태를 들고 있어야 해서다.
+    // (Sidebar는 그대로 서버 컴포넌트로 통과한다. 사이드바 내용·권한·조회는 하나도 바뀌지 않는다.)
+    <NavProvider>
       <Sidebar user={user} active={active} />
       <main className="app-main">
         <header className="app-topbar">
           <div className="app-topbar-title">
+            {/* 폰에서만 보이는 메뉴 열기 버튼(PC에서는 CSS로 숨김) */}
+            <NavOpenButton />
             <span style={{ fontSize: 18, fontWeight: 700, whiteSpace: "nowrap" }}>{title}</span>
             {subtitle && (
               <span style={{ fontSize: 13, color: "#9CA3AF", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -55,6 +60,6 @@ export function AppShell({
         </header>
         <div className="page">{children}</div>
       </main>
-    </div>
+    </NavProvider>
   );
 }

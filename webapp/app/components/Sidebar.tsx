@@ -241,11 +241,10 @@ export async function Sidebar({ user, active }: { user: NavUser; active: NavKey 
       style={{
         flexShrink: 0,
         background: "var(--rail)",
-        // 화면 높이에 고정하고 자기 자리를 지킨다(길이가 긴 본문에서도 사이드바는 항상 보임).
-        // 메뉴가 화면보다 길면 nav만 내부 스크롤 → 맨 아래 프로필과 겹치지 않는다.
-        height: "100vh",
-        position: "sticky",
-        top: 0,
+        // ⚠️ height/position/top은 **globals.css의 .rail**에 있다(인라인 금지).
+        //    인라인 style은 CSS를 항상 이겨서, 폰(≤900px)에서 서랍(position:fixed)으로
+        //    바뀌어야 하는 규칙이 통째로 먹히지 않는다. 화면 크기별 동작은 CSS만 할 수 있다.
+        //    (기존 동작 그대로: 화면 높이에 고정 + sticky. 메뉴가 길면 nav만 내부 스크롤.)
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
