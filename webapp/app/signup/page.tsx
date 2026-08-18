@@ -1,6 +1,6 @@
 "use client";
 // 회사 회원가입 화면 — 디자인 시안 "회사 회원가입"의 담백한 카드 폼.
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import Link from "next/link";
 import { signup } from "@/app/actions/auth";
 
@@ -50,6 +50,76 @@ export default function SignupPage() {
   const [agreePrivacy, setAgreePrivacy] = useState(false);
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  // ── 사업자등록번호 즉시 확인 ────────────────────────────────────────────
+  //  칸을 벗어나거나 10자리가 채워지면 바로 확인해 결과를 칸 아래에 보여준다.
+  //  🔴 이건 **안내일 뿐**이다. 실제 차단은 가입 처리(actions/auth.ts)가 다시 확인해서 한다
+  //     — 브라우저에서 온 판단은 신뢰하지 않는다(여기 결과를 고쳐도 가입은 통과하지 않는다).
+  //  ⚠️ 결과를 **어느 번호의 결과인지와 함께** 들고 있는다. 결과만 들고 있으면
+  //     번호를 지웠다가 같은 번호를 다시 쳤을 때 "결과는 있는데 화면에서 사라진" 상태가 된다.
+  const [bizCheck, setBizCheck] = useState<{ digits: string; state: string; detail: string } | null>(null);
+  const [bizChecking, setBizChecking] = useState(false);
+  //  같은 번호를 두 번 묻지 않기 위한 표식(국세청 조회 횟수를 아낀다).
+  //  ⚠️ useState가 아니라 useRef다 — 값이 바뀌어도 화면을 다시 그릴 필요가 없고,
+  //     연속 입력 중 최신 값을 즉시 읽어야 하기 때문이다.
+  const bizAsked = useRef<string>("");
+  //  ⚠️ 늦게 온 응답이 최신 결과를 덮어쓰지 않게 한다(느린 응답 → 빠른 응답 순서 뒤바뀜 방지).
+  const bizSeq = useRef(0);
+
+  const checkBizRegNo = async (value: string) => {
+    const digits = value.replace(/[^0-9]/g, "");
+    // 칸을 비운 경우: 진행 중이던 조회 결과가 **빈 칸 아래에 뒤늦게 뜨지 않도록** 순번을 올려 버린다
+    //  (검수 중간 1 — 순번을 안 올리면 "빈 칸 + ✓ 정상 사업자"라는 이상한 화면이 나온다).
+    if (!digits) {
+      bizSeq.current += 1;
+      bizAsked.current = "";
+      setBizChecking(false);
+      setBizCheck(null);
+      return;
+    }
+    if (bizAsked.current === digits) return; // 이미 확인이 끝난 번호
+    const mine = ++bizSeq.current;
+    setBizChecking(true);
+    // 서버가 응답을 붙잡고 있어도 "확인하는 중…"이 영원히 남지 않게 시간 제한을 둔다(검수 중간 3).
+    //  서버 쪽 국세청 호출 상한은 최대 5초(2.5초 × 2회)라 8초면 정상 응답을 자르지 않는다.
+    const stop = new AbortController();
+    const timer = setTimeout(() => stop.abort(), 8000);
+    try {
+      const res = await fetch("/api/bizreg-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bizRegNo: value }),
+        signal: stop.signal,
+      });
+      const data = (await res.json()) as { state?: string; detail?: string };
+      if (mine !== bizSeq.current) return; // 그 사이 번호가 바뀌었으면 버린다
+      const st = String(data.state ?? "unknown");
+      // ⚠️ **확정된 답일 때만** "이 번호는 물어봤다"고 기록한다(검수 중간 2).
+      //    확인 실패(unknown)까지 기록해 버리면, 인터넷이 잠깐 끊겼다가 돌아와도
+      //    같은 번호는 영영 다시 확인되지 않는다.
+      bizAsked.current = st === "verified" || st === "invalid" || st === "closed" ? digits : "";
+      setBizCheck({ digits, state: st, detail: String(data.detail ?? "") });
+    } catch {
+      // 인터넷이 끊겼거나 응답이 너무 늦은 경우 — 가입을 막지 않는다(안내만 못 할 뿐).
+      if (mine === bizSeq.current) {
+        bizAsked.current = ""; // 다시 시도할 수 있게 열어 둔다
+        setBizCheck({ digits, state: "unknown", detail: "지금은 확인할 수 없습니다. 가입은 그대로 진행하실 수 있습니다." });
+      }
+    } finally {
+      clearTimeout(timer);
+      if (mine === bizSeq.current) setBizChecking(false);
+    }
+  };
+
+  // 지금 칸에 들어 있는 번호의 결과일 때만 보여준다(다른 번호의 옛 결과가 남지 않게).
+  const bizDigits = form.bizRegNo.replace(/[^0-9]/g, "");
+  const bizShown = bizCheck && bizCheck.digits === bizDigits ? bizCheck : null;
+
+  // 결과 색: 초록(정상) / 빨강(가짜·폐업) / 회색(확인 못 함)
+  const bizTone =
+    bizShown?.state === "verified" ? { color: "#047857", mark: "✓ " }
+      : bizShown?.state === "invalid" || bizShown?.state === "closed" ? { color: "var(--danger)", mark: "✕ " }
+      : { color: "var(--text-sub)", mark: "" };
 
   return (
     <div
@@ -108,8 +178,27 @@ export default function SignupPage() {
           </div>
           <div>
             <label style={labelStyle}>사업자등록번호</label>
-            <input name="bizRegNo" type="text" inputMode="numeric" placeholder="예시) 123-45-67890" style={inputStyle} value={form.bizRegNo} onChange={set("bizRegNo")} />
-            <div style={hintStyle}>국세청에 등록된 사업자인지 자동으로 확인합니다.</div>
+            <input
+              name="bizRegNo" type="text" inputMode="numeric" placeholder="예시) 123-45-67890"
+              style={inputStyle} value={form.bizRegNo}
+              onChange={(e) => {
+                const v = e.target.value;
+                setForm((f) => ({ ...f, bizRegNo: v }));
+                // ※ 옛 결과를 손으로 지우지 않는다 — 위 bizShown이 "지금 칸의 번호"와 같을 때만
+                //    보여주므로, 번호를 고치는 순간 안내는 저절로 사라진다.
+                const d = v.replace(/[^0-9]/g, "");
+                // 10자리가 채워지는 순간 바로 확인한다(칸을 벗어나기 전에 알려주기 위함).
+                if (d.length === 10) void checkBizRegNo(v);
+              }}
+              onBlur={(e) => void checkBizRegNo(e.target.value)}
+            />
+            {bizChecking ? (
+              <div style={hintStyle}>국세청에 확인하는 중…</div>
+            ) : bizShown && bizShown.detail ? (
+              <div style={{ ...hintStyle, color: bizTone.color, fontWeight: 600 }}>{bizTone.mark}{bizShown.detail}</div>
+            ) : (
+              <div style={hintStyle}>국세청에 등록된 사업자인지 자동으로 확인합니다.</div>
+            )}
           </div>
           <div>
             <label style={labelStyle}>담당자 이름</label>
