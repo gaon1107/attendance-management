@@ -75,7 +75,7 @@ export function LeaveSummaryClient({
       {/* 상단: 검색(왼쪽) + 연도 선택·엑셀(오른쪽) */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
         <div style={{ minWidth: 240, flex: "0 1 320px" }}>
-          <SearchBox value={q} onChange={setQ} placeholder="이름·부서 검색 (띄어쓰기 = OR)" />
+          <SearchBox value={q} onChange={setQ} placeholder="이름·부서 (여러 개는 띄어쓰기)" />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <select

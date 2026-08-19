@@ -6,7 +6,7 @@
 export function SearchBox({
   value,
   onChange,
-  placeholder = "검색어(여러 개는 띄어쓰기 = OR)",
+  placeholder = "검색어 (여러 개는 띄어쓰기)",
   width = 240,
   ariaLabel = "통합 검색",
 }: {
