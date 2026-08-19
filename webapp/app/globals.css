@@ -748,3 +748,23 @@ details.landing-faq {
     font-size: 16px !important;
   }
 }
+
+/* ── 폰(≤600px): 통합검색 칸을 가로로 꽉 채운다 (2026-08-20) ─────────────────
+   SearchBox(공용, 19곳 사용)는 폭이 240px 고정이라 안내문구가 잘렸다.
+   위 규칙으로 폰 글자가 16px이 되면서 더 빠듯해졌고, Pretendard가 뜨지 않는 환경
+   (사내망 CDN 차단 등 → 대체 글꼴)에서는 기본 안내문구도 잘린다(실측 222px > 자리 214px).
+   폰에서는 옆에 나란히 둘 것이 없으므로 한 줄을 다 쓰게 한다.
+
+   ⚠️ width에 !important가 필요한 이유: 폭이 컴포넌트 프로퍼티(width={240})를 통해
+      **인라인 style**로 들어온다. 미디어쿼리를 컴포넌트 안에 쓸 방법이 없어 여기 둔다.
+   ⚠️ 601px 이상(태블릿·PC)은 그대로다 — 그쪽은 옆에 기간달력·엑셀 버튼이 함께 놓이므로
+      검색칸이 한 줄을 다 먹으면 오히려 나빠진다.
+   ⚠️ 짝이 되는 클래스는 app/components/SearchBox.tsx 에 있다. 한쪽만 지우면 조용히 무력해진다. */
+@media (max-width: 600px) {
+  /* .searchbox-field = 검색칸을 감싼 부모(라벨). 결재대기·결재이력 두 화면만 SearchBox를
+     <label>(세로 배치) 안에 넣어 쓰는데, 그 라벨이 "내용만큼만" 커지는 상자라 안쪽에서
+     width:100%를 줘 봐야 제자리걸음이 된다. 부모부터 늘려야 자식의 100%가 뜻을 가진다. */
+  .searchbox-field { width: 100%; }
+  .searchbox { width: 100%; }
+  .searchbox-input { flex: 1; min-width: 0; width: auto !important; }
+}

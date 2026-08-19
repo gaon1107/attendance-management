@@ -17,9 +17,12 @@ export function SearchBox({
   ariaLabel?: string;
 }) {
   return (
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+    // className은 폰(≤600px)에서 칸을 가로로 꽉 채우기 위한 것 — 규칙은 globals.css에 있다.
+    // 폭이 인라인 style(width prop)로 들어와 미디어쿼리를 여기에 쓸 수 없기 때문이다.
+    <div className="searchbox" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
       <input
         type="text"
+        className="searchbox-input"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}

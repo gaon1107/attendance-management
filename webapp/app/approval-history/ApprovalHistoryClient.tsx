@@ -135,7 +135,9 @@ export function ApprovalHistoryClient({
           <RangeCalendar from={from} to={to} todayISO={todayISO} onApply={(f, t) => router.push(build({ from: f, to: t }))} />
         </label>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, ...capStyle }}>
+        {/* className: 폰(≤600px)에서 이 라벨이 한 줄을 다 쓰게 한다 — 안 그러면 안쪽 검색칸이
+            늘어날 자리가 없다. 규칙은 globals.css의 .searchbox-field. */}
+        <label className="searchbox-field" style={{ display: "flex", flexDirection: "column", gap: 4, ...capStyle }}>
           통합검색
           <SearchBox value={q} onChange={setQ} placeholder="신청자·사번·부서·내용·사유·처리자" width={260} />
         </label>
