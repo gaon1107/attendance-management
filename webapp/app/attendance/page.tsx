@@ -218,8 +218,11 @@ export default async function AttendancePage() {
               </form>
             )}
             {/* 외출: 사유 선택 + 외출 시작 */}
+            {/* ⚠️ minWidth: 0 — 없으면 드롭다운이 "가장 긴 사유 글자폭" 아래로 줄어들지 않는다(flex 기본값 함정).
+                사유는 회사가 직접 편집하고 한 개당 20자까지 허용되므로(lib/outing-reasons.ts MAX_REASON_LEN),
+                긴 사유를 등록한 회사에서는 폰 화면에서 [외출] 버튼(110px 고정)을 밀어내 잘렸다. */}
             <form action={startBreak} style={{ display: "flex", gap: 8 }}>
-              <select name="reason" defaultValue={reasons[0]} style={{ flex: 1, height: 48, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 10, fontFamily: "inherit", fontSize: 15, background: "#fff" }}>
+              <select name="reason" defaultValue={reasons[0]} style={{ flex: 1, minWidth: 0, height: 48, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 10, fontFamily: "inherit", fontSize: 15, background: "#fff" }}>
                 {reasons.map((r) => (
                   <option key={r} value={r}>{r}</option>
                 ))}

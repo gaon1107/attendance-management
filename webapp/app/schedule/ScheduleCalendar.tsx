@@ -251,7 +251,7 @@ function DayModal({ iso, data, canManageCompany, onClose }: { iso: string; data:
             ) : (
               <form action={addHolAction} style={{ display: "flex", gap: 8 }}>
                 <input type="hidden" name="date" value={iso} />
-                <input name="name" defaultValue="휴무일" maxLength={50} style={{ flex: 1, height: 40, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 14, outline: "none" }} />
+                <input name="name" defaultValue="휴무일" maxLength={50} style={{ flex: 1, minWidth: 0, height: 40, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 14, outline: "none" }} />
                 <button type="submit" disabled={addHolPending} style={{ height: 40, padding: "0 16px", border: "none", borderRadius: 8, background: "#6D28D9", color: "#fff", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: addHolPending ? "default" : "pointer", opacity: addHolPending ? 0.6 : 1, whiteSpace: "nowrap" }}>휴무 지정</button>
               </form>
             )}
@@ -311,9 +311,12 @@ function DayModal({ iso, data, canManageCompany, onClose }: { iso: string; data:
             </div>
           )}
           {/* 추가 폼 — 관리자=회사 일정 / 직원=내 개인 일정 */}
+          {/* ⚠️ 입력칸의 minWidth: 0 — 없으면 입력칸이 "기본 20글자 폭" 아래로 줄어들지 않는다(flex 기본값 함정).
+              팝업 폭이 min(440px, 92vw)라 좁은 폰(360~375px)에서 오른쪽 버튼을 밀어내 잘렸다.
+              위 [휴무 지정] 폼도 같은 구조라 함께 넣었다. */}
           <form action={addEvAction} style={{ display: "flex", gap: 8 }}>
             <input type="hidden" name="date" value={iso} />
-            <input name="title" required placeholder={canManageCompany ? "회사 일정 내용(예시: 월례회의)" : "내 일정 내용(예시: 병원 예약)"} maxLength={100} style={{ flex: 1, height: 40, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 14, outline: "none" }} />
+            <input name="title" required placeholder={canManageCompany ? "회사 일정 내용(예시: 월례회의)" : "내 일정 내용(예시: 병원 예약)"} maxLength={100} style={{ flex: 1, minWidth: 0, height: 40, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 14, outline: "none" }} />
             <button type="submit" disabled={addEvPending} style={{ height: 40, padding: "0 18px", border: "none", borderRadius: 8, background: canManageCompany ? "var(--primary)" : PERSONAL_BG, color: "#fff", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: addEvPending ? "default" : "pointer", opacity: addEvPending ? 0.6 : 1, whiteSpace: "nowrap" }}>{canManageCompany ? "추가" : "내 일정 추가"}</button>
           </form>
           {!canManageCompany && <div style={{ fontSize: 11, color: "var(--text-sub)", marginTop: 6 }}>회사 일정·휴무일은 관리자만 등록합니다. 여기서 추가하면 <b>나만 보는 개인 일정</b>이 됩니다.</div>}
