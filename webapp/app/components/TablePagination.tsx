@@ -23,6 +23,17 @@ export function TablePagination<T>({ pg, sizeOptions = DEFAULT_SIZE_OPTS }: { pg
   const atFirst = page <= 0;
   const atLast = page >= pageCount - 1;
 
+  // ── 나눌 페이지가 없으면 이 줄을 통째로 감춘다 (2026-08-23 디자인 검토) ──
+  // 표가 0~3줄뿐인 화면에도 "페이지 당 행: 100 · 0–0 / 0 · ‹ ›"가 늘 붙어 있어 화면이 시끄러웠다.
+  //
+  // ⚠️ 판단 기준이 `pageCount <= 1`이 **아닌** 이유 — 그렇게 하면 되돌릴 수 없는 함정이 생긴다:
+  //     건수 60 · 크기 50 → 2페이지라 줄이 보인다 → 사용자가 크기를 200으로 바꾼다
+  //     → 1페이지가 되어 줄이 사라진다 → **크기를 50으로 되돌릴 방법이 없다.**
+  //   그래서 "고를 수 있는 가장 작은 크기"보다도 건수가 적을 때만 감춘다.
+  //   이러면 어떤 크기를 골라도 항상 1페이지인 게 확실하므로, 감춰도 잃는 조작이 없다.
+  const minSize = Math.min(...sizeOptions);
+  if (total <= minSize) return null;
+
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 16, padding: "10px 16px", flexWrap: "wrap", borderTop: "1px solid var(--border)" }}>
       <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-sub)" }}>

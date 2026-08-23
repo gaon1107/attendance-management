@@ -127,7 +127,10 @@ export function DetailTable({ detail, showLiveness = false }: { detail: DayDetai
                 entries.map((e, i) => {
                   if (e.type === "absent") {
                     return (
-                      <tr key={`a${i}`} style={{ borderBottom: "1px solid #F3F4F6", background: "#FEF2F2" }}>
+                      // 2026-08-23 디자인 검토: 분홍 배경(#FEF2F2)을 뺐다.
+                      //  근무 규칙을 아직 안 정한 회사는 **한 달 치가 전부 결근**으로 잡혀 화면이 통째로 빨개졌다.
+                      //  직원에게 "벌 받는 화면"처럼 보인다는 지적. 결근 여부는 아래 빨간 [결근] 글자로 충분히 구분된다.
+                      <tr key={`a${i}`} style={{ borderBottom: "1px solid #F3F4F6" }}>
                         <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{monthDayDow(e.date)}</td>
                         <td style={{ ...td, color: "#9CA3AF" }} colSpan={4}>—</td>
                         <td style={td}><span style={{ fontSize: 13, fontWeight: 700, color: "var(--danger)" }}>결근</span></td>
