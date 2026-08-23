@@ -793,3 +793,38 @@ details.fold-section > summary { list-style: none; cursor: pointer; }
 details.fold-section > summary::-webkit-details-marker { display: none; }
 details.fold-section > summary .fold-chevron { transition: transform 0.15s ease; }
 details.fold-section[open] > summary .fold-chevron { transform: rotate(180deg); }
+
+/* ── 랜딩 "실제 화면" 구역 (기능 설명 아래) — 2026-08-23 ──
+   왜 만들었나: 홈화면이 "AI가 만든 느낌"이라는 지적을 받았는데(2026-08-23 디자인 검토),
+   가장 큰 원인이 **제품 화면이 한 장도 없다**는 것이었다. 그림과 설명만으로는 진짜인지 알 수 없다.
+   그래서 실제로 돌아가는 화면을 캡처해 넣는다(데모 회사 데이터: webapp/scripts/seed-demo.mjs).
+
+   ⚠️ 히어로(맨 위)에는 넣지 않았다 — 그 자리의 그림 폭은 약 640px이라 표 글씨가 8~10px가 되어
+      읽히지 않는다(2026-08-23 실제로 만들어 확인). 여기는 이미 관심이 생긴 사람이 보는 자리라
+      2단으로 크게 넣을 수 있다.
+
+   좌우 교차 배치: 홀수 항목은 글-그림, 짝수 항목은 그림-글. 눈이 지그재그로 움직여
+   같은 모양이 반복되는 지루함을 덜어 준다(흔한 SaaS 패턴).
+   ⚠️ 교차는 **넓은 화면에서만** 한다. 좁아져 1단이 되면 순서를 뒤집지 않는다 —
+      뒤집으면 글보다 그림이 먼저 나와서 "무엇에 대한 그림인지 모른 채" 보게 된다.
+   ⚠️ 이 파일을 고치면 `.next`를 지우고 서버를 다시 띄워야 반영된다. */
+/* ⚠️ 교차는 `:nth-child(even)`으로 하지 않는다. 이 구역의 첫 자식은 **제목 덩어리**라
+      번호가 한 칸씩 밀려 1·3번째 줄이 뒤집힌다(2026-08-23 실측: 그림 폭이 420/569/420px로 들쭉날쭉해졌다).
+      그래서 뒤집을 줄에 화면 코드가 `reverse` 클래스를 직접 붙인다.
+   ⚠️ 뒤집을 때 **칸 비율도 같이 뒤집는다.** order만 바꾸면 글이 넓은 칸으로, 그림이 좁은 칸으로 가서
+      그림만 작아진다(위 실측이 정확히 그 증상이었다). 이 두 줄은 짝이다. */
+.landing-shot-row { display: grid; grid-template-columns: 0.85fr 1.15fr; gap: clamp(20px,3vw,44px); align-items: center; }
+.landing-shot-row + .landing-shot-row { margin-top: clamp(32px,4.5vw,56px); }
+.landing-shot-row.reverse { grid-template-columns: 1.15fr 0.85fr; }
+.landing-shot-row.reverse .landing-shot-copy { order: 2; }
+.landing-shot-row img {
+  display: block; width: 100%; height: auto;
+  border-radius: 12px; border: 1px solid var(--landing-border-strong,#CBD9F0);
+  /* 화면 캡처는 밝은 회색 배경이라 흰 섹션 위에서 경계가 흐려진다 → 테두리 + 또렷한 그림자로 띄운다. */
+  box-shadow: 0 14px 34px rgba(30,58,110,0.16);
+}
+@media (max-width: 860px) {
+  /* 1단으로 접을 때는 교차를 끈다(위 경고 참고 — 글이 항상 먼저 와야 한다). */
+  .landing-shot-row, .landing-shot-row.reverse { grid-template-columns: 1fr; }
+  .landing-shot-row.reverse .landing-shot-copy { order: 0; }
+}

@@ -133,6 +133,41 @@ const features = [
   { icon: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 10h.01M15 10h.01M9.5 15a3.5 3.5 0 0 0 5 0"/>', grad: "linear-gradient(135deg,#0EA5E9,#38BDF8)", title: "강제 없는 얼굴인증", desc: "얼굴인증과 GPS 중 직원이 직접 선택합니다. 동의는 강제가 아니며 언제든 철회·삭제할 수 있어요." },
 ];
 
+// ── 실제 화면 3장 (기능 카드 아래) — 2026-08-23 ──
+// 왜 넣었나: 홈화면이 "AI가 만든 느낌"이라는 지적의 가장 큰 원인이 **제품 화면이 한 장도 없다**는 것이었다
+//   (2026-08-23 디자인 검토 5순위). 그림과 설명만으로는 진짜 도는 물건인지 알 수 없다.
+//
+// 🔴 **이 그림들은 "만든 그림"이 아니라 실제로 돌아가는 화면을 찍은 것이다.**
+//    다시 찍으려면: ① `node scripts/seed-demo.mjs "<비밀번호>"` 로 데모 회사 데이터를 만들고
+//    ② 로그인해서 각 화면을 캡처한 뒤 ③ 폭 1320px webp로 줄여 public/ 에 같은 이름으로 덮어쓴다.
+//    ⚠️ **화면을 그림판으로 그려 넣지 말 것.** 실제와 다른 화면을 광고하면 표시광고법 문제가 된다.
+//    ⚠️ 캡처는 **평일에** 할 것 — 주말에 찍으면 날짜 표시가 "일"이 되고 근태 화면에 "휴일근무"가 붙는다.
+//
+// ⚠️ 히어로(맨 위)에는 넣지 않았다. 그 자리의 그림 폭이 약 640px이라 표 글씨가 8~10px가 되어
+//    읽히지 않는다(2026-08-23 실제로 끼워 보고 확인). 되살릴 생각이 들면 그 실측부터 다시 할 것.
+// ⚠️ 좌우 교차 배치·좁은 화면 접기는 globals.css의 `.landing-shot-row`가 갖는다(서버는 화면 크기를 모른다).
+const appShots = [
+  {
+    src: "/shot-live.webp",
+    title: "지금 누가, 어디서 일하는지",
+    desc: "사무실·재택·외근을 한 화면에서 봅니다. 지도에는 사무실 반경만 그리고 직원 개인 위치는 표시하지 않습니다.",
+    // ⚠️ 아래 문구는 실제 화면에 있는 것만 적는다. 화면에 없는 기능을 여기 적으면 그게 곧 허위광고다.
+    points: ["사무실 반경 안에서만 출근 인정", "개인 위치는 저장하지 않음", "30초마다 자동 갱신"],
+  },
+  {
+    src: "/shot-records.webp",
+    title: "지각·조퇴는 자동으로 표시",
+    desc: "회사가 정한 출퇴근 기준시각과 유예 시간을 그대로 적용해 판정합니다. 관리자가 일일이 세지 않아도 됩니다.",
+    points: ["기준시각·유예시간은 회사가 설정", "실근무 = (퇴근−출근) − 외출", "기간·이름으로 바로 검색"],
+  },
+  {
+    src: "/shot-dashboard.webp",
+    title: "오늘 상황을 열자마자",
+    desc: "출근 인원, 실근무 평균, 승인 대기 중인 휴가까지 한 화면에 모읍니다. 이번 달 일정도 함께 봅니다.",
+    points: ["미출근·지각·조퇴 즉시 확인", "승인 대기 건수 바로 표시", "공휴일·회사 휴무일 자동 반영"],
+  },
+];
+
 // ── 큰 블록 오른쪽 그림: 하루 시간 띠 (그림 파일이 아니라 네모 몇 개로 그린다) ──
 // 09:00 출근 → 18:00 퇴근 = 540분. 그중 [외출]로 기록한 100분(점심 60 + 외출 40) → 실근무 440분.
 // ⚠️ 이 숫자는 **설명용 예시**다. 화면에도 "예시"라고 적어 둔다(진짜 통계로 오해하지 않게).
@@ -275,6 +310,12 @@ export default async function Home() {
   //    ⚠️ false인 동안에는 DB 집계(getLandingStats)도 아예 돌리지 않는다 — 보이지도 않는 화면 때문에
   //       방문자마다 14일치 근태 기록을 스캔할 이유가 없다. 그래서 live 가 null 일 수 있다.
   const SHOW_LIVE_PREVIEW = false;
+
+  // 🔵 **실제 화면 3장을 끄는 스위치 (2026-08-23).**
+  //    false 로 바꾸면 기능 설명 아래의 "실제 화면" 구역이 통째로 사라지고, 그 전 모습으로 돌아간다.
+  //    화면 코드·그림 파일(public/shot-*.webp)·CSS(.landing-shot-row)는 지우지 않고 그대로 둔다 —
+  //    다시 켤 때 한 글자만 고치면 되게 하려는 것이다(위 SHOW_LIVE_PREVIEW 와 같은 방식).
+  const SHOW_APP_SHOTS = true;
   const live = SHOW_LIVE_PREVIEW ? await getLandingStats() : null;
   const peek = !live ? [] : [
     // ⚠️ "최근 N일"의 N은 손으로 적지 않고 TREND_DAYS에서 가져온다 — 집계 기간과 글자가 어긋나지 않게.
@@ -575,6 +616,53 @@ export default async function Home() {
               </div>
             ))}
           </div>
+
+          {/* ── 실제 화면 3장 (2026-08-23 사장님 지시) ──
+                 🔵 **끄고 싶으면 이 파일 위쪽의 `SHOW_APP_SHOTS` 를 false 로만 바꾸면 된다.**
+                    화면 코드도 그림 파일도 지우지 않는다 — 되돌리기가 한 글자면 끝나게 해 둔 것이다.
+                 ⚠️ 기능 카드와 비교표 **사이**에 두었다. 순서에 이유가 있다:
+                    "무엇을 해 주는가(카드)" → "실제로 이렇게 생겼다(화면)" → "기존 방식과 뭐가 다른가(표)".
+                    표 뒤로 옮기면 이미 결론을 읽은 뒤에 증거가 나와 힘이 빠진다.
+                 ⚠️ loading="lazy" — 스크롤해야 보이는 자리다. eager로 두면 첫 화면이 뜨는 속도를
+                    이 그림 세 장(약 194KB)이 붙잡는다. 히어로 그림과 정반대 이유다. */}
+          {SHOW_APP_SHOTS && (
+            // ⚠️ 아래 여백을 여기서 준다. 다음에 오는 비교표가 갖고 있는 `marginTop: 40` 만으로는
+            //    위(기능카드와 72px)보다 아래가 좁아 이 구역이 비교표에 붙어 보인다(실측 72 vs 40).
+            //    **비교표의 40을 고치지 않는 이유**: 아래 스위치를 꺼서 이 구역이 사라지면
+            //    비교표 위 간격이 원래대로 40이어야 한다. 여기서 주면 켤 때만 늘어난다.
+            // ⚠️ marginBottom이 아니라 **paddingBottom**이다. margin으로 주면 바로 아래 비교표의
+            //    marginTop(40)과 **상쇄되어 큰 쪽 하나만 남는다**(2026-08-23 실측: 32를 줬는데 간격이
+            //    40 그대로였다). padding은 상쇄되지 않아 40 + 32 = 72px로 위와 짝이 맞는다.
+            <div style={{ marginTop: "clamp(44px,6vw,72px)", paddingBottom: "clamp(4px,2.3vw,32px)" }}>
+              <div style={{ textAlign: "center", marginBottom: "clamp(28px,4vw,40px)" }}>
+                <div style={eyebrow}>실제 화면</div>
+                <h3 style={{ fontSize: "clamp(19px,2.4vw,26px)", fontWeight: 700, letterSpacing: "-0.02em", margin: "0 0 6px" }}>말로만 설명하지 않겠습니다</h3>
+                <p style={{ fontSize: 15, color: "var(--text-sub)", lineHeight: 1.6, margin: 0 }}>
+                  아래는 실제로 동작하는 화면을 그대로 찍은 것입니다.
+                </p>
+              </div>
+              {/* ⚠️ 뒤집는 줄을 CSS의 `:nth-child(even)`에 맡기지 않고 여기서 직접 지정한다 —
+                     이 구역의 첫 자식이 위 제목 덩어리라 번호가 밀려 엉뚱한 줄이 뒤집힌다(실측 확인). */}
+              {appShots.map((s, i) => (
+                <div key={s.src} className={i % 2 === 1 ? "landing-shot-row reverse" : "landing-shot-row"}>
+                  <div className="landing-shot-copy">
+                    <h4 style={{ fontSize: "clamp(18px,2.1vw,22px)", fontWeight: 700, letterSpacing: "-0.01em", margin: "0 0 10px" }}>{s.title}</h4>
+                    <p style={{ fontSize: 15, color: "var(--text-sub)", lineHeight: 1.65, margin: "0 0 16px" }}>{s.desc}</p>
+                    <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 9 }}>
+                      {s.points.map((p) => (
+                        <li key={p} style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
+                          <span style={{ color: "var(--success)", flexShrink: 0, width: 17, height: 17, display: "inline-flex", marginTop: 1 }} dangerouslySetInnerHTML={{ __html: svg('<path d="M20 6 9 17l-5-5"/>', 17) }} />
+                          <span style={{ fontSize: 14.5, lineHeight: 1.5 }}>{p}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  {/* eslint-disable-next-line @next/next/no-img-element -- 크기가 고정된 화면 캡처. next/image의 최적화 대상이 아니다(이미 webp로 줄여 뒀다) */}
+                  <img src={s.src} alt={`${s.title} — 실제 화면 예시`} width={1320} height={825} loading="lazy" decoding="async" />
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* ── 기존 방식과의 비교표 ──
               ⚠️ 표는 좁은 화면에서 줄일 수 없다(칸이 4개라 글자가 세로로 무너진다).

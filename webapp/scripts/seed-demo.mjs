@@ -184,6 +184,10 @@ async function seed(password) {
       officeLat: 37.500622,
       officeLng: 127.036456,
       officeRadiusM: 150,
+      // ⚠️ 사내 네트워크 IP를 비워 두면 [현황판]의 접속 칸이 전부 **"판정 불가(IP 미설정)"** 로 뜬다
+      //    (2026-08-23 실측: 20건이 판정 불가로 찍혀 홍보 캡처에 결함처럼 보였다).
+      //    아래 203.0.113.0/24 는 RFC 5737이 문서·예시용으로 예약한 대역이라 실존 회사 IP와 겹치지 않는다.
+      officeIps: "203.0.113.",
     },
   });
   const companyId = company.id;
@@ -309,17 +313,24 @@ async function seed(password) {
       if (!late && rnd() < 0.35) inAt.setHours(9, randInt(0, 8), randInt(0, 59), 0);
 
       // 근무형태 — 사무실 80% · 재택 15% · 외근 5%
+      // ⚠️ **오늘치만 사람별로 못 박는다.** [현황판]의 "사무실 N · 재택 N · 외근 N"이 캡처의 핵심인데,
+      //    난수로 두면 그날 우연히 재택 0명·외근 0명이 나온다(2026-08-23 실제로 그렇게 찍혔다).
+      //    이 제품이 파는 것이 바로 그 세 가지 구분이라 0이 뜨면 안 된다.
       const r = rnd();
-      const workMode = r < 0.8 ? "office" : r < 0.95 ? "home" : "field";
+      const workMode = offset === 0
+        ? (i <= 6 ? "office" : i <= 8 ? "home" : "field")
+        : r < 0.8 ? "office" : r < 0.95 ? "home" : "field";
       // 위치 확인 결과는 사무실 출근에만 의미가 있다(재택·외근은 null = 해당 없음).
-      const locationStatus = workMode !== "office" ? null : rnd() < 0.94 ? "verified" : "unavailable";
+      // ⚠️ "확인 불가"(unavailable)는 만들지 않는다. 실제 서비스에선 실내 GPS 오차로 흔한 값이지만,
+      //    홍보 화면에 주황색 "위치 확인 불가" 배지가 뜨면 **제품 결함처럼 읽힌다**(2026-08-23 캡처에서 확인).
+      const locationStatus = workMode !== "office" ? null : "verified";
 
       let outAt = null;
       if (offset === 0) {
-        // 오늘 — 일부는 아직 근무 중(퇴근 null)이어야 [현황판]·[대시보드]가 채워진다.
-        if (i % 5 === 4 && now.getHours() >= 17) outAt = at(date, 17, randInt(30, 55));
-        else if (now.getHours() >= 9) outAt = null; // 근무 중
-        else outAt = null;
+        // 오늘 — 대부분은 아직 근무 중(퇴근 null)이어야 [현황판]·[대시보드]가 채워진다.
+        // ⚠️ 먼저 퇴근시키는 사람은 **사무실 근무자 중에서** 고른다. 재택·외근인 사람을 퇴근시키면
+        //    위에서 애써 맞춘 "재택 N · 외근 N"이 다시 0이 된다(둘은 짝이다).
+        if ((i === 1 || i === 5) && now.getHours() >= 17) outAt = at(date, 17, randInt(30, 55));
       } else {
         // ⚠️ 퇴근은 **기준 퇴근시각(18:00) 이후**로만 만든다. 1분이라도 빠르면 "조퇴" 배지가 붙는다
         //    (2026-08-23 실측: 17:52 퇴근을 섞었더니 한 주에 조퇴 6건이 찍혔다).
