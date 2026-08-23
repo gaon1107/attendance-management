@@ -17,7 +17,13 @@ type NavUser = {
   role: string;
   /** 회사 계정(사람 아님)인가. 회사 계정에는 "내 근태" 묶음을 주지 않는다. */
   isOwner?: boolean;
-  company: { name: string; logoName?: string | null; approvalMode?: string | null };
+  // ⚠️ shiftMode를 여기 적어 두는 이유(2026-08-23): 사이드바가 이 값으로 **[근무표] 메뉴를 줄지** 정한다.
+  //    null = 교대근무 안 함 → 메뉴를 아예 주지 않는다(그 회사에서 눌러 봐야 "설정되지 않았습니다" 안내뿐이다).
+  //    ⚠️ 값이 없으면(undefined) 없는 것으로 본다. 화면 44곳이 전부 `user={me}`(getCurrentUser 결과 그대로)를
+  //       넘기고 그 안에 회사 정보가 통째로 들어 있어 지금은 안전하다 —
+  //       **user를 줄여서 넘기는 화면을 새로 만들면 교대 회사에서 [근무표]가 조용히 사라진다**
+  //       (isOwner가 같은 함정을 가진 것과 같은 이유. AppShell의 ShellUser 주석도 함께 볼 것).
+  company: { name: string; logoName?: string | null; approvalMode?: string | null; shiftMode?: number | null };
 };
 
 // 사이드바에서 현재 화면을 표시하기 위한 키.
@@ -188,10 +194,20 @@ async function toggleSidebar(formData: FormData): Promise<void> {
 //  · 🔒 회사 계정(isOwner)은 사람이 아니므로 "내 근태"를 주지 않는다.
 // 직원 메뉴는 전부 본인 것이라 한 묶음(제목 없음 → 접기 대상도 아님).
 // showApprovals: [결재함] 표시 여부. 결재 라인 구성원이거나 지금 내 차례가 있는 사람만 true.
-function groupsFor(role: string, showApprovals: boolean, isOwner: boolean): NavGroup[] {
+// useShifts: 교대근무를 쓰는 회사인가. [근무표] 메뉴를 줄지 정한다(아래 참고).
+function groupsFor(role: string, showApprovals: boolean, isOwner: boolean, useShifts: boolean): NavGroup[] {
   if (role === "admin") {
     const groups: NavGroup[] = [
-      { id: "ops", caption: "근태 운영", items: toItems(["dashboard", "records", "live", "shifts", "schedule"]) },
+      // ── [근무표]를 여기서 뺐다 (2026-08-23 사장님 지시) ──────────────────
+      //  ① **성격이 다르다.** 나머지 넷은 매일 보는 화면이고, [근무표]는 "누가 어느 조인지"를
+      //     한 번 정해 두고 사람이 드나들 때만 손대는 **배정 화면**이다 → 아래 [분석·설정]로 옮겼다.
+      //  ② **대부분의 회사에는 빈 메뉴였다.** 우리 타겟(중소기업 사무직)은 교대근무를 거의 안 쓴다.
+      //     실측 2026-08-23: 등록된 6개사 중 5곳이 교대 미설정이었고, 그 5곳에서 [근무표]를 누르면
+      //     "아직 교대근무가 설정되지 않았습니다" 안내문 한 장뿐이었다.
+      //     → 이제 교대근무를 켠 회사에만 준다(useShifts).
+      //  ⚠️ 메뉴를 감추면 **켠 직후 어디로 가야 하는지** 알 수 없으므로,
+      //     [설정 → 근무 규칙 → 근무제·기준시간] 설명에 [근무표] 링크를 함께 넣어 뒀다. 둘은 짝이다.
+      { id: "ops", caption: "근태 운영", items: toItems(["dashboard", "records", "live", "schedule"]) },
       {
         id: "appr",
         caption: "승인 관리",
@@ -203,7 +219,9 @@ function groupsFor(role: string, showApprovals: boolean, isOwner: boolean): NavG
         ]),
       },
       { id: "hr", caption: "인사 정보", items: toItems(["employees", "notifications", "leave-summary"]) },
-      { id: "ana", caption: "분석·설정", items: toItems(["reports", "break-time", "company", "settings"]) },
+      // [근무표]는 교대근무를 켠 회사에만 (위 "근태 운영" 주석 참고).
+      // 자리는 [휴게시간] 다음 — 둘 다 "근무 규칙을 정해 두는 것"이라 성격이 같다.
+      { id: "ana", caption: "분석·설정", items: toItems(["reports", "break-time", ...(useShifts ? (["shifts"] as NavKey[]) : []), "company", "settings"]) },
       { id: "sec", caption: "보안·기기", items: toItems(["biometrics", "pc-devices", "security"]) },
     ];
     if (!isOwner) {
@@ -223,7 +241,9 @@ export async function Sidebar({ user, active }: { user: NavUser; active: NavKey 
   // 다단계 결재 회사에서만 내 결재 대기 수를 배지로. 결재자 아니면 첫 쿼리에서 0(값싸다). single이면 조회 없음.
   const approvalWaiting = multiStep && user.companyId && user.id ? await countMyPendingApprovals(user.companyId, user.id) : 0;
   const showApprovals = multiStep && !!user.companyId && !!user.id && (approvalWaiting > 0 || (user.company.approvalMode === "deptline" && (await isApprovalLineMember(user.companyId, user.id))));
-  const groups = groupsFor(user.role, showApprovals, !!user.isOwner);
+  // 교대근무를 켠 회사인가(shiftMode: null=안 함 / 2=2교대 / 3=3교대). 켠 회사에만 [근무표]를 준다.
+  const useShifts = !!user.company.shiftMode;
+  const groups = groupsFor(user.role, showApprovals, !!user.isOwner, useShifts);
 
   const jar = await cookies();
   const collapsed = jar.get(COOKIE_RAIL)?.value === "1";

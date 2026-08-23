@@ -2,6 +2,7 @@
 // 근무제·기준시간 설정 폼 — 출근/퇴근 기준시각([시][분]) + 지각 유예 + 기준 일 근무시간 + 주52 알림.
 //  · 교대근무(2/3교대): 조별 출근·퇴근 시각을 정의하고 근무표 방식(고정/순환)을 고른다.
 //    "안 함"이면 단일 기준시각(현행). 교대 정의·저장은 saveWorkRules가 함께 처리(조는 order 기준 upsert).
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { saveWorkRules } from "@/app/actions/settings";
 import { WEEK_ORDER, DAY_LABELS, parseDays, daysToCsv } from "@/lib/workdays";
@@ -87,7 +88,7 @@ export function WorkRulesForm({
       <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>근무제·기준시간</div>
       <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
         표준 출근·퇴근 기준시각을 정하면 <b>지각·조퇴·정상</b>을 판정합니다. 해당 시각을 <b>없음</b>으로 두면 그 판정을 하지 않습니다.
-        <br />교대근무면 <b>조별 시각</b>과 <b>근무표 방식</b>을 정합니다(직원 배정은 [근무표]에서).
+        <br />교대근무면 <b>조별 시각</b>과 <b>근무표 방식</b>을 정합니다. 직원 배정은 여기서 저장한 뒤 <b>[근무표]</b> 화면에서 합니다.
       </p>
 
       <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -162,8 +163,27 @@ export function WorkRulesForm({
               </div>
               {graceInput}
             </div>
-            <div style={{ fontSize: 12, color: "var(--text-sub)" }}>
+            {/* ⚠️ [근무표]로 가는 **유일한 통로**다 (2026-08-23).
+                   왼쪽 메뉴의 [근무표]는 이제 **교대근무를 켠 회사에만** 보인다(Sidebar.tsx 참고).
+                   그래서 여기서 "저장하면 메뉴가 생긴다"까지 알려 주지 않으면, 교대근무를 막 켠 관리자가
+                   조별 시각만 정해 놓고 **직원 배정 화면을 영영 못 찾는다.** 이 안내와 그 메뉴 규칙은 짝이다.
+                ⚠️ 링크를 보여 주는 기준은 화면에서 고른 값(shiftMode)이 아니라 **저장된 값**(initial.shiftMode)이다.
+                   드롭박스만 바꾸고 저장하지 않은 상태에서 눌러 가면 "설정되지 않았습니다" 안내만 나온다. */}
+            <div style={{ fontSize: 12, color: "var(--text-sub)", lineHeight: 1.7 }}>
               직원을 각 조에 배정하는 건 <b>[근무표]</b> 화면에서 합니다. 여기선 <b>조별 시각</b>만 정합니다. 지각 유예는 회사 공통입니다.
+              {initial.shiftMode ? (
+                <>
+                  {" "}
+                  <Link href="/shifts" style={{ color: "var(--primary)", fontWeight: 700, whiteSpace: "nowrap" }}>
+                    근무표에서 배정하기 →
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <br />
+                  <b>저장</b>하면 왼쪽 메뉴 [분석·설정]에 <b>[근무표]</b>가 생깁니다.
+                </>
+              )}
             </div>
             {shifts.map((r, i) => {
               const night = joinTime(r.eh, r.em) <= joinTime(r.sh, r.sm);

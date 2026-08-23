@@ -13,7 +13,10 @@ import { NavProvider, NavOpenButton } from "@/app/components/MobileNav";
 // ⚠️ mustChangePassword를 여기 두는 이유(검수 H-4): 임시 비밀번호로 들어온 사람이
 //    주소창에 다른 주소를 직접 쳐서 강제 변경 화면을 건너뛰던 문제를 한 곳에서 막기 위함.
 //    예전엔 [출퇴근]·[대시보드] 두 화면에서만 막아, 그 외 화면은 전부 통과했다.
-type ShellUser = { id?: string; name: string; role: string; isOwner?: boolean; companyId?: string; mustChangePassword?: boolean; company: { name: string; logoName?: string | null; approvalMode?: string | null } };
+// ⚠️ shiftMode를 여기 두는 이유(2026-08-23): 사이드바가 이 값으로 [근무표] 메뉴를 줄지 정한다(Sidebar.tsx 참고).
+//    isOwner와 **똑같은 함정**이 있다 — 타입에 없으면 user를 줄여 넘겨도 tsc가 통과해,
+//    교대근무 회사에서 [근무표] 메뉴가 조용히 사라진다. 그래서 여기에도 적어 둔다.
+type ShellUser = { id?: string; name: string; role: string; isOwner?: boolean; companyId?: string; mustChangePassword?: boolean; company: { name: string; logoName?: string | null; approvalMode?: string | null; shiftMode?: number | null } };
 
 export function AppShell({
   user,
