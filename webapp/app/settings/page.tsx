@@ -14,8 +14,11 @@ import { LivenessRuleForm } from "./LivenessRuleForm";
 import { AlertRulesForm } from "./AlertRulesForm";
 import { HolidayForm } from "./HolidayForm";
 import { PcOffForm } from "./PcOffForm";
+import { SettingsTabs, resolveTab } from "./SettingsTabs";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+  // 어느 탭을 보고 있는지. 모르는 값이 들어오면 첫 탭으로 되돌린다(주소를 손으로 고쳐도 안전).
+  const tab = resolveTab((await searchParams).tab);
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   if (me.role !== "admin") redirect("/attendance");
@@ -66,9 +69,18 @@ export default async function SettingsPage() {
 
   return (
     <AppShell user={me} active="settings" title="설정" subtitle={`${me.company.name} · 관리자 ${me.name}`}>
-      {/* PC=2단(근무제 | 사내 네트워크), 좁은 화면=세로. 지도는 전체 폭 */}
-      <div className="split-2" style={{ marginBottom: 16 }}>
-        <WorkRulesForm
+      {/* 2026-08-23: 설정 9개가 한 페이지에 4,600px로 쌓여 있고 [저장]이 9개라 헷갈렸다 → 탭 3개로 나눴다.
+          ⚠️ 각 폼에 넘기는 값은 **하나도 바꾸지 않았다.** 저장 기능이 그 값에 걸려 있어, 여기서 손대면
+             "저장했는데 저장 안 되는" 조용한 고장이 난다. 위치만 옮겼다.
+          ⚠️ 데이터 조회(위 prisma)는 탭과 무관하게 **전부 그대로** 한다. 탭별로 나누면 코드가 복잡해지고,
+             탭을 옮길 때마다 조회가 달라져 값이 어긋날 수 있다. */}
+      <SettingsTabs active={tab} />
+
+      {tab === "work" && (
+        <>
+          {/* PC=2단(근무제 | 공휴일), 좁은 화면=세로 */}
+          <div className="split-2" style={{ marginBottom: 16 }}>
+<WorkRulesForm
           initial={{
             start: company?.workStartTime ?? "",
             end: company?.workEndTime ?? "",
@@ -82,17 +94,47 @@ export default async function SettingsPage() {
             shifts,
           }}
         />
-        <OfficeNetworkForm initialIps={company?.officeIps ?? ""} currentIp={currentIp} />
-      </div>
-      <div style={{ marginBottom: 16 }}>
-        <OutingReasonForm initialReasons={company?.outingReasons ?? ""} />
-      </div>
-      <div className="split-2" style={{ marginBottom: 16 }}>
-        <FaceRuleForm initialPercent={company?.faceMinPercent ?? 30} initialBrightness={company?.faceMinBrightness ?? 0} />
-        <LivenessRuleForm initialPercent={company?.livenessPercent ?? 50} />
-      </div>
-      <div style={{ marginBottom: 16 }}>
-        <AlertRulesForm
+<HolidayForm
+          initial={{
+            autoOn: company?.holidayAutoOn ?? true,
+            holidays: companyHolidays,
+            syncedCount,
+            syncedYears,
+          }}
+        />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+<OutingReasonForm initialReasons={company?.outingReasons ?? ""} />
+          </div>
+        </>
+      )}
+
+      {tab === "auth" && (
+        <>
+          {/* PC=2단(얼굴 기준 | 재검토 기준), 좁은 화면=세로. 지도는 전체 폭 */}
+          <div className="split-2" style={{ marginBottom: 16 }}>
+<FaceRuleForm initialPercent={company?.faceMinPercent ?? 30} initialBrightness={company?.faceMinBrightness ?? 0} />
+<LivenessRuleForm initialPercent={company?.livenessPercent ?? 50} />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+<OfficeNetworkForm initialIps={company?.officeIps ?? ""} currentIp={currentIp} />
+          </div>
+<OfficeLocationForm
+        initial={{
+          lat: company?.officeLat ?? null,
+          lng: company?.officeLng ?? null,
+          radius: company?.officeRadiusM ?? 200,
+          address: company?.officeAddress ?? null,
+          addressDetail: company?.officeAddressDetail ?? null,
+        }}
+      />
+        </>
+      )}
+
+      {tab === "security" && (
+        <>
+          <div style={{ marginBottom: 16 }}>
+<AlertRulesForm
           initial={{
             nightOn: company?.alertNightOn ?? true,
             nightStart: company?.alertNightStart ?? 22,
@@ -103,7 +145,9 @@ export default async function SettingsPage() {
         />
       </div>
       <div style={{ marginBottom: 16 }}>
-        <PcOffForm
+          </div>
+          <div style={{ marginBottom: 16 }}>
+<PcOffForm
           initial={{
             on: company?.pcOffOn ?? false,
             mode: company?.pcOffMode ?? "lock",
@@ -119,24 +163,9 @@ export default async function SettingsPage() {
         />
       </div>
       <div style={{ marginBottom: 16 }}>
-        <HolidayForm
-          initial={{
-            autoOn: company?.holidayAutoOn ?? true,
-            holidays: companyHolidays,
-            syncedCount,
-            syncedYears,
-          }}
-        />
-      </div>
-      <OfficeLocationForm
-        initial={{
-          lat: company?.officeLat ?? null,
-          lng: company?.officeLng ?? null,
-          radius: company?.officeRadiusM ?? 200,
-          address: company?.officeAddress ?? null,
-          addressDetail: company?.officeAddressDetail ?? null,
-        }}
-      />
+          </div>
+        </>
+      )}
     </AppShell>
   );
 }
