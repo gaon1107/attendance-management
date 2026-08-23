@@ -33,6 +33,9 @@ export type IconName =
   | "bell" // 종 — 새 알림
   | "face" // 얼굴 — 얼굴인증
   | "exit" // 문 밖으로 — 외출/외근
+  | "plane" // 비행기 — 출장
+  | "clock" // 시계 — 출퇴근 시각
+  | "grid" // 격자 — 여러 기능·메뉴
   | "calendar" // 달력 — 날짜·기간 선택
   | "search" // 돋보기 — 검색(주소 찾기 등)
   | "printer" // 프린터 — 인쇄·PDF
@@ -117,6 +120,22 @@ const PATHS: Record<IconName, ReactNode> = {
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
       <path d="M16 17l5-5-5-5" />
       <path d="M21 12H9" />
+    </>
+  ),
+  // 사이드바의 trip 아이콘과 같은 그림(같은 뜻에 같은 그림을 쓴다)
+  plane: <path d="M17.8 19.2 16 11l3.5-3.5a2.12 2.12 0 0 0-3-3L13 8 4.8 6.2a1 1 0 0 0-.9 1.7l4.6 3.1-2 3-2.5-.3-.9.9 3 1.5 1.5 3 .9-.9-.3-2.5 3-2 3.1 4.6a1 1 0 0 0 1.7-.9z" />,
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </>
+  ),
+  grid: (
+    <>
+      <rect x="3" y="3" width="7" height="9" rx="1" />
+      <rect x="14" y="3" width="7" height="5" rx="1" />
+      <rect x="14" y="12" width="7" height="9" rx="1" />
+      <rect x="3" y="16" width="7" height="5" rx="1" />
     </>
   ),
   calendar: (

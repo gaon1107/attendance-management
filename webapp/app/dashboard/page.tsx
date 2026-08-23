@@ -445,7 +445,7 @@ export default async function DashboardPage() {
               {/* 출장 신청 (있을 때만) */}
               {pendingTripCount > 0 && (
                 <Link href="/trip/approvals" style={{ padding: "12px 18px", borderBottom: latestNotice ? "1px solid #F3F4F6" : "none", textDecoration: "none", color: "var(--text)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}>✈️ 출장 신청</span>
+                  <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}><Icon name="plane" size={14} style={{ marginRight: 5 }} />출장 신청</span>
                   <span style={{ fontSize: 14, fontWeight: 700, color: "var(--primary)" }}>{pendingTripCount}건</span>
                 </Link>
               )}

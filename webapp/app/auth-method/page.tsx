@@ -62,7 +62,7 @@ export default async function AuthMethodPage({
       <div className="split-2">
         <div style={cardStyle(method === "face")}>
           {method === "face" && <div><CurrentBadge /></div>}
-          <div style={{ marginBottom: 10, color: "var(--primary)" }}><Icon name="face" size={28} /></div>
+          <div style={{ marginBottom: 10, color: "var(--primary)" }}><Icon name="face" size={28} style={{ verticalAlign: 0 }} /></div>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>얼굴인증 사용하기</div>
           <div style={{ fontSize: 13, color: "var(--text-sub)", lineHeight: 1.5, marginBottom: 14 }}>
             카메라로 본인 확인. 생체정보 동의가 필요합니다.
@@ -96,7 +96,7 @@ export default async function AuthMethodPage({
         </div>
 
         <div style={cardStyle(method === "gps")}>
-          <div style={{ marginBottom: 10, color: "var(--primary)" }}><Icon name="pin" size={28} /></div>
+          <div style={{ marginBottom: 10, color: "var(--primary)" }}><Icon name="pin" size={28} style={{ verticalAlign: 0 }} /></div>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>GPS만 사용하기</div>
           <div style={{ fontSize: 13, color: "var(--text-sub)", lineHeight: 1.5, marginBottom: 14 }}>
             위치로 출퇴근 확인. 생체정보를 수집하지 않습니다.

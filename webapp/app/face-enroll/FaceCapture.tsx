@@ -278,7 +278,7 @@ export function FaceCapture({ initialCount, minPercent = 30 }: { initialCount: n
 
       {phase === "done" ? (
         <div style={{ textAlign: "center", padding: "24px 8px" }}>
-          <div style={{ marginBottom: 10, color: "var(--success)" }}><Icon name="check" size={36} /></div>
+          <div style={{ marginBottom: 10, color: "var(--success)" }}><Icon name="check" size={36} style={{ verticalAlign: 0 }} /></div>
           <div style={{ fontSize: 16, fontWeight: 700, color: "var(--success)" }}>얼굴 등록 완료 ({count}/{MAX}회)</div>
           <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 8 }}>
             {count >= MAX ? "최대 횟수까지 등록했습니다." : ""} 이제 출퇴근에서 얼굴로 본인 확인을 할 수 있습니다.

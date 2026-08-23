@@ -184,7 +184,7 @@ export function AlertsClient({
                   <td colSpan={5} style={{ padding: "36px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center", lineHeight: 1.7 }}>
                     {rows.length === 0 ? (
                       <>
-                        이 기간에 이상 접속이 없습니다. 👍
+                        이 기간에 이상 접속이 없습니다.
                         <br />
                         <span style={{ fontSize: 13 }}>수상한 접속이 생기면 여기와 대시보드에 표시됩니다.</span>
                       </>

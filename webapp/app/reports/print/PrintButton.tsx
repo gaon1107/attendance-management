@@ -20,7 +20,7 @@ export function PrintButton({ title }: { title: string }) {
       onClick={() => window.print()}
       style={{ height: 38, padding: "0 16px", display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 8, background: "var(--primary)", color: "#fff", fontSize: 15, fontWeight: 700, border: "none", cursor: "pointer", fontFamily: "inherit" }}
     >
-      <Icon name="printer" style={{ marginRight: 6 }} />인쇄 / PDF로 저장
+      <Icon name="printer" />인쇄 / PDF로 저장
     </button>
   );
 }

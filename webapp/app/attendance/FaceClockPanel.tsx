@@ -336,7 +336,7 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
         </>
       ) : (
         <button type="button" onClick={openCamera} style={{ ...bigBtn("var(--danger)"), marginBottom: 10 }}>
-          😀 얼굴로 퇴근하기
+          <Icon name="face" size={20} style={{ marginRight: 8 }} />얼굴로 퇴근하기
         </button>
       )}
       {msg && <MsgBox msg={msg} />}

@@ -144,7 +144,7 @@ export function RotationClient({
                           {s ? (
                             <span style={{ fontWeight: 700 }}>
                               {s.order}교대
-                              {isNight(s) && <span title="야간(익일 퇴근)" style={{ color: "var(--warning)", marginLeft: 3 }}><Icon name="moon" size={12} /></span>}
+                              {isNight(s) && <span role="img" aria-label="야간(익일 퇴근)" title="야간(익일 퇴근)" style={{ color: "var(--warning)", marginLeft: 3 }}><Icon name="moon" size={12} /></span>}
                               <div style={{ fontSize: 11, color: "var(--text-sub)", fontWeight: 400 }}>{s.startTime}~{s.endTime}</div>
                             </span>
                           ) : "—"}
