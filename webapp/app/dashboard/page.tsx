@@ -19,6 +19,7 @@ import { trialStatus, trialLastDay, formatKoreanDate, TRIAL_DAYS } from "@/lib/t
 import { DashboardCalendar } from "./DashboardCalendar";
 import { LatestNoticeModal } from "./LatestNoticeModal";
 import type { DayData } from "@/app/schedule/ScheduleCalendar";
+import { Icon } from "@/app/components/Icon";
 
 export default async function DashboardPage() {
   const me = await getCurrentUser();
@@ -409,35 +410,35 @@ export default async function DashboardPage() {
               {/* 비밀번호 재설정 요청 (있을 때만) */}
               {pendingResetCount > 0 && (
                 <Link href="/employees" style={{ padding: "12px 18px", borderBottom: (pendingCorrectionCount > 0 || pendingOutingCount > 0 || pendingRemoteCount > 0 || pendingOvertimeCount > 0 || pendingTripCount > 0 || latestNotice) ? "1px solid #F3F4F6" : "none", textDecoration: "none", color: "var(--text)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}>🔑 비밀번호 재설정 요청</span>
+                  <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}><Icon name="key" size={14} style={{ marginRight: 5 }} />비밀번호 재설정 요청</span>
                   <span style={{ fontSize: 14, fontWeight: 700, color: "var(--danger)" }}>{pendingResetCount}건</span>
                 </Link>
               )}
               {/* 근태 정정 요청 (있을 때만) */}
               {pendingCorrectionCount > 0 && (
                 <Link href="/corrections/approvals" style={{ padding: "12px 18px", borderBottom: (pendingOutingCount > 0 || pendingRemoteCount > 0 || pendingOvertimeCount > 0 || pendingTripCount > 0 || latestNotice) ? "1px solid #F3F4F6" : "none", textDecoration: "none", color: "var(--text)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}>📝 근태 정정 요청</span>
+                  <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}><Icon name="edit" size={14} style={{ marginRight: 5 }} />근태 정정 요청</span>
                   <span style={{ fontSize: 14, fontWeight: 700, color: "var(--primary)" }}>{pendingCorrectionCount}건</span>
                 </Link>
               )}
               {/* 외출/외근 신청 (있을 때만) */}
               {pendingOutingCount > 0 && (
                 <Link href="/outing/approvals" style={{ padding: "12px 18px", borderBottom: (pendingRemoteCount > 0 || pendingOvertimeCount > 0 || pendingTripCount > 0 || latestNotice) ? "1px solid #F3F4F6" : "none", textDecoration: "none", color: "var(--text)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}>🚶 외출/외근 신청</span>
+                  <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}><Icon name="exit" size={14} style={{ marginRight: 5 }} />외출/외근 신청</span>
                   <span style={{ fontSize: 14, fontWeight: 700, color: "var(--primary)" }}>{pendingOutingCount}건</span>
                 </Link>
               )}
               {/* 재택근무 신청 (있을 때만) */}
               {pendingRemoteCount > 0 && (
                 <Link href="/remote/approvals" style={{ padding: "12px 18px", borderBottom: (pendingOvertimeCount > 0 || pendingTripCount > 0 || latestNotice) ? "1px solid #F3F4F6" : "none", textDecoration: "none", color: "var(--text)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}>🏠 재택근무 신청</span>
+                  <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}><Icon name="home" size={14} style={{ marginRight: 5 }} />재택근무 신청</span>
                   <span style={{ fontSize: 14, fontWeight: 700, color: "var(--primary)" }}>{pendingRemoteCount}건</span>
                 </Link>
               )}
               {/* 초과근무 신청 (있을 때만) */}
               {pendingOvertimeCount > 0 && (
                 <Link href="/overtime/approvals" style={{ padding: "12px 18px", borderBottom: (pendingTripCount > 0 || latestNotice) ? "1px solid #F3F4F6" : "none", textDecoration: "none", color: "var(--text)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}>🌙 초과근무 신청</span>
+                  <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}><Icon name="moon" size={14} style={{ marginRight: 5 }} />초과근무 신청</span>
                   <span style={{ fontSize: 14, fontWeight: 700, color: "var(--primary)" }}>{pendingOvertimeCount}건</span>
                 </Link>
               )}

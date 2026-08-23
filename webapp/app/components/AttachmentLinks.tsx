@@ -3,6 +3,7 @@
 //  · 다운로드는 인증 route(/api/request-attachment/[id])가 회사격리·권한을 확인한다.
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Icon } from "@/app/components/Icon";
 
 export type AttachmentInfo = { id: string; originalName: string; size: number; mimeType: string };
 
@@ -33,7 +34,7 @@ export function AttachmentLinks({ items, canDelete = false }: { items: Attachmen
             title={a.originalName}
             style={{ color: "var(--primary)", textDecoration: "none", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
           >
-            📎 {a.originalName}
+            <Icon name="clip" size={13} style={{ marginRight: 5 }} />{a.originalName}
           </a>
           {canDelete && (
             <button

@@ -7,6 +7,7 @@ import { saveOfficeLocation } from "@/app/actions/settings";
 import { geocodeForOffice } from "@/app/actions/geo";
 import { PostcodeButton } from "@/app/components/PostcodeButton";
 import { formatThousands, stripCommas } from "@/lib/format";
+import { Icon } from "@/app/components/Icon";
 
 // 지도는 브라우저에서만 로드(서버 렌더 시 오류 방지)
 const OfficeMap = dynamic(() => import("./OfficeMap").then((m) => m.OfficeMap), {
@@ -98,7 +99,7 @@ export function OfficeLocationForm({
           onClick={fillCurrentLocation}
           style={{ height: 44, padding: "0 16px", border: "1px solid var(--primary)", borderRadius: 8, background: "#fff", color: "var(--primary)", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
         >
-          📍 현재 내 위치로 채우기
+          <Icon name="pin" style={{ marginRight: 6 }} />현재 내 위치로 채우기
         </button>
       </div>
       {addrMsg && <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 8 }}>{addrMsg}</div>}

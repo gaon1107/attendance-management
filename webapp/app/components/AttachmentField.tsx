@@ -5,6 +5,7 @@
 //  · lib/request-attachment.ts는 fs 등을 import하므로 클라이언트에서 쓸 수 없어 상수를 여기 복제한다(서버와 값 일치 유지).
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Icon } from "@/app/components/Icon";
 
 const MAX_FILES = 5;
 const MAX_MB = 10;
@@ -99,7 +100,7 @@ export function AttachmentField({
         <ul style={{ listStyle: "none", padding: 0, margin: "10px 0 0", display: "flex", flexDirection: "column", gap: 6 }}>
           {files.map((f, i) => (
             <li key={`${f.name}-${f.size}-${i}`} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text)" }}>
-              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📎 {f.name}</span>
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Icon name="clip" size={13} style={{ marginRight: 5 }} />{f.name}</span>
               <span style={{ color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{(f.size / 1024 / 1024).toFixed(1)}MB</span>
               <button type="button" onClick={() => removeAt(i)} style={{ border: "none", background: "none", color: "var(--danger)", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>제거</button>
             </li>

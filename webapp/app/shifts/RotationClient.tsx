@@ -5,6 +5,7 @@
 import { useActionState, useMemo, useState } from "react";
 import { saveRotation } from "@/app/actions/shift";
 import { rotationShiftOrder, elapsedUnits, crossesMidnight, type RotationUnit } from "@/lib/shift";
+import { Icon } from "@/app/components/Icon";
 
 export type ShiftDef = { id: string; order: number; name: string | null; startTime: string; endTime: string };
 export type EmpLite = { id: string; name: string; employeeNo: string | null };
@@ -90,7 +91,7 @@ export function RotationClient({
         {shifts.map((s) => (
           <span key={s.id} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 999, padding: "5px 12px", fontWeight: 700 }}>
             {shiftName(s)} <span style={{ color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{s.startTime}~{s.endTime}</span>
-            {isNight(s) && <span style={{ color: "var(--warning)", marginLeft: 4 }}>🌙야간</span>}
+            {isNight(s) && <span style={{ color: "var(--warning)", marginLeft: 4 }}><Icon name="moon" size={12} style={{ marginRight: 3 }} />야간</span>}
           </span>
         ))}
       </div>
@@ -143,7 +144,7 @@ export function RotationClient({
                           {s ? (
                             <span style={{ fontWeight: 700 }}>
                               {s.order}교대
-                              {isNight(s) && <span style={{ color: "var(--warning)", marginLeft: 3 }}>🌙</span>}
+                              {isNight(s) && <span title="야간(익일 퇴근)" style={{ color: "var(--warning)", marginLeft: 3 }}><Icon name="moon" size={12} /></span>}
                               <div style={{ fontSize: 11, color: "var(--text-sub)", fontWeight: 400 }}>{s.startTime}~{s.endTime}</div>
                             </span>
                           ) : "—"}

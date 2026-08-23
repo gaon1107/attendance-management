@@ -7,6 +7,7 @@ import { SearchBox } from "@/app/components/SearchBox";
 import { TablePagination } from "@/app/components/TablePagination";
 import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
+import { Icon } from "@/app/components/Icon";
 
 export type LoginRow = {
   id: string;
@@ -86,7 +87,7 @@ export function LoginHistoryClient({
           href={exportHref}
           style={{ height: 40, padding: "0 16px", display: "inline-flex", alignItems: "center", borderRadius: 8, background: "var(--primary)", color: "#fff", fontSize: 14, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}
         >
-          ⬇ 엑셀 내보내기
+          <Icon name="download" style={{ marginRight: 6 }} />엑셀 내보내기
         </a>
       </div>
 

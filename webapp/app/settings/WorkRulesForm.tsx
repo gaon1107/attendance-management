@@ -7,6 +7,7 @@ import { saveWorkRules } from "@/app/actions/settings";
 import { WEEK_ORDER, DAY_LABELS, parseDays, daysToCsv } from "@/lib/workdays";
 import { TimePicker, splitTime, joinTime } from "@/app/components/TimePicker";
 import { RetroWarning } from "@/app/components/RetroWarning";
+import { Icon } from "@/app/components/Icon";
 
 const labelStyle: React.CSSProperties = { display: "block", fontSize: 13, fontWeight: 700, marginBottom: 8 };
 const selStyle: React.CSSProperties = { height: 38, padding: "0 10px", border: "1px solid #D1D5DB", borderRadius: 8, fontFamily: "inherit", fontSize: 14, background: "#fff", cursor: "pointer" };
@@ -182,7 +183,7 @@ export function WorkRulesForm({
                     <label style={{ ...labelStyle, marginBottom: 6 }}>퇴근</label>
                     <TimePicker h={r.eh} m={r.em} onH={(v) => updShift(i, "eh", v)} onM={(v) => updShift(i, "em", v)} allowEmpty={false} />
                   </div>
-                  {night && <div style={{ fontSize: 12, fontWeight: 700, color: "var(--warning)", paddingBottom: 12 }}>🌙 야간(익일 퇴근)</div>}
+                  {night && <div style={{ fontSize: 12, fontWeight: 700, color: "var(--warning)", paddingBottom: 12 }}><Icon name="moon" size={12} style={{ marginRight: 4 }} />야간(익일 퇴근)</div>}
                 </div>
               );
             })}

@@ -4,6 +4,7 @@
 import { formatMinutes, isUnclosed } from "@/lib/worktime";
 import { workModeLabel, locationLabel, hhmm, clockOutText, monthDayDow } from "@/lib/labels";
 import type { DayDetail, ClockPhotoLite } from "@/lib/dayentries";
+import { Icon } from "@/app/components/Icon";
 
 const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 20px", whiteSpace: "nowrap" };
 const td: React.CSSProperties = { padding: "12px 20px", fontSize: 15, verticalAlign: "middle", whiteSpace: "nowrap" };
@@ -46,7 +47,7 @@ function PhotoBadge({ p, label }: { p: ClockPhotoLite; label: string }) {
               : { border: "1px solid var(--border)", color: "var(--primary)" }),
           }}
         >
-          📷 사진 보기
+          <Icon name="camera" size={13} style={{ marginRight: 4 }} />사진 보기
         </a>
       )}
     </span>

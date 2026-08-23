@@ -4,6 +4,7 @@
 //  · from/to/todayISO는 "YYYY-MM-DD" 문자열. 값 비교·범위 판단은 ISO 사전순 비교로 안전하게 처리한다.
 //  · 처음 개발: 근태현황(2026-07). 표준 컴포넌트로 승격.
 import { useState } from "react";
+import { Icon } from "@/app/components/Icon";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const isoOf = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`;
@@ -95,7 +96,8 @@ export function RangeCalendar({
         onClick={openCal}
         style={{ height: 38, padding: "0 14px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--text)", fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}
       >
-        📅 <span style={{ fontVariantNumeric: "tabular-nums" }}>{from} ~ {to}</span>
+        <Icon name="calendar" size={15} style={{ color: "var(--text-sub)" }} />
+        <span style={{ fontVariantNumeric: "tabular-nums" }}>{from} ~ {to}</span>
       </button>
 
       {open && (

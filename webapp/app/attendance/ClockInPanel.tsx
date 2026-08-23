@@ -4,6 +4,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { clockIn } from "@/app/actions/attendance";
+import { Icon } from "@/app/components/Icon";
 
 export function ClockInPanel() {
   const [pending, startTransition] = useTransition();
@@ -93,14 +94,14 @@ export function ClockInPanel() {
           marginBottom: 12,
         }}
       >
-        🏢 사무실 출근
+        <Icon name="office" size={20} style={{ marginRight: 8 }} />사무실 출근
       </button>
       <div style={{ display: "flex", gap: 12 }}>
         <button type="button" disabled={locked} onClick={() => start("home")} style={secondaryBtn}>
-          🏠 재택근무
+          <Icon name="home" style={{ marginRight: 6 }} />재택근무
         </button>
         <button type="button" disabled={locked} onClick={() => start("field")} style={secondaryBtn}>
-          🚗 외근
+          <Icon name="car" style={{ marginRight: 6 }} />외근
         </button>
       </div>
       {msg && <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 12 }}>{msg}</div>}

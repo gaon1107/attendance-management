@@ -5,6 +5,7 @@
 import { useState, useTransition } from "react";
 import { issueTempPassword } from "@/app/actions/password-reset";
 import { sendTempPasswordSms } from "@/app/actions/sms";
+import { Icon } from "@/app/components/Icon";
 
 type Req = { id: string; name: string; email: string; createdAtLabel: string };
 
@@ -67,7 +68,7 @@ export function PendingResetRequests({ requests }: { requests: Req[] }) {
   return (
     <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 12, padding: 24, marginBottom: 16 }}>
       <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
-        🔑 비밀번호 재설정 요청 <span style={{ color: "var(--danger)" }}>{list.length}건</span>
+        <Icon name="key" size={15} style={{ marginRight: 5 }} />비밀번호 재설정 요청 <span style={{ color: "var(--danger)" }}>{list.length}건</span>
       </div>
       <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
         직원이 비밀번호 찾기를 요청했습니다. <b>임시 비밀번호 발급</b>을 누르면 임시 비밀번호가 만들어집니다.

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { enrollMyFace, deleteMyFace } from "@/app/actions/face";
 import { FaceGuide } from "@/app/components/FaceGuide";
+import { Icon } from "@/app/components/Icon";
 
 type Msg = { type: "ok" | "err" | "info"; text: string } | null;
 // 영상 위 오버레이 상태: 스캔 중 → (성공: 검출 영역+완료 문구) or (실패: 안내)
@@ -277,7 +278,7 @@ export function FaceCapture({ initialCount, minPercent = 30 }: { initialCount: n
 
       {phase === "done" ? (
         <div style={{ textAlign: "center", padding: "24px 8px" }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
+          <div style={{ marginBottom: 10, color: "var(--success)" }}><Icon name="check" size={36} /></div>
           <div style={{ fontSize: 16, fontWeight: 700, color: "var(--success)" }}>얼굴 등록 완료 ({count}/{MAX}회)</div>
           <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 8 }}>
             {count >= MAX ? "최대 횟수까지 등록했습니다." : ""} 이제 출퇴근에서 얼굴로 본인 확인을 할 수 있습니다.
@@ -324,7 +325,7 @@ export function FaceCapture({ initialCount, minPercent = 30 }: { initialCount: n
                   />
                 )}
                 <div style={overlayBanner("rgba(22, 101, 52, 0.92)")}>
-                  ✅ {overlay.round}회차 등록 완료!
+                  <Icon name="check" style={{ marginRight: 5 }} />{overlay.round}회차 등록 완료!
                   {overlay.round < MAX && (
                     <div style={{ fontSize: 13, fontWeight: 400, marginTop: 4, color: "#DCFCE7" }}>
                       각도를 바꿔 더 등록하면 인식이 정확해져요. (최대 {MAX}회)
@@ -357,7 +358,7 @@ export function FaceCapture({ initialCount, minPercent = 30 }: { initialCount: n
               disabled={phase !== "camera" || scanning || overlay?.kind === "success"}
               style={{ ...btn("var(--primary)", "#fff"), opacity: scanning || overlay?.kind === "success" ? 0.6 : 1 }}
             >
-              {scanning ? "분석 중…" : overlay?.kind === "error" ? "다시 촬영하기" : "📷 촬영하기"}
+              {scanning ? "분석 중…" : overlay?.kind === "error" ? "다시 촬영하기" : <><Icon name="camera" size={18} style={{ marginRight: 8 }} />촬영하기</>}
             </button>
           </div>
 

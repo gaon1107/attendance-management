@@ -172,7 +172,7 @@ export function PendingApprovalsClient({
               {pg.view.length === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ padding: "32px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
-                    {searching ? "검색 결과가 없습니다." : "대기 중인 결재가 없습니다. 👍"}
+                    {searching ? "검색 결과가 없습니다." : "대기 중인 결재가 없습니다."}
                   </td>
                 </tr>
               ) : (

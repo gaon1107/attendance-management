@@ -10,6 +10,7 @@ import { faceClockIn, faceClockOut } from "@/app/actions/face";
 import { clockOut } from "@/app/actions/attendance";
 import { ClockInPanel } from "./ClockInPanel";
 import { FaceGuide } from "@/app/components/FaceGuide";
+import { Icon } from "@/app/components/Icon";
 
 type Msg = { type: "ok" | "err" | "info"; text: string } | null;
 type WorkMode = "office" | "home" | "field";
@@ -303,7 +304,7 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
           <button type="button" onClick={cancelCamera} disabled={submitting} style={secondaryBtn}>취소</button>
           <button type="button" onClick={captureAndSubmit} disabled={submitting} style={{ ...bigBtn("var(--primary)"), flex: 2, width: "auto", height: 52, fontSize: 16 }}>
-            {submitting ? "확인 중…" : `📷 촬영해서 ${action === "in" ? "출근" : "퇴근"}`}
+            {submitting ? "확인 중…" : <><Icon name="camera" size={18} style={{ marginRight: 8 }} />{`촬영해서 ${action === "in" ? "출근" : "퇴근"}`}</>}
           </button>
         </div>
         {msg && <MsgBox msg={msg} />}
@@ -323,11 +324,11 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
       {action === "in" ? (
         <>
           <button type="button" onClick={() => startClockIn("office")} style={{ ...bigBtn("var(--primary)"), marginBottom: 12 }}>
-            😀 얼굴로 사무실 출근
+            <Icon name="face" size={20} style={{ marginRight: 8 }} />얼굴로 사무실 출근
           </button>
           <div style={{ display: "flex", gap: 12 }}>
-            <button type="button" onClick={() => startClockIn("home")} style={secondaryBtn}>🏠 재택근무</button>
-            <button type="button" onClick={() => startClockIn("field")} style={secondaryBtn}>🚗 외근</button>
+            <button type="button" onClick={() => startClockIn("home")} style={secondaryBtn}><Icon name="home" style={{ marginRight: 6 }} />재택근무</button>
+            <button type="button" onClick={() => startClockIn("field")} style={secondaryBtn}><Icon name="car" style={{ marginRight: 6 }} />외근</button>
           </div>
           <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 12 }}>
             버튼을 누르면 웹캠으로 본인 확인 후 출근됩니다. 사무실 출근만 위치를 확인해요.

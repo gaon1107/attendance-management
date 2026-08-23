@@ -12,6 +12,7 @@ import { TablePagination } from "@/app/components/TablePagination";
 import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
 import { formatMinutes } from "@/lib/worktime";
+import { Icon } from "@/app/components/Icon";
 
 // 서버(page.tsx)에서 미리 계산해 넘겨주는 직원 한 명의 집계값(직렬화 가능한 순수 객체)
 export type ReportRow = {
@@ -92,14 +93,14 @@ export function ReportsClient({
           prefetch={false}
           style={{ marginLeft: "auto", height: 38, padding: "0 16px", display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 8, background: "#fff", color: "var(--primary)", border: "1px solid var(--primary)", fontSize: 15, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}
         >
-          🖨 법정기록 PDF
+          <Icon name="printer" />법정기록 PDF
         </Link>
         <Link
           href={exportHref}
           prefetch={false}
           style={{ height: 38, padding: "0 16px", display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 8, background: "var(--primary)", color: "#fff", fontSize: 15, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}
         >
-          ⬇ 법정기록 엑셀 내보내기
+          <Icon name="download" />법정기록 엑셀 내보내기
         </Link>
       </div>
 

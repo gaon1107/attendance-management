@@ -3,6 +3,7 @@
 //  · 공지 화면([공지] 메뉴)이 캘린더로 통합되면서, 여기서 바로 본문을 읽게 한다.
 import { useState } from "react";
 import { Modal } from "@/app/components/Modal";
+import { Icon } from "@/app/components/Icon";
 
 export function LatestNoticeModal({
   notice,
@@ -18,7 +19,7 @@ export function LatestNoticeModal({
         onClick={() => setOpen(true)}
         style={{ width: "100%", textAlign: "left", padding: "12px 18px", background: "transparent", border: "none", color: "var(--text)", cursor: "pointer", fontFamily: "inherit" }}
       >
-        <div style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700, marginBottom: 4 }}>📢 최신 공지</div>
+        <div style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700, marginBottom: 4 }}><Icon name="megaphone" size={14} style={{ marginRight: 5 }} />최신 공지</div>
         <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{notice.title}</div>
       </button>
 
@@ -28,7 +29,7 @@ export function LatestNoticeModal({
         maxWidth={460}
         title={
           <>
-            <span style={{ fontSize: 12, fontWeight: 800, color: "#B45309", marginRight: 6 }}>📢 공지</span>
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#B45309", marginRight: 6 }}><Icon name="megaphone" size={12} style={{ marginRight: 4 }} />공지</span>
             {notice.title}
           </>
         }

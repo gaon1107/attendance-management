@@ -5,6 +5,7 @@
 //  · 기간(시작~종료) 선택은 RangeCalendar를 쓴다. 이 컴포넌트는 단일 날짜 전용.
 import { useEffect, useState } from "react";
 import { toISODate } from "@/lib/period";
+import { Icon } from "@/app/components/Icon";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const isoOf = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`;
@@ -88,7 +89,7 @@ export function DatePicker({
           cursor: "pointer", display: "flex", alignItems: "center", gap: 8, textAlign: "left",
         }}
       >
-        <span>📅</span>
+        <span style={{ display: "inline-flex", color: "var(--text-sub)" }}><Icon name="calendar" size={15} /></span>
         <span style={{ fontVariantNumeric: "tabular-nums" }}>{value || placeholder}</span>
       </button>
 

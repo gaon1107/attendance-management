@@ -2,6 +2,7 @@
 // "홈 화면에 추가" 안내 — 아직 설치 안 했고(브라우저로 열림) 닫지 않았을 때만 작게 보여준다.
 // 이미 홈 화면 앱(standalone)으로 열었거나 닫았으면 숨긴다.
 import { useEffect, useState } from "react";
+import { Icon } from "@/app/components/Icon";
 
 const DISMISS_KEY = "a2hs-hint-dismissed";
 
@@ -33,7 +34,7 @@ export function AddToHomeHint() {
         padding: "10px 12px", marginBottom: 16, fontSize: 13, color: "#1D4ED8",
       }}
     >
-      <span style={{ flexShrink: 0, fontSize: 16 }}>📲</span>
+      <span style={{ flexShrink: 0, display: "inline-flex", color: "var(--primary)" }}><Icon name="phone" size={16} /></span>
       <span style={{ flex: 1, lineHeight: 1.5, fontWeight: 700 }}>
         브라우저 메뉴에서 <b>‘홈 화면에 추가’</b>를 누르면 앱처럼 한 번에 출퇴근할 수 있어요.
       </span>

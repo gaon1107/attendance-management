@@ -16,6 +16,7 @@ import { loadShiftContext } from "@/lib/shift-server";
 import { resolveShift, judgeByShift } from "@/lib/shift";
 import { after } from "next/server";
 import { purgeExpiredPhotos } from "@/lib/clock-photo";
+import { Icon } from "@/app/components/Icon";
 
 export default async function RecordsPage({
   searchParams,
@@ -178,7 +179,7 @@ export default async function RecordsPage({
       href="/corrections/approvals"
       style={{ height: 38, padding: "0 14px", display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 8, border: "1px solid var(--border)", background: "#fff", color: pendingCorrectionCount > 0 ? "var(--primary)" : "var(--text-sub)", fontSize: 14, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}
     >
-      📝 근태 정정 승인{pendingCorrectionCount > 0 ? ` ${pendingCorrectionCount}` : ""}
+      <Icon name="edit" />근태 정정 승인{pendingCorrectionCount > 0 ? ` ${pendingCorrectionCount}` : ""}
     </Link>
   );
 

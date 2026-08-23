@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/session";
 import { AppShell } from "@/app/components/AppShell";
 import { chooseGps, withdrawBiometric } from "@/app/actions/authmethod";
 import { PHOTO_CONSENT_SINCE } from "@/lib/clock-photo";
+import { Icon } from "@/app/components/Icon";
 
 export default async function AuthMethodPage({
   searchParams,
@@ -61,7 +62,7 @@ export default async function AuthMethodPage({
       <div className="split-2">
         <div style={cardStyle(method === "face")}>
           {method === "face" && <div><CurrentBadge /></div>}
-          <div style={{ fontSize: 30, marginBottom: 8 }}>🙂</div>
+          <div style={{ marginBottom: 10, color: "var(--primary)" }}><Icon name="face" size={28} /></div>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>얼굴인증 사용하기</div>
           <div style={{ fontSize: 13, color: "var(--text-sub)", lineHeight: 1.5, marginBottom: 14 }}>
             카메라로 본인 확인. 생체정보 동의가 필요합니다.
@@ -84,7 +85,7 @@ export default async function AuthMethodPage({
             // 3단계: 등록 완료 → 관리(추가등록·삭제)
             <>
               <div style={{ fontSize: 13, fontWeight: 700, color: "var(--success)", marginBottom: 10 }}>
-                ✅ 얼굴 등록됨 ({me.faceEnrollCount}/3회)
+                <Icon name="check" style={{ marginRight: 5 }} />얼굴 등록됨 ({me.faceEnrollCount}/3회)
               </div>
               <Link href="/face-enroll" style={btnStyle("#fff", "var(--text)", true)}>얼굴 관리 (추가등록·삭제)</Link>
               <Link href="/consent" style={{ display: "inline-block", marginTop: 8, fontSize: 12, color: "var(--text-sub)", textDecoration: "underline" }}>
@@ -95,7 +96,7 @@ export default async function AuthMethodPage({
         </div>
 
         <div style={cardStyle(method === "gps")}>
-          <div style={{ fontSize: 30, marginBottom: 8 }}>📍</div>
+          <div style={{ marginBottom: 10, color: "var(--primary)" }}><Icon name="pin" size={28} /></div>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>GPS만 사용하기</div>
           <div style={{ fontSize: 13, color: "var(--text-sub)", lineHeight: 1.5, marginBottom: 14 }}>
             위치로 출퇴근 확인. 생체정보를 수집하지 않습니다.
@@ -145,7 +146,7 @@ function cardStyle(active: boolean): React.CSSProperties {
 function CurrentBadge() {
   return (
     <div style={{ display: "inline-block", background: "var(--primary)", color: "#fff", fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 999, marginBottom: 10 }}>
-      ✅ 현재 사용 중
+      <Icon name="check" size={13} style={{ marginRight: 4 }} />현재 사용 중
     </div>
   );
 }

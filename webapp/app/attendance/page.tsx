@@ -13,6 +13,7 @@ import { ClockInPanel } from "./ClockInPanel";
 import { FaceClockPanel } from "./FaceClockPanel";
 import { OnboardingTour } from "./OnboardingTour";
 import { AddToHomeHint } from "./AddToHomeHint";
+import { Icon } from "@/app/components/Icon";
 
 function hhmm(d: Date): string {
   return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -139,7 +140,7 @@ export default async function AttendancePage() {
           href={`/schedule?ym=${latestNoticeYm}`}
           style={{ display: "flex", alignItems: "center", gap: 8, background: unreadNotices > 0 ? "#FEF2F2" : "var(--bg)", border: `1px solid ${unreadNotices > 0 ? "#FECACA" : "var(--border)"}`, borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 14, color: "var(--text)", fontWeight: 700, textDecoration: "none" }}
         >
-          <span style={{ flexShrink: 0 }}>{unreadNotices > 0 ? "🔔" : "📢"}</span>
+          <span style={{ flexShrink: 0, display: "inline-flex" }}><Icon name={unreadNotices > 0 ? "bell" : "megaphone"} size={17} /></span>
           {unreadNotices > 0 && (
             <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, color: "#fff", background: "var(--danger)", borderRadius: 999, padding: "2px 7px" }}>
               새 알림 {unreadNotices}

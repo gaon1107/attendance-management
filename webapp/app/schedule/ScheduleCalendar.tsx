@@ -9,6 +9,7 @@ import { addCompanyHoliday, deleteCompanyHoliday } from "@/app/actions/holidays"
 import { createNotice, deleteNotice } from "@/app/actions/notice";
 import { DatePicker } from "@/app/components/DatePicker";
 import { RetroWarning } from "@/app/components/RetroWarning";
+import { Icon } from "@/app/components/Icon";
 
 export type DayData = {
   nationalHoliday?: string; // 법정공휴일 이름(읽기전용)
@@ -70,12 +71,12 @@ export function ScheduleCalendar({
               onClick={() => setComposeOpen(true)}
               style={{ width: "100%", height: 44, border: "none", borderRadius: 10, background: "#FFFBEB", color: "#B45309", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
             >
-              📢 공지 작성
+              <Icon name="megaphone" size={15} />공지 작성
             </button>
           ) : (
             <>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: "#92400E" }}>📢 새 공지 작성 <span style={{ fontWeight: 400, fontSize: 12, color: "var(--text-sub)" }}>(표시 날짜 지정 · 전 직원 알림)</span></div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#92400E" }}><Icon name="megaphone" size={14} style={{ marginRight: 5 }} />새 공지 작성 <span style={{ fontWeight: 400, fontSize: 12, color: "var(--text-sub)" }}>(표시 날짜 지정 · 전 직원 알림)</span></div>
                 <button type="button" onClick={() => setComposeOpen(false)} style={{ width: 28, height: 28, border: "1px solid var(--border)", borderRadius: 7, background: "#fff", color: "var(--text-sub)", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>✕</button>
               </div>
               <NoticeCompose onDone={() => setComposeOpen(false)} defaultDate={todayISO} />
@@ -139,7 +140,7 @@ export function ScheduleCalendar({
               )}
               {shownNotices.map((nt) => (
                 <span key={nt.id} style={{ fontSize: 11, fontWeight: 600, color: "#fff", background: NOTICE_BG, borderRadius: 4, padding: "1px 5px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  📢 {nt.title}
+                  {nt.title}
                 </span>
               ))}
               {shownEvents.map((ev) => (
@@ -215,7 +216,7 @@ function DayModal({ iso, data, canManageCompany, onClose }: { iso: string; data:
         {/* 공지(사내 공지) — 그 날 올라온 공지 본문을 읽는다. 관리자는 삭제 가능. */}
         {notices.length > 0 && (
           <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "#B45309" }}>📢 공지</div>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "#B45309" }}>공지</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {notices.map((nt) => (
                 <div key={nt.id} style={{ border: "1px solid #FDE68A", background: "#FFFBEB", borderRadius: 8, padding: "10px 12px" }}>

@@ -202,11 +202,20 @@ const roleEmployee = ["버튼 한 번으로 출퇴근·외출 기록", "얼굴�
 const roleAdmin = ["출근·지각·결근 오늘 상황 한 눈에", "주 52시간·초과근무 한도 자동 관리", "휴가·정정 결재를 한 곳에서 처리", "법정 근로기록·리포트 자동 정리"];
 
 // ── 숫자 밴드 ── ⚠️ 사실인 것만 적는다(성과·만족도 같은 근거 없는 수치 금지)
+//  2026-08-23 디자인 검토로 4칸 중 2칸을 갈아 끼웠다. **이 파일이 이미 세워 둔 원칙을 스스로 어기고 있었다.**
+//   · "5분 / 평균 도입 소요 시간" → 뺐다. "평균"은 여러 회사를 재 봤다는 **통계 주장**인데 잰 적이 없다.
+//     (없어져도 정보가 사라지지 않는다 — 히어로 칩과 3단계 카드에 "5분이면 설정 완료"가 그대로 있다.)
+//   · "100% / 근로기준법 대응" → 뺐다. 법 대응을 100%라고 단정하면 **지킬 수 없는 약속**이 되고,
+//     분쟁이 났을 때 표시광고 문제로 번질 수 있다.
+//   · 대신 **증빙되는 숫자**로 채웠다: 요금(1,000원)은 아래 요금 섹션과 같은 값이고,
+//     단말기 0원은 지문·카드 단말기를 안 쓰는 웹 구독이라는 사실 그대로다(비교표에도 있다).
+//   · "3년"·"2가지"는 그대로 둔다 — 3년은 lib/work-record-retention.ts가 실제로 지키고(위 주석 참조),
+//     2가지는 얼굴인증·GPS 두 방식이 실제로 있다.
 const stats = [
-  { value: "5분", label: "평균 도입 소요 시간", icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
+  { value: "1,000원", label: "직원 1명당 월 요금", icon: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>' },
   { value: "3년", label: "근로기록 안전 보존", icon: '<path d="M12 2 4 5v6c0 5 3.5 8 8 11 4.5-3 8-6 8-11V5z"/>' },
   { value: "2가지", label: "출퇴근 인증 방식", icon: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>' },
-  { value: "100%", label: "근로기준법 대응", icon: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>' },
+  { value: "0원", label: "단말기 구입 비용", icon: '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>' },
 ];
 
 // ── FAQ ──
@@ -520,7 +529,7 @@ export default async function Home() {
                   다음이라는 특수 사정 때문이고, 다른 섹션에 이 패턴을 복사하지 말 것. */}
         <div style={{ maxWidth: WRAP, margin: "0 auto", padding: "clamp(40px,5vw,56px) 24px clamp(56px,8vw,88px)" }}>
           <div style={{ textAlign: "center", marginBottom: "clamp(32px,5vw,48px)" }}>
-            <div style={eyebrow}>WHY 근태관리</div>
+            <div style={eyebrow}>왜 필요한가</div>
             <h2 style={h2}>일하는 사람도, 관리하는 사람도 편하게</h2>
           </div>
           {/* ── 큰 블록: 핵심 차별점 하나만 크게 (2026-08-09) ──
@@ -677,7 +686,7 @@ export default async function Home() {
       <section id="how" style={{ background: "linear-gradient(180deg,#FFFFFF 0,var(--landing-bg,#F5F8FF) 48px,var(--landing-bg,#F5F8FF) calc(100% - 48px),#FFFFFF 100%)", scrollMarginTop: 68 }}>
         <div style={{ maxWidth: WRAP, margin: "0 auto", padding: "clamp(56px,8vw,88px) 24px" }}>
           <div style={{ textAlign: "center", marginBottom: "clamp(32px,5vw,48px)" }}>
-            <div style={eyebrow}>HOW IT WORKS</div>
+            <div style={eyebrow}>도입 절차</div>
             <h2 style={h2}>도입은 3단계면 충분해요</h2>
           </div>
           {/* ⚠️ 카드 사이 화살표를 "카드 안"에 두면 안 된다 — 카드에 overflow:hidden이 있어 잘려서
@@ -827,7 +836,7 @@ export default async function Home() {
       {/* FAQ — 넓은 화면에선 방패 그림과 2단 */}
       <section id="faq" style={{ maxWidth: 1000, margin: "0 auto", padding: "clamp(40px,6vw,64px) 24px", scrollMarginTop: 68 }}>
         <div style={{ textAlign: "center", marginBottom: "clamp(28px,4vw,40px)" }}>
-          <div style={eyebrow}>FAQ</div>
+          <div style={eyebrow}>궁금한 점</div>
           <h2 style={h2}>자주 묻는 질문</h2>
         </div>
         <div className="landing-faq-grid">

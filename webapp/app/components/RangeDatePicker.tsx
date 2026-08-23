@@ -5,6 +5,7 @@
 //  · 신청 기간(휴가 여러날·출장·재택)에 쓴다. 하루짜리(반차 등) 단일 날짜는 DatePicker를 쓴다.
 import { useState } from "react";
 import { toISODate } from "@/lib/period";
+import { Icon } from "@/app/components/Icon";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const isoOf = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`;
@@ -102,7 +103,7 @@ export function RangeDatePicker({
           cursor: "pointer", display: "flex", alignItems: "center", gap: 8, textAlign: "left",
         }}
       >
-        <span>📅</span>
+        <span style={{ display: "inline-flex", color: "var(--text-sub)" }}><Icon name="calendar" size={15} /></span>
         <span style={{ fontVariantNumeric: "tabular-nums" }}>{label}</span>
       </button>
 

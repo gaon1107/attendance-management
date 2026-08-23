@@ -29,7 +29,7 @@ export default async function NotificationsPage() {
 
         {items.length === 0 ? (
           <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "44px 20px", textAlign: "center" }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>처리할 알림이 없습니다 🎉</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>처리할 알림이 없습니다</div>
             <div style={{ fontSize: 13, color: "var(--text-sub)" }}>승인 대기·요청·보안 이상이 모두 처리된 상태입니다.</div>
           </div>
         ) : (

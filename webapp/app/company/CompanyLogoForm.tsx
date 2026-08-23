@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { deleteCompanyLogo } from "@/app/actions/company";
+import { Icon } from "@/app/components/Icon";
 
 const cardStyle: React.CSSProperties = { background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 16 };
 
@@ -64,7 +65,7 @@ export function CompanyLogoForm({ hasLogo, version }: { hasLogo: boolean; versio
         <label
           style={{ height: 44, padding: "0 18px", display: "inline-flex", alignItems: "center", gap: 8, border: "1px solid var(--primary)", borderRadius: 8, background: "#fff", color: "var(--primary)", fontSize: 14, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 }}
         >
-          📷 {hasLogo ? "로고 변경" : "로고 파일 선택"}
+          <Icon name="camera" />{hasLogo ? "로고 변경" : "로고 파일 선택"}
           <input
             ref={inputRef}
             type="file"

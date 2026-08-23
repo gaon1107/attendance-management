@@ -4,6 +4,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { deleteCompanyDoc } from "@/app/actions/company";
+import { Icon } from "@/app/components/Icon";
 
 // 종류 라벨(서버 lib과 동일 — lib은 fs를 import해 클라이언트에 못 넣으므로 여기 별도 선언)
 const KINDS: { key: string; label: string }[] = [
@@ -90,7 +91,7 @@ export function CompanyDocsForm({ initialDocs }: { initialDocs: DocView[] }) {
                 <label
                   style={{ flex: 1, height: 38, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--primary)", borderRadius: 8, background: doc ? "#fff" : "#EFF6FF", color: "var(--primary)", fontSize: 13, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1, whiteSpace: "nowrap" }}
                 >
-                  📎 {doc ? "파일 변경" : "파일 선택"}
+                  <Icon name="clip" size={14} />{doc ? "파일 변경" : "파일 선택"}
                   <input
                     ref={(el) => { inputs.current[key] = el; }}
                     type="file"

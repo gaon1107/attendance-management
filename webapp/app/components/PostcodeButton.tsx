@@ -2,6 +2,7 @@
 // 다음(카카오) 우편번호 검색 버튼 — 클릭 시 팝업에서 주소를 고르면 우편번호+도로명주소를 돌려준다.
 // 별도 API 키가 필요 없는 무료 서비스(스크립트를 처음 클릭 때 1회 로드).
 import { useCallback, useRef, useState } from "react";
+import { Icon } from "@/app/components/Icon";
 
 const SCRIPT_SRC = "https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js";
 
@@ -94,7 +95,7 @@ export function PostcodeButton({
         flexShrink: 0,
       }}
     >
-      {loading ? "여는 중..." : `🔍 ${label}`}
+      {loading ? "여는 중..." : <><Icon name="search" size={14} style={{ marginRight: 5 }} />{label}</>}
     </button>
   );
 }

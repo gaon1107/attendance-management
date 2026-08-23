@@ -3,6 +3,7 @@
 //  · 그날 실제 조 = (날짜 예외) → 이 요일 패턴 → 휴무. (예외·자정판정은 이후 Phase)
 import { useActionState, useState } from "react";
 import { saveFixedPattern } from "@/app/actions/shift";
+import { Icon } from "@/app/components/Icon";
 
 export type ShiftDef = { id: string; order: number; name: string | null; startTime: string; endTime: string };
 export type EmpLite = { id: string; name: string; employeeNo: string | null };
@@ -37,7 +38,7 @@ export function FixedPatternClient({ employees, shifts, initialPatterns }: { emp
         {shifts.map((s) => (
           <span key={s.id} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 999, padding: "5px 12px", fontWeight: 700 }}>
             {shiftName(s)} <span style={{ color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{s.startTime}~{s.endTime}</span>
-            {isNight(s) && <span style={{ color: "var(--warning)", marginLeft: 4 }}>🌙야간</span>}
+            {isNight(s) && <span style={{ color: "var(--warning)", marginLeft: 4 }}><Icon name="moon" size={12} style={{ marginRight: 3 }} />야간</span>}
           </span>
         ))}
       </div>
