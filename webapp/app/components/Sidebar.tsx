@@ -222,8 +222,8 @@ function groupsFor(role: string, showApprovals: boolean, isOwner: boolean, useSh
       //     신청 없이 그냥 늦게까지 일한 사람은 승인 화면에 안 나오지만, 주 52시간 위반은 신청 여부와
       //     무관하게 실제 근무시간으로 판단된다. 그래서 둘 다 있어야 한다(합치지 말 것).
       //  ② **매주 챙겨야 하는 법규**라 가끔 여는 [분석·설정]이 아니라 매일 보는 이 묶음이 맞다.
-      //  자리는 [근태현황] 다음 — 일별(근태현황) 옆에 주별(초과근무 현황)이 오는 순서다.
-      { id: "ops", caption: "근태 운영", items: toItems(["dashboard", "records", "overtime-manage", "live", "schedule"]) },
+      //  자리는 [현황판] 다음 (2026-08-23 사장님 지정 순서). 매일 보는 셋(대시보드·근태현황·현황판)이 먼저다.
+      { id: "ops", caption: "근태 운영", items: toItems(["dashboard", "records", "live", "overtime-manage", "schedule"]) },
       {
         id: "appr",
         caption: "승인 관리",
