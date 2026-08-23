@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
+import { HelpNote } from "@/app/components/HelpNote";
 import { ReportsClient, type ReportRow } from "./ReportsClient";
 import { workedMinutes, effectiveEnd } from "@/lib/worktime";
 import { parseAnchor, toISODate } from "@/lib/period";
@@ -204,11 +205,19 @@ export default async function ReportsPage({
 
       <ReportsClient rows={rows} from={fromISO} to={toISO} todayISO={todayISO} standardWorkHours={standardWorkHours} exportBase={exportBase} />
 
-      <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 12, lineHeight: 1.6 }}>
-        실근무 = (퇴근−출근) − 외출. 근무 중인 기록은 현재 시각까지로 계산되며, <b>퇴근을 찍지 않은 채 하루가 지난 기록은 출근일 자정까지만</b> 계산합니다(기록이 며칠씩 부풀지 않도록 — 대시보드·초과근무 화면과 같은 기준). 그런 날은 [근태 정정]으로 실제 퇴근 시각을 반영해주세요.
-        <b>이 기간에 퇴사한 직원도 함께 집계</b>합니다(이름 옆 (퇴사) 표시) — 집계 인원에는 결근만 한 직원·퇴사자도 들어가고, <b>1인 평균은 근무 기록이 있는 직원만</b>으로 나눕니다(라벨의 &quot;근무 N명 기준&quot;).
-        초과근무 = 하루 실근무가 [설정 → 기준 일 근무시간]({standardWorkHours}시간)을 넘은 날의 초과분 합계입니다.
-        엑셀 내보내기는 날짜별 상세(출근·퇴근·근무형태)를 담아 법정 근로기록 증빙에 쓸 수 있습니다.
+      <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 12, lineHeight: 1.6, wordBreak: "keep-all" }}>
+        실근무 = (퇴근−출근) − 외출. 초과근무 = 하루 실근무가 <b>{standardWorkHours}시간</b>을 넘은 날의 초과분 합계입니다.
+        {/* 2026-08-23: 아래 4문단이 표 밑에 그대로 펼쳐져 있어 "개발자 메모" 같았다.
+            지우면 계산 근거가 사라지므로 **접어서 보존**한다(위 한 줄이 핵심 요약). */}
+        <HelpNote title="계산 기준 자세히">
+          근무 중인 기록은 현재 시각까지로 계산되며, <b>퇴근을 찍지 않은 채 하루가 지난 기록은 출근일 자정까지만</b> 계산합니다(기록이 며칠씩 부풀지 않도록 — 대시보드·초과근무 화면과 같은 기준). 그런 날은 [근태 정정]으로 실제 퇴근 시각을 반영해주세요.
+          <br />
+          <b>이 기간에 퇴사한 직원도 함께 집계</b>합니다(이름 옆 (퇴사) 표시) — 집계 인원에는 결근만 한 직원·퇴사자도 들어가고, <b>1인 평균은 근무 기록이 있는 직원만</b>으로 나눕니다(라벨의 &quot;근무 N명 기준&quot;).
+          <br />
+          초과근무의 기준 시간은 [설정 → 기준 일 근무시간]에서 정합니다.
+          <br />
+          엑셀 내보내기는 날짜별 상세(출근·퇴근·근무형태)를 담아 법정 근로기록 증빙에 쓸 수 있습니다.
+        </HelpNote>
       </div>
     </AppShell>
   );

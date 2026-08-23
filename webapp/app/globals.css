@@ -770,3 +770,16 @@ details.landing-faq {
   .searchbox { width: 100%; }
   .searchbox-input { flex: 1; min-width: 0; width: auto !important; }
 }
+
+/* ── 접이식 도움말 (JS 없이 <details>로 동작) — 2026-08-23 ──
+   화면마다 표 위아래에 4~6줄짜리 회색 설명이 붙어 있어 "개발자 메모가 화면에 그대로" 보였다.
+   내용은 법·계산 근거라 지울 수 없으므로, **핵심 한 줄만 남기고 나머지는 접는다.**
+
+   ⚠️ 이름을 `details.help-note`로 잡은 이유 — 이 파일 555행 근처 경고 그대로다:
+      `details.faq` 같은 흔한 이름에 색을 얹으면 나중에 다른 화면이 같은 이름을 쓰는 순간
+      의도치 않게 색이 딸려 간다. 랜딩 FAQ(`details.landing-faq`)와도 이름이 겹치지 않는다.
+   ⚠️ 이 파일을 고치면 `.next`를 지우고 서버를 다시 띄워야 반영된다(TSX와 달리 즉시 반영이 안 된다). */
+details.help-note > summary { list-style: none; cursor: pointer; }
+details.help-note > summary::-webkit-details-marker { display: none; }
+details.help-note > summary .help-chevron { transition: transform 0.15s ease; }
+details.help-note[open] > summary .help-chevron { transform: rotate(180deg); }

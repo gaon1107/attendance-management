@@ -36,6 +36,8 @@ export type IconName =
   | "plane" // 비행기 — 출장
   | "clock" // 시계 — 출퇴근 시각
   | "grid" // 격자 — 여러 기능·메뉴
+  | "help" // 물음표 — 접이식 도움말
+  | "chevron" // 아래 꺾쇠 — 펼침/접힘 표시
   | "calendar" // 달력 — 날짜·기간 선택
   | "search" // 돋보기 — 검색(주소 찾기 등)
   | "printer" // 프린터 — 인쇄·PDF
@@ -138,6 +140,14 @@ const PATHS: Record<IconName, ReactNode> = {
       <rect x="3" y="16" width="7" height="5" rx="1" />
     </>
   ),
+  help: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.8-.9 1.4v.3" />
+      <path d="M12 17h.01" />
+    </>
+  ),
+  chevron: <path d="m6 9 6 6 6-6" />,
   calendar: (
     <>
       <rect x="3" y="4" width="18" height="17" rx="2" />
