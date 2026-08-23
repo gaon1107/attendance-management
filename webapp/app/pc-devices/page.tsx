@@ -88,7 +88,7 @@ export default async function PcDevicesPage() {
       {!company?.pcOffOn && (
         <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 12, padding: "14px 18px", marginBottom: 16 }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: "#B45309", wordBreak: "keep-all" }}>
-            PC-OFF가 꺼져 있어 지금은 어떤 PC도 잠기지 않습니다. [설정] 화면의 PC-OFF 카드에서 켤 수 있습니다.
+            PC-OFF가 꺼져 있어 지금은 어떤 PC도 잠기지 않습니다. [설정 → 보안·PC]의 PC-OFF 카드에서 켤 수 있습니다.
           </span>
         </div>
       )}
@@ -148,7 +148,7 @@ export default async function PcDevicesPage() {
             한 직원이 PC 여러 대를 쓰면 <b>합쳐서</b> 셉니다(허용 횟수가 사람 기준이기 때문입니다).
             <br />
             <b>바로 부정행위로 보지 마세요.</b> 아래의 경우에도 여기 나타납니다 —
-            최근에 [설정]에서 일시사용 횟수·시간을 <b>줄이신 경우</b>(허용치는 지금 설정 기준으로 계산합니다),
+            최근에 [설정 → 보안·PC]에서 일시사용 횟수·시간을 <b>줄이신 경우</b>(허용치는 지금 설정 기준으로 계산합니다),
             직원이 <b>PC를 교체·재설치했거나 Windows 계정이 바뀐 경우</b>(저장해 둔 횟수를 못 읽어 프로그램이 다시 허용합니다).
             같은 직원이 반복해서 나타날 때만 확인하세요.
             <br />

@@ -73,7 +73,7 @@ export function BlockedIpClient({
         {!hasOfficeIps && (
           <>
             <br />
-            <b style={{ color: "var(--warning)" }}>⚠️ 회사 허용 IP가 등록돼 있지 않습니다</b> — [설정 → 사내 네트워크]에 사무실 IP를 먼저 등록하면 더 안전합니다.
+            <b style={{ color: "var(--warning)" }}>⚠️ 회사 허용 IP가 등록돼 있지 않습니다</b> — [설정 → 출퇴근 인증 → 사내 네트워크]에 사무실 IP를 먼저 등록하면 더 안전합니다.
           </>
         )}
       </div>

@@ -52,3 +52,17 @@ export function SettingsTabs({ active }: { active: SettingsTabKey }) {
     </div>
   );
 }
+
+/** 지금 보고 있는 탭에 무엇이 들어 있는지 한 줄로 알린다.
+ *  ⚠️ 탭의 title(툴팁)만으로는 부족하다 — 마우스를 올려야 보이고, 폰에서는 아예 안 뜬다.
+ *     게다가 탭을 나누면 **브라우저 찾기(Ctrl+F)로 다른 탭의 설정을 찾을 수 없다**(검수 지적).
+ *     그래서 항상 보이는 글자로 남긴다. */
+export function SettingsTabHint({ active }: { active: SettingsTabKey }) {
+  const t = SETTINGS_TABS.find((x) => x.key === active);
+  if (!t) return null;
+  return (
+    <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, marginTop: -4, wordBreak: "keep-all" }}>
+      이 탭에 있는 설정: <b>{t.hint}</b>
+    </div>
+  );
+}

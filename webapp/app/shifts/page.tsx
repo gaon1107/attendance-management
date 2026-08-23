@@ -37,7 +37,7 @@ export default async function ShiftsPage() {
   if (!company?.shiftMode) {
     return shell(
       <Notice>
-        아직 <b>교대근무</b>가 설정되지 않았습니다. <Link href="/settings" style={{ color: "var(--primary)", fontWeight: 700 }}>[설정 → 근무제·기준시간]</Link>에서
+        아직 <b>교대근무</b>가 설정되지 않았습니다. <Link href="/settings?tab=work" style={{ color: "var(--primary)", fontWeight: 700 }}>[설정 → 근무 규칙 → 근무제·기준시간]</Link>에서
         <b> 교대근무(2/3교대)</b>와 조별 시각을 먼저 정한 뒤 여기서 직원을 배정하세요.
       </Notice>
     );

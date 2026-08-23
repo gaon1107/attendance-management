@@ -148,7 +148,7 @@ export function LiveClient({ data }: { data: LiveData }) {
                 <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-sub)", fontSize: 14, lineHeight: 1.8 }}>
                   사무실 위치가 아직 설정되지 않았습니다.
                   <br />
-                  <a href="/settings" style={{ color: "var(--primary)", fontWeight: 700, textDecoration: "none" }}>[설정]에서 사무실 위치를 먼저 정해주세요.</a>
+                  <a href="/settings?tab=auth" style={{ color: "var(--primary)", fontWeight: 700, textDecoration: "none" }}>[설정 → 출퇴근 인증]에서 사무실 위치를 먼저 정해주세요.</a>
                 </div>
               )}
             </div>
@@ -175,7 +175,7 @@ export function LiveClient({ data }: { data: LiveData }) {
             </div>
             <div style={{ padding: "0 16px 16px", fontSize: 12, color: "var(--text-sub)", lineHeight: 1.6 }}>
               오늘 하루 있었던 로그인·출퇴근 접속을 센 것입니다(<b>지금 접속 중인 인원이 아닙니다</b>).
-              {!a.hasIpRule && <> 사내망/외부 판정은 <a href="/settings" style={{ color: "var(--primary)", fontWeight: 700, textDecoration: "none" }}>[설정]의 사내 네트워크 IP</a>를 등록해야 가능합니다.</>}
+              {!a.hasIpRule && <> 사내망/외부 판정은 <a href="/settings?tab=auth" style={{ color: "var(--primary)", fontWeight: 700, textDecoration: "none" }}>[설정 → 출퇴근 인증]의 사내 네트워크 IP</a>를 등록해야 가능합니다.</>}
               <br />※ 접속 위치(IP) 판정은 서버 설정에 따라 달라집니다(배포 시 설정 전에는 부정확할 수 있습니다).
             </div>
           </section>

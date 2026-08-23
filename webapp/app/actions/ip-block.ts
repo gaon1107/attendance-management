@@ -71,7 +71,7 @@ export async function addBlockedIp(_prev: Result, formData: FormData): Promise<R
     return {
       error:
         "사내 네트워크(허용 IP)가 등록되지 않아 대역 차단은 막아 두었습니다. 사무실 전체가 잠길 수 있습니다. " +
-        "[설정 → 사내 네트워크]에 회사 IP를 먼저 등록하거나, 정확한 IP 한 대(예: 1.2.3.4)만 입력해주세요.",
+        "[설정 → 출퇴근 인증 → 사내 네트워크]에 회사 IP를 먼저 등록하거나, 정확한 IP 한 대(예: 1.2.3.4)만 입력해주세요.",
     };
   }
 

@@ -193,7 +193,7 @@ export function RecordsClient({
       </section>
 
       <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 12, lineHeight: 1.6 }}>
-        이름을 누르면 그 직원의 날짜별 상세 기록을 볼 수 있습니다. 지각 판정은 [설정 → 근무제·기준시간]을 정해야 표시됩니다.
+        이름을 누르면 그 직원의 날짜별 상세 기록을 볼 수 있습니다. 지각 판정은 [설정 → 근무 규칙 → 근무제·기준시간]을 정해야 표시됩니다.
       </div>
     </>
   );

@@ -206,7 +206,7 @@ export default async function ReportsPage({
       <ReportsClient rows={rows} from={fromISO} to={toISO} todayISO={todayISO} standardWorkHours={standardWorkHours} exportBase={exportBase} />
 
       <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 12, lineHeight: 1.6, wordBreak: "keep-all" }}>
-        실근무 = (퇴근−출근) − 외출. 초과근무 = 하루 실근무가 <b>{standardWorkHours}시간</b>([설정 → 기준 일 근무시간])을 넘은 날의 초과분 합계입니다.
+        실근무 = (퇴근−출근) − 외출. 초과근무 = 하루 실근무가 <b>{standardWorkHours}시간</b>([설정 → 근무 규칙 → 기준 일 근무시간])을 넘은 날의 초과분 합계입니다.
         {/* 2026-08-23: 아래 4문단이 표 밑에 그대로 펼쳐져 있어 "개발자 메모" 같았다.
             지우면 계산 근거가 사라지므로 **접어서 보존**한다(위 한 줄이 핵심 요약). */}
         <HelpNote title="계산 기준 자세히">
@@ -214,7 +214,7 @@ export default async function ReportsPage({
           <br />
           <b>이 기간에 퇴사한 직원도 함께 집계</b>합니다(이름 옆 (퇴사) 표시) — 집계 인원에는 결근만 한 직원·퇴사자도 들어가고, <b>1인 평균은 근무 기록이 있는 직원만</b>으로 나눕니다(라벨의 &quot;근무 N명 기준&quot;).
           <br />
-          초과근무의 기준 시간은 [설정 → 기준 일 근무시간]에서 회사마다 바꿀 수 있습니다.
+          초과근무의 기준 시간은 [설정 → 근무 규칙 → 기준 일 근무시간]에서 회사마다 바꿀 수 있습니다.
           <br />
           엑셀 내보내기는 날짜별 상세(출근·퇴근·근무형태)를 담아 법정 근로기록 증빙에 쓸 수 있습니다.
         </HelpNote>

@@ -85,7 +85,7 @@ export function AlertsClient({
         · <b>로그인 실패 반복</b> {rules.failOn ? `하루 ${rules.failCount}회 이상` : <span style={{ color: "var(--text-sub)" }}>꺼짐</span>}{" "}
         {/* 끝 시각은 미포함 — "22시~06시"라 쓰면 06:00 로그인도 뜰 것 같지만 안 뜬다. 정확히 "06시 전까지". */}
         · <b>심야 로그인</b> {rules.nightOn ? `${hh(rules.nightStart)}부터 ${hh(rules.nightEnd)} 전까지` : <span style={{ color: "var(--text-sub)" }}>꺼짐</span>}{" "}
-        <a href="/settings" style={{ color: "var(--primary)", fontWeight: 700, textDecoration: "none", marginLeft: 4 }}>기준 변경</a>
+        <a href="/settings?tab=security" style={{ color: "var(--primary)", fontWeight: 700, textDecoration: "none", marginLeft: 4 }}>기준 변경</a>
         <br />
         ※ 판정은 <b>지금 기준으로 매번 다시 계산</b>합니다 — 기준을 바꾸면 과거 기록의 표시도 함께 바뀝니다.
       </div>

@@ -14,7 +14,7 @@ import { LivenessRuleForm } from "./LivenessRuleForm";
 import { AlertRulesForm } from "./AlertRulesForm";
 import { HolidayForm } from "./HolidayForm";
 import { PcOffForm } from "./PcOffForm";
-import { SettingsTabs, resolveTab } from "./SettingsTabs";
+import { SettingsTabs, SettingsTabHint, resolveTab } from "./SettingsTabs";
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   // 어느 탭을 보고 있는지. 모르는 값이 들어오면 첫 탭으로 되돌린다(주소를 손으로 고쳐도 안전).
@@ -75,6 +75,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           ⚠️ 데이터 조회(위 prisma)는 탭과 무관하게 **전부 그대로** 한다. 탭별로 나누면 코드가 복잡해지고,
              탭을 옮길 때마다 조회가 달라져 값이 어긋날 수 있다. */}
       <SettingsTabs active={tab} />
+      <SettingsTabHint active={tab} />
 
       {tab === "work" && (
         <>
@@ -134,35 +135,31 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       {tab === "security" && (
         <>
           <div style={{ marginBottom: 16 }}>
-<AlertRulesForm
-          initial={{
-            nightOn: company?.alertNightOn ?? true,
-            nightStart: company?.alertNightStart ?? 22,
-            nightEnd: company?.alertNightEnd ?? 6,
-            failOn: company?.alertFailOn ?? true,
-            failCount: company?.alertFailCount ?? 5,
-          }}
-        />
-      </div>
-      <div style={{ marginBottom: 16 }}>
+            <AlertRulesForm
+              initial={{
+                nightOn: company?.alertNightOn ?? true,
+                nightStart: company?.alertNightStart ?? 22,
+                nightEnd: company?.alertNightEnd ?? 6,
+                failOn: company?.alertFailOn ?? true,
+                failCount: company?.alertFailCount ?? 5,
+              }}
+            />
           </div>
           <div style={{ marginBottom: 16 }}>
-<PcOffForm
-          initial={{
-            on: company?.pcOffOn ?? false,
-            mode: company?.pcOffMode ?? "lock",
-            delayMin: company?.pcOffDelayMin ?? 10,
-            notifyMins: company?.pcOffNotifyMins ?? "10,5",
-            tempUseMin: company?.pcOffTempUseMin ?? 30,
-            tempUsePerDay: company?.pcOffTempUsePerDay ?? 2,
-            tempReasons: company?.pcOffTempReasons ?? "",
-            workEndTime: company?.workEndTime ?? null,
-            deviceCount: pcDeviceCount,
-            isShiftCompany: !!company?.shiftMode,
-          }}
-        />
-      </div>
-      <div style={{ marginBottom: 16 }}>
+            <PcOffForm
+              initial={{
+                on: company?.pcOffOn ?? false,
+                mode: company?.pcOffMode ?? "lock",
+                delayMin: company?.pcOffDelayMin ?? 10,
+                notifyMins: company?.pcOffNotifyMins ?? "10,5",
+                tempUseMin: company?.pcOffTempUseMin ?? 30,
+                tempUsePerDay: company?.pcOffTempUsePerDay ?? 2,
+                tempReasons: company?.pcOffTempReasons ?? "",
+                workEndTime: company?.workEndTime ?? null,
+                deviceCount: pcDeviceCount,
+                isShiftCompany: !!company?.shiftMode,
+              }}
+            />
           </div>
         </>
       )}

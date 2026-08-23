@@ -13,7 +13,10 @@
 //
 // ⚠️ 펼쳐 둬야 할 상황이면 `defaultOpen`을 준다. 예) 아직 부서가 하나도 없는 회사,
 //    방금 만든 초대 링크가 살아 있는 경우 — 접혀 있으면 사용자가 결과를 못 본다.
-import type { ReactNode } from "react";
+"use client";
+// ⚠️ "use client"가 필요한 이유는 아래 useState 주석 참고. 자식(children)으로 넘어오는
+//    서버 컴포넌트는 그대로 서버에서 그려지므로, 이 파일이 클라이언트가 돼도 안쪽 기능은 그대로다.
+import { useState, type ReactNode } from "react";
 import { Icon, type IconName } from "@/app/components/Icon";
 
 export function FoldSection({
@@ -30,8 +33,20 @@ export function FoldSection({
   children: ReactNode;
   defaultOpen?: boolean;
 }) {
+  // ⚠️ defaultOpen을 <details open={...}>에 **직접 넘기지 않는다.**
+  //    그러면 서버 데이터가 바뀔 때마다(부서 추가·초대 취소 등) 값이 다시 계산되고,
+  //    React가 그 값을 DOM에 강제로 써서 **사용자가 펼쳐 둔 것을 닫아 버린다**(2026-08-23 검수).
+  //    useState는 첫 렌더의 값만 기억하므로, 그 뒤 데이터가 바뀌어도 접힘 상태가 유지된다.
+  const [open, setOpen] = useState(defaultOpen);
+
   return (
-    <details className="fold-section" open={defaultOpen} style={{ marginBottom: 16 }}>
+    <details
+      className="fold-section"
+      open={open}
+      // 사용자가 직접 접거나 펼치면 그 상태를 따라간다(브라우저가 먼저 바꾸고 알려준다).
+      onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
+      style={{ marginBottom: 16 }}
+    >
       <summary
         style={{
           display: "flex",

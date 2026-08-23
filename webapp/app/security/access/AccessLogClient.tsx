@@ -165,7 +165,7 @@ export function AccessLogClient({
       <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
         로그인·출퇴근과 <b>관리자 동작(설정 변경·생체정보 파기)</b>을 IP·기기 기준으로 봅니다. <b>IP는 실제 운영 서버(외부 접속)에서만 정확</b>하며, 개발 환경에서는 내부 주소로 보일 수 있습니다.
         {!hasIpRule && (
-          <> · <b style={{ color: "var(--warning)" }}>회사 허용 IP가 등록되지 않아 사내망/외부를 판정할 수 없습니다</b> — [설정 → 사내 네트워크]에서 등록하세요.</>
+          <> · <b style={{ color: "var(--warning)" }}>회사 허용 IP가 등록되지 않아 사내망/외부를 판정할 수 없습니다</b> — [설정 → 출퇴근 인증 → 사내 네트워크]에서 등록하세요.</>
         )}
         {capped && <> · <b style={{ color: "var(--danger)" }}>결과가 2,000건을 넘어 일부만 표시</b>됩니다. 기간을 좁혀 보세요.</>}
         <br />
