@@ -37,13 +37,13 @@ export function HelpNote({
           display: "inline-flex",
           alignItems: "center",
           gap: 6,
-          fontSize: 13,
+          // ⚠️ fontSize를 못 박지 않는다 — 부모 문단이 12px인 화면(보안>이상접속)에서 글자만 커진다.
           fontWeight: 700,
           color: "var(--text-sub)",
           padding: "6px 10px",
           border: "1px solid var(--border)",
           borderRadius: 8,
-          background: "#fff",
+          background: "var(--card)",
           // 한글이 글자 중간에서 끊기지 않게(프로젝트 공통 규칙)
           wordBreak: "keep-all",
         }}
@@ -56,7 +56,6 @@ export function HelpNote({
       </summary>
       <div
         style={{
-          fontSize: 13,
           color: "var(--text-sub)",
           lineHeight: 1.7,
           marginTop: 10,
