@@ -1,4 +1,5 @@
 // 초과근무 승인(관리자 전용) — 대기 목록 승인/반려 + 처리 내역. 기간 달력 + 통합검색. (외출외근 승인 화면 패턴)
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
@@ -100,6 +101,12 @@ export default async function OvertimeApprovalsPage({
 
   return (
     <AppShell user={me} active="overtime-approvals" title="초과근무 승인" subtitle={me.company.name}>
+      {/* ⚠️ [초과근무 현황]과 짝이다(2026-08-23). 여기는 **신청서**를 처리하는 곳이라,
+             신청 없이 늦게까지 일한 사람은 이 목록에 나오지 않는다. 주 52시간 준수는 그쪽에서 본다. */}
+      <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 14, wordBreak: "keep-all", lineHeight: 1.6 }}>
+        여기는 직원이 <b>미리 낸 신청</b>을 처리하는 곳입니다.
+        실제 근무시간 기준 주 52시간 현황은 <Link href="/overtime-manage" style={{ color: "var(--primary)", fontWeight: 700 }}>[근태 운영 → 초과근무 현황]</Link>에서 봅니다.
+      </div>
       <OvertimeApprovalsClient pending={pendingReqs.map(toRow)} decided={decidedReqs.map(toRow)} from={fromISO} to={toISO} todayISO={todayISO} />
     </AppShell>
   );

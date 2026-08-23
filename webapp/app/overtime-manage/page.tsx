@@ -2,6 +2,7 @@
 //  · 계산 기준 = 근로기준법: 기본근무 40h / 연장근로 = 40h 초과분 / 한도 = 주 12h(40+12=52).
 //  · ⚠️ [리포트] 화면의 "초과근무"는 하루 8시간 초과분 합(다른 기준)이라 숫자가 다를 수 있다 → 화면에 명시.
 //  · 실근무 계산(workedMinutes)·주52 알림(weeklyLevel)은 기존 부품 그대로 재사용, 무수정.
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
@@ -131,9 +132,17 @@ export default async function OvertimeManagePage({
     <AppShell
       user={me}
       active="overtime-manage"
-      title="초과근무 관리"
+      title="초과근무 현황"
       subtitle={`${me.company.name} · ${weekLabel(weekStart)} (${weekRangeLabel(weekStart)})`}
     >
+      {/* ⚠️ [초과근무 승인]과 **세는 대상이 다르다**(2026-08-23). 이 화면은 실제 출퇴근 기록으로 계산하고,
+             그쪽은 직원이 낸 신청서를 처리한다. 신청 없이 늦게까지 일한 사람은 그쪽에 안 나오지만
+             주 52시간 위반은 신청 여부와 무관하게 실제 근무시간으로 판단된다 → 둘 다 필요하다.
+             예전엔 이 화면이 [승인 관리] 묶음에 있어서, 승인하러 온 관리자가 여기서 승인 버튼을 찾다 헤맸다. */}
+      <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 14, wordBreak: "keep-all", lineHeight: 1.6 }}>
+        여기는 <b>실제 근무시간</b>으로 계산한 현황입니다(조회 전용).
+        직원이 낸 신청을 승인·반려하려면 <Link href="/overtime/approvals" style={{ color: "var(--primary)", fontWeight: 700 }}>[승인 관리 → 초과근무 승인]</Link>으로 가세요.
+      </div>
       <OvertimeManageClient
         rows={rows}
         depts={depts}

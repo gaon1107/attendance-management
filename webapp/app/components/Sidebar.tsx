@@ -34,7 +34,7 @@ export type NavKey =
   | "outing" | "outing-approvals" // 외출/외근 신청(직원) · 승인(관리자)
   | "remote" | "remote-approvals" // 재택근무 신청(직원) · 승인(관리자)
   | "overtime" | "overtime-approvals" // 초과근무 사전신청(직원) · 승인(관리자)
-  | "overtime-manage" // 초과근무 관리(관리자) — 주 단위 연장근로 현황 조회 전용
+  | "overtime-manage" // 초과근무 현황(관리자) — 주 단위 연장근로 조회 전용(승인 아님)
   | "break-time" // 휴게시간 관리(관리자) — 최소 휴게 기준 설정 + 준수 현황
   | "trip" | "trip-approvals" // 출장 신청(직원) · 승인(관리자)
   | "pc-devices" // PC관리(관리자) — PC-OFF 연결 기기 현황·예외자·사용 기록
@@ -119,8 +119,17 @@ const LABEL: Record<NavKey, string> = {
   remote: "재택",
   "remote-approvals": "재택승인",
   overtime: "초과근무",
-  "overtime-approvals": "야근승인",
-  "overtime-manage": "초과근무 관리",
+  // ⚠️ "야근승인"이 아니라 **"초과근무 승인"**이다 (2026-08-23 사장님 지시).
+  //    제품 안의 다른 이름이 전부 "초과근무"다 — 직원 메뉴 [초과근무], 직원 화면 "초과근무 신청",
+  //    이 화면 자신의 제목도 "초과근무 승인"이었다(메뉴 이름만 "야근"이라 눌러 들어가면 제목이 바뀌었다).
+  //    그래서 관리자가 "초과근무 신청을 승인하려면?" 하고 아래 [초과근무 현황]을 눌러 헤맸다(거긴 승인 버튼이 없다).
+  //    ※ 홈화면(app/page.tsx)에도 같은 이유의 경고가 있다 — "야근"이라 쓰면 고객이 그 메뉴를 못 찾는다.
+  "overtime-approvals": "초과근무 승인",
+  // ⚠️ "관리"가 아니라 **"현황"**이다 (2026-08-23 사장님 지시). 이 화면은 조회 전용이라 승인 버튼이 없다.
+  //    🔴 **띄어쓰기를 붙이지 말 것.** 2026-07-24 사장님이 "초과근무관/리"로 잘리는 것을 지적해
+  //       띄어쓰기로 "초과근무 / 관리" 두 줄이 되게 고친 자리다(커밋 786e980, 육안 확인 완료).
+  //       "초과근무현황"으로 붙이면 같은 증상("초과근무현/황")이 그대로 돌아온다.
+  "overtime-manage": "초과근무 현황",
   "break-time": "휴게시간",
   trip: "출장",
   "trip-approvals": "출장승인",
@@ -207,12 +216,19 @@ function groupsFor(role: string, showApprovals: boolean, isOwner: boolean, useSh
       //     → 이제 교대근무를 켠 회사에만 준다(useShifts).
       //  ⚠️ 메뉴를 감추면 **켠 직후 어디로 가야 하는지** 알 수 없으므로,
       //     [설정 → 근무 규칙 → 근무제·기준시간] 설명에 [근무표] 링크를 함께 넣어 뒀다. 둘은 짝이다.
-      { id: "ops", caption: "근태 운영", items: toItems(["dashboard", "records", "live", "schedule"]) },
+      // [초과근무 현황]을 여기로 옮겼다 (2026-08-23 사장님 지시). 전에는 [승인 관리]에 있었는데
+      //  ① **승인 화면이 아니다** — 실제 출퇴근 기록으로 주 40시간 초과분을 세어 보여주는 조회 화면이고
+      //     승인 버튼이 없다. 승인은 위 [초과근무 승인](신청서 기준)이 한다. **둘은 세는 대상이 다르다** —
+      //     신청 없이 그냥 늦게까지 일한 사람은 승인 화면에 안 나오지만, 주 52시간 위반은 신청 여부와
+      //     무관하게 실제 근무시간으로 판단된다. 그래서 둘 다 있어야 한다(합치지 말 것).
+      //  ② **매주 챙겨야 하는 법규**라 가끔 여는 [분석·설정]이 아니라 매일 보는 이 묶음이 맞다.
+      //  자리는 [근태현황] 다음 — 일별(근태현황) 옆에 주별(초과근무 현황)이 오는 순서다.
+      { id: "ops", caption: "근태 운영", items: toItems(["dashboard", "records", "overtime-manage", "live", "schedule"]) },
       {
         id: "appr",
         caption: "승인 관리",
         items: toItems([
-          "leave-approvals", "overtime-manage", "outing-approvals", "remote-approvals",
+          "leave-approvals", "outing-approvals", "remote-approvals",
           "overtime-approvals", "trip-approvals",
           ...(showApprovals ? (["approvals"] as NavKey[]) : []),
           "pending-approvals", "approval-history",
