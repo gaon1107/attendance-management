@@ -31,8 +31,14 @@ export function TablePagination<T>({ pg, sizeOptions = DEFAULT_SIZE_OPTS }: { pg
   //     → 1페이지가 되어 줄이 사라진다 → **크기를 50으로 되돌릴 방법이 없다.**
   //   그래서 "고를 수 있는 가장 작은 크기"보다도 건수가 적을 때만 감춘다.
   //   이러면 어떤 크기를 골라도 항상 1페이지인 게 확실하므로, 감춰도 잃는 조작이 없다.
-  const minSize = Math.min(...sizeOptions);
-  if (total <= minSize) return null;
+  // ⚠️ 두 조건을 **함께** 만족할 때만 감춘다. 하나만 쓰면 각각 사고가 난다(검수 지적):
+  //   · `pageCount <= 1`만 쓰면 → 위에 적은 되돌리기 함정(크기를 키워 1페이지가 되면 줄이 사라져 못 되돌림).
+  //   · `total <= minSize`만 쓰면 → **행이 조용히 사라진다.** 누가 나중에 `initialSize={20}`으로 쓰면
+  //     40건일 때 40 <= 50 이라 줄을 감추는데, 실제로는 20개씩 2페이지라 **21~40번째 행을 볼 방법이 없다.**
+  //     에러도 로그도 안 남는 조용한 고장이라 더 위험하다.
+  //  둘을 AND로 묶으면 "어떤 크기를 골라도 1페이지" + "지금도 1페이지"가 모두 참일 때만 감춰 안전하다.
+  const minSize = sizeOptions.length ? Math.min(...sizeOptions) : size; // 빈 배열이면 Math.min()이 Infinity라 항상 감춰진다
+  if (total <= minSize && pageCount <= 1) return null;
 
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 16, padding: "10px 16px", flexWrap: "wrap", borderTop: "1px solid var(--border)" }}>

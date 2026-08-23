@@ -127,10 +127,13 @@ export function DetailTable({ detail, showLiveness = false }: { detail: DayDetai
                 entries.map((e, i) => {
                   if (e.type === "absent") {
                     return (
-                      // 2026-08-23 디자인 검토: 분홍 배경(#FEF2F2)을 뺐다.
-                      //  근무 규칙을 아직 안 정한 회사는 **한 달 치가 전부 결근**으로 잡혀 화면이 통째로 빨개졌다.
-                      //  직원에게 "벌 받는 화면"처럼 보인다는 지적. 결근 여부는 아래 빨간 [결근] 글자로 충분히 구분된다.
-                      <tr key={`a${i}`} style={{ borderBottom: "1px solid #F3F4F6" }}>
+                      // 2026-08-23 디자인 검토: 결근 배경을 #FEF2F2 → #FEF7F7 로 **연하게** 낮췄다.
+                      //  근무 규칙을 아직 안 정한 회사는 한 달 치가 전부 결근이라 화면이 통째로 빨개져
+                      //  직원에게 "벌 받는 화면"처럼 보였다.
+                      //  ⚠️ 아주 빼지는 않는다(검수 지적) — 같은 표의 휴가가 #EFF6FF 배경을 갖고 있어,
+                      //     결근만 배경이 없으면 **덜 중요한 휴가가 더 눈에 띄는** 역전이 생긴다.
+                      //     달력 보기(MonthCalendar)도 같은 값을 쓴다. 한쪽만 바꾸면 탭마다 색이 달라진다.
+                      <tr key={`a${i}`} style={{ borderBottom: "1px solid #F3F4F6", background: "#FEF7F7" }}>
                         <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{monthDayDow(e.date)}</td>
                         <td style={{ ...td, color: "#9CA3AF" }} colSpan={4}>—</td>
                         <td style={td}><span style={{ fontSize: 13, fontWeight: 700, color: "var(--danger)" }}>결근</span></td>

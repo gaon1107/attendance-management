@@ -30,6 +30,9 @@ export function EmployeeList({ active, retired }: { active: EmpRow[]; retired: R
 
       {/* 재직 직원 */}
       <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", fontSize: 15, fontWeight: 700, color: "var(--text-sub)" }}>
+          재직 직원 {a.length}명
+        </div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 800 }}>
             <thead>

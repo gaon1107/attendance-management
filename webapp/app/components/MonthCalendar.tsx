@@ -71,7 +71,9 @@ export function MonthCalendar({
             bg = "#EFF6FF";
             badge = { text: "휴가", color: "#2563EB" };
           } else if (e?.type === "absent") {
-            bg = "#FEF2F2";
+            // 2026-08-23: #FEF2F2 → #FEF7F7. 표 보기(DetailTable)의 결근 행과 **같은 값**을 쓴다.
+            //  한쪽만 바꾸면 [표]와 [달력] 탭을 오갈 때 같은 결근이 다른 색으로 보인다.
+            bg = "#FEF7F7";
             badge = { text: "결근", color: "#DC2626" };
           }
 
