@@ -783,3 +783,13 @@ details.help-note > summary { list-style: none; cursor: pointer; }
 details.help-note > summary::-webkit-details-marker { display: none; }
 details.help-note > summary .help-chevron { transition: transform 0.15s ease; }
 details.help-note[open] > summary .help-chevron { transform: rotate(180deg); }
+
+/* ── 접이식 구역 (JS 없이 <details>로 동작) — 2026-08-23 ──
+   화면 안의 "가끔 쓰는 묶음"을 접어 두는 데 쓴다(직원 관리의 부서·직급·초대 등).
+   ⚠️ `.help-note`(작은 회색 도움말)와 **용도가 다르다** — 이쪽은 카드 여러 개를 담는 구역이다.
+      규칙이 비슷해 보여도 합치지 말 것: 한쪽 모양을 바꿀 때 다른 쪽이 딸려 간다.
+   ⚠️ 이 파일을 고치면 `.next`를 지우고 서버를 다시 띄워야 반영된다. */
+details.fold-section > summary { list-style: none; cursor: pointer; }
+details.fold-section > summary::-webkit-details-marker { display: none; }
+details.fold-section > summary .fold-chevron { transition: transform 0.15s ease; }
+details.fold-section[open] > summary .fold-chevron { transform: rotate(180deg); }

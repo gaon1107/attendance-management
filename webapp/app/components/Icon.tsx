@@ -36,6 +36,7 @@ export type IconName =
   | "plane" // 비행기 — 출장
   | "clock" // 시계 — 출퇴근 시각
   | "grid" // 격자 — 여러 기능·메뉴
+  | "settings" // 톱니 — 설정·관리 묶음
   | "help" // 물음표 — 접이식 도움말
   | "chevron" // 아래 꺾쇠 — 펼침/접힘 표시
   | "calendar" // 달력 — 날짜·기간 선택
@@ -138,6 +139,14 @@ const PATHS: Record<IconName, ReactNode> = {
       <rect x="14" y="3" width="7" height="5" rx="1" />
       <rect x="14" y="12" width="7" height="9" rx="1" />
       <rect x="3" y="16" width="7" height="5" rx="1" />
+    </>
+  ),
+  // 사이드바의 settings 아이콘과 같은 그림(같은 뜻에 같은 그림)
+  settings: (
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M20 12a8 8 0 1 0-8 8" />
+      <path d="M12 8v4l3 2" />
     </>
   ),
   help: (

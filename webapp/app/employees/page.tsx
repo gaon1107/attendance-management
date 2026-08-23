@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
+import { FoldSection } from "@/app/components/FoldSection";
 import { AddEmployeeForm } from "./AddEmployeeForm";
 import { InviteLink } from "./InviteLink";
 import { PendingResetRequests } from "./PendingResetRequests";
@@ -139,59 +140,71 @@ export default async function EmployeesPage() {
       {/* 비밀번호 재설정 대기 요청 (있을 때만 표시) */}
       <PendingResetRequests requests={resetReqData} />
 
-      {/* 부서 관리 */}
-      <DepartmentManager
-        departments={deptData}
-        employees={empOptions}
-        approvalMode={approvalCompany?.approvalMode ?? "single"}
-        approvalStepCount={approvalCompany?.approvalStepCount ?? 1}
-      />
 
-      {/* 직급 관리 */}
-      <JobGradeManager grades={gradeData} />
-
-      {/* 직원 초대 (링크 방식 — 직원이 스스로 가입) */}
-      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>직원 초대</div>
-        <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
-          초대 링크를 만들어 직원에게 보내면(카톡·문자 등), 직원이 링크로 <b>직접 가입</b>합니다. 비밀번호는 직원 본인이 정합니다. (링크는 7일간, 1회만 사용 가능)
-        </p>
-        <form action={createInvite}>
-          <button
-            type="submit"
-            style={{ height: 44, padding: "0 18px", border: "none", borderRadius: 8, background: "var(--primary)", color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
-          >
-            + 초대 링크 만들기
-          </button>
-        </form>
-
-        {invites.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
-            {invites.map((inv) => (
-              <div key={inv.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 12 }}>
-                  <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 700, whiteSpace: "nowrap" }}>
-                    만료 {inv.expiresAt.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" })}까지
-                  </span>
-                  <form action={cancelInvite}>
-                    <input type="hidden" name="id" value={inv.id} />
-                    <button type="submit" style={{ height: 28, padding: "0 10px", border: "1px solid var(--border)", borderRadius: 6, background: "#fff", color: "var(--text-sub)", fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                      취소
-                    </button>
-                  </form>
-                </div>
-                <InviteLink path={`/invite/${inv.token}`} inviteId={inv.id} smsSent={sentInviteIds.has(inv.id)} />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* 직원 직접 등록 (관리자가 계정을 바로 만들 때) */}
-      <AddEmployeeForm />
-
-      {/* 직원 목록(재직/퇴사) + 통합검색 */}
+      {/* 직원 목록(재직/퇴사) + 통합검색 — 2026-08-23 디자인 검토로 **맨 위로 올렸다.**
+          매일 보는 것이 이건데 그전에는 부서·직급·초대·등록 네 묶음에 밀려 1,500px 아래에 있었다. */}
       <EmployeeList active={activeRows} retired={retiredRows} />
+
+      {/* 회사 세팅 묶음 — 처음 한 번 정하고 거의 안 건드리는 것들이라 접어 둔다.
+          ⚠️ 두 경우에는 **펼친 채로** 시작한다. 접혀 있으면 사용자가 할 일을 못 찾거나 결과를 못 본다:
+             · 아직 부서가 하나도 없는 회사 → 여기서 부서를 만들어야 한다(처음 세팅).
+             · 살아 있는 초대 링크가 있는 회사 → 방금 만든 링크를 복사해 보내야 한다. */}
+      <FoldSection
+        title="부서·직급·직원 추가"
+        hint="부서 · 직급 · 초대 링크 · 직접 등록"
+        defaultOpen={deptData.length === 0 || invites.length > 0}
+      >
+        {/* 부서 관리 */}
+        <DepartmentManager
+          departments={deptData}
+          employees={empOptions}
+          approvalMode={approvalCompany?.approvalMode ?? "single"}
+          approvalStepCount={approvalCompany?.approvalStepCount ?? 1}
+        />
+
+        {/* 직급 관리 */}
+        <JobGradeManager grades={gradeData} />
+
+        {/* 직원 초대 (링크 방식 — 직원이 스스로 가입) */}
+        <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, marginBottom: 16 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>직원 초대</div>
+          <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
+            초대 링크를 만들어 직원에게 보내면(카톡·문자 등), 직원이 링크로 <b>직접 가입</b>합니다. 비밀번호는 직원 본인이 정합니다. (링크는 7일간, 1회만 사용 가능)
+          </p>
+          <form action={createInvite}>
+            <button
+              type="submit"
+              style={{ height: 44, padding: "0 18px", border: "none", borderRadius: 8, background: "var(--primary)", color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
+            >
+              + 초대 링크 만들기
+            </button>
+          </form>
+
+          {invites.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
+              {invites.map((inv) => (
+                <div key={inv.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 12 }}>
+                    <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 700, whiteSpace: "nowrap" }}>
+                      만료 {inv.expiresAt.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" })}까지
+                    </span>
+                    <form action={cancelInvite}>
+                      <input type="hidden" name="id" value={inv.id} />
+                      <button type="submit" style={{ height: 28, padding: "0 10px", border: "1px solid var(--border)", borderRadius: 6, background: "#fff", color: "var(--text-sub)", fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                        취소
+                      </button>
+                    </form>
+                  </div>
+                  <InviteLink path={`/invite/${inv.token}`} inviteId={inv.id} smsSent={sentInviteIds.has(inv.id)} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 직원 직접 등록 (관리자가 계정을 바로 만들 때) */}
+        <AddEmployeeForm />
+      </FoldSection>
     </AppShell>
   );
 }
