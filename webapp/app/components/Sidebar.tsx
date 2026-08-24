@@ -228,9 +228,15 @@ function groupsFor(role: string, showApprovals: boolean, isOwner: boolean, useSh
         id: "appr",
         caption: "승인 관리",
         items: toItems([
+          // ⚠️ [결재함]이 **맨 위**다 (2026-08-24). "지금 내 차례인 결재"라 이 묶음에서 가장 급한 것인데,
+          //    예전엔 출장승인과 밀린 결재 사이에 묻혀 있었다. 대기 건수 배지도 여기 붙는다.
+          //    ※ 다단계 결재(부서장·상신자 지정)를 쓰는 회사에서, 결재 차례가 있는 사람에게만 보인다.
+          ...(showApprovals ? (["approvals"] as NavKey[]) : []),
+          // 승인 5종의 순서는 **직원이 신청하는 메뉴 순서와 같다**(휴가 → 외출 → 재택 → 초과근무 → 출장).
+          // 직원 화면과 관리자 화면의 차례가 어긋나면 서로 다른 기능처럼 보인다. 한쪽만 바꾸지 말 것.
           "leave-approvals", "outing-approvals", "remote-approvals",
           "overtime-approvals", "trip-approvals",
-          ...(showApprovals ? (["approvals"] as NavKey[]) : []),
+          // 아래 둘은 **승인 행위가 아니라 조회**다(밀린 것 보기 / 지난 기록 보기). 그래서 맨 아래.
           "pending-approvals", "approval-history",
         ]),
       },
