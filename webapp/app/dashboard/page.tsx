@@ -5,7 +5,7 @@ import { after } from "next/server";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
-import { workedMinutes, formatMinutes, isLate, isEarlyLeave } from "@/lib/worktime";
+import { workedMinutes, formatMinutes, isLate, isEarlyLeave, openSessionSince } from "@/lib/worktime";
 import { weekStartMonday, weeklyLevel, cappedEnd } from "@/lib/overtime";
 import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
@@ -236,6 +236,40 @@ export default async function DashboardPage() {
     }),
   ]);
 
+  // ── 미퇴근(퇴근을 안 찍고 넘어간 기록) — 2026-08-23 사장님 지시 ──────────────
+  //  왜 필요한가: 직원이 퇴근 버튼을 잊으면 그 기록이 계속 열려 있는데, 지금까지 **관리자에게
+  //    알려 주는 곳이 한 군데도 없었다.** 직원 [출퇴근] 화면에만 안내가 뜨는데, 퇴근을 안 찍은
+  //    직원은 그날 다시 접속하지 않으므로 **다음 날 출근할 때야** 본다. 그사이 아무도 모른다.
+  //    고치는 길은 직원이 [근태 정정]을 신청하고 관리자가 승인하는 것뿐이라, 관리자가 먼저 알아야 한다.
+  //
+  //  ⚠️ **자동으로 퇴근 시각을 채우지 않는다.** 실제 퇴근 시각은 본인만 안다 —
+  //     시스템이 자정으로 찍어 버리면 없는 근로기록을 만들어 내는 것이고, 그 기록은 3년 보존 대상이다.
+  //     근무시간 계산에서만 출근일 자정으로 잘라 부풀지 않게 한다(lib/worktime.ts effectiveEnd).
+  //
+  //  ⚠️ **재직 중인 직원만 센다.** 퇴사자의 미퇴근은 복직 → 본인 정정 → 재퇴사로만 고칠 수 있어
+  //     (app/employees/[id]/EmployeeStatusActions.tsx 참고) 여기 넣으면 **영영 사라지지 않는 알림**이 된다.
+  //     지워지지 않는 알림은 관리자가 곧 무시하게 되고, 그러면 이 칸 전체가 무의미해진다.
+  //  ⚠️ 기준(openSessionSince)은 "지금 근무 중"을 가르는 것과 **같은 함수**다. 야간 교대(밤 10시 출근)를
+  //     미퇴근으로 잘못 세지 않으려면 반드시 이 함수를 써야 한다. 24시간으로 직접 계산하지 말 것.
+  const staleOpen = await prisma.attendance.findMany({
+    where: {
+      companyId: cid,
+      clockOut: null,
+      clockIn: { lt: openSessionSince() },
+      user: { deactivatedAt: null, isOwner: false },
+    },
+    orderBy: { clockIn: "asc" },
+    select: { clockIn: true, user: { select: { name: true } } },
+  });
+  const staleCount = staleOpen.length;
+  // 이름은 중복 없이(같은 사람이 여러 날 빠뜨렸을 수 있다), 화면이 길어지지 않게 앞 3명만.
+  const staleNames = [...new Set(staleOpen.map((r) => r.user.name))];
+  const staleLabel = staleNames.slice(0, 3).join(", ") + (staleNames.length > 3 ? ` 외 ${staleNames.length - 3}명` : "");
+  // 누르면 그 기록이 보이는 기간으로 [근태현황]을 연다(가장 오래된 미퇴근 날 ~ 오늘).
+  //  ※ 근태현황은 시작일부터 최대 92일까지만 표시하지만, 시작일이 가장 오래된 날이라 그 건은 항상 보인다.
+  const staleFrom = staleCount ? toISODate(staleOpen[0].clockIn) : "";
+  const staleHref = staleCount ? `/records?from=${staleFrom}&to=${toISODate(new Date())}` : "/records";
+
   // 이상접속 미확인 건수(접속/보안 6단계) — 알림 화면과 **같은 함수**를 써서 두 곳 숫자가 어긋나지 않게 한다.
   // ⚠️ 이 부가 기능이 고장 나도 대시보드(본기능)는 떠야 한다 → 실패하면 0으로 두고 넘어간다.
   let alertCount = 0;
@@ -402,6 +436,25 @@ export default async function DashboardPage() {
                 </div>
                 {hasEndRule && earlyCount > 0 && <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 4, lineHeight: 1.5 }}>{earlyNames.join(", ")}</div>}
               </Link>
+              {/* 미퇴근 (있을 때만) — 2026-08-23 신설. 위 조회부 주석에 왜·무엇을 세는지 적어 뒀다.
+                     ⚠️ 0일 때는 줄을 아예 만들지 않는다. 매일 "미퇴근 0명"이 보이면 관리자가 곧 눈으로 걸러
+                        읽지 않게 되고, 정작 1명이 생겼을 때도 못 본다(위 미출근·지각·조퇴는 매일 바뀌는
+                        값이라 항상 두지만, 이건 평소에 없는 것이 정상이다).
+                     ⚠️ 아래 [승인 대기 휴가]는 **항상 있는 줄**이라, 여기 borderBottom은 고정으로 둔다
+                        (다른 조건부 줄들처럼 뒤 항목을 따라 계산하지 않아도 된다). */}
+              {staleCount > 0 && (
+                <Link href={staleHref} style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6", textDecoration: "none", color: "var(--text)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}>
+                      <Icon name="clock" size={14} style={{ marginRight: 5 }} />미퇴근
+                    </span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: "var(--danger)" }}>{staleCount}건</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 4, lineHeight: 1.5, wordBreak: "keep-all" }}>
+                    {staleLabel} — 퇴근 기록이 없습니다. [근태 정정]으로 바로잡아 주세요.
+                  </div>
+                </Link>
+              )}
               {/* 승인 대기 휴가 */}
               <Link href="/leave/approvals" style={{ padding: "12px 18px", borderBottom: (pendingResetCount > 0 || pendingCorrectionCount > 0 || pendingOutingCount > 0 || pendingRemoteCount > 0 || pendingOvertimeCount > 0 || pendingTripCount > 0 || latestNotice) ? "1px solid #F3F4F6" : "none", textDecoration: "none", color: "var(--text)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700 }}>승인 대기 휴가</span>
