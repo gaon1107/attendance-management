@@ -52,7 +52,8 @@ export async function changePassword(
   if (next.length > PASSWORD_MAX_LEN) {
     return { error: `새 비밀번호는 ${PASSWORD_MAX_LEN}자 이하로 입력해주세요.` };
   }
-  // 🔴 [검수 M-3] 기준은 lib/login-policy.ts 한 곳에서만 가져온다.
+  // 🔴 [검수 M-3] 기준은 lib/password-policy.ts 한 곳에서만 가져온다.
+  //    ※ 이 창구는 위에서 이미 길이 상한을 봤다 — 강도 검사가 상한보다 뒤에 오는 순서를 지킬 것.
   if (next.length < PASSWORD_MIN_LEN) return { error: `새 비밀번호는 ${PASSWORD_MIN_LEN}자 이상이어야 합니다.` };
   // 🔴 [검수 M-3] ⚠️ **이 검사는 [임시 비밀번호 강제 변경] 화면에도 걸린다.**
   //    여기서 새 비밀번호를 못 정하면 그 직원은 다른 화면으로 갈 수도 없어 갇힌다.

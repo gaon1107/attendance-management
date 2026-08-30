@@ -258,17 +258,19 @@ export async function completeResetWithCode(_prev: CodeState, formData: FormData
 
   if (!email || !code || !next || !confirm) return { error: "모든 항목을 입력해주세요." };
   // 비밀번호 규칙은 기존 변경 화면(actions/account.ts)과 같게 맞춘다 — 창구마다 기준이 다르면 안 된다.
-  //  🔴 [검수 M-3] 기준은 lib/login-policy.ts 한 곳에서만 가져온다.
+  //  🔴 [검수 M-3] 기준은 lib/password-policy.ts 한 곳에서만 가져온다.
   if (next.length < PASSWORD_MIN_LEN) return { error: `새 비밀번호는 ${PASSWORD_MIN_LEN}자 이상이어야 합니다.` };
-  //  🔴 [검수 M-3] ⚠️ **반드시 인증번호를 소모하기 전에** 검사한다. 뒤에 두면 비밀번호가 규칙에 걸렸을 때
-  //     인증번호만 사라지고 사용자는 처음부터 다시 받아야 한다(하루 5건 한도도 함께 깎인다).
-  //  ⚠️ 이 창구는 이름·회사명을 아직 모른다(계정 조회가 인증번호 확인 뒤에 있다). 이메일만 넘긴다.
+  // 해시 계산 폭주 방지. ⚠️ 숫자를 여기 적어두지 않는다 — 창구마다 기준이 갈린 적이 있다(검수 N-2).
+  if (next.length > PASSWORD_MAX_LEN) return { error: `새 비밀번호는 ${PASSWORD_MAX_LEN}자 이하로 입력해주세요.` };
+  //  🔴 [검수 M-3] 흔한 비밀번호·뻔한 패턴 차단.
+  //     ⚠️ **길이 상한 검사 뒤 · 인증번호를 소모하기 전**이라는 두 조건을 동시에 지켜야 한다.
+  //        상한보다 앞이면 4MB 입력으로 서버가 1.6초 멈추고(후속 검수 치명 1),
+  //        인증번호 소모보다 뒤면 규칙에 걸렸을 때 인증번호만 사라져 처음부터 다시 받아야 한다.
+  //     ⚠️ 이 창구는 이름·회사명을 아직 모른다(계정 조회가 인증번호 확인 뒤에 있다). 이메일만 넘긴다.
   {
     const weak = checkPasswordStrength(next, { email });
     if (weak) return { error: weak };
   }
-  // 해시 계산 폭주 방지. ⚠️ 숫자를 여기 적어두지 않는다 — 창구마다 기준이 갈린 적이 있다(검수 N-2).
-  if (next.length > PASSWORD_MAX_LEN) return { error: `새 비밀번호는 ${PASSWORD_MAX_LEN}자 이하로 입력해주세요.` };
   if (next !== confirm) return { error: "새 비밀번호 확인이 일치하지 않습니다." };
   if (email.length > EMAIL_MAX_LEN) return { error: CODE_FAIL_MSG };
 

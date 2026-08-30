@@ -38,16 +38,10 @@ export async function signup(
   if (!companyName || !bizRegNoRaw || !managerName || !managerPhone || !email || !password) {
     return { error: "모든 항목을 입력해주세요." };
   }
-  // 🔴 [검수 M-3] 길이·강도 기준은 **lib/login-policy.ts 한 곳**에서 가져온다.
+  // 🔴 [검수 M-3] 길이·강도 기준은 **lib/password-policy.ts 한 곳**에서 가져온다.
   //    예전에는 숫자 8이 9곳에 흩어져 있어, 한 곳만 안 고치면 그 창구만 약한 비밀번호를 받았다.
   if (password.length < PASSWORD_MIN_LEN) {
     return { error: `비밀번호는 ${PASSWORD_MIN_LEN}자 이상이어야 합니다.` };
-  }
-  // 🔴 [검수 M-3] 길이만으로는 절반도 못 막는다 — `1234567890`도 10자다.
-  //    ⚠️ 이 계정은 **회사 마스터 열쇠**이고 복구 경로가 0이다(H-1). 가장 강해야 할 자리다.
-  {
-    const weak = checkPasswordStrength(password, { email, name: managerName, companyName });
-    if (weak) return { error: weak };
   }
   // 🔴 상한이 없으면 **로그인할 수 없는 계정**이 만들어진다 — 로그인은 200자에서 막기 때문이다.
   //    가입 직후엔 세션이 있어 [계정 설정]에서 고칠 수 있지만, 세션이 끊기면 되돌릴 길이 없다
@@ -57,6 +51,15 @@ export async function signup(
   //  ⚠️ 아래 IP 제한보다 **먼저** 본다 — 길이 오타 한 번에 가입 시도 횟수가 깎이면 안 된다.
   if (password.length > POLICY.PASSWORD_MAX_LEN) {
     return { error: `비밀번호는 ${POLICY.PASSWORD_MAX_LEN}자 이하로 입력해주세요.` };
+  }
+  // 🔴 [검수 M-3] 길이만으로는 절반도 못 막는다 — `1234567890`도 10자다.
+  //    ⚠️ 이 계정은 **회사 마스터 열쇠**이고 복구 경로가 0이다(H-1). 가장 강해야 할 자리다.
+  //    ⚠️ **반드시 위 길이 상한(200자) 검사 뒤에 둔다**(M-3 후속 검수 치명 1).
+  //       앞에 두면 서버액션 본문 한도(4MB)만큼 긴 값이 강도 검사로 들어와 **한 번에 1.6초** 걸린다
+  //       — 인증도 필요 없이 서버 전체를 멈추는 통로가 된다(C-1이 막으려던 것과 같은 사고).
+  {
+    const weak = checkPasswordStrength(password, { email, name: managerName, companyName });
+    if (weak) return { error: weak };
   }
   if (!email.includes("@") || email.length < 5) {
     return { error: "이메일 형식이 올바르지 않습니다." };

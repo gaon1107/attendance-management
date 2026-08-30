@@ -26,6 +26,10 @@
 //    그래서 모든 거부 문구는 "왜 안 되는지 + 어떻게 하면 되는지"를 **함께** 말한다.
 //
 // ⛔ 이 파일에서 비밀번호 값을 **절대 로그로 남기지 않는다**(사규 8).
+//
+// ⛔ **이 파일에는 import를 넣지 말 것.** `scripts/create-operator.mjs`가 Node로 **직접 불러 쓴다**
+//    (운영자 계정도 같은 규칙을 타야 하기 때문). 경로 별칭(`@/lib/...`)이나 확장자 없는 상대경로를
+//    하나라도 넣으면 그 스크립트가 즉시 깨진다 — `lib/login-policy.ts`와 같은 제약이다.
 
 /** 비밀번호 주인에 대해 아는 것 — 이 값들이 비밀번호에 들어 있으면 막는다. */
 export type PasswordOwnerHints = {
@@ -82,6 +86,15 @@ const COMMON = new Set<string>([
   "samsung", "google1", "facebook", "naver123", "kakao123", "daum1234", "hyundai",
   // ── 이 서비스와 관련된 낱말(전용 사전이 되기 쉽다) ──
   "gaontech", "newgaon", "geuntae", "attendance", "chulgeun",
+  // ── 🔴 안내 문구(ADVICE)에 쓰는 예시 — **반드시 여기 넣어 막는다** (후속 검수 중간 4) ──
+  //    화면에 그대로 노출되는 값이라, 예시를 그대로 입력하는 사람이 반드시 나온다.
+  //    그 순간 그 계정의 비밀번호는 **공개된 값**이 된다(H-1로 잠금이 없어 1회 시도로 뚫린다).
+  //    ⚠️ ADVICE의 예시를 바꾸면 이 줄도 함께 바꿀 것.
+  "노란우산삼겹살볶음밥",
+  // ── 한글 IME로 **직접 친** 흔한 패턴(후속 검수 경미 1) ──
+  //    위 로마자 자판 패턴(dkssud 등)은 영문 상태로 친 경우다. 실제로는 한글로 그냥 치는 사람이 더 많다.
+  "가나다라마바사", "가나다라마바사아자차", "안녕하세요", "안녕하세요반갑습니다",
+  "사랑해요", "우리집강아지", "비밀번호", "비밀번호입니다", "생일축하합니다",
 ]);
 
 /** 순서대로 이어 쓴 것을 잡기 위한 기준 문자열(뒤집은 것도 함께 본다). */
@@ -89,13 +102,25 @@ const SEQUENCES = ["0123456789", "abcdefghijklmnopqrstuvwxyz", "qwertyuiop", "as
 /** 몇 글자 이상 이어져야 막을 것인가. 4는 오탐이 잦아 5로 둔다. */
 const SEQ_RUN = 5;
 
-/** 힌트 문자열에서 검사할 조각을 뽑는다. 3글자 미만은 버린다(오탐 방지). */
+/**
+ * 검사할 최대 길이 — 이보다 길면 검사하지 않는다(안전판, 아래 checkPasswordStrength 주석 참조).
+ * 정책 상한(200자)보다 넉넉히 잡아, 정상 입력이 여기 걸리는 일은 없다.
+ */
+const SCAN_LIMIT = 1000;
+
+/**
+ * 회사 이름에서 빼야 하는 낱말 — 거의 모든 회사에 붙어 있어 그대로 두면 남의 회사까지 막는다.
+ * (`주식회사 나라`인 회사에서 `우리회사주식회사만세`가 거부됐다 — 후속 검수 중간 1)
+ */
+const COMPANY_STOPWORDS = new Set(["주식회사", "유한회사", "합자회사", "합명회사", "재단법인", "사단법인", "co", "ltd", "inc", "corp", "com"]);
+
+/** 힌트 문자열에서 검사할 조각을 뽑는다. 3글자 미만과 회사 불용어는 버린다. */
 function hintTokens(...values: (string | null | undefined)[]): string[] {
   const out: string[] = [];
   for (const v of values) {
     if (!v) continue;
     for (const t of v.toLowerCase().split(/[^0-9a-z가-힣]+/)) {
-      if (t.length >= 3) out.push(t);
+      if (t.length >= 3 && !COMPANY_STOPWORDS.has(t)) out.push(t);
     }
   }
   return out;
@@ -119,9 +144,11 @@ function isCommon(lower: string): boolean {
   // `password2026` 처럼 뒤(또는 앞)에 숫자·기호만 덧붙인 형태
   const trimmed = lower.replace(/^[^a-z가-힣]+/, "").replace(/[^a-z가-힣]+$/, "");
   if (trimmed.length >= 4 && COMMON.has(trimmed)) return true;
-  // 흔한 낱말이 비밀번호의 대부분(60% 이상)을 차지하는 형태
+  // 흔한 낱말이 비밀번호의 상당 부분(40% 이상)을 차지하는 형태
+  //  · 0.6이었을 때 `Passw0rd!2026Gaon`(passw0rd가 47%)이 통과했다(후속 검수 경미 2).
+  //  · COMMON 항목이 6자 이상이라, 0.4로 낮춰도 짧은 낱말이 긴 비밀번호를 잡는 오탐은 생기지 않는다.
   for (const c of COMMON) {
-    if (c.length >= lower.length * 0.6 && lower.includes(c)) return true;
+    if (c.length >= lower.length * 0.4 && lower.includes(c)) return true;
   }
   return false;
 }
@@ -133,6 +160,12 @@ function isCommon(lower: string): boolean {
  *          (길이 검사는 여기서 하지 않는다 — 호출부가 `PASSWORD_MIN_LEN`으로 먼저 본다)
  */
 export function checkPasswordStrength(password: string, hints: PasswordOwnerHints = {}): string | null {
+  // 🔴 안전판 — **호출부는 반드시 길이 상한(PASSWORD_MAX_LEN, 200자)을 먼저 검사해야 한다**(후속 검수 치명 1).
+  //    그 약속이 깨지면 서버액션 본문 한도(4MB)만큼 긴 값이 여기 들어와 **한 번에 1.6초**가 걸리고,
+  //    Node는 단일 스레드라 그동안 **전 고객사의 요청이 멈춘다.** 여기서 한 번 더 막아 둔다.
+  //    (통과로 돌려주는 이유: 어차피 호출부의 길이 상한이 거부한다. 여기서는 CPU만 아끼면 된다)
+  if (password.length > SCAN_LIMIT) return null;
+
   const lower = password.toLowerCase();
 
   // ① 숫자만 — 생일·전화번호가 가장 먼저 시도되는 값이다. 10자리여도 약하다.
@@ -168,10 +201,19 @@ export function checkPasswordStrength(password: string, hints: PasswordOwnerHint
     return "너무 흔히 쓰이는 비밀번호입니다." + ADVICE;
   }
 
-  // ⑥ 본인·회사 정보가 들어 있다 — 표적 공격이 가장 먼저 시도하는 조합.
+  // ⑥ 본인·회사 정보가 **비밀번호의 상당 부분**을 차지한다 — 표적 공격이 가장 먼저 시도하는 조합.
+  //
+  // 🔴 왜 "들어 있으면 무조건"이 아니라 비중(40%)을 보나 — 안 그러면 정상 비밀번호가 무더기로 막힌다.
+  //    한국인 성씨 로마자가 흔한 영단어 **안에 그대로 들어 있기** 때문이다(후속 검수 중간 1, 13종 실측):
+  //      park → s`park`ling / moon → `moon`light / son → rea`son` / min → vita`min`
+  //      han → t`han`kyou / seo → `seo`ul / kim → `kim`chi / cho → `cho`colate / nam → my`nam`e
+  //    `sparkling아이스티`를 쓰려는 박씨 직원에게 "이메일 아이디가 들어 있습니다"라고 답하면
+  //    그 사람은 무슨 소린지 알 수 없다. **이게 이 기능 최대의 실패 모드다.**
+  //    ⚠️ 3글자 하한을 4글자로 올려도 안 고쳐진다 — park·moon·song·shin·name이 전부 4글자다.
+  //       하한이 아니라 **비중**으로 판정해야 한다.
   const local = (hints.email ?? "").split("@")[0];
   for (const t of hintTokens(local, hints.name, hints.companyName)) {
-    if (lower.includes(t)) {
+    if (t.length >= lower.length * 0.4 && lower.includes(t)) {
       return "이메일 아이디·이름·회사 이름이 들어 있습니다. 그 사람을 노린 공격이 가장 먼저 시도하는 조합입니다." + ADVICE;
     }
   }

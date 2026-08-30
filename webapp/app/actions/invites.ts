@@ -61,18 +61,22 @@ export async function acceptInvite(
   // 🔴 로그인은 254자를 넘는 이메일을 거부한다 — 여기서 막지 않으면 가입은 되는데
   //    본인은 다시는 못 들어오는 계정이 만들어진다(검수 치명 1).
   if (email.length > EMAIL_MAX_LEN) return { error: `이메일은 ${EMAIL_MAX_LEN}자 이하로 입력해주세요.` };
-  // 🔴 [검수 M-3] 기준은 lib/login-policy.ts 한 곳에서만 가져온다(창구마다 갈리지 않게).
+  // 🔴 [검수 M-3] 기준은 lib/password-policy.ts 한 곳에서만 가져온다(창구마다 갈리지 않게).
   if (password.length < PASSWORD_MIN_LEN) return { error: `비밀번호는 ${PASSWORD_MIN_LEN}자 이상이어야 합니다.` };
-  {
-    const weak = checkPasswordStrength(password, { email, name });
-    if (weak) return { error: weak };
-  }
   // 🔴 상한이 없으면 **로그인할 수 없는 계정**이 만들어진다 — 로그인은 200자에서 막기 때문이다.
   //    그 계정은 근태 기록만 남긴 채 본인이 다시는 못 들어온다.
   //  · 이유는 DoS가 아니다(검수 경미 4). 아래 scrypt는 유효한 1회용 토큰을 통과해야만 닿으므로
   //    거대한 입력을 반복해서 밀어 넣을 수 없다. **오직 "못 들어가는 계정"을 막기 위한 것**이다.
   //  · 숫자를 여기 직접 적지 않는다 — 창구마다 기준이 갈리지 않게 login-policy 한 곳만 본다.
   if (password.length > PASSWORD_MAX_LEN) return { error: `비밀번호는 ${PASSWORD_MAX_LEN}자 이하로 입력해주세요.` };
+  // 🔴 [검수 M-3] 흔한 비밀번호·뻔한 패턴 차단.
+  //    ⚠️ **반드시 위 길이 상한 검사 뒤에 둔다**(M-3 후속 검수 치명 1). 앞에 두면 서버액션 본문
+  //       한도(4MB)만큼 긴 값이 강도 검사로 들어와 한 번에 1.6초가 걸린다. 이 창구는 문 상한도
+  //       IP 제한도 없어서(위 주석 참조) **그 통로가 그대로 서비스 마비 수단이 된다.**
+  {
+    const weak = checkPasswordStrength(password, { email, name });
+    if (weak) return { error: weak };
+  }
 
   // 초대 유효성 검증(존재·미사용·미만료)
   const invite = await prisma.invite.findUnique({ where: { token } });

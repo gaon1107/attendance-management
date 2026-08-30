@@ -32,10 +32,15 @@ import { PrismaClient } from "@prisma/client";
 //     **운영자 계정을 만들 방법이 없는 상황에서 원인을 짐작할 수 없다.** 그래서 사람 말로 알려준다.
 //  ⚠️ `../lib/login-policy.ts`·`../lib/password.ts`에 `@/lib/...` 형태(경로 별칭) import가 생기면
 //     이 스크립트가 즉시 깨진다 — Node는 그 별칭을 모른다. 두 파일에 손댈 때 이 사실을 기억할 것.
-let hashPassword, EMAIL_MAX_LEN, PASSWORD_MAX_LEN;
+let hashPassword, EMAIL_MAX_LEN, PASSWORD_MAX_LEN, checkPasswordStrength;
 try {
   ({ hashPassword } = await import("../lib/password.ts"));
   ({ EMAIL_MAX_LEN, PASSWORD_MAX_LEN } = await import("../lib/login-policy.ts"));
+  // 🔴 [검수 M-3 후속 중간 2] 운영자 계정도 **고객사와 같은 강도 규칙**을 탄다.
+  //    예전에는 길이 12자만 봐서, 직원은 `password12`를 거부당하는데
+  //    **전 회원사 데이터를 보는 유일한 계정**은 `password1234`를 쓸 수 있었다.
+  //    ⚠️ `../lib/password-strength.ts`는 **import가 하나도 없어야** 여기서 불린다. 그쪽 주석 참조.
+  ({ checkPasswordStrength } = await import("../lib/password-strength.ts"));
 } catch (e) {
   console.error("✖ 앱 코드를 불러오지 못했습니다.");
   console.error(`  지금 Node 버전: ${process.version} — 이 명령은 Node 22.6 이상이 필요합니다.`);
@@ -43,7 +48,7 @@ try {
   process.exit(1);
 }
 
-// 🔴 최소 길이를 고객사(8자, app/actions/auth.ts signup)보다 **높게 잡았다** (검수 M-7).
+// 🔴 최소 길이를 고객사(10자, lib/password-policy.ts)보다 **높게 잡았다** (검수 M-7).
 //    고객사 계정은 한 회사만 보고 재설정 창구도 있다. 운영자는 **회사 칸막이를 넘어 전 회원사를
 //    보는 유일한 계정**이고 재설정 창구가 없다. 세션을 8시간·30분으로 더 엄하게 잡은 판단과
 //    같은 이유로 여기도 더 엄해야 앞뒤가 맞는다.
@@ -184,6 +189,16 @@ async function main() {
   if (password.length > PASSWORD_MAX_LEN) {
     console.error(`✖ 비밀번호는 ${PASSWORD_MAX_LEN}자 이하여야 합니다(앱 로그인이 그 길이에서 막습니다).`);
     process.exit(1);
+  }
+  // 🔴 흔한 비밀번호·뻔한 패턴 차단 — 고객사와 같은 규칙(검수 M-3 후속 중간 2).
+  //    ⚠️ 반드시 위 길이 상한 검사 **뒤**에 둔다(거대 입력에 CPU를 태우지 않기 위함).
+  //    이름은 힌트로 넘긴다(이메일은 아이디가 짧아 오탐을 만들 수 있어 넘기지 않는다).
+  {
+    const weak = checkPasswordStrength(password, { name });
+    if (weak) {
+      console.error("✖ " + weak);
+      process.exit(1);
+    }
   }
 
   const existing = await prisma.operator.findUnique({ where: { email } });
