@@ -313,14 +313,23 @@ export async function login(
     return { error: "이 계정은 비활성화되었습니다. 관리자에게 문의하세요." };
   }
 
-  // 계정이 잠겨 있으면(연속 실패로 잠금) 비번이 맞아도 잠금 해제 시각까지 거부.
-  //  · 남은 시간 계산도 lib/login-policy.ts 것을 쓴다 — 창구마다 "약 N분"이 다르게 나오지 않게(검수 N-2).
-  const lockMins = POLICY.lockRemainMinutes(user.lockedUntil);
-  if (lockMins !== null) {
-    const mins = lockMins;
-    await recordAccess({ companyId: user.companyId, userId: user.id, actorName: user.name, emailTried: email, kind: "login_fail", result: "fail", ip, userAgent, meta: "locked" });
-    return { error: `비밀번호를 여러 번 잘못 입력했습니다. 약 ${mins}분 뒤에 다시 시도해주세요.` };
-  }
+  // 🔴 [검수 H-1] **연속 실패로 인한 잠금은 더 이상 로그인을 막지 않는다.** 지우지 말 것 — 이유가 길다.
+  //
+  //    예전에는 여기서 "약 N분 뒤에 다시 시도해주세요"로 거부했다. 그런데 실측해 보니
+  //    그 잠금이 실제로 막아 주던 것은 **"공격자가 정답을 찾은 뒤 10분 기다리는 것"뿐**이었다.
+  //    틀린 비밀번호는 이 줄에 닿기도 전(위 passwordOk 분기)에 거부되고, 그 실패는 잠긴 동안
+  //    **세어지지도 않았다.** 즉 잠긴 계정에는 **대가 없이 무제한으로 비밀번호를 찍을 수 있었다.**
+  //
+  //    반대로 정상 주인은 확실히 막혔다. 공격자가 10분마다 5번씩만 틀려 주면
+  //    · 직원이면 출퇴근을 못 찍어 **근로시간 기록이 빈다**
+  //    · **회사 계정이면 복구 경로가 0이라 회사가 영구히 잠긴다**
+  //    → 막아야 할 것은 못 막고 막으면 안 되는 사람만 막던 장치라 걷어냈다.
+  //      (자세한 근거: research-보안검수-H1.md · lib/login-policy.ts 상단 주석)
+  //
+  //    ⚠️ 실패 횟수는 **계속 센다**(POLICY.recordFail). 그게 "이 계정이 공격받고 있다"는
+  //       유일한 계정 단위 신호다. 비밀번호 찍기를 실제로 막는 것은 아래 넷이다:
+  //       ①계산이 느림(40ms) ②공개 창구 분당 상한(C-1) ③IP 단위 실패 제한(TRUST_PROXY 필요·H-4)
+  //       ④비밀번호 강도(M-3, 미조치 — **이 조치와 짝이다**)
 
   // 🔒 임시 비밀번호 만료 검사(검수 H-4).
   //   문자로 받은 임시 비밀번호를 며칠 뒤에도 계속 쓸 수 있으면, 문자 유출이 곧 계정 탈취가 된다.

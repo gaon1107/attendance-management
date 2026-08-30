@@ -20,8 +20,44 @@
 //       한 곳이라도 이 상수를 안 쓰면 그 창구가 곧 "못 들어가는 계정 제조기"다.
 import { Prisma } from "@prisma/client";
 
-export const MAX_FAILED = 5; // 연속 5회 실패하면
-export const LOCK_MINUTES = 10; // 10분간 잠금
+// 🔴 **2026-08-30 (검수 H-1): 고객사 계정에는 "잠금"을 걸지 않는다.** 반드시 이유를 읽을 것.
+//
+//    [무엇이 사실이었나 — 실제 서버로 측정했다]
+//    잠금 검사는 비밀번호 대조보다 **뒤에** 있었다(app/actions/auth.ts 순서). 그래서 잠긴 계정이라도
+//    틀린 비밀번호는 평소와 똑같이 대조·거부됐고, 아래 `recordFail`의 빠른 길 때문에 **세어지지도 않았다.**
+//    → 공격자는 스스로 5회 틀려 계정을 잠근 뒤 그 10분 동안 **대가 없이 무제한으로 비밀번호를 찍을 수 있었다.**
+//      (12회 이상 시도해도 failedLoginCount는 0, lockedUntil은 밀리초까지 그대로임을 확인했다)
+//    즉 **잠금은 비밀번호 찍기를 전혀 막지 못했다.**
+//
+//    [반면 정상 주인은 확실히 막았다]
+//    공격자가 10분마다 5번씩만 틀려 주면 그 계정은 사실상 영구히 못 들어온다.
+//    · 직원이면 → 출퇴근을 못 찍어 **근로시간 기록이 빈다**(근로기준법 기록 의무).
+//    · **회사 계정(isOwner)이면 → 복구 경로가 0이라 회사가 영구히 잠긴다.**
+//      (재설정 2곳·관리자 임시비번 발급이 전부 isOwner를 제외한다 — 그 판단들 자체는 옳다)
+//
+//    [그래서 어떻게 바꿨나] 고객사 계정은 **잠그지 않고, 실패 횟수만 센다.**
+//    막아야 할 것은 못 막고 막으면 안 되는 사람만 막던 장치를 걷어낸 것이라 **잃는 방어가 없다.**
+//
+//    [그럼 무엇이 비밀번호 찍기를 막나 — 이쪽이 진짜다]
+//      ① 비밀번호 계산 자체가 느림(1회 40ms)  ② 공개 창구 분당 상한(lib/public-door.ts, C-1)
+//      ③ IP 단위 실패 제한(lib/login-throttle.ts) — ⚠️ `TRUST_PROXY=1`을 켜야 작동한다(H-4)
+//      ④ 비밀번호 강도 — ⚠️ 지금은 "8자 이상"뿐이다(M-3, 미조치). **이 조치와 짝이다.**
+//
+//    ⚠️ 아래 두 숫자는 **운영자(본사) 계정에는 그대로 살아 있다**(lib/operator-policy.ts).
+//       운영자는 `scripts/create-operator.mjs --unlock` 으로 풀 수 있어 영구 잠김이 아니고,
+//       쓰는 사람이 한두 명이라 잠금의 부작용이 없다.
+export const MAX_FAILED = 5; // 연속 5회 실패하면 (※ 운영자 계정 전용으로 남았다)
+export const LOCK_MINUTES = 10; // 10분간 잠금 (※ 운영자 계정 전용으로 남았다)
+
+/**
+ * 실패 횟수를 세는 상한.
+ *  · 왜 필요한가: 잠금을 없앴으므로 실패마다 사용자 행에 쓰기가 발생한다. 상한이 없으면
+ *    공격이 지속되는 동안 **끝없이 DB에 쓰게 되고**, SQLite는 쓰기를 한 번에 하나씩만 처리하므로
+ *    그 쓰기가 **직원들의 출퇴근 기록과 경합한다**(C-1에서 막으려던 것과 같은 결과).
+ *  · 상한에 닿으면 더 쓰지 않는다. 신호는 이미 충분하다 — "50 이상 = 공격받는 중"이면 된다.
+ *  · 로그인에 성공하면 0으로 되돌아간다.
+ */
+export const FAIL_COUNT_MAX = 50;
 
 /**
  * 사용자가 **정할 수 있는** 비밀번호 길이 상한(정책값).
@@ -83,71 +119,44 @@ export function lockRemainMinutes(lockedUntil: Date | null | undefined, now: Dat
   return Math.max(1, Math.ceil((lockedUntil.getTime() - now.getTime()) / 60000));
 }
 
-/** "지금 잠겨 있지 않은 행"을 가리키는 조건 — 모든 쓰기에 이 조건을 건다. */
-function notLocked(now: Date) {
-  return { OR: [{ lockedUntil: null }, { lockedUntil: { lte: now } }] };
-}
-
 /**
- * 비밀번호 실패 1회를 **DB가 세도록** 기록한다.
+ * 비밀번호 실패 1회를 **DB가 세도록** 기록한다. **잠그지는 않는다**(위 H-1 주석 참조).
  *
- * 🔴 왜 이렇게까지 하나 — 두 가지 구멍을 동시에 막아야 하기 때문이다.
+ * 🔴 더하기를 **DB의 increment에 맡기는 것**은 그대로 지킨다 (재재검수 치명 1)
+ *    예전에는 읽은 횟수에 1을 더해 썼다. 동시에 50건이 들어오면 **50건 모두 같은 숫자를 읽고
+ *    모두 같은 숫자를 써서 50번 틀렸는데 횟수는 1**이 된다. 지금은 잠금 판정에 쓰지 않더라도,
+ *    이 횟수는 "이 계정이 공격받고 있다"를 보여주는 **유일한 계정 단위 신호**다. 정확해야 한다.
  *
- *  ① **"잠금이 지워지는" 구멍** (재검수 치명 1)
- *     실패 판정에 쓰는 사용자 정보는 "읽은 순간의 사진"이고, 그 뒤 비밀번호 대조(scrypt)가
- *     수십 ms 걸린다. 그 사이에 다른 요청이 잠금을 걸었다면, 코드가 "안 잠겼다"고 믿고 쓴 값이
- *     방금 걸린 잠금을 덮어쓴다. → 조건(notLocked)을 **where에 넣어** DB가 판단하게 한다.
+ * ⚠️ 상한(FAIL_COUNT_MAX)에 닿으면 **더 쓰지 않는다.** 잠금을 없앤 대신 실패마다 쓰기가 생기는데,
+ *    상한이 없으면 공격이 계속되는 동안 SQLite 쓰기 순번을 계속 차지해 **출퇴근 기록이 밀린다.**
+ *    상한 판정도 코드가 아니라 **DB가 where로** 한다 — 동시 요청이 상한을 넘겨 쓰지 못하게.
  *
- *  ② **"잠금이 안 걸리는" 구멍** (재재검수 치명 1)
- *     예전에는 읽은 횟수에 1을 더해 썼다. 동시에 50건이 들어오면 **50건 모두 같은 숫자를 읽고
- *     모두 같은 숫자를 써서 50번 틀렸는데 횟수는 1**이 된다. 5회 잠금에 닿으려면 250번이 필요해져
- *     사실상 무제한으로 비밀번호를 찍을 수 있다(이 저장소의 유일한 대입 방어가 꺼진다).
- *     → 더하기를 **DB의 increment**에 맡기고, 문턱을 넘었는지도 **DB가 where로 판단**하게 한다.
+ * ⚠️ 예전에 있던 "이미 잠겼으면 아무것도 하지 않는다"는 빠른 길은 **없앴다.** 그게 바로
+ *    공격자가 스스로 계정을 잠근 뒤 무제한으로 찍게 해 주던 구멍이었다(H-1 실측).
  *
- * 그래서 두 단계다. 두 단계 사이에서 서버가 죽으면 횟수가 5로 남아 **다음 실패에 잠긴다**
- * — 안전한 쪽으로 틀어지므로 문제되지 않는다.
- *
- * ⚠️ 잠글 때 횟수를 **0으로 되돌린다**(검수 N-2). 5로 남기면 10분 뒤 잠금이 풀린 사람이
- *    한 번만 더 틀려도 즉시 다시 잠겨, 정상 사용자가 사실상 영구히 못 들어온다.
- *
- * @returns 실제로 셌으면 true(이미 잠겨 있어 아무것도 하지 않았으면 false).
+ * @returns 실제로 셌으면 true (상한에 닿아 있어 아무것도 하지 않았으면 false).
  */
 export async function recordFail(
   db: Db,
-  user: { id: string; lockedUntil?: Date | null },
-  now: Date = new Date()
+  user: { id: string }
 ): Promise<boolean> {
-  // 빠른 길: 읽어둔 값이 이미 "잠김"이면 DB를 건드리지 않는다.
-  //  · 정확성은 아래 where 조건이 책임진다. 이건 순전히 **쓰기 트랜잭션을 아끼는** 용도다
-  //    — 잠긴 계정을 계속 두드릴 때 SQLite 쓰기 락이 출퇴근 기록과 경합하지 않게 한다.
-  if (lockRemainMinutes(user.lockedUntil, now) !== null) return false;
-
-  // ① 원자적 증가 — 동시 요청이 서로를 덮어쓸 수 없다.
   const bumped = await db.user.updateMany({
-    where: { id: user.id, ...notLocked(now) },
+    where: { id: user.id, failedLoginCount: { lt: FAIL_COUNT_MAX } },
     data: { failedLoginCount: { increment: 1 } },
   });
-  if (bumped.count === 0) return false; // 그 사이에 잠겼다 → 아무것도 하지 않는다
-
-  // ② 문턱을 넘었으면 잠근다. 넘었는지도 DB가 판단하므로, 동시 요청 중 **딱 하나만** 잠근다.
-  await db.user.updateMany({
-    where: { id: user.id, failedLoginCount: { gte: MAX_FAILED }, ...notLocked(now) },
-    data: { failedLoginCount: 0, lockedUntil: new Date(now.getTime() + LOCK_MINUTES * 60 * 1000) },
-  });
-  return true;
+  return bumped.count > 0;
 }
 
 /**
  * 비밀번호가 맞았을 때 실패 기록을 되돌린다.
  *
- * ⚠️ 여기에도 `notLocked` 조건을 건다(재재검수 중간 4). 실패 쪽만 원자적으로 고치고 성공 쪽을
- *    그냥 `update`로 두면, **비밀번호를 맞힌 요청이 그 사이에 걸린 잠금을 지우는** 같은 모양의
- *    구멍이 남는다. 잠긴 계정은 비밀번호가 맞아도 거부하는 것이 이 저장소의 원칙이므로,
- *    잠겨 있는 동안에는 초기화도 하지 않는다.
+ * ⚠️ 예전에는 "잠겨 있지 않을 때만" 초기화했다(잠긴 계정은 비밀번호가 맞아도 거부하는 것이
+ *    원칙이었기 때문). **H-1으로 그 원칙이 바뀌었다** — 비밀번호를 맞힌 사람은 주인이므로
+ *    조건 없이 초기화한다. 그래야 예전에 걸려 남아 있던 `lockedUntil`(레거시 값)도 함께 정리된다.
  */
-export async function recordSuccess(db: Db, userId: string, now: Date = new Date()): Promise<void> {
+export async function recordSuccess(db: Db, userId: string): Promise<void> {
   await db.user.updateMany({
-    where: { id: userId, ...notLocked(now) },
+    where: { id: userId },
     data: { failedLoginCount: 0, lockedUntil: null },
   });
 }

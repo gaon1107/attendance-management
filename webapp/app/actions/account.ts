@@ -6,7 +6,7 @@ import { getCurrentUser, createSession } from "@/lib/session";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { sendSms, smsConfigured } from "@/lib/sms";
 import { isMobilePhone, toLocalPhone, formatPhone } from "@/lib/phone";
-import { lockRemainMinutes, recordFail, recordSuccess, PASSWORD_MAX_LEN, PASSWORD_INPUT_HARD_LIMIT } from "@/lib/login-policy";
+import { recordFail, recordSuccess, PASSWORD_MAX_LEN, PASSWORD_INPUT_HARD_LIMIT } from "@/lib/login-policy";
 import { headers } from "next/headers";
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
@@ -52,20 +52,19 @@ export async function changePassword(
   if (next.length < 8) return { error: "새 비밀번호는 8자 이상이어야 합니다." };
   if (next !== confirm) return { error: "새 비밀번호 확인이 일치하지 않습니다." };
 
-  // 🔒 잠금 확인 — 로그인과 **같은 기준·같은 함수**를 쓴다.
-  //    ⚠️ 비밀번호를 대조하기 **전에** 검사한다. 잠긴 계정에까지 scrypt를 태우면
-  //       제한이 CPU를 한 푼도 아껴주지 못해, 제한 자체가 서비스 마비 통로가 된다.
-  const lockMins = lockRemainMinutes(me.lockedUntil);
-  if (lockMins !== null) {
-    return { error: `비밀번호를 여러 번 잘못 입력했습니다. 약 ${lockMins}분 뒤에 다시 시도해주세요.` };
-  }
+  // 🔴 [검수 H-1] 잠금 확인을 **없앴다.** 로그인과 같은 기준을 쓴다는 원칙은 그대로다 —
+  //    로그인이 더 이상 잠금으로 막지 않으므로 여기도 막지 않는다(자세한 이유: lib/login-policy.ts 상단).
+  //    남겨 두면 **"로그인은 되는데 비밀번호는 못 바꾸는"** 앞뒤 안 맞는 상태가 되고,
+  //    그게 바로 회사 계정이 스스로를 구할 마지막 길이 막히던 자리였다.
+  //    ⚠️ 실패 횟수는 아래에서 계속 센다(로그인과 같은 창구).
 
   const { ip, userAgent } = readClientMeta(await headers());
 
   if (!(await verifyPassword(current, me.passwordHash))) {
-    // 실패를 **로그인과 같은 창구**로 센다(lib/login-policy.ts). 5회면 10분 잠금.
-    //  · 이 창구와 로그인은 같은 칸(failedLoginCount·lockedUntil)을 쓰므로, 한쪽에서 잠기면
-    //    다른 쪽도 함께 막힌다 — 창구를 갈아타며 찍는 우회가 불가능하다.
+    // 실패를 **로그인과 같은 창구**로 센다(lib/login-policy.ts).
+    //  · 이 창구와 로그인은 같은 칸(failedLoginCount)을 쓴다 — 창구를 갈아타도 횟수가 한 곳에 쌓인다.
+    //  · ※ H-1(2026-08-30) 이후로 이 횟수는 **막는 데 쓰지 않는다.** "이 계정이 공격받고 있다"를
+    //    보여주는 신호이자, [접속기록]·[이상접속] 감시의 근거다.
     await recordFail(prisma, me);
     // 🔴 기록의 종류를 **`login_fail`로 남긴다**(재검수 M-3). `config`(설정 변경)로 남기면
     //    [이상접속] 알림·[차단 후보] 집계·[로그인 이력] 화면이 전부 `login_fail`만 세기 때문에
@@ -75,16 +74,8 @@ export async function changePassword(
       companyId: me.companyId, userId: me.id, actorName: me.name, emailTried: me.email,
       kind: "login_fail", result: "fail", ip, userAgent, meta: "password_change_denied",
     });
-    // 5회째에 잠겼다면 **그 자리에서 알려준다**(재검수 경미 2).
-    //  · 안 알려주면 사용자는 6번째 시도에서야 잠긴 걸 안다. 특히 [임시 비밀번호 강제 변경] 화면은
-    //    잠기는 순간 그 화면도 로그인 화면도 함께 막혀 10분간 갇히므로, 이유를 바로 말해줘야 한다.
-    //  · 로그인 창구에서는 이렇게 못 한다(계정이 실재한다는 사실이 새어 나간다). 여기는 이미
-    //    본인 세션으로 들어와 있는 사람이라 숨길 것이 없다.
-    const after = await prisma.user.findUnique({ where: { id: me.id }, select: { lockedUntil: true } });
-    const nowLocked = lockRemainMinutes(after?.lockedUntil);
-    if (nowLocked !== null) {
-      return { error: `비밀번호를 여러 번 잘못 입력했습니다. 약 ${nowLocked}분 뒤에 다시 시도해주세요.` };
-    }
+    // ※ 예전에는 여기서 "5회째에 잠겼습니다"를 알려줬다(재검수 경미 2). H-1으로 잠금 자체가
+    //   없어져 알릴 내용이 사라졌고, 그 안내를 위해 매 실패마다 하던 조회 1회도 함께 없앴다.
     return { error: "현재 비밀번호가 올바르지 않습니다." };
   }
   // 비밀번호가 맞았으면 실패 기록을 되돌린다(로그인 성공 처리와 동일).
@@ -224,12 +215,10 @@ export async function changeRecoveryPhone(
   if (!current || !phoneRaw) return { error: "현재 비밀번호와 새 연락처를 모두 입력해주세요." };
   if (current.length > 200) return { error: "현재 비밀번호가 올바르지 않습니다." };
 
-  // 🔒 비밀번호 잠금은 로그인과 **같은 기준**을 쓴다(검수 M-2).
-  //    안 그러면 세션을 훔친 자가 이 창구에서 로그인 잠금을 우회해 비밀번호를 무제한으로 찍는다.
-  const remain = lockRemainMinutes(me.lockedUntil);
-  if (remain !== null) {
-    return { error: `비밀번호를 여러 번 잘못 입력했습니다. 약 ${remain}분 뒤에 다시 시도해주세요.` };
-  }
+  // 🔴 [검수 H-1] 잠금 확인을 **없앴다** — 로그인과 같은 기준을 쓴다는 원칙(검수 M-2)은 그대로다.
+  //    로그인이 더 이상 잠금으로 막지 않으므로 여기도 막지 않는다.
+  //    ⚠️ "창구를 갈아타며 찍는 우회"는 여전히 막힌다 — 아래 실패가 로그인과 **같은 칸**에
+  //       같은 함수(recordFail)로 쌓이기 때문이다. 세는 것과 막는 것은 별개다.
 
   // ⑤ 문자를 받을 수 있는 번호인가 — 유선·가상번호는 여기서 막는다(이유는 lib/phone.ts 주석).
   if (!isMobilePhone(phoneRaw)) {
