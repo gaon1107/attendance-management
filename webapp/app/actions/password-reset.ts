@@ -17,6 +17,7 @@ import {
   RESET_MAX_PER_IP, RESET_WINDOW_MIN, RESET_CODE_MAX_PER_IP, RESET_CODE_WINDOW_MIN,
 } from "@/lib/login-throttle";
 import { issueResetCode, checkResetCode } from "@/lib/reset-code";
+import { publicDoorAllows } from "@/lib/public-door";
 import { headers } from "next/headers";
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
@@ -144,6 +145,13 @@ type CodeState = { error?: string; ok?: boolean };
 //    통째로 열거할 수 있다(검수 치명 1). 사용자가 할 일은 어느 쪽이든 "다시 받기"로 같다.
 const CODE_FAIL_MSG = "인증번호가 올바르지 않거나 만료되었습니다. 인증번호를 다시 받아 주세요.";
 
+// 🔴 [검수 C-1] 문 전체가 분당 상한에 걸렸을 때의 문구.
+//    CODE_FAIL_MSG를 쓰지 않는 이유: "인증번호가 틀렸다"고 하면 멀쩡한 코드를 가진 사람이
+//    코드를 버리고 다시 받으러 간다 — 몰려 있는 상황을 더 악화시킨다.
+//    정보가 새지도 않는다. 이 판정은 **어느 계정이냐와 무관한 서버 전체 상태**라,
+//    누구에게나 같은 시점에 같은 답이 나간다.
+const DOOR_BUSY_MSG = "지금 비밀번호 재설정 요청이 몰려 있습니다. 잠시 후 다시 시도해주세요.";
+
 // A-① 이메일 + 전화번호 뒷 4자리 → 문자로 6자리 코드 발송.
 //  ⚠️ **여기서 비밀번호를 바꾸지 않는다.** 바꿔 버리면 남의 이메일과 뒷번호만 알면 그 직원 로그인을
 //     막을 수 있다(근태 제품에서 로그인 불가 = 근로기록 누락). 비밀번호는 A-③에서만 바뀐다.
@@ -158,6 +166,12 @@ export async function sendResetCode(_prev: CodeState, formData: FormData): Promi
   if (!email || !phoneTail) return { error: "이메일과 전화번호 뒷 4자리를 모두 입력해주세요." };
   if (email.length > EMAIL_MAX_LEN || !email.includes("@")) return { error: "이메일 형식이 올바르지 않습니다." };
   if (!/^\d{4}$/.test(phoneTail)) return { error: "전화번호 뒷 4자리를 숫자로 입력해주세요." };
+
+  // 🔴 [검수 C-1] 재설정 3개 창구가 **함께 쓰는** 분당 상한(창구가 셋이라고 한도가 3배가 되면 안 된다).
+  //    이 창구의 비용은 뒤로 미뤄지지만(after) 사라지지 않는다 — issueResetCode가 인증번호를
+  //    scrypt로 해시하므로 요청 1건마다 서버가 40ms 멈춘다. 아래 IP 제한은 TRUST_PROXY 미설정 시
+  //    무동작이므로, **DB에 닿기 전에** 여기서 끊는다.
+  if (!publicDoorAllows("reset")) return { error: DOOR_BUSY_MSG };
 
   // 🔴 로그인 없이 누구나 부르는 창구다 — 기존 재설정 요청과 **같은 IP 예산**을 쓴다(창구가 둘이라고
   //    한도가 두 배가 되면 안 된다). ⚠️ TRUST_PROXY 미설정이면 이 제한은 무동작 →
@@ -199,6 +213,10 @@ export async function verifyResetCode(_prev: CodeState, formData: FormData): Pro
   if (!email || !code) return { error: "인증번호를 입력해주세요." };
   if (email.length > EMAIL_MAX_LEN) return { error: CODE_FAIL_MSG };
 
+  // 🔴 [검수 C-1] 재설정 3개 창구가 함께 쓰는 분당 상한. 아래 checkResetCode가 저장된 코드 해시와
+  //    대조하느라 scrypt를 돌리므로(요청당 40ms 서버 정지), DB 조회보다 **앞에서** 끊는다.
+  if (!publicDoorAllows("reset")) return { error: DOOR_BUSY_MSG };
+
   // 코드 1건당 5회 상한은 "코드 하나"를 지킨다. 이건 "문 앞"을 지킨다(검수 중간 7).
   //  · 세는 대상(reset_code_wrong)은 코드당 최대 5건만 생기므로 이 기록이 적재 통로가 되지 않는다.
   //  · ⚠️ TRUST_PROXY 미설정이면 무동작 — 실질 방어선은 여전히 코드당 5회 상한이다.
@@ -234,6 +252,11 @@ export async function completeResetWithCode(_prev: CodeState, formData: FormData
   if (next.length > PASSWORD_MAX_LEN) return { error: `새 비밀번호는 ${PASSWORD_MAX_LEN}자 이하로 입력해주세요.` };
   if (next !== confirm) return { error: "새 비밀번호 확인이 일치하지 않습니다." };
   if (email.length > EMAIL_MAX_LEN) return { error: CODE_FAIL_MSG };
+
+  // 🔴 [검수 C-1] 재설정 3개 창구가 함께 쓰는 분당 상한.
+  //    이 창구는 scrypt를 **두 번** 돌린다 — 코드 대조(checkResetCode) + 새 비밀번호 해시.
+  //    셋 중 가장 비싼 문이라 반드시 앞에서 끊는다.
+  if (!publicDoorAllows("reset")) return { error: DOOR_BUSY_MSG };
 
   const guard = await guardCodeAttempts(email);
   if (guard) return guard;

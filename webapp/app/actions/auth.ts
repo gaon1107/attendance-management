@@ -9,6 +9,7 @@ import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { isBlockedForCompany } from "@/lib/ip-block";
 import { loginAllowedForIp, publicActionAllowedForIp, recordThrottleHit, THROTTLED_META, SIGNUP_MAX_PER_IP, SIGNUP_WINDOW_MIN } from "@/lib/login-throttle";
 import { isValidBizRegNoFormat, formatBizRegNo, normalizeBizRegNo, verifyBizRegNo } from "@/lib/bizreg";
+import { publicDoorAllows } from "@/lib/public-door";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -64,6 +65,14 @@ export async function signup(
   // 동의는 법적 필수 — 체크하지 않으면 가입시키지 않는다(개인정보보호법 제15조·제22조).
   if (!agreeTerms || !agreePrivacy) {
     return { error: "이용약관과 개인정보 수집·이용에 동의해주세요." };
+  }
+
+  // 🔴 [검수 C-1] 이 문 전체의 분당 상한. 아래 IP 제한은 `TRUST_PROXY=1`이 아니면 무동작이라,
+  //    그 상태에서는 이 창구 하나로 ①scrypt(40ms 서버 정지) ②국세청 조회 쿼터 ③DB 조회·기록을
+  //    무제한 태울 수 있다. 형식 검증을 모두 통과한 뒤·DB에 닿기 전에 센다.
+  //    (로그인과 **다른 예산**을 쓴다 — 가입이 막혀도 직원들의 로그인은 열려 있어야 한다)
+  if (!publicDoorAllows("signup")) {
+    return { error: "지금 가입 요청이 몰려 있습니다. 잠시 후 다시 시도해주세요." };
   }
 
   // 🔴 [검수 M-19] 가입은 로그인 없이 누구나 부를 수 있다 — 같은 IP에서 쏟아지는 시도를 막는다.
@@ -195,6 +204,20 @@ export async function login(
   // ②그 값으로도 scrypt가 돌아 서버가 멈춘다. 정상 입력은 절대 넘지 않는 값이다.
   if (email.length > POLICY.EMAIL_MAX_LEN || password.length > POLICY.PASSWORD_MAX_LEN) {
     return { error: "이메일 또는 비밀번호가 올바르지 않습니다." };
+  }
+
+  // 🔴 [검수 C-1] 이 문 전체의 분당 상한 — **서버가 죽는 것을 막는 최후의 안전판**이다.
+  //    아래 IP 제한(loginAllowedForIp)은 `TRUST_PROXY=1`이 아니면 아무 일도 하지 않고,
+  //    계정 5회 잠금은 "계정 하나"만 지킨다. 그래서 **인증 없이** 이 문에 요청을 쏟으면
+  //    요청 1건마다 scrypt 1회(약 40ms 서버 전체 정지)가 돌아 직원들이 출퇴근을 찍지 못한다.
+  //    ⚠️ 위치가 중요하다 — **DB 조회와 비밀번호 대조보다 앞**에 둬야 둘 다 아낀다.
+  //       형식 오류(위 두 검사)보다는 뒤에 둔다: 오타 한 번에 분당 예산이 깎이면 안 된다.
+  //    ⚠️ 거부 사실을 DB(접속기록)에 남기지 않는다 — 미인증 요청이 DB에 쓰게 하는 순간
+  //       그 기록 자체가 새로운 공격 통로가 된다(login-throttle.ts 검수 치명 3과 같은 이유).
+  //       대신 lib/public-door.ts가 서버 로그에 1분 1줄로 남긴다.
+  //    ⚠️ 문구는 **모든 사람에게 동일**하다. 계정이 있든 없든 같은 응답이라 정보가 새지 않는다.
+  if (!publicDoorAllows("login")) {
+    return { error: "지금 로그인 요청이 몰려 있습니다. 잠시 후 다시 시도해주세요." };
   }
 
   // 접속기록용 IP·기기(이메일이 입력된 이후부터 남긴다).
