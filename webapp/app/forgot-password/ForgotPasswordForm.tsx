@@ -13,6 +13,8 @@ import {
   verifyResetCode,
   completeResetWithCode,
 } from "@/app/actions/password-reset";
+// 숫자를 화면에 직접 적지 않는다(검수 M-3).
+import { PASSWORD_MIN_HINT } from "@/lib/password-policy";
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -311,7 +313,7 @@ function CodePanel({ onSwitchToAdmin }: { onSwitchToAdmin: () => void }) {
           <input type="hidden" name="code" value={code} />
           <div>
             <label style={labelStyle}>새 비밀번호</label>
-            <input name="next" type="password" placeholder="8자 이상" autoComplete="new-password" style={inputStyle} />
+            <input name="next" type="password" placeholder={PASSWORD_MIN_HINT} autoComplete="new-password" style={inputStyle} />
           </div>
           <div>
             <label style={labelStyle}>새 비밀번호 확인</label>

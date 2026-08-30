@@ -3,6 +3,8 @@
 import { useActionState, useRef, useState } from "react";
 import Link from "next/link";
 import { signup } from "@/app/actions/auth";
+// 숫자를 화면에 직접 적지 않는다 — 서버 기준과 어긋나면 "화면 말대로 넣었는데 거부"가 된다(검수 M-3).
+import { PASSWORD_MIN_HINT } from "@/lib/password-policy";
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -225,7 +227,7 @@ export default function SignupPage() {
           </div>
           <div>
             <label style={labelStyle}>비밀번호</label>
-            <input name="password" type="password" autoComplete="new-password" placeholder="8자 이상" style={inputStyle} value={form.password} onChange={set("password")} />
+            <input name="password" type="password" autoComplete="new-password" placeholder={PASSWORD_MIN_HINT} style={inputStyle} value={form.password} onChange={set("password")} />
           </div>
 
           {/* 동의는 법적 필수(개인정보보호법). 체크하지 않으면 서버가 가입을 거부한다. */}

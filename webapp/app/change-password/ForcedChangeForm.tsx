@@ -4,6 +4,8 @@
 import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { changePassword } from "@/app/actions/account";
+// 숫자를 화면에 직접 적지 않는다(검수 M-3). ⚠️ 이 화면에서 새 비밀번호를 못 정하면 그 직원은 갇힌다.
+import { PASSWORD_MIN_HINT } from "@/lib/password-policy";
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -59,7 +61,7 @@ export function ForcedChangeForm({ home }: { home: string }) {
         <input name="current" type="password" placeholder="전달받은 임시 비밀번호" style={inputStyle} autoComplete="current-password" />
       </div>
       <div>
-        <label style={labelStyle}>새 비밀번호 (8자 이상)</label>
+        <label style={labelStyle}>새 비밀번호 ({PASSWORD_MIN_HINT})</label>
         <input name="next" type="password" placeholder="새 비밀번호" style={inputStyle} autoComplete="new-password" />
       </div>
       <div>

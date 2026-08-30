@@ -2,6 +2,8 @@
 // 비밀번호 변경 폼 — 현재/새/새 확인. 성공하면 입력칸을 비운다.
 import { useActionState, useEffect, useRef } from "react";
 import { changePassword } from "@/app/actions/account";
+// 숫자를 화면에 직접 적지 않는다 — 서버 기준과 어긋나면 "화면 말대로 넣었는데 거부"가 된다(검수 M-3).
+import { PASSWORD_MIN_HINT } from "@/lib/password-policy";
 
 const inputStyle: React.CSSProperties = {
   height: 44,
@@ -46,7 +48,7 @@ export function ChangePasswordForm() {
         <input name="current" type="password" autoComplete="current-password" style={inputStyle} />
       </div>
       <div>
-        <label style={labelStyle}>새 비밀번호 (8자 이상)</label>
+        <label style={labelStyle}>새 비밀번호 ({PASSWORD_MIN_HINT})</label>
         <input name="next" type="password" autoComplete="new-password" style={inputStyle} />
       </div>
       <div>

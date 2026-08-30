@@ -10,6 +10,8 @@ import { isBlockedForCompany } from "@/lib/ip-block";
 import { loginAllowedForIp, publicActionAllowedForIp, recordThrottleHit, THROTTLED_META, SIGNUP_MAX_PER_IP, SIGNUP_WINDOW_MIN } from "@/lib/login-throttle";
 import { isValidBizRegNoFormat, formatBizRegNo, normalizeBizRegNo, verifyBizRegNo } from "@/lib/bizreg";
 import { publicDoorAllows } from "@/lib/public-door";
+import { checkPasswordStrength } from "@/lib/password-strength";
+import { PASSWORD_MIN_LEN } from "@/lib/password-policy";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -36,8 +38,16 @@ export async function signup(
   if (!companyName || !bizRegNoRaw || !managerName || !managerPhone || !email || !password) {
     return { error: "모든 항목을 입력해주세요." };
   }
-  if (password.length < 8) {
-    return { error: "비밀번호는 8자 이상이어야 합니다." };
+  // 🔴 [검수 M-3] 길이·강도 기준은 **lib/login-policy.ts 한 곳**에서 가져온다.
+  //    예전에는 숫자 8이 9곳에 흩어져 있어, 한 곳만 안 고치면 그 창구만 약한 비밀번호를 받았다.
+  if (password.length < PASSWORD_MIN_LEN) {
+    return { error: `비밀번호는 ${PASSWORD_MIN_LEN}자 이상이어야 합니다.` };
+  }
+  // 🔴 [검수 M-3] 길이만으로는 절반도 못 막는다 — `1234567890`도 10자다.
+  //    ⚠️ 이 계정은 **회사 마스터 열쇠**이고 복구 경로가 0이다(H-1). 가장 강해야 할 자리다.
+  {
+    const weak = checkPasswordStrength(password, { email, name: managerName, companyName });
+    if (weak) return { error: weak };
   }
   // 🔴 상한이 없으면 **로그인할 수 없는 계정**이 만들어진다 — 로그인은 200자에서 막기 때문이다.
   //    가입 직후엔 세션이 있어 [계정 설정]에서 고칠 수 있지만, 세션이 끊기면 되돌릴 길이 없다

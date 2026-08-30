@@ -2,6 +2,8 @@
 // 초대 수락 폼 — 직원이 이름·이메일·비밀번호를 직접 정해 가입한다.
 import { useActionState } from "react";
 import { acceptInvite } from "@/app/actions/invites";
+// 숫자를 화면에 직접 적지 않는다(검수 M-3).
+import { PASSWORD_MIN_HINT } from "@/lib/password-policy";
 import { DatePicker } from "@/app/components/DatePicker";
 
 const inputStyle: React.CSSProperties = {
@@ -32,7 +34,7 @@ export function InviteForm({ token }: { token: string }) {
         <input name="email" type="email" placeholder="예시) me@company.co.kr" style={inputStyle} />
       </div>
       <div>
-        <label style={labelStyle}>비밀번호 (8자 이상)</label>
+        <label style={labelStyle}>비밀번호 ({PASSWORD_MIN_HINT})</label>
         <input name="password" type="password" autoComplete="new-password" placeholder="비밀번호" style={inputStyle} />
       </div>
 

@@ -7,7 +7,9 @@ import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { sendSms, smsConfigured } from "@/lib/sms";
 import { isMobilePhone, toLocalPhone, formatPhone } from "@/lib/phone";
 import { recordFail, recordSuccess, PASSWORD_MAX_LEN, PASSWORD_INPUT_HARD_LIMIT } from "@/lib/login-policy";
+import { PASSWORD_MIN_LEN } from "@/lib/password-policy";
 import { passwordAttemptAllowed } from "@/lib/password-attempt-limit";
+import { checkPasswordStrength } from "@/lib/password-strength";
 import { headers } from "next/headers";
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
@@ -50,7 +52,16 @@ export async function changePassword(
   if (next.length > PASSWORD_MAX_LEN) {
     return { error: `새 비밀번호는 ${PASSWORD_MAX_LEN}자 이하로 입력해주세요.` };
   }
-  if (next.length < 8) return { error: "새 비밀번호는 8자 이상이어야 합니다." };
+  // 🔴 [검수 M-3] 기준은 lib/login-policy.ts 한 곳에서만 가져온다.
+  if (next.length < PASSWORD_MIN_LEN) return { error: `새 비밀번호는 ${PASSWORD_MIN_LEN}자 이상이어야 합니다.` };
+  // 🔴 [검수 M-3] ⚠️ **이 검사는 [임시 비밀번호 강제 변경] 화면에도 걸린다.**
+  //    여기서 새 비밀번호를 못 정하면 그 직원은 다른 화면으로 갈 수도 없어 갇힌다.
+  //    그래서 거부 문구가 "왜 안 되는지 + 어떻게 하면 되는지"를 함께 말하도록 만들어져 있다
+  //    (lib/password-strength.ts). 문구를 줄이지 말 것.
+  {
+    const weak = checkPasswordStrength(next, { email: me.email, name: me.name, companyName: me.company?.name });
+    if (weak) return { error: weak };
+  }
   if (next !== confirm) return { error: "새 비밀번호 확인이 일치하지 않습니다." };
 
   // 🔴 [검수 H-1] 잠금 확인을 **없앴다** — 남겨 두면 "로그인은 되는데 비밀번호는 못 바꾸는" 상태가 되고,

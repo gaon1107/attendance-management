@@ -51,7 +51,8 @@ import { Prisma } from "@prisma/client";
 //    [그럼 무엇이 비밀번호 찍기를 막나 — 이쪽이 진짜다]
 //      ① 비밀번호 계산 자체가 느림(1회 40ms)  ② 공개 창구 분당 상한(lib/public-door.ts, C-1)
 //      ③ IP 단위 실패 제한(lib/login-throttle.ts) — ⚠️ `TRUST_PROXY=1`을 켜야 작동한다(H-4)
-//      ④ 비밀번호 강도 — ⚠️ 지금은 "8자 이상"뿐이다(M-3, 미조치). **이 조치와 짝이다.**
+//      ④ 비밀번호 강도 — `lib/password-policy.ts`(최소 길이) + `lib/password-strength.ts`(흔한 비밀번호 차단).
+//         2026-08-31 M-3으로 "8자 이상"에서 "10자 이상 + 흔한 비밀번호 차단"으로 올렸다.
 //
 //    ⚠️ 잠금은 **운영자(본사) 계정에만 남았다.** 그 숫자(MAX_FAILED·LOCK_MINUTES)는
 //       이제 이 파일이 아니라 **lib/operator-policy.ts**에 있다 — 고객사 정책 파일에 두면
@@ -78,6 +79,11 @@ import { Prisma } from "@prisma/client";
  *    "언제부터 50인가"를 답할 수 없다. 신호가 필요해지면 그때 제대로 설계할 것.
  */
 export const FAIL_COUNT_MAX = 50;
+
+// ⚠️ **최소 길이(PASSWORD_MIN_LEN)는 이 파일에 없다** — `lib/password-policy.ts`에 있다(검수 M-3).
+//    화면(클라이언트 컴포넌트)도 같은 숫자를 읽어야 하는데 이 파일은 `@prisma/client`를 불러오므로
+//    화면에서 import 할 수 없고, 이 파일이 그쪽을 import 하면 `scripts/*.mjs`가 깨진다.
+//    그래서 아무것도 import 하지 않는 별도 파일에 두었다. 이유가 길게 적혀 있으니 그쪽을 볼 것.
 
 /**
  * 사용자가 **정할 수 있는** 비밀번호 길이 상한(정책값).
