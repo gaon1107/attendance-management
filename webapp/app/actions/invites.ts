@@ -92,9 +92,9 @@ export async function acceptInvite(
   //  · 선점과 계정 생성을 한 트랜잭션에 묶어, 계정 생성이 실패하면(예: 그 찰나에 같은 이메일이
   //    가입되면 P2002) 선점도 함께 되돌아간다 → **링크가 헛되이 소모되지 않는다.**
   // ⚠️ 비밀번호 해시는 **트랜잭션 밖에서** 미리 만든다(검수 중간 4).
-  //    scryptSync는 수십~수백 ms 동안 서버 전체를 멈추는 동기 연산이다. 트랜잭션 안에서 하면
-  //    SQLite 쓰기 잠금을 쥔 채로 멈춰 다른 직원의 출퇴근 기록까지 밀린다.
-  const passwordHash = hashPassword(password);
+  //    C-1로 비동기가 되어 서버 전체가 멈추지는 않지만, 트랜잭션 안에서 기다리면
+  //    SQLite 쓰기 잠금을 쥔 채로 수십 ms를 보내 다른 직원의 출퇴근 기록이 밀린다 — 위치는 그대로 둔다.
+  const passwordHash = await hashPassword(password);
 
   let user;
   try {

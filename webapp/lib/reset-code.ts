@@ -135,7 +135,7 @@ async function issueResetCodeInner(
       data: {
         companyId: user.companyId,
         userId: user.id,
-        codeHash: hashPassword(code), // 🔒 원문 미저장
+        codeHash: await hashPassword(code), // 🔒 원문 미저장
         slotKey: slotKeyFor(user.id, now),
         expiresAt: new Date(now.getTime() + CODE_TTL_MS),
       },
@@ -258,7 +258,7 @@ export async function checkResetCode(
   if (!live) return { ok: false };
 
   const input = (code ?? "").trim();
-  if (!/^\d{6}$/.test(input) || !verifyPassword(input, live.codeHash)) {
+  if (!/^\d{6}$/.test(input) || !(await verifyPassword(input, live.codeHash))) {
     // ── 시도 횟수는 DB가 원자적으로 올린다. ──
     //    ⚠️ 예전엔 읽은 값에 1을 더해 썼는데, 동시에 200건을 던지면 200건이 모두 같은 값을 읽고
     //       같은 값을 써서 **200번 찍고 횟수는 1만 올랐다**(검수 치명 3).

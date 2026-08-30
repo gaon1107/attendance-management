@@ -21,10 +21,15 @@ import { loginAllowedForIp, recordThrottleHit, THROTTLED_META } from "@/lib/logi
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-// 존재하지 않는 이메일에도 해시 비교를 한 번 돌리기 위한 더미 값(auth.ts와 같은 이유).
+// 존재하지 않는 이메일에도 해시 비교를 한 번 돌리기 위한 더미 값(auth.ts와 같은 이유·같은 방식).
 //  · 없는 계정이면 즉시 반환하면 **응답 시간만으로 계정 존재를 알 수 있다**(있으면 느리고 없으면 빠름).
-//  · 서버 시작 시 1회만 만든다(scrypt 1회). 이 값으로는 아무도 로그인할 수 없다.
-const DUMMY_HASH = hashPassword("no-such-operator-placeholder");
+//  · C-1로 해시가 비동기가 되어 파일 맨 위에서는 만들 수 없다 → **처음 필요할 때 한 번** 만들어 재사용한다.
+//    (계산은 서버 수명 동안 여전히 1회. 약속을 담아 두므로 동시 요청에도 여러 번 돌지 않는다)
+let dummyHashPromise: Promise<string> | null = null;
+function dummyHash(): Promise<string> {
+  if (!dummyHashPromise) dummyHashPromise = hashPassword("no-such-operator-placeholder");
+  return dummyHashPromise;
+}
 
 /**
  * 접속기록 한 줄 남기기 — 운영자 이벤트 전용 모양.
@@ -108,9 +113,10 @@ export async function operatorLogin(
     return { error: "이메일 또는 비밀번호가 올바르지 않습니다." };
   }
 
+  // ⚠️ `await`를 빼면 약속(Promise)이 담겨 아래 `!passwordOk`가 **항상 거짓**이 된다 = 아무 비밀번호나 통과.
   const passwordOk = op
-    ? verifyPassword(password, op.passwordHash)
-    : (verifyPassword(password, DUMMY_HASH), false);
+    ? await verifyPassword(password, op.passwordHash)
+    : (await verifyPassword(password, await dummyHash()), false);
 
   if (!op || !passwordOk) {
     // 실패 시: 실제 계정이면 실패 횟수를 올리고, 5회 도달하면 10분 잠근다(판정은 DB가 한다).

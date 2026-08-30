@@ -123,9 +123,10 @@ export async function signup(
   }
 
   const now = new Date();
-  // 비밀번호 해시는 **트랜잭션 밖에서** 미리 만든다 — scrypt는 동기·무거워서 안에서 돌리면
+  // 비밀번호 해시는 **트랜잭션 밖에서** 미리 만든다 — 무거운 계산을 트랜잭션 안에서 돌리면
   // 그동안 DB 쓰기 잠금을 잡고 있게 된다(검수 2차 16).
-  const passwordHash = hashPassword(password);
+  // ※ C-1로 비동기가 되어 서버가 멈추지는 않지만, **잠금을 오래 쥐는 문제는 그대로**라 위치는 유지한다.
+  const passwordHash = await hashPassword(password);
   // ⚠️ 회사와 회사 계정은 **반드시 함께** 만들어진다(트랜잭션).
   //    따로 만들면 계정 생성이 실패했을 때 **로그인할 수 없는 빈 회사**가 남고,
   //    그 회사가 사업자등록번호를 차지해 같은 회사가 다시는 가입할 수 없게 된다(검수 8).
@@ -186,8 +187,17 @@ export async function signup(
 
 // 존재하지 않는 이메일에도 해시 비교를 한 번 돌리기 위한 더미 값(검수 M-17).
 //  · 없는 계정이면 즉시 반환하던 예전 코드는 **응답 시간만으로 계정 존재를 알 수 있었다**(있으면 느리고 없으면 빠름).
-//  · 서버 시작 시 1회만 만든다(scrypt 1회). 이 값으로는 아무도 로그인할 수 없다.
-const DUMMY_HASH = hashPassword("no-such-account-placeholder");
+//  · 이 값으로는 아무도 로그인할 수 없다.
+//  · ⚠️ 예전에는 이 자리(파일이 읽히는 순간=서버 시작 시)에서 바로 만들었는데, C-1로 해시가 비동기가 되면서
+//    **여기서는 만들 수 없다**(파일 맨 위에서는 기다릴 수 없다). 그래서 **처음 필요할 때 한 번** 만들고
+//    그 뒤로는 재사용한다 — 서버 수명 동안 계산은 여전히 딱 1회다.
+//  · 계산 결과가 아니라 **약속(Promise)을 담아 둔다.** 그래야 서버가 켜지자마자 동시에 여러 요청이
+//    들어와도 계산이 여러 번 돌지 않는다(첫 요청이 만든 하나를 모두가 함께 기다린다).
+let dummyHashPromise: Promise<string> | null = null;
+function dummyHash(): Promise<string> {
+  if (!dummyHashPromise) dummyHashPromise = hashPassword("no-such-account-placeholder");
+  return dummyHashPromise;
+}
 
 // 로그인 — 이메일/비밀번호 확인 후 세션 발급.
 export async function login(
@@ -256,9 +266,11 @@ export async function login(
     return { error: "이메일 또는 비밀번호가 올바르지 않습니다." };
   }
 
+  // ⚠️ `await`를 빼면 약속(Promise)이 그대로 담기는데, 약속은 언제나 "참"이라 아래 `!passwordOk`가
+  //    **항상 거짓**이 되어 비밀번호가 틀려도 로그인이 통과한다. tsc도 lint도 이 실수를 못 잡는다.
   const passwordOk = user
-    ? verifyPassword(password, user.passwordHash)
-    : (verifyPassword(password, DUMMY_HASH), false);
+    ? await verifyPassword(password, user.passwordHash)
+    : (await verifyPassword(password, await dummyHash()), false);
 
   if (!user || !passwordOk) {
     // 실패 시: 실제 계정이면 실패 횟수를 올리고, 한도 도달하면 잠근다.

@@ -155,7 +155,7 @@ export async function sendTempPasswordSms(_prev: ActionResult, formData: FormDat
   //       지금 이 기한 검사는 "오래된 임시비번을 다시 문자로 보내는 것"을 막는 용도로 남아 있다.
   //       ※ [직원 추가]는 여전히 기한을 세우지 않으므로(employees.ts) 그 계정은 이 문자 경로를 탈 수 없다.
   const tempAlive = !!req.user.tempPasswordExpiresAt && req.user.tempPasswordExpiresAt > new Date();
-  if (!req.user.mustChangePassword || !tempAlive || !verifyPassword(temp, req.user.passwordHash)) {
+  if (!req.user.mustChangePassword || !tempAlive || !(await verifyPassword(temp, req.user.passwordHash))) {
     return { error: "방금 발급한 임시 비밀번호가 아닙니다. 임시 비밀번호를 다시 발급한 뒤 보내주세요." };
   }
 

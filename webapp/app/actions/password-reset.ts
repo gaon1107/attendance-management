@@ -110,7 +110,7 @@ export async function issueTempPassword(
   await prisma.user.update({
     where: { id: req.userId },
     data: {
-      passwordHash: hashPassword(tempPassword),
+      passwordHash: await hashPassword(tempPassword),
       mustChangePassword: true,
       // 임시 비밀번호는 48시간 안에만 쓸 수 있다(검수 H-4).
       //  문자로 전달되는 값이라 유출 위험이 있어 무기한으로 두면 안 된다.
@@ -274,13 +274,15 @@ export async function completeResetWithCode(_prev: CodeState, formData: FormData
   //  · 관리자 대기 요청 종결 — 안 하면 관리자가 임시비번을 또 발급해 방금 정한 비밀번호가 무효가 된다.
   const user = await prisma.user.findUnique({ where: { id: r.userId }, select: { companyId: true, name: true } });
   const { ip, userAgent } = readClientMeta(await headers());
+  // 해시는 **트랜잭션을 열기 전에** 만든다(C-1) — 안에서 기다리면 그 시간 내내 DB 쓰기 잠금을 쥔다.
+  const nextHash = await hashPassword(next);
 
   try {
     await prisma.$transaction([
       prisma.user.update({
         where: { id: r.userId },
         data: {
-          passwordHash: hashPassword(next),
+          passwordHash: nextHash,
           mustChangePassword: false,
           tempPasswordExpiresAt: null,
           failedLoginCount: 0,

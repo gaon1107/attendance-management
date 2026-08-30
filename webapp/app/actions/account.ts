@@ -62,7 +62,7 @@ export async function changePassword(
 
   const { ip, userAgent } = readClientMeta(await headers());
 
-  if (!verifyPassword(current, me.passwordHash)) {
+  if (!(await verifyPassword(current, me.passwordHash))) {
     // 실패를 **로그인과 같은 창구**로 센다(lib/login-policy.ts). 5회면 10분 잠금.
     //  · 이 창구와 로그인은 같은 칸(failedLoginCount·lockedUntil)을 쓰므로, 한쪽에서 잠기면
     //    다른 쪽도 함께 막힌다 — 창구를 갈아타며 찍는 우회가 불가능하다.
@@ -104,7 +104,7 @@ export async function changePassword(
   // 비밀번호를 바꾸면 "임시 비밀번호 → 변경 강제" 표시와 만료 시각도 함께 내려준다(정상 변경도 무해).
   await prisma.user.update({
     where: { id: me.id },
-    data: { passwordHash: hashPassword(next), mustChangePassword: false, tempPasswordExpiresAt: null },
+    data: { passwordHash: await hashPassword(next), mustChangePassword: false, tempPasswordExpiresAt: null },
   });
 
   // 🔒 비밀번호를 바꾸면 **기존 로그인 세션을 모두 끊고** 지금 이 기기만 다시 로그인 상태로 만든다(검수 M-14).
@@ -243,7 +243,7 @@ export async function changeRecoveryPhone(
   //       실패 시도까지 "연락처 변경 5건"처럼 읽혀, 진짜 변경이 몇 번이었는지 알 수 없다.
   //    ⚠️ 실패 기록은 `recordFail`(조건부 갱신)로 남긴다 — 그냥 update로 쓰면 **로그인 쪽에서 방금 걸린
   //       잠금을 이 창구가 지워버린다**(재검수 치명 1). 두 창구가 같은 칸을 쓰므로 반드시 같은 함수를 쓴다.
-  if (!verifyPassword(current, me.passwordHash)) {
+  if (!(await verifyPassword(current, me.passwordHash))) {
     await recordFail(prisma, me);
     await recordAccess({
       companyId: me.companyId, userId: me.id, actorName: me.name, emailTried: me.email,

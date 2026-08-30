@@ -57,7 +57,7 @@ export async function addEmployee(
       companyId: me.companyId, // 관리자와 같은 회사로
       email,
       name,
-      passwordHash: hashPassword(password),
+      passwordHash: await hashPassword(password),
       role: "employee",
       // 🔴 여기서 관리자가 정해 준 비밀번호는 **임시**다. 첫 로그인 때 반드시 바꾸게 한다(2026-08-05).
       //    예전엔 이 표시가 없어 **관리자가 아는 비밀번호가 직원 계정에 영구히 남았다.**
@@ -317,13 +317,16 @@ export async function resetEmployeePassword(
   }
 
   const tempPassword = generateTempPassword();
+  // 해시는 **트랜잭션을 열기 전에** 미리 만든다(C-1). 무거운 계산을 트랜잭션 안에서 기다리면
+  // 그 시간 내내 DB 쓰기 잠금을 쥐고 있어 다른 직원의 출퇴근 기록이 밀린다(invites.ts와 같은 이유).
+  const tempPasswordHash = await hashPassword(tempPassword);
   // 🔴 [검수 중간 4] 세 개의 쓰기를 **한 묶음으로** 처리한다. 중간에 끊기면
   //    "비밀번호는 바뀌었는데 옛 로그인은 살아 있는" 상태가 되고, 관리자는 새 값을 받지도 못한다.
   await prisma.$transaction([
     prisma.user.update({
       where: { id: target.id },
       data: {
-        passwordHash: hashPassword(tempPassword),
+        passwordHash: tempPasswordHash,
         failedLoginCount: 0,
         lockedUntil: null,
         // 첫 로그인 때 반드시 새 비밀번호를 정하게 한다.

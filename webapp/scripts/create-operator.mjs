@@ -201,7 +201,7 @@ async function main() {
     process.exit(1);
   }
 
-  const passwordHash = hashPassword(password);
+  const passwordHash = await hashPassword(password);
 
   if (existing) {
     await prisma.operator.update({
