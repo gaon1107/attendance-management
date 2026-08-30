@@ -212,7 +212,12 @@ model User {
   shiftGroupId   String?
   shiftGroup     ShiftGroup?    @relation(fields: [shiftGroupId], references: [id])
   shiftPatterns  ShiftPattern[]
-  // 로그인 무차별 대입(비번 찍기) 방어: 연속 실패 횟수 + 잠금 해제 시각.
+  // 연속 실패 횟수 + 잠금 해제 시각.
+  //  ⚠️ 2026-08-30(H-1): **고객사 계정의 잠금은 폐지됐다.** `lockedUntil`은 더 이상 세우지 않고
+  //     읽지도 않는다(옛 값이 남은 계정은 다음 로그인 성공 때 정리된다). 지우지 않은 이유는
+  //     운영 중 칸을 없애는 위험이 얻는 것보다 크기 때문이다.
+  //  · `failedLoginCount`는 살아 있다 — 다만 **막는 데 쓰지 않고** 세기만 한다(상한 50).
+  //     이유는 lib/login-policy.ts 상단에 길게 적어 두었다.
   failedLoginCount Int      @default(0)
   lockedUntil      DateTime?
   // 퇴사(비활성화) 시각. null이면 재직중. 값이 있으면 로그인 불가·집계 제외(단, 과거 근태 기록은 보존).
@@ -1078,7 +1083,9 @@ model Operator {
   // 계정을 지우지 않고 끄는 스위치. 퇴사·권한 회수 시 false. 세션 조회에서도 매번 확인한다
   //  → 끄는 즉시(다음 화면 이동에서) 로그인 상태가 끊긴다.
   active       Boolean   @default(true)
-  // 비밀번호 찍기 방어 — 고객사(User)와 **같은 정책**(5회 실패 → 10분 잠금, lib/login-policy.ts 상수).
+  // 비밀번호 찍기 방어 — **잠금은 이제 운영자에게만 있다**(5회 실패 → 10분 잠금).
+  //  · 숫자의 출처는 lib/operator-policy.ts 다(2026-08-30 H-1 이후 고객사와 정책이 갈렸다).
+  //  · 잠겨도 `scripts/create-operator.mjs --unlock` 으로 풀 수 있어 영구 잠김이 아니다.
   //  ⚠️ 쓰기 방식도 그쪽과 같아야 한다(원자적 increment + where 조건). lib/operator-policy.ts 참고.
   failedLoginCount Int   @default(0)
   lockedUntil  DateTime?
