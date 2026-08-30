@@ -193,9 +193,18 @@ export async function signup(
 //    그 뒤로는 재사용한다 — 서버 수명 동안 계산은 여전히 딱 1회다.
 //  · 계산 결과가 아니라 **약속(Promise)을 담아 둔다.** 그래야 서버가 켜지자마자 동시에 여러 요청이
 //    들어와도 계산이 여러 번 돌지 않는다(첫 요청이 만든 하나를 모두가 함께 기다린다).
+//  · ⚠️ **실패하면 담아 둔 것을 비운다**(검수 2026-08-30 중간 2). 안 비우면 실패한 약속이 영원히 남아,
+//    그 뒤로 **없는 이메일로 로그인할 때만 오류가 나고 있는 이메일은 정상 동작**한다
+//    → 응답 종류만 보고 계정 존재를 100% 알아낼 수 있다(M-17이 없앤 계정 열거가 되살아난다).
+//    서버를 재시작하기 전까지 스스로 낫지 않으므로 반드시 비운다.
 let dummyHashPromise: Promise<string> | null = null;
 function dummyHash(): Promise<string> {
-  if (!dummyHashPromise) dummyHashPromise = hashPassword("no-such-account-placeholder");
+  if (!dummyHashPromise) {
+    dummyHashPromise = hashPassword("no-such-account-placeholder").catch((e) => {
+      dummyHashPromise = null; // 다음 요청이 다시 시도한다
+      throw e;
+    });
+  }
   return dummyHashPromise;
 }
 

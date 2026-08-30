@@ -25,9 +25,16 @@ import { redirect } from "next/navigation";
 //  · 없는 계정이면 즉시 반환하면 **응답 시간만으로 계정 존재를 알 수 있다**(있으면 느리고 없으면 빠름).
 //  · C-1로 해시가 비동기가 되어 파일 맨 위에서는 만들 수 없다 → **처음 필요할 때 한 번** 만들어 재사용한다.
 //    (계산은 서버 수명 동안 여전히 1회. 약속을 담아 두므로 동시 요청에도 여러 번 돌지 않는다)
+//  · ⚠️ 실패하면 담아 둔 것을 비운다 — 안 비우면 실패한 약속이 영원히 남아 **없는 계정일 때만 오류**가 나고,
+//    그 차이로 계정 존재를 알아낼 수 있다(auth.ts와 같은 이유, 검수 2026-08-30 중간 2).
 let dummyHashPromise: Promise<string> | null = null;
 function dummyHash(): Promise<string> {
-  if (!dummyHashPromise) dummyHashPromise = hashPassword("no-such-operator-placeholder");
+  if (!dummyHashPromise) {
+    dummyHashPromise = hashPassword("no-such-operator-placeholder").catch((e) => {
+      dummyHashPromise = null;
+      throw e;
+    });
+  }
   return dummyHashPromise;
 }
 

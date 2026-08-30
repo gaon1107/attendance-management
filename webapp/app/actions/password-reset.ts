@@ -35,6 +35,15 @@ export async function requestPasswordReset(
   //  응답은 성공과 같게 유지한다(존재 여부 비노출 원칙).
   if (email.length > EMAIL_MAX_LEN || !email.includes("@")) return { ok: true };
 
+  // 🔴 [검수 C-1 / 2026-08-30 재검수 중간 6] 재설정 창구들이 **함께 쓰는** 분당 상한.
+  //    이 창구는 비밀번호 계산(scrypt)을 하지 않아 1차 목록에서 빠졌었는데, 그건 위협을 좁게 본 것이었다.
+  //    요청 1건마다 ①직원 조회 1회 ②(TRUST_PROXY=1이 되면) 접속기록 **삽입 1회**가 일어난다.
+  //    DB가 SQLite라 **쓰기가 한 번에 하나씩만** 처리되므로, 인증 없는 요청이 쓰기 순번을 채우면
+  //    **직원들의 출퇴근 기록 저장이 밀린다** — C-1이 막으려던 결과와 정확히 같다.
+  //    ⚠️ 거부해도 응답은 성공과 **같다**(`{ ok: true }`). 이 함수의 "이메일 존재 여부 비노출" 원칙이
+  //       문 상한보다 우선한다 — 여기서 DOOR_BUSY_MSG를 쓰면 안 된다.
+  if (!publicDoorAllows("reset")) return { ok: true };
+
   // 🔴 [검수 M-19] 로그인 없이 누구나 부를 수 있는 창구다 — 같은 IP에서 쏟아지는 요청을 막는다.
   //    막지 않으면 관리자 [직원 관리] 화면이 대기 요청으로 가득 차 진짜 요청이 묻힌다.
   //    ⚠️ 거부해도 안내 문구는 성공과 **같다** — 이메일 존재 여부를 알려주지 않는다는 이 함수의 원칙을 지킨다.
@@ -274,10 +283,15 @@ export async function completeResetWithCode(_prev: CodeState, formData: FormData
   //  · 관리자 대기 요청 종결 — 안 하면 관리자가 임시비번을 또 발급해 방금 정한 비밀번호가 무효가 된다.
   const user = await prisma.user.findUnique({ where: { id: r.userId }, select: { companyId: true, name: true } });
   const { ip, userAgent } = readClientMeta(await headers());
-  // 해시는 **트랜잭션을 열기 전에** 만든다(C-1) — 안에서 기다리면 그 시간 내내 DB 쓰기 잠금을 쥔다.
-  const nextHash = await hashPassword(next);
 
   try {
+    // 해시는 **트랜잭션을 열기 전에** 만든다(C-1) — 트랜잭션 안에서 기다리면 그 시간 내내 DB 쓰기 잠금을 쥔다.
+    //  ⚠️ 그렇다고 `try` **밖으로** 빼면 안 된다(검수 2026-08-30 중간 1). 여기까지 왔다는 것은
+    //     위에서 **인증번호를 이미 소모했다**는 뜻이라, 해시 계산이 실패했을 때 이 catch가 받아주지 않으면
+    //     ①실패 감사기록이 안 남고 ②사용자는 안내 대신 오류 화면을 보고
+    //     ③비밀번호는 그대로인데 인증번호만 사라져 **직원이 스스로 되찾을 길이 막힌다.**
+    //     트랜잭션은 `prisma.$transaction(...)`을 부르는 순간 열리므로, try 안 첫 줄에 둬도 잠금 문제는 없다.
+    const nextHash = await hashPassword(next);
     await prisma.$transaction([
       prisma.user.update({
         where: { id: r.userId },
