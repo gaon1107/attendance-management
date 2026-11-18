@@ -1,13 +1,14 @@
 # 근태관리 운영 실행 묶음 (2026-11-18, 운영 준비 2단계) — 서버 E(gaon-main)의 /opt/attendance 에서 쓴다.
 #
-# 실행:  docker compose -f docker-compose.prod.yml up -d --build      (안내서: deploy/server/README.md)
+# 반영은 항상 deploy/server/deploy.sh 로 한다(백업·확인 포함). 안내서: deploy/server/README.md
 #
 # 지키는 것
 #  · 근태 상자 하나만 띄운다. LMS·홈페이지 등 서버의 다른 상자는 건드리지 않는다(이름·번호·폴더가 전부 다르다).
 #  · 바깥에서 직접 들어오지 못하게 127.0.0.1(서버 자신)에만 연다 → 앞단 nginx(HTTPS)를 거쳐야만 접속된다(4단계).
-#  · 메모리 상한 1.5GB — 근태가 넘치면 근태만 다시 켜지고 LMS 쪽으로 번지지 않는다.
+#  · 메모리 1.5GB·CPU 2개 상한 — 근태가 몰려도 LMS 쪽으로 번지지 않는다.
 #  · 데이터(DB·출퇴근 사진·문서)는 ATT_DATA_DIR 폴더에 남는다. 상자를 지워도 그대로다.
-#    서버: ATT_DATA_DIR=/data/attendance (deploy/server/.env.deploy 또는 셸 변수) / 이 PC 시험: 기본값 ./.attendance-data
+#    🔴 ATT_DATA_DIR은 **반드시** 지정해야 한다(기본값 없음). 빠지면 빈 폴더에 연결돼 데이터가 두 군데로 갈라지는 사고가 나므로
+#       값이 없으면 아예 실행을 거부한다. 서버에서는 /opt/attendance/.env(깃 제외)에 ATT_DATA_DIR=/data/attendance 를 둔다.
 # 묶음 이름을 고정한다 — 폴더 이름(한글 등)에 따라 바뀌면 같은 상자를 두 벌 띄우는 사고가 난다.
 name: attendance
 services:
@@ -19,14 +20,20 @@ services:
     # 운영 비밀값(얼굴서버·암호화 키 등). 값이 든 파일은 깃에 올리지 않는다 — 목록은 webapp/.env.production.example
     env_file:
       - ./webapp/.env.production
+    # 아래 값은 .env.production에 잘못 적혀 있어도 이것이 이긴다(개발용 .env를 붙여 넣는 실수로 DB·사진 위치가 바뀌는 것 방지)
     environment:
       - TZ=Asia/Seoul
       - NODE_ENV=production
+      - DATABASE_URL=file:/data/db/attendance.db
+      - CLOCK_PHOTO_DIR=/data/storage/clock-photos
+      - COMPANY_DOC_DIR=/data/storage/company-docs
+      - REQUEST_ATTACHMENT_DIR=/data/storage/request-attachments
     volumes:
-      - ${ATT_DATA_DIR:-./.attendance-data}:/data
+      - ${ATT_DATA_DIR:?ATT_DATA_DIR(데이터 폴더)를 지정하세요 - 서버는 /data/attendance}:/data
     ports:
       - "127.0.0.1:${ATT_PORT:-3300}:3000"
     mem_limit: 1536m
+    cpus: 2.0
     logging:
       driver: "json-file"
       options:

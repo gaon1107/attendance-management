@@ -16,6 +16,14 @@ MIN_FREE_KB=$((5 * 1024 * 1024))   # 최소 남길 공간 5GB — 같은 디스�
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
+# 동시에 두 번 돌지 않게(새벽 정기 백업과 배포 전 백업이 겹치는 경우 등) — 이미 돌고 있으면 기다리지 않고 실패로 끝낸다
+LOCK_FILE="${ATT_BACKUP_LOCK:-/run/attendance-backup.lock}"
+command -v flock > /dev/null || { log "❌ 실패: 잠금 도구(flock)가 없습니다 — util-linux 설치 필요"; exit 1; }
+exec 9>"$LOCK_FILE" || { log "❌ 실패: 잠금 파일을 열 수 없습니다 ($LOCK_FILE)"; exit 1; }
+if ! flock -n 9; then
+  log "❌ 실패: 다른 백업이 이미 실행 중입니다"; exit 1
+fi
+
 # 폴더 이름이 attendance-backups 가 아니면 멈춘다 — 잘못된 경로(예: /data)를 지우거나 권한을 바꾸지 않게
 case "$BACKUP_DIR" in
   */attendance-backups) ;;
@@ -29,6 +37,9 @@ mkdir -p "$BACKUP_DIR"
 chmod 700 "$BACKUP_DIR"
 
 FREE_KB=$(df -Pk "$BACKUP_DIR" | awk 'NR==2 {print $4}')
+case "$FREE_KB" in
+  ''|*[!0-9]*) log "❌ 실패: 디스크 여유를 읽지 못했습니다 (받은 값: '$FREE_KB')"; exit 1 ;;
+esac
 if [ "$FREE_KB" -lt "$MIN_FREE_KB" ]; then
   log "❌ 실패: 디스크 여유 부족 (${FREE_KB}KB < ${MIN_FREE_KB}KB) — 백업하지 않음"; exit 1
 fi
@@ -43,6 +54,8 @@ cleanup() {
   rm -f "$SNAP_HOST" "$DB_OUT.part" "$FILES_OUT.part"
 }
 trap 'cleanup; log "❌ 실패: $LINENO 행에서 멈춤"' ERR
+# 중간에 강제로 멈춰도(Ctrl+C·종료 신호) 암호화되지 않은 DB 사본이 남지 않게 지운다
+trap 'cleanup; log "❌ 실패: 중간에 멈춤(신호)"; exit 1' INT TERM HUP
 
 # 1) DB: 상자 안에서 일관된 사본 + 무결성 검사(실패 시 상자가 사본을 지우고 종료코드 1)
 docker exec "$CONTAINER" node scripts/backup-db.mjs "/data/db/.backup-$TS.db" > /dev/null
@@ -59,5 +72,5 @@ mv "$FILES_OUT.part" "$FILES_OUT"
 # 3) 오래된 백업 정리(이 폴더의 attendance-* 파일만)
 find "$BACKUP_DIR" -maxdepth 1 -type f -name 'attendance-*' -mtime +"$KEEP_DAYS" -delete
 
-trap - ERR
+trap - ERR INT TERM HUP
 log "✅ 성공: $(basename "$DB_OUT") $(du -h "$DB_OUT" | cut -f1) / $(basename "$FILES_OUT") $(du -h "$FILES_OUT" | cut -f1)"

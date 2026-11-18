@@ -9,6 +9,8 @@
 #    상자가 1GB 안팎으로 커지지만, 서버 디스크 여유(245GB)에 비하면 안전이 우선이다.
 #  · DB·사진·문서는 상자 안이 아니라 /data(호스트 폴더 연결)에 둔다 → 상자를 지우고 다시 만들어도 남는다.
 FROM node:24-bookworm-slim
+# 이 서비스의 이미지만 골라 정리하기 위한 표시(deploy.sh가 이 표시가 있는 옛 이미지만 지운다 — LMS 이미지는 건드리지 않음)
+LABEL app=attendance
 
 # tzdata: 한국 시간 고정(다르면 근태 날짜가 하루씩 밀린다) / openssl: Prisma 엔진 / curl: 상태 점검(healthcheck)
 RUN apt-get update \
@@ -29,11 +31,14 @@ RUN npm ci --include=dev --no-audit --no-fund && npx prisma generate
 COPY . .
 RUN npx next build
 
-# 3) 실행 준비 — 관리자 권한 없이(node 사용자, uid 1000) 돌린다.
-#    .next는 실행 중에도 캐시를 쓰므로 node 사용자에게 넘긴다. /data는 호스트 폴더가 연결된다(호스트에서 uid 1000 소유로 만들 것).
-RUN mkdir -p /data/db /data/storage/clock-photos /data/storage/company-docs /data/storage/request-attachments \
- && chown -R node:node /app/.next /data
-USER node
+# 3) 실행 준비 — 관리자 권한 없이 **근태 전용 번호(uid/gid 10001)**로 돌린다.
+#    서버 E의 uid 1000은 사람 계정(user)이라, 1000으로 돌리면 그 계정이 출퇴근 사진·DB를 직접 읽고 쓸 수 있게 된다(생체정보 접근통제 위반).
+#    .next는 실행 중에도 캐시를 쓰므로 이 사용자에게 넘긴다. /data는 호스트 폴더가 연결된다(호스트에서 10001 소유로 만들 것).
+RUN groupadd --gid 10001 attendance \
+ && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin attendance \
+ && mkdir -p /data/db /data/storage/clock-photos /data/storage/company-docs /data/storage/request-attachments \
+ && chown -R 10001:10001 /app/.next /data
+USER 10001:10001
 
 ENV NODE_ENV=production \
     PORT=3000 \

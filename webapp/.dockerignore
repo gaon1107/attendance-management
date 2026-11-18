@@ -18,6 +18,12 @@ npm-debug.log*
 tsconfig.tsbuildinfo
 mkhero2.js
 .git
+# 실행에 필요 없는 개발 안내·도구 파일
+.claude
+CLAUDE.md
+AGENTS.md
+README.md
+scripts/seed-demo.mjs
 .vscode
 .idea
 .DS_Store
