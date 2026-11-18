@@ -27,11 +27,15 @@ const btn: React.CSSProperties = {
 
 export function TrialForm({ companyId, current, custom }: { companyId: string; current: string; custom: boolean }) {
   const [state, action, pending] = useActionState(setCompanyTrial, null);
-  // 빠른 선택 단추가 날짜 칸을 바꿀 수 있게 값과 key를 함께 둔다(DatePicker는 defaultValue 방식이라 key로 다시 그린다)
-  const [value, setValue] = useState(current);
+  // 빠른 선택 단추가 날짜 칸을 바꿀 수 있게 값과 key를 함께 둔다(DatePicker는 defaultValue 방식이라 key로 다시 그린다).
+  //  · 고른 값은 "어느 저장 결과(state) 뒤에 고른 것인지"와 함께 기억한다. 저장·되돌리기를 하면 state가 새로 바뀌므로
+  //    예전에 고른 값은 버리고 서버의 새 저장값(current)을 보여준다(3단계 검수 경미 4 — 되돌린 뒤에도 옛 날짜가 남아
+  //    그대로 저장을 누르면 다시 지정되던 문제). 저장값 문자열로 비교하면 "처음 날짜 = 되돌린 날짜"인 경우를 놓친다(실측).
+  const [picked, setPicked] = useState<{ after: OperatorActionResult; iso: string } | null>(null);
   const [rev, setRev] = useState(0);
+  const value = picked && picked.after === state ? picked.iso : current;
   const pick = (iso: string) => {
-    setValue(iso);
+    setPicked({ after: state, iso });
     setRev((r) => r + 1);
   };
   return (
@@ -41,7 +45,13 @@ export function TrialForm({ companyId, current, custom }: { companyId: string; c
         <input type="hidden" name="mode" value="set" />
         <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-sub)", marginBottom: 6 }}>무료로 쓸 수 있는 마지막 날</div>
         <div style={{ maxWidth: 260 }}>
-          <DatePicker key={rev} name="trialLastDate" defaultValue={value} allowClear={false} onChange={setValue} />
+          <DatePicker
+            key={`${current}|${rev}|${state ? state.message : ""}`}
+            name="trialLastDate"
+            defaultValue={value}
+            allowClear={false}
+            onChange={(iso) => setPicked({ after: state, iso })}
+          />
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
           <button type="button" onClick={() => pick(todayPlus(29))} style={{ ...btn, height: 32, fontSize: 13, background: "#fff", border: "1px solid var(--border)", color: "var(--text)" }}>

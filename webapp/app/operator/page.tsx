@@ -7,9 +7,11 @@
 //
 // 2026-11-18(운영 준비 3단계): 회원사 목록 — 검색(회사명)·무료 상태 필터·50개씩. 상세·무료 기간 지정은 /operator/companies/[id].
 import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getCurrentOperator } from "@/lib/operator-session";
-import { listCompanies, parseTrialFilter, TRIAL_FILTERS, TRIAL_SOON_DAYS, OPERATOR_PAGE_SIZE, type CompanyRow, type TrialFilter } from "@/lib/operator-companies";
+import { recordAccess, readClientMeta } from "@/lib/access-log";
+import { listCompanies, parseTrialFilter, TRIAL_FILTERS, TRIAL_SOON_DAYS, OPERATOR_PAGE_SIZE, LAST_USE_WINDOW_DAYS, type CompanyRow, type TrialFilter } from "@/lib/operator-companies";
 import { formatKoreanDate } from "@/lib/trial";
 import { OperatorHeader } from "./OperatorHeader";
 
@@ -19,9 +21,6 @@ type SP = Promise<{ q?: string; f?: string; p?: string }>;
 
 function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-function ymdhm(d: Date): string {
-  return `${ymd(d)} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 function TrialBadge({ r }: { r: CompanyRow }) {
@@ -56,6 +55,15 @@ export default async function OperatorHomePage({ searchParams }: { searchParams:
   const filter = parseTrialFilter(sp.f);
   const pageReq = Number(sp.p) || 1;
   const { rows, total, page, pages, summary } = await listCompanies({ q, filter, page: pageReq });
+
+  // 목록에도 고객사 담당자 이름·연락처가 나오므로 상세 화면과 똑같이 열람 기록을 남긴다(3단계 검수 중간 2 —
+  // 상세만 기록하면 검색으로 특정 회사 연락처를 봐도 흔적이 없다). 무엇을 찾았는지(검색어·필터·쪽)도 함께.
+  const { ip, userAgent } = readClientMeta(await headers());
+  await recordAccess({
+    companyId: null, userId: null, actorName: `운영자 ${me.name}`, emailTried: me.email,
+    kind: "data_view", result: "success", ip, userAgent,
+    meta: `operator_company_list (검색 ${q || "없음"} · ${TRIAL_FILTERS.find((f) => f.key === filter)?.label ?? "전체"} · ${page}쪽 ${rows.length}곳)`,
+  });
 
   const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 16px", whiteSpace: "nowrap" };
   const td: React.CSSProperties = { padding: "12px 16px", fontSize: 14, verticalAlign: "middle", whiteSpace: "nowrap" };
@@ -135,7 +143,7 @@ export default async function OperatorHomePage({ searchParams }: { searchParams:
                   <th style={th}>마지막 날</th>
                   <th style={{ ...th, textAlign: "right" }}>재직 직원</th>
                   <th style={{ ...th, textAlign: "right" }}>최근 7일 출근</th>
-                  <th style={th}>마지막 출근</th>
+                  <th style={th}>마지막 사용일</th>
                   <th style={th}>담당자</th>
                 </tr>
               </thead>
@@ -166,7 +174,7 @@ export default async function OperatorHomePage({ searchParams }: { searchParams:
                     <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{r.employees}명</td>
                     <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{r.clockIns7d}건</td>
                     <td style={{ ...td, fontVariantNumeric: "tabular-nums", color: r.lastClockIn ? "var(--text)" : "var(--text-sub)" }}>
-                      {r.lastClockIn ? ymdhm(r.lastClockIn) : "기록 없음"}
+                      {r.lastClockIn ? ymd(r.lastClockIn) : `${LAST_USE_WINDOW_DAYS}일 넘게 없음`}
                     </td>
                     <td style={td}>
                       {r.managerName || r.managerPhone ? (

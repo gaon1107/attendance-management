@@ -5,7 +5,11 @@
 //    (본사가 고객사 직원의 근태를 들여다볼 수 있으면 그 자체가 개인정보 문제다).
 //
 // 회사가 3,000개가 돼도 버티게: 한 화면 조회 횟수가 회사 수와 무관하게 고정이다
-//   목록 1 + 전체 개수 1 + 묶음 합계 3(groupBy) + 상단 합계 4 = 9번.
+//   목록 1 + 전체 개수 1 + 묶음 합계 3(groupBy) + 상단 합계 5 = 10번.
+// 🔒 "마지막 사용일"은 **날짜만**(시각 없음), 최근 90일 안에서만 찾는다(3단계 검수 중간 1·경미 7):
+//    직원 1~2명 회사에서 분 단위 출근 시각을 보이면 사실상 특정 직원의 개별 출근 기록이 된다.
+//    90일로 자르면 3년치 기록을 훑지 않아도 된다.
+export const LAST_USE_WINDOW_DAYS = 90;
 import { prisma } from "@/lib/db";
 import { trialStatus, trialLastDay, TRIAL_DAYS } from "@/lib/trial";
 import type { Prisma } from "@prisma/client";
@@ -87,7 +91,7 @@ export type CompanyRow = {
   managerPhone: string | null;
   employees: number; // 재직 직원 수(회사 계정 제외)
   clockIns7d: number; // 최근 7일 출근 기록 수
-  lastClockIn: Date | null;
+  lastClockIn: Date | null; // 최근 90일 안의 마지막 출근(화면에는 날짜만 표시). 없으면 null
 };
 
 export type CompanyListResult = {
@@ -122,6 +126,7 @@ export async function listCompanies(opts: { q: string; filter: TrialFilter; page
 
   // 회사별 합계 — 회사 수와 무관하게 3번(groupBy). 직원 개인 정보는 세지 않고 숫자만 받는다.
   const since7 = new Date(now.getTime() - 7 * DAY_MS);
+  const sinceWindow = new Date(now.getTime() - LAST_USE_WINDOW_DAYS * DAY_MS);
   const [empAgg, recentAgg, lastAgg] = ids.length
     ? await Promise.all([
         prisma.user.groupBy({
@@ -136,7 +141,7 @@ export async function listCompanies(opts: { q: string; filter: TrialFilter; page
         }),
         prisma.attendance.groupBy({
           by: ["companyId"],
-          where: { companyId: { in: ids } },
+          where: { companyId: { in: ids }, clockIn: { gte: sinceWindow } },
           _max: { clockIn: true },
         }),
       ])
@@ -187,13 +192,21 @@ export type CompanyDetail = {
   managerPhone: string | null;
   managerEmail: string | null;
   companyPhone: string | null;
-  ownerEmail: string | null; // 회사 계정(마스터 열쇠) 로그인 아이디 — 로그인 문의 응대용
+  ownerEmail: string | null; // 회사 계정(마스터 열쇠) 로그인 아이디 — 앞 두 글자만 남기고 가린 값(로그인 문의 때 "어느 계정인지" 확인용, 3단계 검수 경미 6)
   employees: number;
   admins: number;
   deactivated: number;
   clockIns30d: number;
   lastClockIn: Date | null;
 };
+
+/** "abcdef@gaon.co.kr" → "ab****@gaon.co.kr" (앞 두 글자만 남김). */
+function maskEmail(email: string): string {
+  const at = email.indexOf("@");
+  if (at <= 0) return "****";
+  const local = email.slice(0, at);
+  return `${local.slice(0, Math.min(2, local.length))}${"*".repeat(Math.max(2, local.length - 2))}${email.slice(at)}`;
+}
 
 /** 회사 상세(합계만). 없는 회사면 null. */
 export async function getCompanyDetail(id: string, now: Date = new Date()): Promise<CompanyDetail | null> {
@@ -213,13 +226,13 @@ export async function getCompanyDetail(id: string, now: Date = new Date()): Prom
     prisma.user.count({ where: { companyId: id, isOwner: false, deactivatedAt: null, role: "admin" } }),
     prisma.user.count({ where: { companyId: id, isOwner: false, deactivatedAt: { not: null } } }),
     prisma.attendance.count({ where: { companyId: id, clockIn: { gte: since30 } } }),
-    prisma.attendance.aggregate({ where: { companyId: id }, _max: { clockIn: true } }),
+    prisma.attendance.aggregate({ where: { companyId: id, clockIn: { gte: new Date(now.getTime() - LAST_USE_WINDOW_DAYS * DAY_MS) } }, _max: { clockIn: true } }),
   ]);
   const t = trialStatus(c.createdAt, now, c.trialLastDate);
   return {
     ...c,
     trialLast: trialLastDay(t.endsAt), daysLeft: t.daysLeft, expired: t.expired,
-    ownerEmail: owner?.email ?? null,
+    ownerEmail: owner?.email ? maskEmail(owner.email) : null,
     employees, admins, deactivated, clockIns30d, lastClockIn: last._max.clockIn,
   };
 }

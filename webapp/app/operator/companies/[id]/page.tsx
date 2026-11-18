@@ -7,7 +7,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentOperator } from "@/lib/operator-session";
-import { getCompanyDetail, TRIAL_SOON_DAYS } from "@/lib/operator-companies";
+import { getCompanyDetail, TRIAL_SOON_DAYS, LAST_USE_WINDOW_DAYS } from "@/lib/operator-companies";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { formatKoreanDate } from "@/lib/trial";
 import { OperatorHeader } from "../../OperatorHeader";
@@ -17,9 +17,6 @@ export const dynamic = "force-dynamic";
 
 function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-function ymdhm(d: Date): string {
-  return `${ymd(d)} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 const card: React.CSSProperties = { background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 24px" };
@@ -46,7 +43,8 @@ export default async function OperatorCompanyPage({ params }: { params: Promise<
   const { ip, userAgent } = readClientMeta(await headers());
   await recordAccess({
     companyId: null, userId: null, actorName: `운영자 ${me.name}`, emailTried: me.email,
-    kind: "data_view", result: "success", ip, userAgent, meta: `operator_company_view:${c.name}`,
+    // 끝에 항상 괄호(회사 ID 앞 8자)를 붙인다 — "가온(주)"처럼 괄호로 끝나는 회사명이 기록 화면에서 잘리지 않게(3단계 검수 경미 1)
+    kind: "data_view", result: "success", ip, userAgent, meta: `operator_company_view:${c.name} (ID ${c.id.slice(0, 8)})`,
   });
 
   const trialText = c.expired
@@ -69,7 +67,7 @@ export default async function OperatorCompanyPage({ params }: { params: Promise<
           {c.isDemo && <span style={{ marginLeft: 10, fontSize: 13, fontWeight: 700, color: "var(--text-sub)", background: "#F3F4F6", borderRadius: 4, padding: "2px 8px", verticalAlign: "middle" }}>시험용</span>}
         </h1>
         <p style={{ fontSize: 14, color: "var(--text-sub)", margin: "0 0 20px", wordBreak: "keep-all" }}>
-          가입 {ymd(c.createdAt)} · 마지막 출근 {c.lastClockIn ? ymdhm(c.lastClockIn) : "기록 없음"} · 이 화면을 연 기록이 운영자 접속 기록에 남습니다.
+          가입 {ymd(c.createdAt)} · 마지막 사용일 {c.lastClockIn ? ymd(c.lastClockIn) : `${LAST_USE_WINDOW_DAYS}일 넘게 없음`} · 이 화면을 연 기록이 운영자 접속 기록에 남습니다.
         </p>
 
         <div className="kpi-grid" style={{ marginBottom: 16 }}>
@@ -100,6 +98,8 @@ export default async function OperatorCompanyPage({ params }: { params: Promise<
             <h2 style={{ ...h2, marginTop: 28 }}>시험용 회사 표시</h2>
             <p style={{ fontSize: 13, color: "var(--text-sub)", margin: "0 0 12px", lineHeight: 1.6, wordBreak: "keep-all" }}>
               시험용으로 표시하면 홈페이지 공개 통계와 이 화면의 고객 수에서 빠집니다. 근태 기능에는 영향이 없습니다.
+              <br />
+              <b style={{ color: "var(--danger)" }}>실제 고객 회사에는 켜지 마세요.</b> 시험용 회사는 데모 정리 작업에서 지워질 수 있습니다.
             </p>
             <DemoForm companyId={c.id} isDemo={c.isDemo} />
           </section>
@@ -112,7 +112,7 @@ export default async function OperatorCompanyPage({ params }: { params: Promise<
             <Row label="담당자" value={[c.managerName, c.managerTitle].filter(Boolean).join(" · ")} />
             <Row label="담당자 연락처" value={c.managerPhone} />
             <Row label="담당자 이메일" value={c.managerEmail} />
-            <Row label="회사 계정(로그인)" value={c.ownerEmail} />
+            <Row label="회사 계정(로그인)" value={c.ownerEmail ? `${c.ownerEmail} (일부 가림)` : null} />
           </section>
         </div>
       </main>

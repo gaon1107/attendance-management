@@ -116,7 +116,8 @@ export async function operatorLogin(
   // scrypt 1회는 약 40ms 동안 서버 전체를 멈추므로, 이미 제한 중인 IP에까지 그 값을 태우면
   // 제한이 CPU를 한 푼도 아껴주지 못한다(그 자체가 서비스 마비 통로).
   if (ipThrottled && !op) {
-    await recordThrottleHit({ ip, kind: "login_fail", meta: THROTTLED_META, emailTried: email, userAgent });
+    // actorName "운영자" — 없는 이메일이어도 운영자 문에서 난 시도임을 남긴다(/operator/access가 이 이름으로 모은다, 3단계 검수 경미 8)
+    await recordThrottleHit({ ip, kind: "login_fail", meta: THROTTLED_META, actorName: "운영자", emailTried: email, userAgent });
     return { error: "이메일 또는 비밀번호가 올바르지 않습니다." };
   }
 
@@ -132,7 +133,7 @@ export async function operatorLogin(
       // 제한에 걸린 시도는 1분에 1건만 남긴다 — 무제한 적재로 진짜 기록을 밀어내지 않게.
       //  ⚠️ actorName을 함께 넘긴다(검수 E-1). 안 넘기면 **정작 공격이 진행되는 순간의 기록에서
       //     표적 계정이 비어** 나중에 "누구를 두드렸는지"를 알 수 없다(auth.ts도 넘긴다).
-      await recordThrottleHit({ ip, kind: "login_fail", meta: THROTTLED_META, actorName: op ? `운영자 ${op.name}` : null, emailTried: email, userAgent });
+      await recordThrottleHit({ ip, kind: "login_fail", meta: THROTTLED_META, actorName: op ? `운영자 ${op.name}` : "운영자", emailTried: email, userAgent });
     } else {
       await logOperator({ kind: "login_fail", result: "fail", name: op?.name ?? null, emailTried: email, meta: "operator_bad_credentials", ip, userAgent });
     }

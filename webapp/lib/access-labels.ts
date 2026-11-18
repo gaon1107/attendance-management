@@ -144,6 +144,7 @@ function baseMetaLabel(meta: string): string {
     operator_inactive: "꺼진 운영자 계정",
     operator_locked: "운영자 계정 잠금 상태",
     operator_company_view: "회원사 상세 열람",
+    operator_company_list: "회원사 목록 열람",
     operator_trial_set: "무료 이용 기간 변경",
     operator_demo_on: "시험용 회사로 표시",
     operator_demo_off: "시험용 표시 해제",

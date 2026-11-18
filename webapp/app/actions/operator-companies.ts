@@ -80,7 +80,12 @@ export async function setCompanyTrial(_prev: OperatorActionResult, formData: For
   const after = next ? ymd(next) : "기본";
   if (before === after) return { ok: true, message: "바뀐 내용이 없습니다." };
 
-  await prisma.company.update({ where: { id: company.id }, data: { trialLastDate: next } });
+  // 읽은 값 그대로일 때만 바꾼다 — 운영자 두 명이 동시에 바꾸면 기록의 "이전 값"이 실제와 어긋나므로(3단계 검수 경미 5)
+  const changed = await prisma.company.updateMany({
+    where: { id: company.id, trialLastDate: company.trialLastDate },
+    data: { trialLastDate: next },
+  });
+  if (changed.count === 0) return { ok: false, message: "그사이 다른 사람이 값을 바꿨습니다. 화면을 새로 고친 뒤 다시 해 주세요." };
   await logOperatorChange(me, `operator_trial_set:${company.name} (${before}→${after})`);
 
   revalidatePath("/operator");
@@ -105,8 +110,10 @@ export async function setCompanyDemo(_prev: OperatorActionResult, formData: Form
   const next = on === "1";
   if (company.isDemo === next) return { ok: true, message: "바뀐 내용이 없습니다." };
 
-  await prisma.company.update({ where: { id: company.id }, data: { isDemo: next } });
-  await logOperatorChange(me, `${next ? "operator_demo_on" : "operator_demo_off"}:${company.name}`);
+  const changed = await prisma.company.updateMany({ where: { id: company.id, isDemo: company.isDemo }, data: { isDemo: next } });
+  if (changed.count === 0) return { ok: false, message: "그사이 다른 사람이 값을 바꿨습니다. 화면을 새로 고친 뒤 다시 해 주세요." };
+  // 끝 괄호(ID)는 "가온(주)"처럼 괄호로 끝나는 회사명이 기록 화면에서 잘리지 않게 붙인다(3단계 검수 경미 1)
+  await logOperatorChange(me, `${next ? "operator_demo_on" : "operator_demo_off"}:${company.name} (ID ${company.id.slice(0, 8)})`);
 
   revalidatePath("/operator");
   revalidatePath(`/operator/companies/${company.id}`);
