@@ -8,6 +8,8 @@
 #  · 메모리 상한 1.5GB — 근태가 넘치면 근태만 다시 켜지고 LMS 쪽으로 번지지 않는다.
 #  · 데이터(DB·출퇴근 사진·문서)는 ATT_DATA_DIR 폴더에 남는다. 상자를 지워도 그대로다.
 #    서버: ATT_DATA_DIR=/data/attendance (deploy/server/.env.deploy 또는 셸 변수) / 이 PC 시험: 기본값 ./.attendance-data
+# 묶음 이름을 고정한다 — 폴더 이름(한글 등)에 따라 바뀌면 같은 상자를 두 벌 띄우는 사고가 난다.
+name: attendance
 services:
   attendance:
     build: ./webapp
