@@ -1,4 +1,7 @@
-// [무료 체험 기간] 회사가 가입한 날부터 30일.
+// [무료 체험 기간] 회사가 가입한 날부터 30일. 단, 운영자가 회사별로 마지막 날을 지정했으면(Company.trialLastDate) 그 날까지.
+//
+// ※ 2026-11-18(운영 준비 3단계): 첫 고객 3개월 무료처럼 회사마다 다르게 주려고 "마지막 날" 칸을 더했다.
+//    시작 칸을 새로 만든 것이 아니다 — 시작은 여전히 createdAt 하나다(아래 원칙 그대로).
 //
 // ⚠️ **체험 시작 시각을 위한 새 칸을 만들지 않는다.** 이미 `Company.createdAt`이 가입 시각이고,
 //    그것이 곧 체험 시작이다(사장님 확정 2026-08-09). 칸을 하나 더 두면 두 값이 어긋날 때
@@ -44,9 +47,13 @@ export type TrialStatus = {
  *  · **시·분이 아니라 날짜로 센다.** 오전 9시에 가입한 회사가 오후 6시에 "29일 남음"으로 바뀌면
  *    고객은 하루를 손해 봤다고 느낀다. 자정 기준이라 하루 종일 같은 숫자가 보인다.
  *  · 한국은 서머타임이 없어 자정끼리의 밀리초 뺄셈이 항상 하루의 배수다(Math.round는 부동소수 방어).
+ *  · lastDate(운영자 지정 마지막 날)가 있으면 **그 날까지 무료** → 만료 자정은 그 다음 날 0시.
+ *    없으면(null·생략) 기존과 완전히 같게 가입일 + TRIAL_DAYS.
  */
-export function trialStatus(signedUpAt: Date, now: Date = new Date()): TrialStatus {
-  const endsAt = new Date(midnight(signedUpAt).getTime() + TRIAL_DAYS * DAY_MS);
+export function trialStatus(signedUpAt: Date, now: Date = new Date(), lastDate?: Date | null): TrialStatus {
+  const endsAt = lastDate
+    ? new Date(midnight(lastDate).getTime() + DAY_MS)
+    : new Date(midnight(signedUpAt).getTime() + TRIAL_DAYS * DAY_MS);
   const daysLeft = Math.round((endsAt.getTime() - midnight(now).getTime()) / DAY_MS);
   return { endsAt, daysLeft, expired: daysLeft <= 0 };
 }

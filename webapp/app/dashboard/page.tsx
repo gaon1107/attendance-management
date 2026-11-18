@@ -15,7 +15,7 @@ import { resolveShift, isLateByShift, isEarlyLeaveByShift } from "@/lib/shift";
 import { toISODate } from "@/lib/period";
 import { countUncheckedAnomalies } from "@/lib/anomaly";
 import { purgeWorkRecordsDaily } from "@/lib/work-record-retention";
-import { trialStatus, trialLastDay, formatKoreanDate, TRIAL_DAYS } from "@/lib/trial";
+import { trialStatus, trialLastDay, formatKoreanDate } from "@/lib/trial";
 import { DashboardCalendar } from "./DashboardCalendar";
 import { LatestNoticeModal } from "./LatestNoticeModal";
 import type { DayData } from "@/app/schedule/ScheduleCalendar";
@@ -57,6 +57,7 @@ export default async function DashboardPage() {
     where: { id: me.companyId },
     select: {
       createdAt: true, // 가입 시각 = 무료 체험 시작(lib/trial.ts). 별도 칸을 두지 않는다.
+      trialLastDate: true, // 운영자가 정한 무료 이용 마지막 날(없으면 가입일+30일)
       workStartTime: true, workEndTime: true, lateGraceMin: true, workDays: true, holidayAutoOn: true,
       overtimeAlertOn: true, overtimeWarnHours: true,
       securityCheckedAt: true,
@@ -326,7 +327,8 @@ export default async function DashboardPage() {
   //  · ⚠️ 지금은 **알리기만 한다.** 만료돼도 아무 기능도 막지 않는다 — 결제 수단이 아직 없어서,
   //    막으면 고객이 돈을 낼 방법도 없이 회사 근태가 멈춘다. 차단은 결제 화면과 한 세트로 만든다(lib/trial.ts).
   //  · company가 없으면(있을 수 없지만 select 결과가 null일 수 있는 타입) 띠를 그리지 않는다.
-  const trial = company ? trialStatus(company.createdAt) : null;
+  //  · 운영자가 회사별 마지막 날(trialLastDate)을 정했으면 그 날짜 기준(2026-11-18, 문구도 기간 길이와 무관하게 바꿈 — 사장님 확정).
+  const trial = company ? trialStatus(company.createdAt, new Date(), company.trialLastDate) : null;
   const trialTone = !trial
     ? null
     : trial.expired
@@ -348,13 +350,13 @@ export default async function DashboardPage() {
         >
           {trial.expired ? (
             <>
-              <strong>{TRIAL_DAYS}일 무료 체험이 끝났습니다</strong>
-              {` (${formatKoreanDate(trialLastDay(trial.endsAt))}까지). 결제 안내를 준비 중이며, 그때까지는 그대로 사용하실 수 있습니다.`}
+              <strong>무료 이용 기간이 끝났습니다.</strong>
+              {" 결제 안내를 준비 중이며, 그때까지는 그대로 사용하실 수 있습니다."}
             </>
           ) : (
             <>
-              <strong>{`무료 체험 ${trial.daysLeft}일 남음`}</strong>
-              {` — ${formatKoreanDate(trialLastDay(trial.endsAt))}까지 무료로 쓰실 수 있습니다.`}
+              <strong>{`무료 이용 기간: ${formatKoreanDate(trialLastDay(trial.endsAt))}까지`}</strong>
+              {` (${trial.daysLeft}일 남음)`}
             </>
           )}
         </div>

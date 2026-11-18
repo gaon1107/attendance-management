@@ -22,6 +22,12 @@ model Company {
   //    이 값을 직접 true로 바꿔야 한다(관리 화면은 아직 없음 — DB에서 설정).
   //  · 근태 기능·권한·격리에는 전혀 관여하지 않는다. 공개 통계 집계 필터 전용.
   isDemo        Boolean  @default(false)
+  // ── 무료 이용 마지막 날(운영자가 회사별로 지정, 2026-11-18 운영 준비 3단계). ──
+  //  · null이면 기본값 = 가입일(createdAt)부터 30일(lib/trial.ts TRIAL_DAYS). 기존 회사는 모두 null → 동작 그대로.
+  //  · 값이 있으면 **그 날짜까지 무료**(그 날짜의 자정 시각으로 저장). 첫 고객 3개월 무료처럼 회사마다 다르게 줄 때 쓴다.
+  //  · 지금은 표시용뿐 — 만료돼도 아무것도 막지 않는다(차단은 결제 화면과 한 세트, lib/trial.ts 머리말).
+  //  · 바꾸는 곳은 운영자 화면(/operator/companies/[id])뿐이고, 바꿀 때마다 운영자 기록이 남는다.
+  trialLastDate DateTime?
   users         User[]
   invites       Invite[]
   leaveRequests LeaveRequest[]
