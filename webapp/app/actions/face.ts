@@ -6,7 +6,8 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
-import { enrollFace, unenrollFace, recognizeFace, detectFaces, isFaceConfigured, type FaceRect } from "@/lib/face";
+import { enrollFace, recognizeFace, detectFaces, isFaceConfigured, type FaceRect } from "@/lib/face";
+import { unenrollFaceSafely } from "@/lib/face-purge";
 import { clockIn, performClockOut } from "@/app/actions/attendance";
 import { openSessionSince } from "@/lib/worktime";
 import { analyzeFace } from "@/lib/liveness";
@@ -352,13 +353,17 @@ export async function faceClockOut(formData: FormData): Promise<ActionResult> {
 }
 
 // 내 얼굴 등록 삭제 — 얼굴서버에서 지우고 표시도 해제. (다시 등록 가능)
+// 🔴 2026-11-19(5단계, 2단계 검수 ②): 예전엔 얼굴서버 삭제가 실패해도 표시를 지우고 "삭제되었습니다"라고 했다.
+//    그러면 서버에 얼굴(생체정보)이 남는데 우리 쪽엔 지울 단서가 사라진다. 이제 서버 삭제가 확인될 때만 표시를 지운다
+//    (동의 철회·관리자 파기와 같은 규칙 — lib/face-purge.ts).
 export async function deleteMyFace(): Promise<ActionResult> {
   const me = await getCurrentUser();
   if (!me) return { ok: false, message: "로그인이 필요합니다." };
   // 🔒 회사 계정은 사람이 아니다 — 얼굴이 등록되면 [생체정보] 목록에 안 떠 파기할 수 없다(검수 2차 3).
   if (me.isOwner) return { ok: false, message: "회사 계정은 이 기능을 사용할 수 없습니다." };
-  if (me.faceEnrolledAt) {
-    await unenrollFace(me.id, me.companyId).catch(() => null); // 서버 삭제 실패해도 우리 표시는 해제(재시도 가능)
+  const removed = await unenrollFaceSafely(me.id, me.companyId, me.faceEnrolledAt !== null);
+  if (!removed) {
+    return { ok: false, message: "얼굴서버에서 삭제하지 못했습니다. 잠시 후 다시 시도해 주세요. 계속 안 되면 관리자에게 알려 주세요." };
   }
   await prisma.user.update({ where: { id: me.id }, data: { faceEnrolledAt: null, faceEnrollCount: 0 } });
   revalidatePath("/face-enroll");

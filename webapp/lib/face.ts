@@ -20,6 +20,10 @@ const BASE_URL_SECURE = BASE_URL.startsWith("https://");
 if (BASE_URL && !BASE_URL_SECURE) {
   console.error("[face] FACE_API_BASE_URL이 https://로 시작하지 않아 얼굴 기능을 막았습니다. 주소를 확인하세요.");
 }
+// 🔒 2026-11-19(5단계, 2단계 검수 ③): 모든 요청에 redirect: "error". 서버가 다른 주소(특히 http://)로 넘기면
+//    fetch는 기본으로 따라가는데, 그러면 위 https 검사를 통과한 뒤에도 얼굴 사진·CLIENT_SECRET이 평문이나 엉뚱한 곳으로 간다.
+//    운영·개발 얼굴서버는 넘기지 않는다(https 401 / http 403, 2026-11-19 실측). 넘기게 바뀌면 얼굴 기능이 오류로 멈춘다 = 안전한 실패.
+//    (모든 호출은 각 함수의 try/catch 안이라 화면에는 "실패"로만 보인다)
 
 // 토큰 메모리 캐시(수명보다 살짝 짧게 잡아 만료 직전 재발급)
 let clientToken: { value: string; at: number } | null = null;
@@ -41,6 +45,7 @@ async function login(): Promise<string> {
   const res = await fetch(`${BASE_URL}/login/`, {
     method: "POST",
     headers: { LicenseKey: LICENSE_KEY, Authorization: `Basic ${basic}` },
+    redirect: "error",
     signal: AbortSignal.timeout(10_000), // 서버 무응답 시 무한 대기 방지
   });
   const token = res.headers.get("ClientToken");
@@ -62,6 +67,7 @@ async function fetchApiToken(): Promise<string> {
   const res = await fetch(`${BASE_URL}/get/token/`, {
     method: "POST",
     headers: { ClientToken: ct },
+    redirect: "error",
     signal: AbortSignal.timeout(10_000), // 서버 무응답 시 무한 대기 방지
   });
   const token = res.headers.get("ApiToken");
@@ -69,7 +75,7 @@ async function fetchApiToken(): Promise<string> {
     // ClientToken이 만료됐을 수 있으니 한 번 다시 로그인해서 재시도
     clientToken = null;
     const ct2 = await getClientToken();
-    const res2 = await fetch(`${BASE_URL}/get/token/`, { method: "POST", headers: { ClientToken: ct2 }, signal: AbortSignal.timeout(10_000) });
+    const res2 = await fetch(`${BASE_URL}/get/token/`, { method: "POST", headers: { ClientToken: ct2 }, redirect: "error", signal: AbortSignal.timeout(10_000) });
     const token2 = res2.headers.get("ApiToken");
     if (!res2.ok || !token2) throw new Error(`얼굴서버 ApiToken 발급 실패 (HTTP ${res2.status})`);
     apiToken = { value: token2, at: Date.now() };
@@ -129,6 +135,7 @@ export async function enrollFace(imageBuffer: Buffer, faceId: string, group: str
       method: "POST",
       headers: { ApiToken: token },
       body: form,
+      redirect: "error",
     });
     const body = await res.json().catch(() => ({}));
     return { res, body };
@@ -183,6 +190,7 @@ export async function recognizeFace(imageBuffer: Buffer, group: string): Promise
       method: "POST",
       headers: { ApiToken: token },
       body: form,
+      redirect: "error",
       signal: AbortSignal.timeout(10_000), // 얼굴서버가 멈춰도 화면이 무한 대기하지 않도록 10초 제한
     });
     const body = await res.json().catch(() => ({}));
@@ -240,6 +248,7 @@ export async function unenrollFace(faceId: string, group: string): Promise<FaceR
       method: "POST",
       headers: { ApiToken: token, "Content-Type": "application/x-www-form-urlencoded" },
       body: params.toString(),
+      redirect: "error",
     });
     const body = await res.json().catch(() => ({}));
     return { res, body };
@@ -279,6 +288,7 @@ export async function detectFaces(imageBuffer: Buffer): Promise<DetectResult> {
       method: "POST",
       headers: { ApiToken: token },
       body: form,
+      redirect: "error",
       signal: AbortSignal.timeout(10_000),
     });
     const body = await res.json().catch(() => ({}));

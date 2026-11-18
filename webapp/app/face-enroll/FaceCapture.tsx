@@ -231,7 +231,12 @@ export function FaceCapture({ initialCount, minPercent = 30 }: { initialCount: n
     setBusy(true);
     setMsg({ type: "info", text: "등록된 얼굴을 삭제하는 중입니다…" });
     try {
-      await deleteMyFace();
+      // 얼굴서버 삭제가 확인되지 않으면 서버가 ok:false를 돌려준다(2026-11-19) — 그때는 등록 상태를 그대로 두고 안내만.
+      const r = await deleteMyFace();
+      if (!r.ok) {
+        setMsg({ type: "err", text: r.message });
+        return;
+      }
       setCount(0);
       setOverlay(null);
       router.refresh(); // 페이지 상태(미등록)로 갱신

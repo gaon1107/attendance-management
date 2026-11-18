@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { purgeUserPhotos } from "@/lib/clock-photo";
 import { logAdminAction } from "@/lib/audit";
-import { unenrollFace } from "@/lib/face";
+import { unenrollFaceSafely } from "@/lib/face-purge";
 
 // 동의 해제 시 보관 중인 출퇴근 사진도 즉시 파기(동의 화면의 "철회 시 삭제" 약속 이행).
 // 파기 실패가 철회 자체를 막으면 안 됨 — 로그만 남긴다(남은 파일은 90일 자동 파기가 처리).
@@ -21,32 +21,8 @@ async function purgePhotosSafely(userId: string): Promise<boolean> {
   }
 }
 
-// 얼굴서버(GaonFR)에 등록된 얼굴 원본을 삭제한다(생체정보 파기의 마지막 조각).
-// 등록이 없었으면(wasEnrolled=false) 지울 것도 없으므로 성공으로 본다.
-// 삭제 실패가 파기(철회) 자체를 막으면 안 됨 — 예외를 삼키고 결과(bool)만 호출부에 알린다(purgePhotosSafely와 동일 방어).
-// 반환값 = "얼굴서버에 남은 얼굴이 없음이 보장되는가". (deleteMyFace의 unenroll 호출과 같은 규칙: FaceId=직원 id, Group=회사 id)
-//
-// ⚠️ lib/face.ts의 unenrollFace에는 요청 타임아웃이 없다(recognize/detect엔 있음). GaonFR이 연결만 받고
-//    응답을 주지 않는 "행(hang)" 상태면 예외 없이 무한 대기 → catch가 못 잡고 철회 화면이 멈춘다.
-//    공통모듈(face.ts)은 건드리지 않고 여기서 10초 상한을 걸어 "삭제 실패가 파기를 막지 않는다"는 약속을 지킨다.
-//    (상한 초과 시 false → 로컬 등록표시는 남겨 다음 파기 때 재시도. 뒤늦게 끝나는 fetch는 무시해도 무해.)
-async function unenrollFaceSafely(userId: string, companyId: string, wasEnrolled: boolean): Promise<boolean> {
-  if (!wasEnrolled) return true; // 등록된 얼굴이 없으면 지울 것도 없음
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const timeout = new Promise<{ success: false; message: string }>((resolve) => {
-      timer = setTimeout(() => resolve({ success: false, message: "얼굴서버 응답 시간 초과(10초)" }), 10_000);
-    });
-    const r = await Promise.race([unenrollFace(userId, companyId), timeout]);
-    if (!r.success) console.error("[authmethod] 얼굴서버 원본 삭제 실패(파기는 정상 처리됨):", r.message);
-    return r.success;
-  } catch (e) {
-    console.error("[authmethod] 얼굴서버 원본 삭제 오류(파기는 정상 처리됨):", e);
-    return false;
-  } finally {
-    if (timer) clearTimeout(timer); // 먼저 끝나면 남은 타이머 정리(대량 파기 시 타이머 누적 방지)
-  }
-}
+// 얼굴서버(GaonFR) 원본 삭제는 lib/face-purge.ts의 unenrollFaceSafely를 쓴다(2026-11-19 옮김 — 동작 동일).
+//   반환값 true일 때만 등록 표시(faceEnrolledAt)를 지운다. 10초 상한·예외를 삼키는 규칙도 그쪽 주석 참조.
 
 // 생체정보를 실제로 갖고 있었는지 — "지울 게 없었는데 파기했다"는 가짜 감사기록을 막는 판단 기준.
 // 서버 액션은 화면 없이도 직접 호출될 수 있으므로 화면 가드만 믿지 않는다.
