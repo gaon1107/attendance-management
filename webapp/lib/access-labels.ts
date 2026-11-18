@@ -136,6 +136,17 @@ function baseMetaLabel(meta: string): string {
     admin_revoke: "관리자 파기",
     self_withdraw: "본인 철회",
     switch_to_gps: "본인 GPS 전환",
+    // 운영자(본사) 기록 — app/actions/operator.ts(로그인)·operator-companies.ts(회원사 변경)·운영자 회사 상세 열람.
+    //  고객사 화면에는 나오지 않고(companyId=null) /operator/access 에서만 본다. 2026-11-18 운영 준비 3단계.
+    operator_login: "운영자 로그인",
+    operator_logout: "운영자 로그아웃",
+    operator_bad_credentials: "운영자 비밀번호 불일치",
+    operator_inactive: "꺼진 운영자 계정",
+    operator_locked: "운영자 계정 잠금 상태",
+    operator_company_view: "회원사 상세 열람",
+    operator_trial_set: "무료 이용 기간 변경",
+    operator_demo_on: "시험용 회사로 표시",
+    operator_demo_off: "시험용 표시 해제",
   };
   return Object.hasOwn(map, meta) ? map[meta] : "";
 }
