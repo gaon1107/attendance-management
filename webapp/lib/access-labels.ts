@@ -136,6 +136,9 @@ function baseMetaLabel(meta: string): string {
     admin_revoke: "관리자 파기",
     self_withdraw: "본인 철회",
     switch_to_gps: "본인 GPS 전환",
+    // 2026-11-19 운영 준비 5단계 — 퇴사 처리 때 자동 파기(actions/employees.ts), 재동의 전 남은 얼굴 정리(actions/authmethod.ts)
+    deactivate_biometric: "퇴사 자동 파기",
+    consent_leftover_cleanup: "재동의 전 남은 얼굴 삭제",
     // 운영자(본사) 기록 — app/actions/operator.ts(로그인)·operator-companies.ts(회원사 변경)·운영자 회사 상세 열람.
     //  고객사 화면에는 나오지 않고(companyId=null) /operator/access 에서만 본다. 2026-11-18 운영 준비 3단계.
     operator_login: "운영자 로그인",

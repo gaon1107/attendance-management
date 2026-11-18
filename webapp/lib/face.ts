@@ -104,6 +104,8 @@ type FaceResult = {
   // 등록 시 서버가 실제로 인식한 얼굴 위치(보낸 사진 좌표계) — 화면에 검출 영역을 그릴 때 사용
   faceRect?: FaceRect;
   imageSize?: { width: number; height: number };
+  // 삭제 시 얼굴서버가 실제로 지운 얼굴 수(0 = 지울 얼굴이 없었음) — unenrollFace만 채운다(5-2 검수 M2)
+  deletedCount?: number;
 };
 
 // 서버 응답(PascalCase)에서 얼굴 위치·이미지 크기를 안전하게 꺼낸다(없으면 undefined)
@@ -136,6 +138,8 @@ export async function enrollFace(imageBuffer: Buffer, faceId: string, group: str
       headers: { ApiToken: token },
       body: form,
       redirect: "error",
+      // [5-2 검수] 얼굴서버가 멈춰도 등록 화면이 무한 대기하지 않게 — 등록은 특징값 저장까지 해서 인식(10초)보다 넉넉히 15초
+      signal: AbortSignal.timeout(15_000),
     });
     const body = await res.json().catch(() => ({}));
     return { res, body };
@@ -161,10 +165,20 @@ export async function enrollFace(imageBuffer: Buffer, faceId: string, group: str
       const enrolledId = Array.isArray(faces) && faces[0]?.FaceId ? faces[0].FaceId : String(faceId);
       return { success: true, faceId: enrolledId, ...parseRect(body) };
     }
+    // [5-2 검수 L5] 얼굴서버의 원문 메시지는 영어라 직원 화면에 그대로 내보내지 않는다 — 원문은 서버 로그로만.
     const b = body as { StatusMessage?: string; Message?: string };
-    return { success: false, message: b.StatusMessage || b.Message || `얼굴 등록 실패 (HTTP ${res.status})` };
+    console.error(`[face] enroll 실패 (HTTP ${res.status}, StatusCode ${sc ?? "-"}):`, b.StatusMessage || b.Message || "");
+    if (res.status === 429) return { success: false, message: "요청이 몰려 있습니다. 잠시 후 다시 시도해 주세요." };
+    return { success: false, message: "얼굴 등록에 실패했습니다. 밝은 곳에서 정면으로 다시 시도해 주세요." };
   } catch (e) {
-    return { success: false, message: e instanceof Error ? e.message : "얼굴 등록 중 오류" };
+    console.error("[face] enroll 요청 실패:", e);
+    const timedOut = e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError");
+    return {
+      success: false,
+      message: timedOut
+        ? "얼굴서버 응답이 늦어지고 있습니다. 잠시 후 다시 시도해 주세요."
+        : "얼굴서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+    };
   }
 }
 
@@ -249,6 +263,7 @@ export async function unenrollFace(faceId: string, group: string): Promise<FaceR
       headers: { ApiToken: token, "Content-Type": "application/x-www-form-urlencoded" },
       body: params.toString(),
       redirect: "error",
+      signal: AbortSignal.timeout(10_000), // [5-2 검수 L2] 얼굴서버가 멈춰도 퇴사·철회 처리가 무한 대기하지 않게
     });
     const body = await res.json().catch(() => ({}));
     return { res, body };
@@ -262,8 +277,18 @@ export async function unenrollFace(faceId: string, group: string): Promise<FaceR
       token = await getApiToken();
       ({ res, body } = await doRequest(token));
     }
+    // [5-2 검수 L8] 연속 요청 제한(429) — 여러 명을 잇달아 퇴사·파기할 때 걸릴 수 있다. 잠시 쉬고 1회 재시도.
+    if (res.status === 429) {
+      await new Promise((r) => setTimeout(r, 1200));
+      ({ res, body } = await doRequest(token));
+    }
     const sc = (body as { StatusCode?: number }).StatusCode;
-    if (res.ok && !(typeof sc === "number" && sc >= 4000)) return { success: true };
+    if (res.ok && !(typeof sc === "number" && sc >= 4000)) {
+      // [5-2 검수 M2] 얼굴서버는 지운 게 0건이어도 200으로 답한다. 실제로 지운 얼굴 목록(Faces)의 길이로 건수를 센다.
+      //   (GaonFR FaceServices.DeleteFace: 지운 게 있으면 Faces=[{FaceId}], 없으면 Faces=null — 역컴파일 원본 확인)
+      const faces = (body as { Faces?: unknown }).Faces;
+      return { success: true, deletedCount: Array.isArray(faces) ? faces.length : 0 };
+    }
     const b = body as { StatusMessage?: string; Message?: string };
     return { success: false, message: b.StatusMessage || b.Message || `얼굴 삭제 실패 (HTTP ${res.status})` };
   } catch (e) {

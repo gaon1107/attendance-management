@@ -11,7 +11,7 @@ import { parseProfile, employeeNoTaken } from "@/lib/employee-profile";
 import { canDeactivate, canManageAccount } from "@/lib/owner-rules";
 import { logAdminAction } from "@/lib/audit";
 import { openSessionSince } from "@/lib/worktime";
-import { unenrollFaceSafely } from "@/lib/face-purge";
+import { unenrollFaceOutcome, unenrollAuditNote } from "@/lib/face-purge";
 
 // 반환값에 tempPassword가 실린다 — 관리자가 직원에게 전달해야 하는 값이라 **한 번은 보여줘야** 한다.
 // (평문이 남는 곳은 이 응답뿐이다. DB에는 해시만 저장된다.)
@@ -279,11 +279,13 @@ export async function deactivateEmployee(
 //  · 동의는 항상 해제하고 인증방식은 GPS로 — 퇴사로 목적이 끝났으므로. 복직하면 본인이 다시 동의·등록해야 한다.
 //  · 출퇴근 사진은 지우지 않는다 — 동의 화면 약속대로 90일 뒤 자동 삭제(근태 분쟁 대비, 2026-11-19 사장님 결정).
 //  · 퇴사 자체는 이미 끝났으므로 여기서 무엇이 실패해도 퇴사를 되돌리거나 오류를 내지 않는다. 결과는 감사기록에 사실대로.
+//  · [5-2 검수 M3] 등록 표시가 없어도 생체정보 이력(had)이 있으면 얼굴서버 삭제를 요청한다(표시 없이 서버에만 남은 얼굴 대비).
 async function purgeBiometricOnDeactivate(
   me: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>,
-  bio: { userId: string; name: string; wasEnrolled: boolean }
+  bio: { userId: string; name: string; wasEnrolled: boolean; had: boolean }
 ): Promise<void> {
-  const unenrolled = await unenrollFaceSafely(bio.userId, me.companyId, bio.wasEnrolled);
+  const outcome = await unenrollFaceOutcome(bio.userId, me.companyId, { enrolled: bio.wasEnrolled, history: bio.had });
+  const unenrolled = outcome !== "failed";
   let saved = false;
   try {
     // updateMany + companyId — 회사 격리를 쿼리 조건으로도 한 번 더 건다(퇴사 트랜잭션에서 이미 확인한 대상이지만).
@@ -295,12 +297,15 @@ async function purgeBiometricOnDeactivate(
   } catch (e) {
     console.error("[employees] 퇴사자 생체정보 상태 저장 실패:", e);
   }
-  await logAdminAction(
-    me,
-    "purge",
-    `deactivate_biometric:${bio.name} (계정 ${bio.userId})${unenrolled ? "" : " — 얼굴서버 삭제 실패, [생체정보]에서 재시도 필요"}`,
-    unenrolled && saved ? "success" : "fail"
-  );
+  // [5-2 검수 M4] 실패 안내도 괄호 안 상세에 넣는다 — 괄호 밖에 붙이면 접속기록 화면이 이름·대상을 못 나눠 읽는다(lib/access-labels.ts).
+  //   '다시 파기' 안내는 등록 표시가 남아 [생체정보]에 '얼굴 남음'으로 보일 때만 붙인다(표시가 없으면 그 화면에 버튼이 없다).
+  const detail = [
+    `계정 ${bio.userId}`,
+    unenrollAuditNote(outcome),
+    !unenrolled && bio.wasEnrolled ? "[생체정보]에서 다시 파기 필요" : "",
+    saved ? "" : "상태 저장 실패",
+  ].filter(Boolean).join(" · ");
+  await logAdminAction(me, "purge", `deactivate_biometric:${bio.name} (${detail})`, unenrolled && saved ? "success" : "fail");
 }
 
 // 복직(재활성화) — 관리자만. 다시 로그인 가능하게 하고 로그인 잠금도 초기화한다.

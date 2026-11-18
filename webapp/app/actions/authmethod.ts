@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { purgeUserPhotos } from "@/lib/clock-photo";
 import { logAdminAction } from "@/lib/audit";
-import { unenrollFaceSafely } from "@/lib/face-purge";
+import { unenrollFaceOutcome, unenrollAuditNote } from "@/lib/face-purge";
 
 // 동의 해제 시 보관 중인 출퇴근 사진도 즉시 파기(동의 화면의 "철회 시 삭제" 약속 이행).
 // 파기 실패가 철회 자체를 막으면 안 됨 — 로그만 남긴다(남은 파일은 90일 자동 파기가 처리).
@@ -21,8 +21,16 @@ async function purgePhotosSafely(userId: string): Promise<boolean> {
   }
 }
 
-// 얼굴서버(GaonFR) 원본 삭제는 lib/face-purge.ts의 unenrollFaceSafely를 쓴다(2026-11-19 옮김 — 동작 동일).
-//   반환값 true일 때만 등록 표시(faceEnrolledAt)를 지운다. 10초 상한·예외를 삼키는 규칙도 그쪽 주석 참조.
+// 얼굴서버(GaonFR) 원본 삭제는 lib/face-purge.ts의 unenrollFaceOutcome을 쓴다(2026-11-19 옮김).
+//   결과가 "failed"가 아닐 때만 등록 표시(faceEnrolledAt)를 지운다. 시간 상한·예외를 삼키는 규칙도 그쪽 주석 참조.
+//   [5-2 검수 M3] 등록 표시가 없어도 생체정보 이력(had)이 있으면 삭제를 요청한다 — 표시 없이 서버에만 남은 얼굴까지 지우기 위해.
+//   [5-2 검수 M2] 서버에 지울 얼굴이 없었으면(absent) 감사기록 상세에 그 사실을 남긴다.
+
+// 감사기록 meta에 상세(괄호)를 붙인다 — 붙일 말이 없으면 이름만. 형식은 lib/access-labels.ts accessMetaLabel 참조.
+function withDetail(name: string, parts: string[]): string {
+  const d = parts.filter(Boolean).join(" · ");
+  return d ? `${name} (${d})` : name;
+}
 
 // 생체정보를 실제로 갖고 있었는지 — "지울 게 없었는데 파기했다"는 가짜 감사기록을 막는 판단 기준.
 // 서버 액션은 화면 없이도 직접 호출될 수 있으므로 화면 가드만 믿지 않는다.
@@ -40,7 +48,8 @@ export async function chooseGps(): Promise<void> {
   const wasEnrolled = me.faceEnrolledAt !== null; // update 전에 캡처(얼굴서버에 지울 원본이 있는지)
   // 얼굴서버 원본을 먼저 지운다 — 실패하면 로컬 등록표시(faceEnrolledAt)를 남겨 재시도 경로를 유지한다.
   //  (DB부터 지우면 "우리 표시는 미등록인데 서버엔 얼굴이 남는" 최악의 잔존이 조용히 굳는다.)
-  const unenrolled = await unenrollFaceSafely(me.id, me.companyId, wasEnrolled);
+  const outcome = await unenrollFaceOutcome(me.id, me.companyId, { enrolled: wasEnrolled, history: had });
+  const unenrolled = outcome !== "failed";
   await prisma.user.update({
     where: { id: me.id },
     // 얼굴에서 GPS로 바꾸면 동의는 항상 해제. 등록표시는 GaonFR 삭제가 성공했을 때만 해제(유령 "등록됨" 방지+재시도 보존).
@@ -50,7 +59,7 @@ export async function chooseGps(): Promise<void> {
   // 감사로그 — ⚠️ 반드시 redirect 앞에. redirect()는 예외를 던져 뒤 코드를 실행하지 않는다.
   // 애초에 생체정보가 없던 사람(신입 등)이 GPS를 고른 것은 "파기"가 아니다 → 기록하지 않는다.
   // 로컬 사진·GaonFR 원본이 모두 지워져야 "성공" — 하나라도 실패면 fail(원칙 ④: 사실대로).
-  if (had) await logAdminAction(me, "purge", "switch_to_gps", purged && unenrolled ? "success" : "fail");
+  if (had) await logAdminAction(me, "purge", withDetail("switch_to_gps", [unenrollAuditNote(outcome)]), purged && unenrolled ? "success" : "fail");
   revalidatePath("/auth-method");
   redirect("/attendance");
 }
@@ -62,9 +71,24 @@ export async function agreeBiometric(): Promise<void> {
   // 🔒 회사 계정은 사람이 아니다 — 얼굴·인증방식을 가질 수 없다(검수 2차 3).
   if (me.isOwner) return;
   const 재동의 = me.faceConsentAt !== null; // 처음 동의인지 재동의인지 — 감사에서 구분되어야 함
+
+  // 🔴 [5-2 검수 M1, 2026-11-19] 동의가 없는데 등록 얼굴 표시가 남아 있으면(퇴사·철회 때 얼굴서버 삭제 실패) 그 얼굴부터 지운다.
+  //    그대로 동의를 받으면 파기됐어야 할 옛 얼굴로 곧바로 얼굴 출퇴근이 되고, [생체정보]의 '얼굴 남음' 표시도 사라진다
+  //    (예: 퇴사 때 삭제 실패 → 복직 → 재동의). 지우지 못하면 동의를 받지 않고 동의 화면에 안내한다.
+  const leftover = me.faceConsentAt === null && me.faceEnrolledAt !== null;
+  if (leftover) {
+    const o = await unenrollFaceOutcome(me.id, me.companyId, { enrolled: true, history: true });
+    if (o === "failed") {
+      await logAdminAction(me, "purge", withDetail("consent_leftover_cleanup", [unenrollAuditNote(o)]), "fail");
+      redirect("/consent?error=face_left"); // 예외를 던져 여기서 끝난다 — 아래 동의 저장은 실행되지 않는다
+    }
+    // 옛 얼굴은 지웠다(또는 서버에 없었다) → 새로 등록하도록 등록 표시도 함께 지운다(아래 동의 저장과 한 번에).
+    await logAdminAction(me, "purge", withDetail("consent_leftover_cleanup", [unenrollAuditNote(o)]), "success");
+  }
+
   await prisma.user.update({
     where: { id: me.id },
-    data: { authMethod: "face", faceConsentAt: new Date() },
+    data: { authMethod: "face", faceConsentAt: new Date(), ...(leftover ? { faceEnrolledAt: null, faceEnrollCount: 0 } : {}) },
   });
   // 감사로그 — 민감정보 "수집 개시" 시점을 남긴다. User.faceConsentAt은 현재 상태값이라
   // 재동의하면 덮여서 과거 이력이 사라지므로, 이력은 접속기록(2년 보관)에만 남는다.
@@ -84,7 +108,8 @@ export async function withdrawBiometric(): Promise<void> {
   const had = hadBiometric(me); // update 전에 판단
   const wasEnrolled = me.faceEnrolledAt !== null; // update 전에 캡처(얼굴서버에 지울 원본이 있는지)
   // 얼굴서버 원본을 먼저 지운다 — 실패하면 등록표시를 남겨 재시도 경로를 유지(chooseGps와 동일 규칙).
-  const unenrolled = await unenrollFaceSafely(me.id, me.companyId, wasEnrolled);
+  const outcome = await unenrollFaceOutcome(me.id, me.companyId, { enrolled: wasEnrolled, history: had });
+  const unenrolled = outcome !== "failed";
   await prisma.user.update({
     where: { id: me.id },
     data: { authMethod: "gps", faceConsentAt: null, ...(unenrolled ? { faceEnrolledAt: null, faceEnrollCount: 0 } : {}) },
@@ -92,13 +117,14 @@ export async function withdrawBiometric(): Promise<void> {
   const purged = await purgePhotosSafely(me.id);
   // 감사로그 — ⚠️ 반드시 redirect 앞에. redirect()는 예외를 던져 뒤 코드를 실행하지 않는다.
   // 로컬 사진·GaonFR 원본이 모두 지워져야 "성공"(원칙 ④: 사실대로).
-  if (had) await logAdminAction(me, "purge", "self_withdraw", purged && unenrolled ? "success" : "fail");
+  if (had) await logAdminAction(me, "purge", withDetail("self_withdraw", [unenrollAuditNote(outcome)]), purged && unenrolled ? "success" : "fail");
   revalidatePath("/auth-method");
   redirect("/auth-method");
 }
 
 // 관리자 파기 — 특정 직원의 생체정보 동의를 파기(철회)한다. 반드시 내 회사 소속만(회사 격리).
-// 퇴사 처리 등으로 관리자가 파기할 때 사용. 로컬 사진 + 얼굴서버(GaonFR) 원본까지 삭제한다.
+// 재직자: 로컬 사진 + 얼굴서버(GaonFR) 원본까지 삭제한다.
+// 퇴사자: 얼굴서버 원본만 삭제하고 출퇴근 사진은 남긴다(아래 C1 주석 — 퇴사 처리 때와 같은 규칙).
 export async function adminRevokeBiometric(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
   if (!me || me.role !== "admin") return;
@@ -111,17 +137,29 @@ export async function adminRevokeBiometric(formData: FormData): Promise<void> {
   if (!hadBiometric(target) && !wasEnrolled) return;
 
   // 얼굴서버 원본을 먼저 지운다 — 실패하면 등록표시를 남겨 재시도 경로를 유지(chooseGps와 동일 규칙).
-  const unenrolled = await unenrollFaceSafely(target.id, target.companyId, wasEnrolled);
+  const outcome = await unenrollFaceOutcome(target.id, target.companyId, { enrolled: wasEnrolled, history: hadBiometric(target) });
+  const unenrolled = outcome !== "failed";
   await prisma.user.update({
     where: { id: target.id },
     data: { authMethod: "gps", faceConsentAt: null, ...(unenrolled ? { faceEnrolledAt: null, faceEnrollCount: 0 } : {}) },
   });
-  const purged = await purgePhotosSafely(target.id);
+  // 🔴 [5-2 검수 치명 C1, 2026-11-19] 퇴사자의 출퇴근 사진은 여기서 지우지 않는다.
+  //    퇴사 처리 때 정한 규칙(사진은 동의 내용대로 90일 보관 뒤 자동 삭제 — 근태 분쟁 대비, 2026-11-19 사장님 결정)과
+  //    같아야 한다. 예전엔 퇴사자의 '얼굴 남음'을 [파기]로 다시 지우면 사진까지 즉시 지워졌다.
+  //    재직자의 [파기]는 본인 철회와 같으므로 사진도 즉시 지운다(동의 화면 "철회 시 삭제" 약속).
+  const keepPhotos = target.deactivatedAt !== null;
+  const purged = keepPhotos ? true : await purgePhotosSafely(target.id);
   // 감사로그 — 관리자가 "누구의" 생체정보를 파기했는지가 핵심이라 대상을 함께 남긴다.
   //  · 이름 스냅샷 + 계정 id 병기: 동명이인이 있어도 누구인지 특정되고, 계정이 지워져도 이름이 남는다
   //    (AccessEvent.actorName이 이름 스냅샷을 남기는 것과 같은 방식).
   //  · 회사 격리 검사를 통과한 뒤이므로 내 회사 직원임이 보장된다.
   //  · 로컬 사진·GaonFR 원본이 모두 지워져야 "성공"(원칙 ④: 사실대로).
-  await logAdminAction(me, "purge", `admin_revoke:${target.name} (계정 ${target.id})`, purged && unenrolled ? "success" : "fail");
+  //  · 퇴사자라 사진을 남긴 경우 그 사실도 함께 적는다(나중에 "왜 사진이 남았나"를 기록으로 답할 수 있게).
+  const meta = withDetail(`admin_revoke:${target.name}`, [
+    `계정 ${target.id}`,
+    keepPhotos ? "퇴사자 — 출퇴근 사진은 90일 보관 뒤 자동 삭제" : "",
+    unenrollAuditNote(outcome),
+  ]);
+  await logAdminAction(me, "purge", meta, purged && unenrolled ? "success" : "fail");
   revalidatePath("/biometrics");
 }

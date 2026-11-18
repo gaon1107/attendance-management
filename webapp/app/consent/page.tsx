@@ -18,14 +18,25 @@ const BOXES = [
   { title: "어떻게 철회하나요", body: "[인증방식] 화면에서 언제든 동의를 철회하고 삭제를 요청할 수 있습니다." },
 ];
 
-export default async function ConsentPage() {
+export default async function ConsentPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   // 🔒 회사 계정은 사람이 아니다 — 본인 근태·생체정보 화면에 들어갈 이유가 없다(검수 2차 3·9).
   if (me.isOwner) redirect("/dashboard");
+  // [5-2 검수 M1] 예전 등록 얼굴이 얼굴인증 서버에 남아 있는데 지우지 못해 동의를 받지 않은 경우(app/actions/authmethod.ts agreeBiometric)
+  const sp = await searchParams;
+  const faceLeftError = sp.error === "face_left";
 
   return (
     <AppShell user={me} active="auth-method" title="생체정보 이용 동의" subtitle={`${me.name} 님`}>
+      {faceLeftError && (
+        <div role="alert" style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "14px 16px", marginBottom: 16, fontSize: 14, color: "var(--danger)", fontWeight: 700, lineHeight: 1.6, wordBreak: "keep-all" }}>
+          예전에 등록한 얼굴이 얼굴인증 서버에 남아 있어 먼저 지우려 했지만 지우지 못했습니다. 잠시 후 다시 시도해 주세요.
+          <div style={{ fontWeight: 400, color: "var(--text-sub)", marginTop: 4 }}>
+            계속 안 되면 관리자에게 알려 주세요. 그동안은 GPS 방식으로 출퇴근할 수 있습니다.
+          </div>
+        </div>
+      )}
       <p style={{ fontSize: 14, color: "var(--text-sub)", marginBottom: 20, lineHeight: 1.6 }}>
         얼굴인증을 사용하려면 아래 내용에 동의가 필요합니다. 동의는 강제가 아니며, GPS 방식으로도 출퇴근할 수 있습니다.
       </p>

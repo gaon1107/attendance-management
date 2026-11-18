@@ -23,11 +23,12 @@ export function EmployeeStatusActions({
   workingNow?: boolean;
   // [M8] 얼굴인증 동의·등록이 있는 직원 — 퇴사 확인창에 "얼굴 정보도 파기됨"을 알린다
   hasBiometric?: boolean;
-  // [M8] 퇴사했는데 얼굴서버 삭제가 실패해 등록 얼굴이 남은 상태 — [생체정보]에서 다시 파기하도록 안내
+  // [M8] 퇴사자인데 등록 얼굴이 남은 상태(퇴사·철회 때 얼굴서버 삭제 실패) — [생체정보]에서 다시 파기하도록 안내
   faceLeft?: boolean;
 }) {
   // 퇴사 처리는 실패할 수 있다(마지막 관리자·회사 계정). 그 이유를 화면에 띄운다 — 검수 2차 5.
-  const [state, formAction] = useActionState<{ error?: string; ok?: boolean }, FormData>(deactivateEmployee, {});
+  //  [5-2 검수 L3] 퇴사 처리에 얼굴인증 서버 삭제(최대 십수 초)가 붙어, 처리 중임을 보여 주고 두 번 누르지 못하게 한다.
+  const [state, formAction, pending] = useActionState<{ error?: string; ok?: boolean }, FormData>(deactivateEmployee, {});
 
   // 🔴 [검수 M-6] 퇴근을 안 찍은 기록이 있으면 **퇴사시키기 전에** 알린다.
   //    퇴사하면 본인이 로그인할 수 없어 [근태 정정]으로 그 퇴근 시각을 채울 방법이 사라진다.
@@ -86,9 +87,11 @@ export function EmployeeStatusActions({
         )}
         <button
           type="submit"
-          style={{ height: 44, padding: "0 20px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--text-sub)", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
+          disabled={pending}
+          aria-busy={pending}
+          style={{ height: 44, padding: "0 20px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--text-sub)", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: pending ? "wait" : "pointer", opacity: pending ? 0.6 : 1 }}
         >
-          퇴사 처리(비활성화)
+          {pending ? "퇴사 처리 중…" : "퇴사 처리(비활성화)"}
         </button>
         {state.error && (
           <div style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700, marginTop: 8, wordBreak: "keep-all", lineHeight: 1.5 }}>
@@ -111,7 +114,8 @@ export function EmployeeStatusActions({
       {inactiveNotice}
       {faceLeft && (
         <div style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700, marginBottom: 12, wordBreak: "keep-all", lineHeight: 1.6 }}>
-          ⚠️ 퇴사 처리 때 얼굴인증 서버에서 등록 얼굴을 지우지 못했습니다(서버 응답 없음 등). 얼굴 정보가 아직 남아 있습니다.
+          {/* [5-2 검수 L6] 원인을 '퇴사 처리 때'로 단정하지 않는다 — 그 전 동의 철회 때 실패해 남은 것일 수도 있다 */}
+          ⚠️ 이 직원의 등록 얼굴이 얼굴인증 서버에 아직 남아 있습니다(이전 삭제가 실패함 — 서버 응답 없음 등).
           <Link href="/biometrics" style={{ color: "var(--primary)", marginLeft: 4 }}>[생체정보] 화면에서 다시 파기하기 →</Link>
         </div>
       )}
