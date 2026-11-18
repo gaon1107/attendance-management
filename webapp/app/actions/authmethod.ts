@@ -123,8 +123,9 @@ export async function withdrawBiometric(): Promise<void> {
 }
 
 // 관리자 파기 — 특정 직원의 생체정보 동의를 파기(철회)한다. 반드시 내 회사 소속만(회사 격리).
-// 재직자: 로컬 사진 + 얼굴서버(GaonFR) 원본까지 삭제한다.
-// 퇴사자: 얼굴서버 원본만 삭제하고 출퇴근 사진은 남긴다(아래 C1 주석 — 퇴사 처리 때와 같은 규칙).
+// 동의가 있는 재직자: 동의 철회 → 로컬 사진 + 얼굴서버(GaonFR) 원본까지 삭제한다.
+// 퇴사자·동의가 이미 없는 '얼굴 남음': 얼굴서버 원본만 삭제하고 출퇴근 사진은 남긴다(아래 C1 주석).
+// 폼 값 photos="purge"는 관리자가 확인창에서 "사진도 지운다"를 보고 동의했다는 표시다(BiometricsList.tsx).
 export async function adminRevokeBiometric(formData: FormData): Promise<void> {
   const me = await getCurrentUser();
   if (!me || me.role !== "admin") return;
@@ -136,6 +137,10 @@ export async function adminRevokeBiometric(formData: FormData): Promise<void> {
   //  단, 동의는 없는데 얼굴서버 등록이 남은 "고아 상태"(이전 삭제 실패 등)면 원본 정리를 위해 계속 진행한다.
   if (!hadBiometric(target) && !wasEnrolled) return;
 
+  // 이 [파기]가 실제로 동의를 철회하는가 — 재직 중이고 동의가 있을 때만. (update 전에 판단해야 함)
+  const withdrawsConsent = target.deactivatedAt === null && target.faceConsentAt !== null;
+  const confirmedPurge = String(formData.get("photos") ?? "") === "purge";
+
   // 얼굴서버 원본을 먼저 지운다 — 실패하면 등록표시를 남겨 재시도 경로를 유지(chooseGps와 동일 규칙).
   const outcome = await unenrollFaceOutcome(target.id, target.companyId, { enrolled: wasEnrolled, history: hadBiometric(target) });
   const unenrolled = outcome !== "failed";
@@ -143,21 +148,38 @@ export async function adminRevokeBiometric(formData: FormData): Promise<void> {
     where: { id: target.id },
     data: { authMethod: "gps", faceConsentAt: null, ...(unenrolled ? { faceEnrolledAt: null, faceEnrollCount: 0 } : {}) },
   });
-  // 🔴 [5-2 검수 치명 C1, 2026-11-19] 퇴사자의 출퇴근 사진은 여기서 지우지 않는다.
-  //    퇴사 처리 때 정한 규칙(사진은 동의 내용대로 90일 보관 뒤 자동 삭제 — 근태 분쟁 대비, 2026-11-19 사장님 결정)과
-  //    같아야 한다. 예전엔 퇴사자의 '얼굴 남음'을 [파기]로 다시 지우면 사진까지 즉시 지워졌다.
-  //    재직자의 [파기]는 본인 철회와 같으므로 사진도 즉시 지운다(동의 화면 "철회 시 삭제" 약속).
-  const keepPhotos = target.deactivatedAt !== null;
-  const purged = keepPhotos ? true : await purgePhotosSafely(target.id);
+  // 🔴 [5-2 검수 치명 C1 + 재검수 중간 1·2, 2026-11-19] 출퇴근 사진은 "이 [파기]가 동의를 철회할 때"만 지운다.
+  //    · 퇴사자 사진은 동의 내용대로 90일 보관 뒤 자동 삭제(근태 분쟁 대비, 2026-11-19 사장님 결정) — 퇴사 처리 때와 같은 규칙.
+  //      예전엔 퇴사자의 '얼굴 남음'을 [파기]로 다시 지우면 사진까지 즉시 지워졌다.
+  //    · 동의가 이미 없는 '얼굴 남음'(예: 퇴사 때 얼굴서버 삭제 실패 → 복직)도 철회할 것이 없으므로 사진을 건드리지 않는다.
+  //      그 사진은 퇴사 때 90일 보관하기로 한 바로 그 사진일 수 있다. (본인 철회·GPS 전환은 그 순간 이미 사진을 지웠다.)
+  //    · 동의가 있는 재직자의 [파기]는 본인 철회와 같으므로 사진도 즉시 지운다(동의 화면 "철회 시 삭제" 약속).
+  //    · 세 가지가 **모두** 맞을 때만 지운다. 하나라도 어긋나면 남기는 쪽(되돌릴 수 없는 삭제를 피함):
+  //      ① 관리자가 확인창에서 본 범위가 "사진도 삭제"(photos=purge) — 오래 열어 둔 화면에서 그사이 상태가 바뀐 경우·화면 없는 직접 호출 대비
+  //      ② 처음 읽은 상태가 "동의 있는 재직자"
+  //      ③ 지우기 직전 다시 읽어도 재직 중 — 얼굴서버를 기다리는 사이(최대 15초) 다른 관리자가 퇴사 처리했을 수 있다
+  const fresh = await prisma.user.findFirst({ where: { id: target.id, companyId: me.companyId }, select: { deactivatedAt: true } });
+  const stillActive = fresh !== null && fresh.deactivatedAt === null;
+  const purgePhotos = confirmedPurge && withdrawsConsent && stillActive;
+  const purged = purgePhotos ? await purgePhotosSafely(target.id) : true;
+  // 사진을 남긴 이유(감사기록용) — 나중에 "왜 사진이 남았나"를 기록만으로 답할 수 있게
+  const keptReason = purgePhotos
+    ? ""
+    : target.deactivatedAt !== null || !stillActive
+      ? "퇴사자 — 출퇴근 사진은 90일 보관 뒤 자동 삭제"
+      : !withdrawsConsent
+        ? "동의 없음 — 남은 얼굴만 정리, 출퇴근 사진은 90일 보관"
+        : "확인한 범위와 달라 출퇴근 사진은 보관";
   // 감사로그 — 관리자가 "누구의" 생체정보를 파기했는지가 핵심이라 대상을 함께 남긴다.
   //  · 이름 스냅샷 + 계정 id 병기: 동명이인이 있어도 누구인지 특정되고, 계정이 지워져도 이름이 남는다
   //    (AccessEvent.actorName이 이름 스냅샷을 남기는 것과 같은 방식).
   //  · 회사 격리 검사를 통과한 뒤이므로 내 회사 직원임이 보장된다.
   //  · 로컬 사진·GaonFR 원본이 모두 지워져야 "성공"(원칙 ④: 사실대로).
-  //  · 퇴사자라 사진을 남긴 경우 그 사실도 함께 적는다(나중에 "왜 사진이 남았나"를 기록으로 답할 수 있게).
+  //  · 사진을 남긴 이유, 사진 삭제 실패도 함께 적는다(실패면 결과가 fail인데 이유가 없으면 기록만으로 알 수 없다 — 재검수 경미 2).
   const meta = withDetail(`admin_revoke:${target.name}`, [
     `계정 ${target.id}`,
-    keepPhotos ? "퇴사자 — 출퇴근 사진은 90일 보관 뒤 자동 삭제" : "",
+    keptReason,
+    purgePhotos && !purged ? "출퇴근 사진 삭제 실패" : "",
     unenrollAuditNote(outcome),
   ]);
   await logAdminAction(me, "purge", meta, purged && unenrolled ? "success" : "fail");

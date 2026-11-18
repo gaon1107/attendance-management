@@ -1,6 +1,7 @@
 "use client";
 // 생체정보(동의 현황) 목록 + 통합검색 — 이름·인증방식·동의여부로 즉시 필터. 파기 서버액션 유지.
 import { useMemo, useState } from "react";
+import { useFormStatus } from "react-dom";
 import { SearchBox } from "@/app/components/SearchBox";
 import { TablePagination } from "@/app/components/TablePagination";
 import { usePagination } from "@/app/components/usePagination";
@@ -10,8 +11,15 @@ import { adminRevokeBiometric } from "@/app/actions/authmethod";
 // deactivated = 퇴사자 / faceLeft = 동의는 없는데 등록 얼굴이 남음(얼굴서버 삭제 실패) — 둘 다 2026-11-19 M8
 export type BioRow = { id: string; name: string; employeeNo: string | null; initial: string; isAdmin: boolean; authLabel: string; hasAuth: boolean; consented: boolean; consentDateLabel: string; deactivated: boolean; faceLeft: boolean; search: string };
 
-// [5-2 검수 C1·L4] [파기]는 되돌릴 수 없으므로 누르기 전에 "무엇이 지워지는지"를 확인받는다.
-//  재직자와 퇴사자는 지우는 범위가 다르다(퇴사자는 출퇴근 사진을 90일 보관 — app/actions/authmethod.ts adminRevokeBiometric).
+// [5-2 검수 C1·L4 + 재검수 중간 1·2] [파기]는 되돌릴 수 없으므로 누르기 전에 "무엇이 지워지는지"를 확인받는다.
+//  지우는 범위는 세 갈래다(app/actions/authmethod.ts adminRevokeBiometric과 같은 기준):
+//   · 동의가 있는 재직자 → 동의 철회 + 등록 얼굴 + 출퇴근 사진 삭제
+//   · 퇴사자 / 동의가 이미 없는 '얼굴 남음' → 등록 얼굴만 삭제, 사진은 90일 보관 뒤 자동 삭제
+//  관리자가 본 범위를 폼 값(photos)으로 함께 보내, 서버는 그 값이 "purge"이고 서버 판단도 같을 때만 사진을 지운다.
+function revokePhotoScope(u: BioRow): "purge" | "keep" {
+  return !u.deactivated && u.consented ? "purge" : "keep";
+}
+
 function revokeConfirmText(u: BioRow): string {
   if (u.deactivated) {
     return (
@@ -21,11 +29,53 @@ function revokeConfirmText(u: BioRow): string {
       `지운 얼굴은 되돌릴 수 없습니다.`
     );
   }
+  if (!u.consented) {
+    return (
+      `${u.name} 님에게 남은 등록 얼굴을 지울까요?\n\n` +
+      `· 생체정보 동의는 이미 없습니다. 얼굴인증 서버에 남은 등록 얼굴만 지웁니다.\n` +
+      `· 출퇴근 촬영 사진은 지금 지우지 않고, 동의 내용대로 90일 뒤 자동 삭제됩니다.\n\n` +
+      `지운 얼굴은 되돌릴 수 없습니다.`
+    );
+  }
   return (
     `${u.name} 님의 생체정보를 파기할까요?\n\n` +
     `· 생체정보 동의가 철회되고 인증방식이 GPS로 바뀝니다.\n` +
     `· 얼굴인증 서버의 등록 얼굴과 보관 중인 출퇴근 촬영 사진을 지금 지웁니다.\n\n` +
     `지운 얼굴·사진은 되돌릴 수 없습니다. 다시 얼굴인증을 쓰려면 본인이 새로 동의·등록해야 합니다.`
+  );
+}
+
+// [파기] 폼 — 확인창을 폼의 action 함수 안에서 띄운다(재검수 경미 1).
+//  onSubmit에 두면 화면 스크립트가 붙기 전(느린 PC·첫 로딩)에 누를 때 확인창 없이 서버로 바로 전송된다.
+//  action 함수로 감싸면 React가 그 클릭을 붙잡아 두었다가 준비된 뒤 이 함수를 실행하므로 확인창이 반드시 뜬다.
+function RevokeForm({ u }: { u: BioRow }) {
+  return (
+    <form
+      action={async (fd: FormData) => {
+        if (!confirm(revokeConfirmText(u))) return;
+        await adminRevokeBiometric(fd);
+      }}
+      style={{ display: "inline" }}
+    >
+      <input type="hidden" name="userId" value={u.id} />
+      <input type="hidden" name="photos" value={revokePhotoScope(u)} />
+      <RevokeButton />
+    </form>
+  );
+}
+
+// 처리 중 표시(재검수 경미 3) — 얼굴서버를 기다리는 동안(최대 십수 초) 다시 누르지 않게
+function RevokeButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      aria-busy={pending}
+      style={{ height: 34, padding: "0 14px", border: "1px solid var(--danger)", borderRadius: 8, background: "#fff", color: "var(--danger)", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: pending ? "wait" : "pointer", opacity: pending ? 0.6 : 1 }}
+    >
+      {pending ? "처리 중…" : "파기"}
+    </button>
   );
 }
 
@@ -95,16 +145,7 @@ export function BiometricsList({ users }: { users: BioRow[] }) {
                     <td style={{ ...td, textAlign: "right" }}>
                       {/* 동의가 있거나, 동의는 없는데 얼굴이 남은 경우(삭제 재시도) 모두 [파기]를 보인다 — 서버 액션이 고아 상태도 처리한다 */}
                       {u.consented || u.faceLeft ? (
-                        <form
-                          action={adminRevokeBiometric}
-                          onSubmit={(e) => {
-                            if (!confirm(revokeConfirmText(u))) e.preventDefault();
-                          }}
-                          style={{ display: "inline" }}
-                        >
-                          <input type="hidden" name="userId" value={u.id} />
-                          <button type="submit" style={{ height: 34, padding: "0 14px", border: "1px solid var(--danger)", borderRadius: 8, background: "#fff", color: "var(--danger)", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>파기</button>
-                        </form>
+                        <RevokeForm u={u} />
                       ) : (
                         <span style={{ color: "#D1D5DB" }}>—</span>
                       )}
