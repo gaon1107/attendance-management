@@ -13,12 +13,12 @@
     "exceljs": "^4.4.0",
     "iconv-lite": "^0.7.3",
     "leaflet": "^1.9.4",
-    "next": "16.2.10",
+    "next": "16.4.6",
     "onnxruntime-node": "^1.27.0",
     "prisma": "^6.19.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -27,7 +27,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "16.4.6",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
