@@ -254,6 +254,8 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           openAttendanceCount={openAttendanceCount}
           openAttendanceDates={openAttendanceDates}
           workingNow={active && workingNowCount > 0}
+          hasBiometric={emp.authMethod === "face" || !!emp.faceConsentAt || !!emp.faceEnrolledAt}
+          faceLeft={!active && !!emp.faceEnrolledAt}
         />
       </div>
       </div>

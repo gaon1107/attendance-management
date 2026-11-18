@@ -7,7 +7,8 @@ import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
 import { adminRevokeBiometric } from "@/app/actions/authmethod";
 
-export type BioRow = { id: string; name: string; employeeNo: string | null; initial: string; isAdmin: boolean; authLabel: string; hasAuth: boolean; consented: boolean; consentDateLabel: string; search: string };
+// deactivated = 퇴사자 / faceLeft = 동의는 없는데 등록 얼굴이 남음(얼굴서버 삭제 실패) — 둘 다 2026-11-19 M8
+export type BioRow = { id: string; name: string; employeeNo: string | null; initial: string; isAdmin: boolean; authLabel: string; hasAuth: boolean; consented: boolean; consentDateLabel: string; deactivated: boolean; faceLeft: boolean; search: string };
 
 const th: React.CSSProperties = { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--text-sub)", padding: "11px 20px", whiteSpace: "nowrap" };
 const td: React.CSSProperties = { padding: "12px 20px", fontSize: 15, verticalAlign: "middle", whiteSpace: "nowrap" };
@@ -54,6 +55,9 @@ export function BiometricsList({ users }: { users: BioRow[] }) {
                           {u.name}
                           {u.isAdmin && <span style={{ fontSize: 12, color: "var(--text-sub)", fontWeight: 400 }}> (관리자)</span>}
                         </span>
+                        {u.deactivated && (
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#6B7280", background: "#F3F4F6", borderRadius: 6, padding: "2px 8px" }}>퇴사</span>
+                        )}
                       </div>
                     </td>
                     <td style={{ ...td, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums" }}>{u.employeeNo || "—"}</td>
@@ -63,12 +67,15 @@ export function BiometricsList({ users }: { users: BioRow[] }) {
                         <span style={{ color: "#15803D", fontWeight: 700 }}>
                           동의함 <span style={{ color: "var(--text-sub)", fontWeight: 400, fontVariantNumeric: "tabular-nums" }}>({u.consentDateLabel})</span>
                         </span>
+                      ) : u.faceLeft ? (
+                        <span style={{ color: "var(--danger)", fontWeight: 700 }}>얼굴 남음 — 파기 필요</span>
                       ) : (
                         <span style={{ color: "#9CA3AF" }}>동의 안 함</span>
                       )}
                     </td>
                     <td style={{ ...td, textAlign: "right" }}>
-                      {u.consented ? (
+                      {/* 동의가 있거나, 동의는 없는데 얼굴이 남은 경우(삭제 재시도) 모두 [파기]를 보인다 — 서버 액션이 고아 상태도 처리한다 */}
+                      {u.consented || u.faceLeft ? (
                         <form action={adminRevokeBiometric} style={{ display: "inline" }}>
                           <input type="hidden" name="userId" value={u.id} />
                           <button type="submit" style={{ height: 34, padding: "0 14px", border: "1px solid var(--danger)", borderRadius: 8, background: "#fff", color: "var(--danger)", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>파기</button>

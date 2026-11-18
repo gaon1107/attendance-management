@@ -1,6 +1,7 @@
 // 생체정보 동의·파기 관리(관리자) — 직원별 얼굴(생체정보) 동의 현황 + 파기(철회) + 통합검색. (리뉴얼 디자인)
 // 법적 가드레일: 생체정보는 민감정보. 관리자가 동의 현황을 파악하고, 퇴사 등 시 파기할 수 있어야 한다.
-// ※ 실제 얼굴 원본 데이터 삭제는 얼굴서버(GaonFR) 연동(2phase) 시점에 수행된다. 지금은 동의 상태를 관리한다.
+// [파기]는 얼굴서버(GaonFR) 등록 얼굴 + 보관 중인 출퇴근 사진까지 지운다(app/actions/authmethod.ts adminRevokeBiometric).
+// [M8, 2026-11-19] 퇴사 처리하면 등록 얼굴이 자동 파기된다. 얼굴서버 삭제가 실패하면 '얼굴 남음'으로 보이고 [파기]로 다시 시도한다.
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
@@ -36,10 +37,16 @@ export default async function BiometricsPage() {
   const rows: BioRow[] = users.map((u) => {
     const authLabel = u.authMethod === "face" ? "얼굴인증" : u.authMethod === "gps" ? "GPS" : "미설정";
     const consented = !!u.faceConsentAt;
+    const deactivated = !!u.deactivatedAt;
+    // 동의는 없는데 등록 얼굴이 남은 상태(퇴사·철회 때 얼굴서버 삭제 실패) — 다시 파기해야 하므로 눈에 띄게 표시
+    const faceLeft = !consented && !!u.faceEnrolledAt;
     return {
       id: u.id, name: u.name, employeeNo: u.employeeNo, initial: u.name.slice(0, 1), isAdmin: u.role === "admin",
       authLabel, hasAuth: !!u.authMethod, consented, consentDateLabel: u.faceConsentAt ? ymd(u.faceConsentAt) : "",
-      search: [u.name, u.employeeNo ?? "", authLabel, consented ? "동의함" : "동의 안 함"].join(" ").toLowerCase(),
+      deactivated, faceLeft,
+      search: [u.name, u.employeeNo ?? "", authLabel, consented ? "동의함" : "동의 안 함", deactivated ? "퇴사" : "", faceLeft ? "얼굴 남음 파기 필요" : ""]
+        .join(" ")
+        .toLowerCase(),
     };
   });
 
@@ -47,8 +54,8 @@ export default async function BiometricsPage() {
     <AppShell user={me} active="biometrics" title="생체정보 관리" subtitle={me.company.name}>
       {/* 법적 안내 */}
       <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "14px 16px", marginBottom: 16, fontSize: 13, color: "#1E40AF", lineHeight: 1.6 }}>
-        얼굴 정보는 <b>민감정보(생체정보)</b>입니다. 직원 동의 현황을 확인하고, 퇴사·요청 시 <b>파기</b>할 수 있습니다.
-        얼굴 원본 데이터의 실제 삭제는 얼굴인증 서버 연동(준비 중) 시점에 함께 수행됩니다.
+        얼굴 정보는 <b>민감정보(생체정보)</b>입니다. 직원 동의 현황을 확인하고, 요청 시 <b>파기</b>할 수 있습니다.
+        직원을 <b>퇴사 처리하면 등록된 얼굴은 자동으로 파기</b>됩니다. <b>&lsquo;얼굴 남음&rsquo;</b>이 보이면 얼굴인증 서버 삭제가 실패한 것이니 [파기]로 다시 지워 주세요.
       </div>
 
       <div className="kpi-grid-3" style={{ marginBottom: 16 }}>
@@ -66,7 +73,8 @@ export default async function BiometricsPage() {
       <BiometricsList users={rows} />
 
       <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 12, lineHeight: 1.6 }}>
-        [파기]를 누르면 해당 직원의 생체정보 동의가 철회되고 인증방식이 GPS로 전환됩니다.
+        [파기]를 누르면 해당 직원의 생체정보 동의가 철회되고, 얼굴인증 서버에 등록된 얼굴과 보관 중인 출퇴근 사진이 삭제되며, 인증방식이 GPS로 전환됩니다.
+        퇴사 처리 때의 자동 파기는 등록 얼굴만 지우고, 출퇴근 사진은 동의 내용대로 90일 뒤 자동 삭제됩니다.
         직원 본인도 [인증방식] 화면에서 언제든 동의를 철회할 수 있습니다.
       </div>
     </AppShell>

@@ -2,6 +2,7 @@
 // 직원 퇴사(비활성화)/복직 버튼 — 관리자만. 실수 방지를 위해 확인창을 띄운다.
 // 퇴사해도 과거 근태 기록은 리포트에 그대로 남고, 언제든 복직할 수 있다.
 import { useActionState } from "react";
+import Link from "next/link";
 import { deactivateEmployee, reactivateEmployee } from "@/app/actions/employees";
 
 export function EmployeeStatusActions({
@@ -11,6 +12,8 @@ export function EmployeeStatusActions({
   openAttendanceCount = 0,
   openAttendanceDates = [],
   workingNow = false,
+  hasBiometric = false,
+  faceLeft = false,
 }: {
   id: string;
   name: string;
@@ -18,6 +21,10 @@ export function EmployeeStatusActions({
   openAttendanceCount?: number;
   openAttendanceDates?: string[];
   workingNow?: boolean;
+  // [M8] 얼굴인증 동의·등록이 있는 직원 — 퇴사 확인창에 "얼굴 정보도 파기됨"을 알린다
+  hasBiometric?: boolean;
+  // [M8] 퇴사했는데 얼굴서버 삭제가 실패해 등록 얼굴이 남은 상태 — [생체정보]에서 다시 파기하도록 안내
+  faceLeft?: boolean;
 }) {
   // 퇴사 처리는 실패할 수 있다(마지막 관리자·회사 계정). 그 이유를 화면에 띄운다 — 검수 2차 5.
   const [state, formAction] = useActionState<{ error?: string; ok?: boolean }, FormData>(deactivateEmployee, {});
@@ -37,6 +44,11 @@ export function EmployeeStatusActions({
     ? `\n\n⚠️ 이 직원은 지금 출근 상태입니다(퇴근 전).\n지금 퇴사 처리하면 오늘 퇴근을 찍을 수 없어 오늘 기록이 '미퇴근'으로 굳습니다.\n퇴근을 찍은 뒤에 처리하시는 것을 권합니다.`
     : "";
 
+  // [M8] 퇴사 = 생체정보 이용 목적 종료 → 등록 얼굴을 지체 없이 파기한다(동의 화면 약속). 관리자가 미리 알 수 있게.
+  const biometricNotice = hasBiometric
+    ? `\n\n얼굴인증을 쓰던 직원이라 등록된 얼굴 정보도 함께 파기됩니다.\n(출퇴근 촬영 사진은 동의 내용대로 90일 뒤 자동 삭제됩니다. 복직하면 본인이 다시 동의·등록해야 합니다.)`
+    : "";
+
   // 이미 퇴사한 사람의 미퇴근 기록 — 고칠 수 있는 유일한 길(복직 → 본인 정정 → 재퇴사)을 알려준다.
   //  이 안내가 없으면 관리자는 방법이 없다고 생각하고 법정 기록을 그대로 둔다(검수 중간 3).
   const inactiveNotice = openAttendanceCount > 0 && (
@@ -54,7 +66,7 @@ export function EmployeeStatusActions({
       <form
         action={formAction}
         onSubmit={(e) => {
-          if (!confirm(`${name} 님을 퇴사 처리할까요?\n\n로그인이 막히고 직원 목록에서 내려갑니다.\n과거 근태 기록은 리포트에 그대로 보존되며, 나중에 복직할 수 있습니다.${workingWarning}${openWarning}`)) {
+          if (!confirm(`${name} 님을 퇴사 처리할까요?\n\n로그인이 막히고 직원 목록에서 내려갑니다.\n과거 근태 기록은 리포트에 그대로 보존되며, 나중에 복직할 수 있습니다.${workingWarning}${openWarning}${biometricNotice}`)) {
             e.preventDefault();
           }
         }}
@@ -97,6 +109,12 @@ export function EmployeeStatusActions({
       }}
     >
       {inactiveNotice}
+      {faceLeft && (
+        <div style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700, marginBottom: 12, wordBreak: "keep-all", lineHeight: 1.6 }}>
+          ⚠️ 퇴사 처리 때 얼굴인증 서버에서 등록 얼굴을 지우지 못했습니다(서버 응답 없음 등). 얼굴 정보가 아직 남아 있습니다.
+          <Link href="/biometrics" style={{ color: "var(--primary)", marginLeft: 4 }}>[생체정보] 화면에서 다시 파기하기 →</Link>
+        </div>
+      )}
       <input type="hidden" name="id" value={id} />
       <button
         type="submit"

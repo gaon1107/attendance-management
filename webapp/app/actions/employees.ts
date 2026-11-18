@@ -11,6 +11,7 @@ import { parseProfile, employeeNoTaken } from "@/lib/employee-profile";
 import { canDeactivate, canManageAccount } from "@/lib/owner-rules";
 import { logAdminAction } from "@/lib/audit";
 import { openSessionSince } from "@/lib/worktime";
+import { unenrollFaceSafely } from "@/lib/face-purge";
 
 // 반환값에 tempPassword가 실린다 — 관리자가 직원에게 전달해야 하는 값이라 **한 번은 보여줘야** 한다.
 // (평문이 남는 곳은 이 응답뿐이다. DB에는 해시만 저장된다.)
@@ -229,6 +230,14 @@ export async function deactivateEmployee(
     const openBase = { userId: rule.target.id, companyId: me.companyId, clockOut: null } as const;
     const staleAtt = await tx.attendance.count({ where: { ...openBase, clockIn: { lt: since } } });
     const workingAtt = await tx.attendance.count({ where: { ...openBase, clockIn: { gte: since } } });
+    // [M8] 생체정보 파기에 필요한 사실은 여기서(퇴사 직전 상태로) 읽어 두고, 파기 자체는 트랜잭션 **밖**에서 한다.
+    //   얼굴서버 호출(최대 10초)을 트랜잭션 안에 두면 그동안 DB 쓰기 잠금을 붙잡아 직원들의 출퇴근 기록이 밀린다.
+    const bio = {
+      userId: rule.target.id,
+      name: target?.name ?? "",
+      wasEnrolled: !!target?.faceEnrolledAt,
+      had: target?.authMethod === "face" || !!target?.faceConsentAt,
+    };
     return {
       ok: true,
       headOf: headDepts.map((d) => d.name),
@@ -236,6 +245,7 @@ export async function deactivateEmployee(
       skipped: skipped.count,
       staleAtt,
       workingAtt,
+      bio,
     };
   });
 
@@ -251,12 +261,46 @@ export async function deactivateEmployee(
           `미퇴근기록:${result.staleAtt}건, 출근중마감안됨:${result.workingAtt}건)`
       );
     }
+    // 🔴 [M8, 2026-11-19 운영 준비 5단계] 퇴사 = 생체정보 이용 목적 종료 → 얼굴을 지체 없이 파기한다.
+    //    동의 화면이 직원에게 "퇴사 시 지체 없이 파기합니다"라고 약속한다(app/consent/page.tsx). 예전엔 얼굴서버에 그대로 남았다.
+    if (result.bio.had || result.bio.wasEnrolled) await purgeBiometricOnDeactivate(me, result.bio);
   }
 
   revalidatePath(`/employees/${id}`);
   revalidatePath("/employees");
+  revalidatePath("/biometrics");
   // 화면에는 성공/실패만 돌려준다 — 부서명·건수 같은 내부 정보가 클라이언트 상태로 직렬화되지 않게(검수 경미 15).
   return "ok" in result && result.ok ? { ok: true } : result;
+}
+
+// [M8] 퇴사 처리 뒤 생체정보 파기 — deactivateEmployee 전용(퇴사 트랜잭션이 끝난 뒤 부른다).
+//  · 얼굴서버 원본을 먼저 지우고, **삭제가 확인될 때만** 등록 표시(faceEnrolledAt)를 지운다(lib/face-purge.ts 규칙).
+//    실패하면 표시가 남아 [생체정보] 화면에 '얼굴 남음'으로 보이고, 관리자가 [파기]로 다시 시도할 수 있다.
+//  · 동의는 항상 해제하고 인증방식은 GPS로 — 퇴사로 목적이 끝났으므로. 복직하면 본인이 다시 동의·등록해야 한다.
+//  · 출퇴근 사진은 지우지 않는다 — 동의 화면 약속대로 90일 뒤 자동 삭제(근태 분쟁 대비, 2026-11-19 사장님 결정).
+//  · 퇴사 자체는 이미 끝났으므로 여기서 무엇이 실패해도 퇴사를 되돌리거나 오류를 내지 않는다. 결과는 감사기록에 사실대로.
+async function purgeBiometricOnDeactivate(
+  me: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>,
+  bio: { userId: string; name: string; wasEnrolled: boolean }
+): Promise<void> {
+  const unenrolled = await unenrollFaceSafely(bio.userId, me.companyId, bio.wasEnrolled);
+  let saved = false;
+  try {
+    // updateMany + companyId — 회사 격리를 쿼리 조건으로도 한 번 더 건다(퇴사 트랜잭션에서 이미 확인한 대상이지만).
+    await prisma.user.updateMany({
+      where: { id: bio.userId, companyId: me.companyId },
+      data: { authMethod: "gps", faceConsentAt: null, ...(unenrolled ? { faceEnrolledAt: null, faceEnrollCount: 0 } : {}) },
+    });
+    saved = true;
+  } catch (e) {
+    console.error("[employees] 퇴사자 생체정보 상태 저장 실패:", e);
+  }
+  await logAdminAction(
+    me,
+    "purge",
+    `deactivate_biometric:${bio.name} (계정 ${bio.userId})${unenrolled ? "" : " — 얼굴서버 삭제 실패, [생체정보]에서 재시도 필요"}`,
+    unenrolled && saved ? "success" : "fail"
+  );
 }
 
 // 복직(재활성화) — 관리자만. 다시 로그인 가능하게 하고 로그인 잠금도 초기화한다.
