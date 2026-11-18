@@ -14,6 +14,12 @@ const BASE_URL = (process.env.FACE_API_BASE_URL || "").replace(/\/+$/, "");
 const CLIENT_ID = process.env.FACE_CLIENT_ID || "";
 const CLIENT_SECRET = process.env.FACE_CLIENT_SECRET || "";
 const LICENSE_KEY = process.env.FACE_LICENSE_KEY || "";
+// 🔒 보안검수 M9: 얼굴서버와는 암호화 연결(https)로만 통신한다. 주소를 `http://`로 잘못 적으면
+//    얼굴 사진 원본과 CLIENT_SECRET이 평문으로 오가므로, 그 경우 얼굴 기능 전체를 "설정 없음"으로 막는다.
+const BASE_URL_SECURE = BASE_URL.startsWith("https://");
+if (BASE_URL && !BASE_URL_SECURE) {
+  console.error("[face] FACE_API_BASE_URL이 https://로 시작하지 않아 얼굴 기능을 막았습니다. 주소를 확인하세요.");
+}
 
 // 토큰 메모리 캐시(수명보다 살짝 짧게 잡아 만료 직전 재발급)
 let clientToken: { value: string; at: number } | null = null;
@@ -25,6 +31,7 @@ function assertConfigured(): void {
   if (!BASE_URL || !CLIENT_ID || !CLIENT_SECRET || !LICENSE_KEY) {
     throw new Error("얼굴서버 설정(.env FACE_*)이 없습니다.");
   }
+  if (!BASE_URL_SECURE) throw new Error("얼굴서버 주소가 https가 아닙니다(M9).");
 }
 
 // [1단계] 로그인 → ClientToken(응답 헤더)
@@ -316,5 +323,5 @@ export async function detectFaces(imageBuffer: Buffer): Promise<DetectResult> {
 
 // 연결 확인용(설정 여부) — 화면에서 "준비됨"을 판단할 때 사용
 export function isFaceConfigured(): boolean {
-  return !!(BASE_URL && CLIENT_ID && CLIENT_SECRET && LICENSE_KEY);
+  return !!(BASE_URL && BASE_URL_SECURE && CLIENT_ID && CLIENT_SECRET && LICENSE_KEY);
 }
