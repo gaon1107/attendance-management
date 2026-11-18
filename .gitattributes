@@ -5,3 +5,5 @@ Dockerfile text eol=lf
 docker-compose*.yml text eol=lf
 .dockerignore text eol=lf
 *.env.production.example text eol=lf
+# 서버 E nginx 설정(2026-11-18 운영 준비 4단계) — 이 파일을 서버로 그대로 복사한다
+deploy/server/nginx/*.conf text eol=lf

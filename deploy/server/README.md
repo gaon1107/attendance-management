@@ -17,15 +17,17 @@
 
 LMS(`/opt/newgaon-LMS`, `lms-*` 상자)·홈페이지 등 **다른 서비스의 파일·상자·설정은 건드리지 않는다.**
 
-## 처음 설치 (4단계 — 한 번만)
+## 처음 설치 (4단계 — 한 번만) — ✅ 2026-11-18 서버 E 설치 완료(기록: `plan-운영준비-4단계.md` "실행 결과")
 
 ```bash
 # 1) 데이터·백업 폴더 (상자는 uid 10001로 돈다. 다른 계정은 읽지 못하게 700)
 mkdir -p /data/attendance/db /data/attendance/storage/{clock-photos,company-docs,request-attachments} /data/attendance-backups
 chown -R 10001:10001 /data/attendance && chmod 700 /data/attendance /data/attendance-backups
 
-# 2) 코드 받기 — 비공개 저장소라 "읽기 전용 배포 열쇠"를 서버에 만들어 깃허브에 등록한 뒤 clone (4단계에서 안내)
-git clone git@github.com:gaon1107/attendance-management.git /opt/attendance
+# 2) 코드 받기 — 비공개 저장소라 "읽기 전용 배포 열쇠"를 서버에 만들어 깃허브 Deploy keys(Read-only)에 등록한 뒤 clone
+#    열쇠는 저장소 설정(core.sshCommand)으로만 지정한다 — 다른 서비스가 쓰는 /root/.ssh/config 는 건드리지 않는다
+ssh-keygen -q -t ed25519 -N '' -C 'attendance-deploy@gaon-main' -f /root/.ssh/attendance_deploy_key
+git clone -c core.sshCommand='ssh -i /root/.ssh/attendance_deploy_key -o IdentitiesOnly=yes' git@github.com:gaon1107/attendance-management.git /opt/attendance
 
 # 3) 묶음 설정값 — 데이터 폴더를 지정한다(빠지면 상자가 아예 실행을 거부한다)
 echo 'ATT_DATA_DIR=/data/attendance' > /opt/attendance/.env
@@ -42,7 +44,50 @@ bash /opt/attendance/deploy/server/deploy.sh
 echo '30 3 * * * root bash /opt/attendance/deploy/server/backup-attendance.sh >> /var/log/attendance-backup.log 2>&1' > /etc/cron.d/attendance-backup
 ```
 
-이후 nginx 주소 연결·HTTPS·요청 수 제한·운영자 화면 접속 제한은 4단계 명령서로 한다(`docs/09_test/배포전_체크리스트.md` 3·6·8번).
+## nginx·HTTPS (2026-11-18 설치)
+
+| 항목 | 위치·값 |
+|---|---|
+| 설정 파일(원본) | 저장소 `deploy/server/nginx/attend.newgaon.com.conf` → 서버 `/etc/nginx/sites-available/attend.newgaon.com`(+ `sites-enabled` 링크) |
+| 인증서 | certbot webroot(`/var/www/certbot`), 2027-02-16 만료, 자동 갱신 뒤 `systemctl reload nginx`(renew_hook) |
+| 근태 전용 기록 | `/var/log/nginx/attend.access.log`, `/var/log/nginx/attend.error.log`(요청 수 제한에 걸린 줄 = `limiting requests`) |
+| 요청 수 제한 | 쓰기(POST 등) IP당 분당 60·순간 120 / PC 프로그램 4개 주소 분당 600 / 업로드 2곳 분당 30 / 화면 보기 IP당 초당 50·순간 500 / 운영자 화면 IP당 분당 300·전체 초당 30 |
+| 운영자 화면 문 비밀번호 | `/etc/nginx/attendance-operator.htpasswd`(root:www-data 640, SHA-512) — 아이디 `owner`(사장님)·`spare`(예비) |
+
+**설정을 고칠 때**: 저장소 파일을 고쳐 커밋 → 서버로 복사 → `nginx -t` 통과할 때만 `systemctl reload nginx`. 반영 전후로 다른 사이트(lms·gfkids·vending 등) 응답이 같은지 본다.
+⚠️ `app/api/agent/` 아래에 새 주소를 만들면 설정 파일의 PC 프로그램 정규식 목록에도 넣는다(빠지면 분당 60 제한에 걸린다).
+
+**문 비밀번호 관리** (해시는 반드시 `openssl passwd -6` — bcrypt는 nginx를 멈춰 LMS까지 느려진다)
+```bash
+H=/etc/nginx/attendance-operator.htpasswd
+cut -d: -f1 $H                                   # 아이디 목록
+P=$(python3 -c "import secrets;a='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';print(''.join(secrets.choice(a) for _ in range(20)))")
+sed -i '/^owner:/d' $H && printf 'owner:%s\n' "$(printf '%s' "$P" | openssl passwd -6 -stdin)" >> $H   # owner 값 새로 만들기
+echo "$P"; unset P                               # ← 새 값을 사장님이 바로 보관(채팅·문서에 적지 않는다)
+sed -i '/^spare:/d' $H                           # 한 사람만 끄기(지우기) — nginx 다시 읽기 필요 없음
+```
+
+## 운영자 계정 (앱 안 2번째 문)
+
+계정 도구는 상자 안에 있다. 목록·잠금 풀기·끄기는 그대로 쓴다.
+```bash
+docker exec attendance-app node scripts/create-operator.mjs --list
+docker exec attendance-app node scripts/create-operator.mjs --unlock "이메일"
+```
+🔴 **비밀번호가 들어가는 명령(새 계정·`--reset`)은 명령줄에 비밀번호를 적지 않는다**(서버 프로세스 목록·명령 기록에 남는다). 표준입력으로 넘긴다:
+```bash
+RUNNER='const a=require("fs").readFileSync(0,"utf8").split(String.fromCharCode(0)); a.pop(); process.argv=[process.argv[0],"/app/scripts/create-operator.mjs",...a]; import("/app/scripts/create-operator.mjs");'
+IFS= read -rs -p "Password: " P; echo
+printf '%s\0%s\0%s\0' "--reset" "이메일" "$P" | docker exec -i -e APP_BASE_URL=https://attend.newgaon.com attendance-app node -e "$RUNNER"; unset P
+# 새 계정이면: printf '%s\0%s\0%s\0' "이메일" "$P" "표시 이름" | ...(같은 뒤 명령)
+```
+
+## 외부 보관소(백업 서버 밖 보관)
+
+- 03:30 근태 백업(`/etc/cron.d/attendance-backup`) → 03:40 서버 공용 백업(`/root/gaon_daily_backup.sh`)이 **근태 최신 1쌍만** CLOUDV 저장소 `gaon-main-backup/attendance-backups/`에 올린다(30일 보관, 크기 대조).
+- 공용 백업의 `/data` 묶음에서는 `data/attendance`·`data/attendance-backups`를 뺐다(도는 중 DB 원본·14일치 중복 방지). 24시간 안 근태 백업이 없으면 공용 백업 기록에 오류로 남는다.
+- 기록: `/data/backup/backup.log`(공용) · `/var/log/attendance-backup.log`(근태). 공용 스크립트 수정 전 원본: `/root/gaon_daily_backup.sh.bak-20261118-attendance`.
+- ⚠️ `CLOCK_PHOTO_KEY`·`.env.production`은 **어떤 백업에도 없다** — 사장님이 따로 보관한 값으로 되살린다.
 
 ## 새 버전 반영
 
