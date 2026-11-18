@@ -1,0 +1,24 @@
+# Docker 상자에 넣지 않을 것 — 개발 PC의 비밀값·실데이터·임시 파일이 상자에 섞이면 안 된다.
+node_modules
+.next
+out
+build
+# 비밀값(운영 값은 상자 밖 .env.production으로만 넘긴다)
+.env
+.env.*
+!.env.production.example
+# 개발 DB·업로드 실데이터(얼굴 사진 포함)
+prisma/*.db
+prisma/*.db-journal
+prisma/*.db.bak-*
+storage
+tmp-inputs
+*.log
+npm-debug.log*
+tsconfig.tsbuildinfo
+mkhero2.js
+.git
+.vscode
+.idea
+.DS_Store
+Thumbs.db

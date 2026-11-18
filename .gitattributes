@@ -1,0 +1,7 @@
+# 리눅스 서버에서 실행되는 파일은 줄바꿈을 항상 LF로 저장한다(2026-11-18 운영 준비).
+# 윈도우식 줄바꿈(CRLF)이 섞이면 서버에서 셸 스크립트가 "bad interpreter" 오류로 돌지 않는다.
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker-compose*.yml text eol=lf
+.dockerignore text eol=lf
+*.env.production.example text eol=lf
