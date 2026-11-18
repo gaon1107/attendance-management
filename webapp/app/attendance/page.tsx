@@ -8,6 +8,7 @@ import { workedMinutes, formatMinutes, openSessionSince } from "@/lib/worktime";
 import { workModeLabel, locationStatusLabel } from "@/lib/location";
 import { clockOutText } from "@/lib/labels";
 import { PHOTO_CONSENT_SINCE } from "@/lib/clock-photo";
+import { isFaceConfigured } from "@/lib/face";
 import { parseOutingReasons } from "@/lib/outing-reasons";
 import { ClockInPanel } from "./ClockInPanel";
 import { FaceClockPanel } from "./FaceClockPanel";
@@ -74,7 +75,12 @@ export default async function AttendancePage() {
   const working = Boolean(open);
   const onBreak = Boolean(openBreak);
   // 얼굴인증 직원(얼굴 선택 + 등록 완료) → 얼굴로 출퇴근. 그 외는 기존 방식 그대로.
-  const faceUser = me.authMethod === "face" && Boolean(me.faceEnrolledAt);
+  //  · 얼굴 칸 안에 "얼굴 없이 일반 방식으로" 버튼이 항상 있다(FaceClockPanel — 강제 금지 원칙).
+  //  · [5단계 ①, 2026-11-19] 얼굴서버 설정 자체가 없으면(키 미설정·https 아님) 얼굴 칸을 먼저 보여 줘 봐야
+  //    매번 실패한 뒤에야 일반 방식으로 넘어가므로, 처음부터 일반 방식 칸을 보여 준다.
+  const faceEnrolledUser = me.authMethod === "face" && Boolean(me.faceEnrolledAt);
+  const faceUnavailable = faceEnrolledUser && !isFaceConfigured();
+  const faceUser = faceEnrolledUser && !faceUnavailable;
   // 사진 보관 문구(2026-07-11)보다 먼저 동의한 얼굴인증 직원 — 재동의 전까지 사진이 저장되지 않으므로 안내 배너
   const needReconsent = me.authMethod === "face" && !!me.faceConsentAt && me.faceConsentAt < PHOTO_CONSENT_SINCE;
   // 회사 설정 1회 조회 — ①얼굴 크기 가이드(타원) 기준 ②외출 사유 목록(B-6).
@@ -205,6 +211,11 @@ export default async function AttendancePage() {
           </div>
         )}
 
+        {faceUnavailable && (
+          <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 10, lineHeight: 1.6, wordBreak: "keep-all" }}>
+            지금은 얼굴인증을 쓸 수 없어 일반 방식으로 출퇴근합니다.
+          </div>
+        )}
         {!working && (faceUser ? <FaceClockPanel action="in" minPercent={faceMinPercent} /> : <ClockInPanel />)}
 
         {working && !onBreak && (
