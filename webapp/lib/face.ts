@@ -10,6 +10,8 @@
 // 데이터 규칙(우리 제품): FaceId = 직원 id, Group = 회사 id(companyId) → 회사별 격리.
 //   얼굴 원본/특징값은 얼굴서버에만 저장. 우리 DB엔 "등록했다"는 표시만 남긴다.
 
+import sharp from "sharp";
+
 const BASE_URL = (process.env.FACE_API_BASE_URL || "").replace(/\/+$/, "");
 const CLIENT_ID = process.env.FACE_CLIENT_ID || "";
 const CLIENT_SECRET = process.env.FACE_CLIENT_SECRET || "";
@@ -101,12 +103,71 @@ type FaceResult = {
   success: boolean;
   message?: string;
   faceId?: string;
-  // 등록 시 서버가 실제로 인식한 얼굴 위치(보낸 사진 좌표계) — 화면에 검출 영역을 그릴 때 사용
+  // 등록 시 서버가 실제로 인식한 얼굴 위치(원래 사진 좌표계 — 세로 사진 여백은 되돌려 둠) — 화면에 검출 영역을 그릴 때 사용
   faceRect?: FaceRect;
   imageSize?: { width: number; height: number };
   // 삭제 시 얼굴서버가 실제로 지운 얼굴 수(0 = 지울 얼굴이 없었음) — unenrollFace만 채운다(5-2 검수 M2)
   deletedCount?: number;
 };
+
+// [세로 사진 좌우 여백] 2026-11-19 휴대폰 실시험에서 발견:
+//   얼굴서버(GaonFR)는 얼굴 폭이 사진 폭의 약 60%를 넘으면 "얼굴 없음"으로 답한다(운영 실측: 56% 성공, 65%↑ 실패).
+//   휴대폰 앞카메라는 세로 사진(720×1280)이라 폭이 좁아, 편하게 들고 찍어도 얼굴이 폭의 55~85%가 되어 실패가 반복됐다.
+//   → 얼굴서버에 보내기 직전에만 좌우에 회색 여백을 붙여 가로:세로 = 4:3로 만든다(얼굴 픽셀은 그대로, 사진 폭만 넓어짐).
+//   운영 실측: 얼굴 65·75·85% 사진 모두 여백 없이 실패 → 여백 붙이면 본인 일치(유사도 88). 원본+여백도 본인 일치(86).
+//   · 가로 사진(노트북 640×480 등, 폭 ≥ 높이×4/3)은 손대지 않는다 = 기존 동작 그대로.
+//   · 응답의 얼굴 위치·사진 크기는 **원래 사진 기준으로 되돌려** 돌려준다 — 크기 검사·위조 판독·등록 화면 표시는 원본 사진을 쓰기 때문.
+//   · 여백 처리가 실패하면 원본을 그대로 보낸다(예전 동작 — 얼굴 기능을 막지 않음).
+type Size = { width: number; height: number };
+type Padded = { buffer: Buffer; offsetX: number; original: Size | null; sent: Size | null };
+
+// 여백 처리 대상 최대 픽셀 수 — 휴대폰 카메라 캡처(720×1280, 1080×1920)는 충분히 들어간다.
+//   용량은 작은데 픽셀만 거대한 사진(단색 PNG 등)으로 서버 자원을 낭비시키는 것 방지(검수 중간 2). 넘으면 예전처럼 원본 그대로.
+const PAD_MAX_PIXELS = 4_000_000;
+
+async function padForFaceServer(imageBuffer: Buffer): Promise<Padded> {
+  const asIs: Padded = { buffer: imageBuffer, offsetX: 0, original: null, sent: null };
+  try {
+    const meta = await sharp(imageBuffer).metadata();
+    const w = meta.width, h = meta.height;
+    if (!w || !h || w * h > PAD_MAX_PIXELS) return asIs;
+    const targetW = Math.ceil((h * 4) / 3);
+    if (targetW <= w) return asIs; // 가로 사진 — 그대로
+    const left = Math.floor((targetW - w) / 2);
+    // 회전(EXIF)은 적용하지 않는다 — 위조 판독(lib/liveness.ts)도 원본을 회전 없이 읽으므로 좌표계를 같게 유지.
+    const buffer = await sharp(imageBuffer)
+      .extend({ left, right: targetW - w - left, top: 0, bottom: 0, background: { r: 128, g: 128, b: 128 } })
+      .jpeg({ quality: 90 })
+      .toBuffer();
+    return { buffer, offsetX: left, original: { width: w, height: h }, sent: { width: targetW, height: h } };
+  } catch (e) {
+    console.error("[face] 세로 사진 여백 처리 실패 — 원본 그대로 전송:", e);
+    return asIs;
+  }
+}
+
+// 여백을 붙여 보낸 사진의 얼굴 위치를 원래 사진 좌표로 되돌린다(여백 쪽으로 삐져나간 부분은 잘라냄).
+//   respSize = 얼굴서버가 알려준 사진 크기. 서버가 사진을 줄여서 처리했다면(보낸 크기와 다름) 그 비율로 먼저 환산한다(검수 중간 3).
+function unpadRect(rect: FaceRect, p: Padded, respSize?: Size): FaceRect {
+  if (!p.original || !p.sent) return rect;
+  const sx = respSize?.width ? p.sent.width / respSize.width : 1;
+  const sy = respSize?.height ? p.sent.height / respSize.height : 1;
+  const x1 = Math.max(0, Math.round(rect.x * sx - p.offsetX));
+  const x2 = Math.min(p.original.width, Math.round((rect.x + rect.width) * sx - p.offsetX));
+  return { x: x1, y: Math.round(rect.y * sy), width: Math.max(0, x2 - x1), height: Math.round(rect.height * sy) };
+}
+
+function unpadParsed(
+  parsed: { faceRect?: FaceRect; imageSize?: Size },
+  p: Padded
+): { faceRect?: FaceRect; imageSize?: Size } {
+  if (!p.original) return parsed;
+  return {
+    faceRect: parsed.faceRect ? unpadRect(parsed.faceRect, p, parsed.imageSize) : undefined,
+    // 크기 정보가 응답에 없었다면 그대로 없음으로 둔다(크기 검사는 "정보 없음 = 건너뜀" 규칙을 유지)
+    imageSize: parsed.imageSize ? { ...p.original } : undefined,
+  };
+}
 
 // 서버 응답(PascalCase)에서 얼굴 위치·이미지 크기를 안전하게 꺼낸다(없으면 undefined)
 function parseRect(body: unknown): { faceRect?: FaceRect; imageSize?: { width: number; height: number } } {
@@ -128,9 +189,10 @@ function parseRect(body: unknown): { faceRect?: FaceRect; imageSize?: { width: n
 
 // [얼굴 등록] 사진 1장을 회사(Group) 안에 직원(FaceId)로 등록한다. (토큰 만료 시 1회 자동 재시도)
 export async function enrollFace(imageBuffer: Buffer, faceId: string, group: string): Promise<FaceResult> {
+  const padded = await padForFaceServer(imageBuffer);
   const doRequest = async (token: string) => {
     const form = new FormData();
-    form.append("Image", new Blob([new Uint8Array(imageBuffer)], { type: "image/jpeg" }), "face.jpg");
+    form.append("Image", new Blob([new Uint8Array(padded.buffer)], { type: "image/jpeg" }), "face.jpg");
     form.append("FaceId", String(faceId));
     form.append("Group", String(group));
     const res = await fetch(`${BASE_URL}/v1/face/enrollment/`, {
@@ -163,7 +225,7 @@ export async function enrollFace(imageBuffer: Buffer, faceId: string, group: str
     if (res.ok && !(typeof sc === "number" && sc >= 4000)) {
       const faces = (body as { Faces?: Array<{ FaceId?: string }> }).Faces;
       const enrolledId = Array.isArray(faces) && faces[0]?.FaceId ? faces[0].FaceId : String(faceId);
-      return { success: true, faceId: enrolledId, ...parseRect(body) };
+      return { success: true, faceId: enrolledId, ...unpadParsed(parseRect(body), padded) };
     }
     // [5-2 검수 L5] 얼굴서버의 원문 메시지는 영어라 직원 화면에 그대로 내보내지 않는다 — 원문은 서버 로그로만.
     const b = body as { StatusMessage?: string; Message?: string };
@@ -196,9 +258,10 @@ type RecognizeResult = {
 // [얼굴 인식] 사진 1장을 회사(Group) 안에서 "누구인지" 확인한다. (출퇴근 본인확인용)
 // 성공 = 얼굴 정확히 1개 + FaceId가 "Unknown"이 아님. 본인 여부(FaceId == 직원 id) 판단은 호출한 쪽에서 한다.
 export async function recognizeFace(imageBuffer: Buffer, group: string): Promise<RecognizeResult> {
+  const padded = await padForFaceServer(imageBuffer);
   const doRequest = async (token: string) => {
     const form = new FormData();
-    form.append("Image", new Blob([new Uint8Array(imageBuffer)], { type: "image/jpeg" }), "face.jpg");
+    form.append("Image", new Blob([new Uint8Array(padded.buffer)], { type: "image/jpeg" }), "face.jpg");
     form.append("Group", String(group));
     const res = await fetch(`${BASE_URL}/v1/face/recognize/`, {
       method: "POST",
@@ -238,7 +301,7 @@ export async function recognizeFace(imageBuffer: Buffer, group: string): Promise
     if (!face.FaceId || face.FaceId === "Unknown") {
       return { success: false, message: "등록된 얼굴과 일치하지 않습니다.", faceCount: 1 };
     }
-    return { success: true, faceId: String(face.FaceId), similarity: face.Similarity, faceCount: 1, ...parseRect(body) };
+    return { success: true, faceId: String(face.FaceId), similarity: face.Similarity, faceCount: 1, ...unpadParsed(parseRect(body), padded) };
   } catch (e) {
     // 통신 실패/시간 초과 — 영어 원문 대신 한국어 안내로 (자세한 원인은 서버 로그로)
     console.error("[face] recognize 요청 실패:", e);
@@ -306,9 +369,10 @@ type DetectResult = {
 // [얼굴 검출] 사진에서 얼굴 위치(들)만 찾는다. 누구인지 식별하지 않는다.
 // 용도: 등록 전 "얼굴 크기(비율)" 확인 — 작은 얼굴(멀리 든 사진 등)로 등록되는 것 방지.
 export async function detectFaces(imageBuffer: Buffer): Promise<DetectResult> {
+  const padded = await padForFaceServer(imageBuffer);
   const doRequest = async (token: string) => {
     const form = new FormData();
-    form.append("Image", new Blob([new Uint8Array(imageBuffer)], { type: "image/jpeg" }), "frame.jpg");
+    form.append("Image", new Blob([new Uint8Array(padded.buffer)], { type: "image/jpeg" }), "frame.jpg");
     const res = await fetch(`${BASE_URL}/v1/face/detect/`, {
       method: "POST",
       headers: { ApiToken: token },
@@ -338,17 +402,19 @@ export async function detectFaces(imageBuffer: Buffer): Promise<DetectResult> {
       ImageSize?: { Width?: number; Height?: number };
       Faces?: Array<{ FaceRect?: { X?: number; Y?: number; Width?: number; Height?: number } }>;
     };
+    const respSize =
+      typeof b.ImageSize?.Width === "number" && typeof b.ImageSize?.Height === "number"
+        ? { width: b.ImageSize.Width, height: b.ImageSize.Height }
+        : undefined;
     const faces: FaceRect[] = [];
     for (const f of b.Faces ?? []) {
       const r = f.FaceRect;
       if (r && [r.X, r.Y, r.Width, r.Height].every((v) => typeof v === "number")) {
-        faces.push({ x: r.X!, y: r.Y!, width: r.Width!, height: r.Height! });
+        faces.push(unpadRect({ x: r.X!, y: r.Y!, width: r.Width!, height: r.Height! }, padded, respSize));
       }
     }
-    const imageSize =
-      typeof b.ImageSize?.Width === "number" && typeof b.ImageSize?.Height === "number"
-        ? { width: b.ImageSize.Width, height: b.ImageSize.Height }
-        : undefined;
+    // 여백을 붙여 보냈다면 크기도 원래 사진 기준으로 돌려준다(얼굴 위치가 원래 사진 좌표이므로)
+    const imageSize = respSize && padded.original ? { ...padded.original } : respSize;
     return { success: true, faces, imageSize };
   } catch (e) {
     console.error("[face] detect 요청 실패:", e);

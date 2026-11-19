@@ -18,7 +18,7 @@ type ActionResult = {
   ok: boolean;
   message: string;
   count?: number;
-  // 등록 시 서버가 인식한 얼굴 위치(보낸 사진 좌표계) — 화면에 검출 영역 표시용
+  // 등록 시 서버가 인식한 얼굴 위치(원래 사진 좌표계 — lib/face.ts가 세로 사진 여백을 되돌려 줌) — 화면에 검출 영역 표시용
   faceRect?: { x: number; y: number; width: number; height: number };
   imageSize?: { width: number; height: number };
 };
