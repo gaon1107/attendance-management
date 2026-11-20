@@ -23,6 +23,7 @@ import {
 import { loadOffDays } from "@/lib/holiday-server";
 import { toISODate } from "@/lib/period";
 import { dayBreakdown } from "@/lib/report-days";
+import { loadAwayDays, awayOf } from "@/lib/away-server";
 
 // 과거를 얼마나 거슬러 세는가. 전 기간을 훑으면 기록이 쌓인 회사에서 저장 버튼이 느려진다.
 export const SCAN_DAYS = 365;
@@ -174,6 +175,8 @@ async function countAbsences(
   if (users.length === 0) return 0;
 
   const ids = users.map((u) => u.id);
+  // 승인된 출장·재택일(결근에서 제외) — 리포트와 같은 단일 출처를 쓴다.
+  const awayAll = await loadAwayDays(companyId, start, end);
   const [attended, leaves] = await Promise.all([
     prisma.attendance.findMany({
       where: { companyId, userId: { in: ids }, clockIn: { gte: start, lt: end } },
@@ -201,6 +204,8 @@ async function countAbsences(
       shiftGroupId: u.shiftGroupId,
       attended: new Set((attByUser.get(u.id) ?? []).map((a) => toISODate(a.clockIn))),
       leaveDays: leaveDateSet(lvByUser.get(u.id) ?? []),
+      // 승인된 출장·재택일은 결근이 아니다 — 리포트와 **같은 기준**을 써야 경고 숫자가 실제 화면과 맞는다.
+      awayDays: awayOf(awayAll, u.id),
       hireDate: u.hireDate,
       deactivatedAt: u.deactivatedAt,
     });

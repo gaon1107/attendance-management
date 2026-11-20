@@ -19,12 +19,13 @@ import { loadOffDays } from "@/lib/holiday-server";
 import { leaveDateSet, leaveLabelByDate, leaveTypeLabel } from "@/lib/leave";
 import { loadShiftContext } from "@/lib/shift-server";
 import { dayBreakdown } from "@/lib/report-days";
+import { buildAwayDays, awayOf, AWAY_LABEL } from "@/lib/away-server";
 import { queryTerms, matchesTerms } from "@/lib/search";
 
 export type ReportDayRow = {
   date: string; // "YYYY-MM-DD"
-  kind: "work" | "leave" | "absent";
-  kindLabel: string; // "출근" | "휴가 · 연차" | "결근" | "결근 (출장 승인)" 등
+  kind: "work" | "leave" | "absent" | "away";
+  kindLabel: string; // "출근" | "휴가 · 연차" | "결근" | "결근 (조퇴 승인)" | "출장" | "재택근무" 등
   workMode: string;
   location: string;
   in: string; // "HH:MM"
@@ -147,8 +148,14 @@ export async function buildReportBlocks(opts: {
   //    승인된 조퇴가 있는 날에 다른 신청이 대기 중이라고 "결재 대기"로 적으면 확정 사실이 묻힌다(검수 4차 M-2).
   //  · 승인된 조퇴는 휴가일이 아니라 결근으로 남는다(무단결근을 숨기지 않기 위함) — 이유만 적어 준다.
   for (const l of leaves) if (l.type === "early_leave") addNote(l.userId, l.startDate, l.endDate, "조퇴 승인");
+  //  ⚠️ 2026-11-21부터 **승인된 출장·재택일은 결근이 아니다**(아래 awayAll). 그래서 이 두 줄의 사유는
+  //     "출근 기록도 없고 휴가도 아닌데 결근으로 남는 날"에만 실제로 쓰이게 된다 —
+  //     예) 휴가가 겹쳐 휴가로 처리된 날. 사유 자체는 지우지 않는다(법정 문서에 설명이 남는 편이 안전).
   for (const t of trips) addNote(t.userId, t.startDate, t.endDate, "출장 승인");
   for (const r of remotes) addNote(r.userId, r.startDate, r.endDate, "재택 승인");
+
+  // 승인된 출장·재택 날짜(직원별). 위에서 이미 읽은 행을 그대로 펼친다 — 다시 조회하지 않는다.
+  const awayAll = buildAwayDays(trips, remotes, start, end);
   // 종류를 그대로 적는다 — "조퇴 결재 대기"를 "휴가 결재 대기"로 적으면 종일 무단결근이 휴가처럼 보인다(검수 2차 M-5).
   for (const l of pendingLeaves) addNote(l.userId, l.startDate, l.endDate, `${leaveTypeLabel(l.type)} 결재 대기`);
 
@@ -208,11 +215,11 @@ export async function buildReportBlocks(opts: {
     const mine = leavesByUser.get(u.id) ?? [];
     const leaveSet = leaveDateSet(mine);
     const labelByDate = leaveLabelByDate(mine);
-    const { absent, onLeave, leaveAll } = dayBreakdown({
+    const { absent, onLeave, leaveAll, away } = dayBreakdown({
       start, absLimit,
       workDays: effectiveWorkDays(u.workDays, company?.workDays),
       offDays, shiftCtx, userId: u.id, shiftGroupId: u.shiftGroupId,
-      attended: u.attended, leaveDays: leaveSet,
+      attended: u.attended, leaveDays: leaveSet, awayDays: awayOf(awayAll, u.id),
       hireDate: u.hireDate, deactivatedAt: u.deactivatedAt,
     });
 
@@ -253,6 +260,12 @@ export async function buildReportBlocks(opts: {
     for (const iso of absent) {
       const note = noteByUserDate.get(`${u.id}|${iso}`);
       u.rows.push({ date: iso, kind: "absent", kindLabel: note ? `결근 (${note})` : "결근", ...blank });
+    }
+    // 승인된 출장·재택인데 출퇴근 기록이 없는 날 — 결근이 아니라 사실대로 '출장'/'재택근무'로 남긴다.
+    //  🔴 근무시간(worked)은 **0 그대로** 둔다. 기록이 없는 시간을 지어내지 않는다(lib/away-server.ts 머리말).
+    //     라벨에 그 사실을 적어 둬야 급여 담당자가 "0시간"을 보고 기록 누락으로 오해하지 않는다.
+    for (const a of away) {
+      u.rows.push({ date: a.date, kind: "away", kindLabel: `${AWAY_LABEL[a.kind]} (승인 · 출퇴근 미기록)`, ...blank });
     }
     // 날짜순. 같은 날이면 출근 줄이 먼저, 그 안에서는 **출근 시각 순서(입력 순서)를 유지**한다.
     //  ⚠️ 예전엔 `a.kind === "work" ? -1 : 1`로 비교했는데, 같은 날 출근 줄 두 개를 비교하면 양쪽 다 -1이라

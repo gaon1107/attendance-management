@@ -160,7 +160,7 @@ export default async function ReportPrintPage({
                     <td style={td}>{dowOf(r.date)}</td>
                     {/* 결근은 눈에 띄어야 한다(급여·노무에서 가장 먼저 확인하는 줄).
                         라벨이 길어질 수 있어(휴가 종류 나열·결근 사유) 이 칸만 줄바꿈을 허용한다 — 안 그러면 표가 종이 밖으로 밀린다. */}
-                    <td style={{ ...td, whiteSpace: "normal", wordBreak: "keep-all", minWidth: 92, fontWeight: r.kind === "work" ? 400 : 700, color: r.kind === "absent" ? "#b91c1c" : r.kind === "leave" ? "#1d4ed8" : "#111" }}>
+                    <td style={{ ...td, whiteSpace: "normal", wordBreak: "keep-all", minWidth: 92, fontWeight: r.kind === "work" ? 400 : 700, color: r.kind === "absent" ? "#b91c1c" : r.kind === "leave" ? "#1d4ed8" : r.kind === "away" ? "#15803D" : "#111" }}>
                       {r.kindLabel}
                     </td>
                     <td style={td}>{r.workMode}</td>

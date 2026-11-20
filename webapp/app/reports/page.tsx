@@ -12,6 +12,7 @@ import { effectiveWorkDays } from "@/lib/workdays";
 import { loadOffDays } from "@/lib/holiday-server";
 import { leaveDateSet } from "@/lib/leave";
 import { loadShiftContext } from "@/lib/shift-server";
+import { loadAwayDays, awayOf } from "@/lib/away-server";
 import { absentCount } from "@/lib/report-days";
 
 export default async function ReportsPage({
@@ -153,6 +154,9 @@ export default async function ReportsPage({
   //    이 숫자가 월 마감·급여 연동에 쓰이므로 틀리면 급여가 잘못 깎인다.
   //  ⚠️ 판정 규칙 자체는 lib/report-days.ts로 옮겼다(2026-08-03) — 엑셀·PDF가 같은 규칙을 쓰게 하기 위함.
   //     여기서 규칙을 다시 쓰지 말 것. 규칙을 바꾸려면 그 파일 하나만 고친다.
+  //  ⚠️ 승인된 출장·재택일은 결근에서 뺀다(2026-11-21). 엑셀·근로기록부와 **같은 함수**를 쓰므로
+  //     이 화면의 결근 숫자도 자동으로 같아진다 — 여기서 따로 계산하지 말 것.
+  const awayAll = await loadAwayDays(me.companyId, start, end);
   function absentCountFor(
     userId: string,
     userWorkDays: string | null,
@@ -165,7 +169,9 @@ export default async function ReportsPage({
     return absentCount({
       start, absLimit,
       workDays: effectiveWorkDays(userWorkDays, company?.workDays),
-      offDays, shiftCtx, userId, shiftGroupId, attended, leaveDays, hireDate, deactivatedAt,
+      offDays, shiftCtx, userId, shiftGroupId, attended, leaveDays,
+      awayDays: awayOf(awayAll, userId),
+      hireDate, deactivatedAt,
     });
   }
 
