@@ -11,11 +11,21 @@
 //    아래 24가 아니라 88인 이유: 개발 서버의 검은 "N" 표시가 오른쪽 맨 아래에 있어 겹친다(실서비스엔 없다).
 // ⚠️ z-index 20 — 폰에서 메뉴 서랍(z-index 55·60)이 열리면 **그 아래로 가려져야** 한다. 20을 올리지 말 것.
 import { useState } from "react";
+import Link from "next/link";
 import { Modal } from "./Modal";
 import { Icon } from "./Icon";
 import type { HelpEntry } from "@/lib/help-content";
 
-export function HelpFab({ entry, guideHref }: { entry: HelpEntry; guideHref: string | null }) {
+export function HelpFab({
+  entry,
+  guideHref,
+  guideLabel,
+}: {
+  entry: HelpEntry;
+  guideHref: string | null;
+  /** 어느 장으로 가는지(예: "03 직원 등록") — 누르기 전에 알 수 있게 작은 글씨로 보여 준다. */
+  guideLabel: string | null;
+}) {
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
 
@@ -90,7 +100,9 @@ export function HelpFab({ entry, guideHref }: { entry: HelpEntry; guideHref: str
               그림까지 자세히 보기
             </a>
           )}
-          <a
+          {/* ⚠️ next/link 를 쓴다. 생 <a> 는 브라우저 전체 새로고침이라 "보던 내용을 잃지 않는다"는
+              이 창의 설계 의도와 어긋난다(검수 경미 7). */}
+          <Link
             href="/help"
             style={{
               display: "inline-flex", alignItems: "center", gap: 6, height: 40, padding: "0 14px",
@@ -99,8 +111,13 @@ export function HelpFab({ entry, guideHref }: { entry: HelpEntry; guideHref: str
             }}
           >
             <Icon name="help" size={14} />전체 안내서
-          </a>
+          </Link>
         </div>
+        {guideHref && guideLabel && (
+          <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 8, wordBreak: "keep-all" }}>
+            {`[그림까지 자세히 보기]를 누르면 안내서의 「${guideLabel}」이 펼쳐집니다.`}
+          </div>
+        )}
       </Modal>
     </>
   );

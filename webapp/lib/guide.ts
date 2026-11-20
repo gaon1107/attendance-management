@@ -8,9 +8,15 @@
 //    여기서 다루는 것은 webapp 안으로 복사된 **사본**이다. 복사는 scripts/sync-guide.mjs 가 한다.
 import fs from "node:fs/promises";
 import path from "node:path";
+import { cache } from "react";
+
+/** 안내서 종류 — 주소에 그대로 쓰인다(/api/guide/admin).
+ *  ⚠️ 글자 타입으로 못 박아 둔다. string 으로 두면 나중에 이름을 바꿨을 때 컴파일이 통과해
+ *     **모든 화면에서 [그림까지 자세히 보기] 버튼이 조용히 사라진다**(검수 경미 8). */
+export type GuideSlug = "admin" | "employee";
 
 export type GuideDef = {
-  slug: string;   // 주소에 쓰는 이름(/api/guide/admin)
+  slug: GuideSlug; // 주소에 쓰는 이름(/api/guide/admin)
   file: string;   // 사본 폴더 안의 파일 이름 — 내려받을 때 이 이름으로 저장된다
   title: string;
   desc: string;
@@ -64,14 +70,16 @@ export type GuideInfo = GuideDef & { updatedAt: Date; bytes: number };
 /** 사본을 만들 때 scripts/sync-guide.mjs 가 함께 적어 둔 목록표(만든 날짜·크기). */
 type Manifest = { files?: Record<string, { bytes?: number; updatedAt?: string; anchors?: string[] } | undefined> };
 
-async function readManifest(): Promise<Manifest> {
+// cache(): **같은 요청 안에서는 한 번만** 읽는다. 사이드바가 붙은 화면 54곳이 전부 이걸 지나고,
+// [도움말] 화면은 한 요청에서 두 번 부른다 — 작은 파일이지만 공짜로 줄일 수 있는 일이다(검수 경미 1).
+const readManifest = cache(async function readManifest(): Promise<Manifest> {
   try {
     return JSON.parse(await fs.readFile(path.join(GUIDE_DIR, "manifest.json"), "utf8")) as Manifest;
   } catch {
     // 목록표가 없어도 안내서는 열린다 — 날짜만 파일 시간으로 대신한다(아래).
     return {};
   }
-}
+});
 
 /** **실제로 파일이 있는** 안내서만 돌려준다.
  *  · 없는 안내서의 버튼은 화면에 그리지 않는다(눌러도 안 되는 버튼을 보여 주지 않는다).
@@ -101,7 +109,7 @@ export async function listAvailableGuides(role: string): Promise<GuideInfo[]> {
  *  🔴 안내서가 바뀌어 그 장(anchor)이 사라졌으면 **장 없이** 맨 위로 연다 —
  *     없는 장을 가리키면 조용히 엉뚱한 곳(맨 위)으로 가는데, 그럴 바에는 처음부터 맨 위가 정직하다.
  *     장 목록은 사본을 만들 때 기록해 둔다(scripts/sync-guide.mjs → manifest.json). */
-export async function guideSectionHref(slug: string, anchor: string | undefined, role: string): Promise<string | null> {
+export async function guideSectionHref(slug: GuideSlug, anchor: string | undefined, role: string): Promise<string | null> {
   const g = guideBySlug(slug);
   if (!g || !canRead(g, role)) return null;
   try {

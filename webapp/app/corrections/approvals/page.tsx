@@ -140,7 +140,7 @@ export default async function CorrectionApprovalsPage({
   );
 
   return (
-    <AppShell user={me} active="records" title="근태 정정 승인" subtitle={me.company.name} right={backBtn}>
+    <AppShell user={me} active="records" helpKey="corrections-approvals" title="근태 정정 승인" subtitle={me.company.name} right={backBtn}>
       <CorrectionApprovalsClient pending={pendingReqs.map(toRow)} decided={decidedReqs.map(toRow)} from={fromISO} to={toISO} todayISO={todayISO} />
     </AppShell>
   );

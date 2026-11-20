@@ -23,7 +23,7 @@ export default async function FaceEnrollPage() {
   const enrolled = !!me.faceEnrolledAt;
 
   return (
-    <AppShell user={me} active="auth-method" title="얼굴 등록" subtitle={`${me.name} 님`}>
+    <AppShell user={me} active="auth-method" helpKey="face-enroll" title="얼굴 등록" subtitle={`${me.name} 님`}>
       {/* 웹캠 촬영 화면 — 영상이 화면 중앙에 오도록 이 화면만 가운데 정렬(사장님 결정 2026-07-10) */}
       <div style={{ maxWidth: 640, margin: "0 auto" }}>
       {/* 법적/프라이버시 안내 */}

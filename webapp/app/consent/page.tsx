@@ -28,7 +28,7 @@ export default async function ConsentPage({ searchParams }: { searchParams: Prom
   const faceLeftError = sp.error === "face_left";
 
   return (
-    <AppShell user={me} active="auth-method" title="생체정보 이용 동의" subtitle={`${me.name} 님`}>
+    <AppShell user={me} active="auth-method" helpKey="consent" title="생체정보 이용 동의" subtitle={`${me.name} 님`}>
       {faceLeftError && (
         <div role="alert" style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "14px 16px", marginBottom: 16, fontSize: 14, color: "var(--danger)", fontWeight: 700, lineHeight: 1.6, wordBreak: "keep-all" }}>
           예전에 등록한 얼굴이 얼굴인증 서버에 남아 있어 먼저 지우려 했지만 지우지 못했습니다. 잠시 후 다시 시도해 주세요.

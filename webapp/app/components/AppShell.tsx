@@ -8,7 +8,7 @@ import { LogoutButton } from "@/app/components/LogoutButton";
 import { NotificationBell } from "@/app/components/NotificationBell";
 import { NavProvider, NavOpenButton } from "@/app/components/MobileNav";
 import { HelpFab } from "@/app/components/HelpFab";
-import { helpFor } from "@/lib/help-content";
+import { helpFor, type HelpKey } from "@/lib/help-content";
 import { guideSectionHref } from "@/lib/guide";
 
 // ⚠️ isOwner를 여기 적어 두는 이유: 사이드바가 이 값으로 "내 근태" 묶음을 줄지 정한다.
@@ -29,6 +29,7 @@ export async function AppShell({
   title,
   subtitle,
   right,
+  helpKey,
   children,
 }: {
   user: ShellUser;
@@ -36,6 +37,9 @@ export async function AppShell({
   title: string;
   subtitle?: string;
   right?: ReactNode; // 상단바 오른쪽(버튼·날짜 등)
+  /** 떠 있는 [도움말]이 보여줄 설명을 지정한다. 생략하면 `active` 를 쓴다.
+   *  ⚠️ **한 active 키를 여러 화면이 나눠 쓸 때만** 넘긴다(정정 승인·얼굴 등록·동의·직원 상세·근태 상세). */
+  helpKey?: HelpKey;
   children: ReactNode;
 }) {
   // 🔒 임시 비밀번호로 로그인한 상태면 어떤 화면도 열지 않고 새 비밀번호 설정으로 보낸다(검수 H-4).
@@ -45,7 +49,9 @@ export async function AppShell({
   // 떠 있는 [도움말] 버튼 — **이 화면에 대한 설명이 있을 때만** 그린다(빈 창을 보여 주지 않는다).
   //  · [도움말] 화면 자신에서는 숨긴다 — 이미 안내서를 보고 있는 자리라 군더더기다.
   //  · 안내서 링크는 역할에 맞는 안내서만 만들어진다(직원에게 관리자 안내서를 권하지 않는다).
-  const helpEntry = active === "help" ? null : helpFor(active);
+  //  · ⚠️ 한 `active` 키를 여러 화면이 나눠 쓴다(예: [근태 현황]과 [정정 승인]이 둘 다 "records").
+  //    그런 화면은 `helpKey` 로 자기 설명을 지정한다 — 안 그러면 **다른 화면 사용법**이 뜬다(검수 중간 1).
+  const helpEntry = active === "help" ? null : helpFor(helpKey ?? active, user.role);
   const helpGuideHref = helpEntry?.guide
     ? await guideSectionHref(helpEntry.guide.book, helpEntry.guide.anchor, user.role)
     : null;
@@ -75,8 +81,11 @@ export async function AppShell({
           </div>
         </header>
         <div className="page">{children}</div>
+        {/* 떠 있는 [도움말] — ⚠️ 반드시 <main> **안**에 둔다. 폰에서 메뉴 서랍이 열리면 MobileNav 가
+            `.app-main` 에 inert 를 걸어 뒤에 가려진 버튼을 Tab 으로 못 누르게 막는데, 밖에 두면
+            그 보호를 받지 못해 **안 보이는 버튼이 눌린다**(검수 중간 4). 자리는 position:fixed 라 그대로다. */}
+        {helpEntry && <HelpFab entry={helpEntry} guideHref={helpGuideHref} guideLabel={helpEntry.guide?.label ?? null} />}
       </main>
-      {helpEntry && <HelpFab entry={helpEntry} guideHref={helpGuideHref} />}
     </NavProvider>
   );
 }

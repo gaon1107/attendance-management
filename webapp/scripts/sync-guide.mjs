@@ -48,7 +48,15 @@ try {
   const names = fs.readdirSync(SRC_DIR).filter((f) => f.toLowerCase().endsWith(".html"));
   if (names.length === 0) console.log("[sync-guide] 원본 폴더에 안내서(.html)가 없습니다.");
 
+  // 🔴 기존 목록표를 **이어서** 쓴다. 통째로 새로 쓰면, 원본 폴더는 있는데 html 하나가 잠깐 없는 상태로
+  //    돌렸을 때 그 파일의 기록(장 목록·만든 날짜)이 사라진다 → 링크가 맨 위로 가고 기준일이 거짓이 된다(검수 경미 11).
   const manifest = { files: {} };
+  try {
+    const old = JSON.parse(fs.readFileSync(MANIFEST, "utf8"));
+    if (old && typeof old.files === "object") manifest.files = { ...old.files };
+  } catch {
+    // 목록표가 아직 없다 — 새로 만든다.
+  }
   let copied = 0;
   let same = 0;
   for (const name of names) {
@@ -59,7 +67,13 @@ try {
     //    화면별 도움말이 "이 화면은 안내서 05장" 하고 보내는데, 안내서가 바뀌어 그 장이 사라지면
     //    엉뚱한 곳으로 가 버린다. 목록을 적어 두면 없는 장일 때 **그냥 맨 위로** 열 수 있다(무해).
     //    ⚠️ 여기서 읽는 것은 원본이다 — 사본과 내용이 같으므로 결과는 같다.
-    const anchors = [...new Set([...fs.readFileSync(src, "utf8").matchAll(/\sid="(s\d+)"/g)].map((m) => m[1]))];
+    const anchors = [...new Set([...fs.readFileSync(src, "utf8").matchAll(/\sid=["'](s\d+)["']/g)].map((m) => m[1]))];
+    // 🔴 하나도 못 찾으면 **조용히 넘어가지 않는다.** 안내서 굽는 방식이 바뀌어 장 표시가 달라지면
+    //    화면별 도움말의 [그림까지 자세히 보기]가 전부 맨 위로 가는데, 그걸 알아챌 길이 없다(검수 경미 10).
+    //    ※ 직원 안내서는 원래 장 구분이 없다 — 그쪽은 정상이다.
+    if (anchors.length === 0 && name.includes("사용안내서")) {
+      console.warn(`[sync-guide] ⚠️ ${name} 에서 장(id="sN")을 하나도 찾지 못했습니다 — 화면별 도움말 링크가 모두 맨 위로 열립니다.`);
+    }
     manifest.files[name] = { bytes: s.size, updatedAt: new Date(s.mtimeMs).toISOString(), anchors };
 
     if (fs.existsSync(dest)) {

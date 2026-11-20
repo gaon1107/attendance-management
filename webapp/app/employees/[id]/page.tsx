@@ -139,7 +139,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   );
 
   return (
-    <AppShell user={me} active="employees" title={`${emp.name} 님`} subtitle={me.company.name} right={backBtn}>
+    <AppShell user={me} active="employees" helpKey="employee-detail" title={`${emp.name} 님`} subtitle={me.company.name} right={backBtn}>
       {/* PC=2단(정보 | 관리 폼), 좁은 화면=세로 */}
       <div className="split-2">
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>

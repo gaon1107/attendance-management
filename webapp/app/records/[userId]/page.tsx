@@ -103,7 +103,7 @@ export default async function RecordDetailPage({
     const navBtn: React.CSSProperties = { width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--text-sub)", textDecoration: "none", fontWeight: 700 };
 
     return (
-      <AppShell user={me} active="records" title={`${target.name} 님 근태 상세`} subtitle={me.company.name} right={backBtn}>
+      <AppShell user={me} active="records" helpKey="records-detail" title={`${target.name} 님 근태 상세`} subtitle={me.company.name} right={backBtn}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <Link href={`/records/${target.id}?date=${prev}&view=cal`} style={navBtn}>◀</Link>
@@ -122,7 +122,7 @@ export default async function RecordDetailPage({
   const detail = await loadDetail(start, end);
 
   return (
-    <AppShell user={me} active="records" title={`${target.name} 님 근태 상세`} subtitle={me.company.name} right={backBtn}>
+    <AppShell user={me} active="records" helpKey="records-detail" title={`${target.name} 님 근태 상세`} subtitle={me.company.name} right={backBtn}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
         <PeriodNav basePath={`/records/${target.id}`} unit={unit} anchor={anchor} label={label} />
         <Toggle tableHref={`/records/${target.id}?unit=${unit}&date=${toISODate(anchor)}`} calHref={`/records/${target.id}?date=${toISODate(anchor)}&view=cal`} isCal={false} />
