@@ -46,6 +46,7 @@ export type NavKey =
   | "pending-approvals" // 밀린 결재(관리자 전용) — 회사 전체 대기 중 결재를 모아 보고 대리 처리
   | "approval-history" // 결재 이력(관리자 전용) — 회사 전체 신청·승인·반려 조회
   | "subscription" // 구독·요금(관리자 전용) — 지금 우리 회사 요금·구간표·무료기간 조회. 결제 기능은 아직 없다
+  | "help" // 도움말 — 사용 안내서 열기·내려받기. **관리자·직원 공통**(보이는 안내서가 역할별로 다르다)
   | "account"; // 계정 설정 — 사이드바 메뉴엔 없고(프로필 아바타로 진입) 하이라이트용 키
 
 type Item = { key: NavKey; href: string; label: string; icon: string };
@@ -88,6 +89,7 @@ const ICON: Record<NavKey, string> = {
   "break-time": '<path d="M4 9h13v4a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 10h2a2 2 0 0 1 0 4h-2"/><path d="M7 3v3M11 3v3"/>',
   trip: '<path d="M17.8 19.2 16 11l3.5-3.5a2.12 2.12 0 0 0-3-3L13 8 4.8 6.2a1 1 0 0 0-.9 1.7l4.6 3.1-2 3-2.5-.3-.9.9 3 1.5 1.5 3 .9-.9-.3-2.5 3-2 3.1 4.6a1 1 0 0 0 1.7-.9z"/>',
   "trip-approvals": '<path d="M2 8l12-4.5-3 4.75 3 4.75-12-4.5z"/><path d="M14 18l3 3 5.5-6.5"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 1 1 3.4 2.4c-.6.3-1 .9-1 1.6v.4"/><path d="M12 17h.01"/>',
 };
 
 const LABEL: Record<NavKey, string> = {
@@ -136,6 +138,7 @@ const LABEL: Record<NavKey, string> = {
   "break-time": "휴게시간",
   trip: "출장",
   "trip-approvals": "출장승인",
+  help: "도움말",
 };
 
 // 화면 키 → 실제 경로(키와 경로가 다른 항목만 지정, 없으면 "/키")
@@ -153,7 +156,7 @@ const HREF: Partial<Record<NavKey, string>> = {
 //  ⚠️ 새 그룹을 만들면 반드시 여기에 추가한다. 안 하면 tsc가 컴파일에서 막는다(검수 중간 3).
 //     예전엔 이 목록과 groupsFor()가 따로 놀아서, 빠뜨리면 "제목은 보이는데 눌러도 아무 일도 안 나는"
 //     조용한 고장이 났다(에러도 로그도 남지 않는다).
-const GROUP_IDS = ["ops", "appr", "hr", "ana", "sec", "mine"] as const;
+const GROUP_IDS = ["ops", "appr", "hr", "ana", "sec", "mine", "help"] as const;
 type ToggleableGroupId = (typeof GROUP_IDS)[number];
 // "emp"(직원 한 묶음)는 제목이 없어 접기 대상이 아니다 — 접히면 링크가 0개인 화면이 된다.
 type GroupId = ToggleableGroupId | "emp";
@@ -255,9 +258,15 @@ function groupsFor(role: string, showApprovals: boolean, isOwner: boolean, useSh
     if (!isOwner) {
       groups.push({ id: "mine", caption: "내 근태", items: toItems(["attendance", "my-records", "leave", "corrections", "auth-method"]) });
     }
+    // [도움말](사용 안내서) — 성격이 달라 기존 묶음 어디에도 끼우지 않고 **맨 아래 따로** 둔다 (사장님 지시 2026-11-21).
+    //  · 처음 쓰는 관리자가 막혔을 때 눈으로 찾는 자리다. 왼쪽 메뉴는 어느 화면에서나 보인다.
+    //  · 전에는 대시보드 안에 카드로 있었다 — 매일 보는 화면에 매일 안 쓰는 칸이 되어 이리로 옮겼다.
+    groups.push({ id: "help", caption: "도움말", items: toItems(["help"]) });
     return groups;
   }
-  const empKeys: NavKey[] = ["attendance", "my-records", "schedule", "leave", "corrections", "outing", "remote", "overtime", "trip", ...(showApprovals ? (["approvals"] as NavKey[]) : []), "auth-method"];
+  // 직원에게도 같은 [도움말]을 준다. 열면 **직원용 안내서만** 보인다(lib/guide.ts canRead).
+  //  관리자가 입사 때마다 파일을 보내 주지 않아도 직원이 스스로 찾을 수 있다.
+  const empKeys: NavKey[] = ["attendance", "my-records", "schedule", "leave", "corrections", "outing", "remote", "overtime", "trip", ...(showApprovals ? (["approvals"] as NavKey[]) : []), "auth-method", "help"];
   return [{ id: "emp", caption: "", items: toItems(empKeys) }];
 }
 

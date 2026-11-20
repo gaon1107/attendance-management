@@ -14,23 +14,33 @@ export type GuideDef = {
   file: string;   // 사본 폴더 안의 파일 이름 — 내려받을 때 이 이름으로 저장된다
   title: string;
   desc: string;
+  /** 관리자만 볼 수 있는가. 🔒 관리자 안내서에는 **관리 화면 캡처 34장**이 들어 있어 직원에게 주지 않는다. */
+  adminOnly: boolean;
 };
 
-// 🔴 파일 이름을 바꾸면 scripts/sync-guide.mjs 의 목록도 **함께** 바꿔야 한다(복사 대상이 그쪽에 적혀 있다).
 export const GUIDES: GuideDef[] = [
   {
     slug: "admin",
     file: "근태관리_사용안내서.html",
     title: "관리자 사용 안내서",
     desc: "가입 · 직원 등록 · 근태 현황 보는 법",
+    adminOnly: true,
   },
   {
     slug: "employee",
     file: "근태관리_직원안내서.html",
     title: "직원용 출퇴근 안내",
-    desc: "직원이 휴대폰으로 쓰는 법 — 내려받아 직원에게 전달하세요",
+    desc: "휴대폰으로 출퇴근 찍는 법 · 휴가와 정정 신청하는 법",
+    adminOnly: false,
   },
 ];
+
+/** 이 역할이 볼 수 있는 안내서인가.
+ *  🔴 화면([도움말])과 내려주는 통로(app/api/guide)가 **반드시 이 함수 하나**를 쓴다.
+ *     두 곳에서 따로 판단하면 "화면에는 보이는데 눌러도 차단" 또는 그 반대가 조용히 생긴다. */
+export function canRead(g: GuideDef, role: string): boolean {
+  return g.adminOnly ? role === "admin" : true;
+}
 
 // 사본이 놓이는 폴더.
 //  · `public/` 이 **아니다.** public 에 두면 로그인하지 않아도 주소만 알면 누구나 받을 수 있고,
@@ -67,10 +77,12 @@ async function readManifest(): Promise<Manifest> {
  *  · 없는 안내서의 버튼은 화면에 그리지 않는다(눌러도 안 되는 버튼을 보여 주지 않는다).
  *  · 이 부가 기능이 고장 나도 대시보드(본기능)는 떠야 하므로 파일별로 건너뛴다.
  *    ⚠️ 단, **조용히** 건너뛰지는 않는다 — 아무 자국도 안 남기면 "고장"과 "정상"을 구분할 수 없다(검수 중간 3). */
-export async function listAvailableGuides(): Promise<GuideInfo[]> {
+export async function listAvailableGuides(role: string): Promise<GuideInfo[]> {
   const manifest = await readManifest();
   const out: GuideInfo[] = [];
   for (const g of GUIDES) {
+    // 볼 수 없는 안내서는 **목록에 담지도 않는다**(없는 것처럼 보인다).
+    if (!canRead(g, role)) continue;
     try {
       const st = await fs.stat(guidePath(g));
       if (!st.isFile()) continue;

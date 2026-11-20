@@ -6,18 +6,20 @@
 import { NextResponse } from "next/server";
 import fs from "node:fs/promises";
 import { getCurrentUser } from "@/lib/session";
-import { guideBySlug, guidePath } from "@/lib/guide";
+import { guideBySlug, guidePath, canRead } from "@/lib/guide";
 
 export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const me = await getCurrentUser();
   // ⚠️ 이 주소는 화면의 <a href>로 **브라우저가 직접 여는** 링크다(대시보드 [사용 안내서] 카드).
   //    로그인이 풀린 뒤 클릭하면 새 탭에 날 텍스트(JSON)만 뜨므로 로그인 화면으로 보낸다(사람이 여는 GET).
   if (!me) return NextResponse.redirect(new URL("/login", req.url));
-  if (me.role !== "admin") return NextResponse.json({ message: "관리자만 볼 수 있습니다." }, { status: 403 });
 
   const { slug } = await params;
   const guide = guideBySlug(slug);
   if (!guide) return NextResponse.json({ message: "안내서를 찾을 수 없습니다." }, { status: 404 });
+  // 🔒 안내서마다 볼 수 있는 사람이 다르다 — 직원용은 모두가, 관리자 안내서는 관리자만.
+  //    판단은 [도움말] 화면과 **같은 함수**(lib/guide.ts canRead)가 한다.
+  if (!canRead(guide, me.role)) return NextResponse.json({ message: "관리자만 볼 수 있습니다." }, { status: 403 });
 
   const download = new URL(req.url).searchParams.get("download") === "1";
 
