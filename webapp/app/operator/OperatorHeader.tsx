@@ -4,11 +4,14 @@
 import Link from "next/link";
 import { operatorLogout } from "@/app/actions/operator";
 
-export type OperatorMenu = "companies" | "access";
+export type OperatorMenu = "companies" | "access" | "account";
 
 const MENU: { key: OperatorMenu; href: string; label: string }[] = [
   { key: "companies", href: "/operator", label: "회원사" },
   { key: "access", href: "/operator/access", label: "운영자 접속 기록" },
+  // [내 계정]은 **본인 비밀번호·이름 변경만** 하는 화면이다. 계정을 새로 만들거나 남의 계정을
+  // 건드리는 기능은 화면에 두지 않는다(app/actions/operator.ts 머리말 참고).
+  { key: "account", href: "/operator/account", label: "내 계정" },
 ];
 
 export function OperatorHeader({ name, active }: { name: string; active: OperatorMenu }) {

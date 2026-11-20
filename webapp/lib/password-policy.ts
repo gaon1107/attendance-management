@@ -28,7 +28,7 @@
  *    가입(`actions/auth.ts`) · 초대 가입(`actions/invites.ts`) ·
  *    본인 변경(`actions/account.ts`) · 문자 재설정(`actions/password-reset.ts`).
  *
- * ※ 운영자(본사) 계정은 별도로 12자를 요구한다(`scripts/create-operator.mjs`). 더 엄격한 쪽이라 그대로 둔다.
+ * ※ 운영자(본사) 계정은 별도로 12자를 요구한다 → 아래 `OPERATOR_PASSWORD_MIN_LEN`. 더 엄격한 쪽이다.
  * ※ 서버가 만드는 임시 비밀번호(`lib/temp-password.ts`, 무작위 10자)는 이 경로를 타지 않는다.
  *    사람이 정하는 값이 아니고 약 57비트라 사람이 만든 12자보다 강하다.
  */
@@ -36,3 +36,19 @@ export const PASSWORD_MIN_LEN = 10;
 
 /** 화면 안내 문구에 그대로 쓴다 — 숫자를 화면마다 적지 않게. (예: placeholder, label) */
 export const PASSWORD_MIN_HINT = `${PASSWORD_MIN_LEN}자 이상`;
+
+/**
+ * 운영자(본사) 계정의 최소 길이 — 고객사보다 **엄하다**.
+ *
+ * 왜 더 엄한가(검수 M-7, `scripts/create-operator.mjs` 머리말): 고객사 계정은 한 회사만 보고
+ * 재설정 창구도 있다. 운영자는 **회사 칸막이를 넘어 전 회원사를 보는 유일한 계정**이고
+ * **재설정 창구가 없다.** 세션을 8시간·30분 유휴로 더 짧게 잡은 판단과 같은 이유다.
+ *
+ * 🔴 **이 숫자를 쓰는 곳은 세 군데뿐이고, 전부 여기만 본다**(2026-11-20에 하나로 모았다):
+ *    · `scripts/create-operator.mjs` (서버에서 계정 만들기·비밀번호 재설정)
+ *    · `app/actions/operator.ts` (운영자 [내 계정] 비밀번호 변경)
+ *    · `app/operator/account/page.tsx` (그 화면의 안내 문구)
+ *    ⚠️ 2026-11-20에 [내 계정]을 만들면서 **고객사용 10자를 그대로 가져다 쓴 적이 있다**(검수 치명 1).
+ *       화면이 "10자 이상"이라 안내해 오히려 약한 비밀번호를 유도했다. 숫자를 각자 적지 말 것.
+ */
+export const OPERATOR_PASSWORD_MIN_LEN = 12;

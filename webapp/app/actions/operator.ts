@@ -15,11 +15,17 @@ import { prisma } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { createOperatorSession, destroyOperatorSession, getCurrentOperator } from "@/lib/operator-session";
 import { recordOperatorFail, recordOperatorSuccess, operatorDoorAllows } from "@/lib/operator-policy";
-import { lockRemainMinutes, EMAIL_MAX_LEN, PASSWORD_MAX_LEN } from "@/lib/login-policy";
+import { lockRemainMinutes, EMAIL_MAX_LEN, PASSWORD_MAX_LEN, PASSWORD_INPUT_HARD_LIMIT } from "@/lib/login-policy";
+// 🔴 고객사용 PASSWORD_MIN_LEN(10자)이 아니라 **운영자용 12자**를 쓴다(검수 치명 1).
+//    전 회원사를 보는 유일한 계정이고 재설정 창구가 없어 정책이 더 엄하다.
+import { OPERATOR_PASSWORD_MIN_LEN } from "@/lib/password-policy";
+import { passwordAttemptAllowed } from "@/lib/password-attempt-limit";
+import { checkPasswordStrength } from "@/lib/password-strength";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { loginAllowedForIp, recordThrottleHit, THROTTLED_META } from "@/lib/login-throttle";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 
 // 존재하지 않는 이메일에도 해시 비교를 한 번 돌리기 위한 더미 값(auth.ts와 같은 이유·같은 방식).
 //  · 없는 계정이면 즉시 반환하면 **응답 시간만으로 계정 존재를 알 수 있다**(있으면 느리고 없으면 빠름).
@@ -51,7 +57,8 @@ function dummyHash(): Promise<string> {
  *    운영자는 `actorName`과 `meta`로만 식별한다.
  */
 async function logOperator(e: {
-  kind: "login" | "login_fail" | "logout";
+  // "config" = 운영자가 자기 계정을 바꿨다(비밀번호·이름). 2026-11-20 [내 계정] 화면과 함께 추가.
+  kind: "login" | "login_fail" | "logout" | "config";
   result: "success" | "fail";
   name?: string | null;
   emailTried?: string | null;
@@ -164,6 +171,191 @@ export async function operatorLogin(
 
   // ⚠️ redirect는 내부적으로 예외를 던진다 — try/catch 안에 넣지 말 것(위 코드에 try가 없는 이유).
   redirect("/operator");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// [내 계정] — 로그인한 운영자가 **자기** 비밀번호·이름을 바꾼다. (2026-11-20 사장님 요청)
+//
+// 🔴 **여기서 할 수 있는 것은 "내 것 바꾸기"뿐이다.** 새 계정 만들기·남의 계정 건드리기·
+//    계정 끄기는 **절대 화면에 열지 않는다.** 그건 여전히 서버에서 scripts/create-operator.mjs 로만
+//    한다. 이 파일 머리말과 그 스크립트가 못박은 이유 그대로다 — 회원사 전체를 보는 계정을
+//    "만들 수 있는 통로"가 웹에 있으면 그 통로 자체가 가장 좋은 공격 표적이 된다.
+//
+// 🟢 그럼 왜 비밀번호 변경은 열었나: 지금은 바꾸려면 서버에서 명령을 쳐야 하는데,
+//    **비밀번호가 PowerShell 명령 기록에 그대로 남는다**(create-operator.mjs 머리말의 경고).
+//    로그인한 본인이 화면에서 바꾸는 쪽이 오히려 안전하다. 방어선(계정 생성)은 그대로 둔다.
+//
+// 방어 순서는 고객사 [계정 설정]의 changePassword(app/actions/account.ts)를 그대로 따른다:
+//   ① 길이 상한(현재/새 값 상한이 다른 이유까지 그쪽 주석 참고)
+//   ② 분당 시도 상한 — **대조(scrypt) 앞**에 둬야 CPU를 아낀다
+//   ③ 현재 비밀번호 대조 → ④ 바꾸기 → ⑤ 다른 기기 세션 전부 끊기 → ⑥ 이 기기만 재발급
+//
+// 🔴 **잠금은 걸지 않는다.** 운영자에게는 5회 10분 잠금이 살아 있지만(lib/operator-policy.ts),
+//    그건 로그인 문 이야기다. 이 창구에서까지 실패를 세어 잠그면 **본인이 자기 계정을 잠그고**,
+//    운영자에게는 재설정 창구가 없어 서버 명령 없이는 못 푼다. 고객사 쪽도 같은 이유로
+//    잠금 확인을 뺐다(account.ts 검수 H-1). 대신 ②의 분당 상한이 무제한 찍기를 막는다.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 분당 상한을 셀 때 쓰는 키. 고객사 User.id 와 섞이지 않게 접두사를 붙인다.
+//  ⚠️ 비밀번호와 이름은 **서로 다른 키**여야 한다 — 같으면 이름을 몇 번 바꾸다가 비밀번호 변경이
+//     막힌다(그 반대도 마찬가지). 두 함수를 나란히 둬서 한쪽만 바뀌는 일이 없게 한다.
+function opAttemptKey(operatorId: string): string {
+  return `operator:${operatorId}`;
+}
+function opNameAttemptKey(operatorId: string): string {
+  return `operator-name:${operatorId}`;
+}
+
+/** 운영자 본인 비밀번호 변경. */
+export async function changeOperatorPassword(
+  _prev: { error?: string; ok?: boolean; relogin?: boolean },
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean; relogin?: boolean }> {
+  const me = await getCurrentOperator();
+  if (!me) return { error: "로그인이 필요합니다." };
+
+  const current = String(formData.get("current") ?? "");
+  const next = String(formData.get("next") ?? "");
+  const confirm = String(formData.get("confirm") ?? "");
+  if (!current || !next || !confirm) return { error: "모든 항목을 입력해주세요." };
+
+  // ① 길이 상한. 현재 비밀번호는 넉넉히 받는다(옛 긴 비밀번호를 쓰는 사람이 스스로 고칠 길을 막지 않기 위해).
+  if (current.length > PASSWORD_INPUT_HARD_LIMIT) return { error: "현재 비밀번호가 올바르지 않습니다." };
+  if (next.length > PASSWORD_MAX_LEN) return { error: `새 비밀번호는 ${PASSWORD_MAX_LEN}자 이하로 입력해주세요.` };
+  if (next.length < OPERATOR_PASSWORD_MIN_LEN) {
+    return { error: `새 비밀번호는 ${OPERATOR_PASSWORD_MIN_LEN}자 이상이어야 합니다.` };
+  }
+  {
+    // 강도 검사 — 이메일·이름을 넘겨 "자기 정보가 섞인 비밀번호"를 걸러낸다.
+    const weak = checkPasswordStrength(next, { email: me.email, name: me.name });
+    if (weak) return { error: weak };
+  }
+  if (next !== confirm) return { error: "새 비밀번호 확인이 일치하지 않습니다." };
+
+  // ② 분당 상한 — 반드시 대조 앞에서 한 번만 부른다(부르는 순간 1건으로 센다).
+  if (!passwordAttemptAllowed(opAttemptKey(me.id))) {
+    return { error: "비밀번호 확인을 너무 자주 시도했습니다. 1분 뒤에 다시 시도해주세요." };
+  }
+
+  // 해시는 getCurrentOperator 가 돌려주지 않는다(일부러 — lib/operator-session.ts 주석). 여기서만 따로 읽는다.
+  const row = await prisma.operator.findUnique({ where: { id: me.id }, select: { passwordHash: true } });
+  if (!row) return { error: "계정을 찾을 수 없습니다." };
+
+  const { ip, userAgent } = readClientMeta(await headers());
+
+  // ③ 현재 비밀번호 대조
+  if (!(await verifyPassword(current, row.passwordHash))) {
+    // 🔴 기록 종류를 login_fail 로 남긴다 — [운영자 접속 기록] 화면과 감시가 세는 것이 그 종류다.
+    //    config 로 남기면 비밀번호를 찍는 시도가 감시망에 한 번도 안 잡힌다(account.ts 재검수 M-3과 같은 이유).
+    await logOperator({ kind: "login_fail", result: "fail", name: me.name, emailTried: me.email, meta: "operator_password_change_denied", ip, userAgent });
+    return { error: "현재 비밀번호가 올바르지 않습니다." };
+  }
+  if (current === next) return { error: "새 비밀번호가 현재 비밀번호와 같습니다." };
+
+  // ④⑤ 바꾸기 + 다른 기기 세션 끊기를 **한 묶음(트랜잭션)**으로 한다(검수 중간 4).
+  //    나눠 두면 "비밀번호는 바뀌었는데 세션은 안 끊긴" 상태가 생길 수 있고, 그러면 화면이 약속한
+  //    "다른 기기에서 로그인한 상태가 모두 끊어집니다"가 **거짓**이 된다(훔쳐간 세션이 8시간 유효).
+  //    비밀번호를 바꾸는 가장 큰 이유가 "누가 내 계정에 들어와 있는 것 같다"라서 그 약속이 핵심이다.
+  //
+  // 🔓 **이 창구는 잠금(lockedUntil)도 함께 푼다 — 의도한 동작이다**(검수 중간 3).
+  //    lib/operator-policy.ts 는 "모든 쓰기에 '지금 잠겨 있지 않은 행' 조건을 걸라"고 하지만,
+  //    그건 **로그인 문** 이야기다(비밀번호를 맞힌 요청이 잠금을 지우고 들어오는 것을 막는 규칙).
+  //    여기는 **이미 로그인한 본인**이 현재 비밀번호까지 맞혀야 닿는 자리다. 운영자에게는 재설정
+  //    창구가 없어, 로그인 문이 잠긴 동안 세션이 살아 있는 운영자가 **스스로를 구할 유일한 길**이
+  //    이 창구다. 조건부 쓰기로 막으면 그 길까지 닫힌다.
+  const newHash = await hashPassword(next);
+  try {
+    await prisma.$transaction([
+      prisma.operator.update({
+        where: { id: me.id },
+        data: { passwordHash: newHash, failedLoginCount: 0, lockedUntil: null },
+      }),
+      prisma.operatorSession.deleteMany({ where: { operatorId: me.id } }),
+    ]);
+  } catch (e) {
+    // ⚠️ 오류 메시지를 통째로 찍지 않는다(사규 8). Prisma 검증 오류는 메시지에 **넘긴 인자를 펼쳐**
+    //    넣어서 새 비밀번호 해시가 서버 콘솔에 남을 수 있다. 종류만 남긴다
+    //    (lib/operator-session.ts 가 같은 이유로 못박아 둔 규칙).
+    console.error("[operator] 비밀번호 변경 실패:", e instanceof Error ? e.name : "unknown");
+    return { error: "비밀번호를 바꾸지 못했습니다. 잠시 후 다시 시도해주세요." };
+  }
+
+  // ⚠️ 비밀번호 값은 절대 기록하지 않는다(사규 8). 바뀌었다는 사실만.
+  await logOperator({ kind: "config", result: "success", name: me.name, emailTried: me.email, meta: "operator_password_change", ip, userAgent });
+
+  // ⑥ 이 기기만 다시 로그인 상태로. 실패해도 **비밀번호는 이미 바뀌었다.**
+  //    🔴 이때 `error`로 돌려주면 화면에 **빨간 실패 글씨**로 보여, 비개발자는 "실패했구나,
+  //       옛 비밀번호로 다시 해보자"로 읽는다(검수 중간 5). 성공으로 알리고 재로그인만 안내한다.
+  try {
+    await createOperatorSession(me.id);
+  } catch (e) {
+    console.error("[operator] 비밀번호 변경 후 세션 재발급 실패:", e instanceof Error ? e.message : String(e));
+    return { ok: true, relogin: true };
+  }
+
+  revalidatePath("/operator/account");
+  return { ok: true };
+}
+
+/**
+ * 화면·접속기록에 그대로 찍히는 이름을 안전한 모양으로 다듬는다(검수 중간 2).
+ *  · 제어문자(줄바꿈·탭)와 **보이지 않는 글자**(zero-width, 글자 방향을 뒤집는 U+202E 등)를 없앤다.
+ *    남겨 두면 상단 바와 기록 표의 줄이 깨지거나, 눈에 안 보이는 글자로 다른 사람을 사칭할 수 있다.
+ *  · 괄호·콜론도 없앤다 — 접속기록 meta 가 `이름(from:옛이름)` 꼴이라, 이름에 그 글자가 섞이면
+ *    기록 화면의 해석기가 괄호 짝을 잘못 찾아 **엉뚱한 뜻("대상: …")으로 표시**된다.
+ *  · 연속 공백은 한 칸으로.
+ */
+function cleanOperatorName(raw: string): string {
+  return (
+    raw
+      // ① 탭·줄바꿈 같은 제어문자는 **공백으로** 바꾼다(그냥 지우면 "홍\t길\n동"이 "홍길동"으로
+      //    붙어 입력한 뜻이 달라진다 — 자체 시험에서 잡은 자리다).
+      .replace(/\p{Cc}/gu, " ")
+      // ② 눈에 보이지 않는 글자는 **지운다**(공백으로 바꾸면 "박성(zero-width)헌"이 "박성 헌"이 된다).
+      //    `\p{Cf}` 하나로 충분하다 — U+200B~200D·2060·FEFF와 글자 방향을 뒤집는 U+202A~202E(사칭에
+      //    쓰인다)가 전부 이 분류에 들어간다(2026-11-20 직접 실행해 10자 모두 확인).
+      //    🔴 **여기에 그 글자들을 리터럴로 적지 않는다.** 소스에 눈에 안 보이는 글자가 박히면
+      //       git diff 로도 안 보이고, 나중에 "이상한 글자"로 보고 지우면 `[\p{Cf}-]` 가 되어
+      //       **하이픈이 조용히 삭제**된다("김-민수" → "김민수"). 검수가 짚은 함정이다.
+      .replace(/\p{Cf}/gu, "")
+      // ③ 괄호·콜론 제거 — 접속기록 meta 가 `이름(이전 이름 ○○○)` 꼴이라 해석기가 짝을 잘못 찾는다.
+      .replace(/[()[\]{}:]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+}
+
+/** 운영자 본인 이름 변경(화면·접속기록에 보이는 이름). */
+export async function changeOperatorName(
+  _prev: { error?: string; ok?: boolean },
+  formData: FormData
+): Promise<{ error?: string; ok?: boolean }> {
+  const me = await getCurrentOperator();
+  if (!me) return { error: "로그인이 필요합니다." };
+
+  const name = cleanOperatorName(String(formData.get("name") ?? ""));
+  if (!name) return { error: "이름을 입력해주세요." };
+  // 접속기록에 그대로 찍히는 값이라 길이를 제한한다(화면 깨짐·기록 오염 방지).
+  if (name.length > 30) return { error: "이름은 30자 이하로 입력해주세요." };
+  if (name === me.name) return { ok: true };
+
+  // 🔴 분당 상한 — 없으면 **접속기록 적재 통로**가 된다(검수 중간 1).
+  //    두 이름을 번갈아 보내면 호출 1건마다 쓰기 1회 + 기록 1행이 무제한으로 쌓여,
+  //    ① 진짜 침해 흔적을 뒤 페이지로 밀어내고 ② SQLite 쓰기 락이 직원 출퇴근 기록과 경합한다.
+  //    ⚠️ 비밀번호 쪽과 **다른 키**를 쓴다 — 같은 키면 이름을 바꾸다가 비밀번호 변경이 막힌다.
+  if (!passwordAttemptAllowed(opNameAttemptKey(me.id))) {
+    return { error: "이름을 너무 자주 바꿨습니다. 1분 뒤에 다시 시도해주세요." };
+  }
+
+  await prisma.operator.update({ where: { id: me.id }, data: { name } });
+
+  const { ip, userAgent } = readClientMeta(await headers());
+  // 바뀐 뒤 이름으로 남긴다(옛 이름은 meta 에 적어 추적할 수 있게).
+  //  ⚠️ meta 모양을 바꾸면 lib/access-labels.ts 의 사전도 함께 고칠 것 — 안 그러면 기록 화면이 공란이 된다.
+  await logOperator({ kind: "config", result: "success", name, emailTried: me.email, meta: `operator_name_change(이전 이름 ${me.name})`, ip, userAgent });
+
+  revalidatePath("/operator/account");
+  return { ok: true };
 }
 
 /** 운영자 로그아웃. */

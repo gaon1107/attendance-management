@@ -115,6 +115,13 @@ function baseMetaLabel(meta: string): string {
     reset_code_blocked: "인증번호 요청 차단(과다 요청)",
     reset_code_verify_blocked: "인증번호 확인 차단(과다 요청)",
     password_reset_by_sms_code: "본인 비밀번호 재설정(문자 인증)",
+    // 운영자(본사) 본인 계정 변경 — /operator/account. (2026-11-20 추가)
+    //  🔴 이 세 줄이 없으면 [운영자 접속 기록]에서 **"무슨 일인지"가 공란("—")**으로 나온다.
+    //     그러면 비밀번호를 찍어 본 시도가 로그인 문에서 난 실패와 구분되지 않아, 월 1회 기록을
+    //     훑어보는 운영 점검이 가장 중요한 두 사건에서 작동하지 않는다(검수 치명 2).
+    operator_password_change: "운영자 본인 비밀번호 변경",
+    operator_password_change_denied: "운영자 비밀번호 변경 실패(현재 비밀번호 오류)",
+    operator_name_change: "운영자 본인 이름 변경",
     // 회사 계정(마스터 열쇠)의 복구 기준이 바뀌는 사건 — 가장 무겁게 봐야 할 기록이다.
     owner_recovery_phone_change: "회사 계정 복구용 연락처 변경",
     //  · 실패는 성공과 **다른 이름**을 쓴다. 같으면 접속기록에서 실패 시도까지 "변경 5건"처럼 읽혀

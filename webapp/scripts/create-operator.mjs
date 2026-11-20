@@ -30,9 +30,13 @@ import { PrismaClient } from "@prisma/client";
 //  ⚠️ 정적 import 대신 이렇게 감싼 이유(검수 E-11): `.ts` 파일을 그대로 불러오는 것은 Node 22.6
 //     이상에서만 된다. 예전 Node에서는 `Unknown file extension ".ts"`로 죽는데, 그 메시지만 보면
 //     **운영자 계정을 만들 방법이 없는 상황에서 원인을 짐작할 수 없다.** 그래서 사람 말로 알려준다.
-//  ⚠️ `../lib/login-policy.ts`·`../lib/password.ts`에 `@/lib/...` 형태(경로 별칭) import가 생기면
-//     이 스크립트가 즉시 깨진다 — Node는 그 별칭을 모른다. 두 파일에 손댈 때 이 사실을 기억할 것.
-let hashPassword, EMAIL_MAX_LEN, PASSWORD_MAX_LEN, checkPasswordStrength;
+//  ⚠️ 아래 **네 파일**에 `@/lib/...` 형태(경로 별칭) import가 생기면 이 스크립트가 즉시 깨진다 —
+//     Node는 그 별칭을 모른다. 게다가 죽을 때 "Node 22.6 이상이 필요합니다"라는 **엉뚱한 메시지**가
+//     나와 원인을 짐작하기 어렵다. 이 파일들에 손댈 때 반드시 기억할 것:
+//       `../lib/password.ts` · `../lib/login-policy.ts` · `../lib/password-strength.ts` ·
+//       `../lib/password-policy.ts`
+//     (2026-11-20에 뒤의 두 개가 늘었는데 이 목록은 그대로여서 함께 고쳤다.)
+let hashPassword, EMAIL_MAX_LEN, PASSWORD_MAX_LEN, checkPasswordStrength, OPERATOR_PASSWORD_MIN_LEN;
 try {
   ({ hashPassword } = await import("../lib/password.ts"));
   ({ EMAIL_MAX_LEN, PASSWORD_MAX_LEN } = await import("../lib/login-policy.ts"));
@@ -41,6 +45,9 @@ try {
   //    **전 회원사 데이터를 보는 유일한 계정**은 `password1234`를 쓸 수 있었다.
   //    ⚠️ `../lib/password-strength.ts`는 **import가 하나도 없어야** 여기서 불린다. 그쪽 주석 참조.
   ({ checkPasswordStrength } = await import("../lib/password-strength.ts"));
+  // 운영자 최소 길이는 **앱과 같은 상수**를 본다(2026-11-20에 하나로 모았다 — 검수 치명 1).
+  //  ⚠️ `../lib/password-policy.ts`도 import가 하나도 없어야 여기서 불린다(그 파일 주석 참조).
+  ({ OPERATOR_PASSWORD_MIN_LEN } = await import("../lib/password-policy.ts"));
 } catch (e) {
   console.error("✖ 앱 코드를 불러오지 못했습니다.");
   console.error(`  지금 Node 버전: ${process.version} — 이 명령은 Node 22.6 이상이 필요합니다.`);
@@ -48,13 +55,13 @@ try {
   process.exit(1);
 }
 
-// 🔴 최소 길이를 고객사(10자, lib/password-policy.ts)보다 **높게 잡았다** (검수 M-7).
-//    고객사 계정은 한 회사만 보고 재설정 창구도 있다. 운영자는 **회사 칸막이를 넘어 전 회원사를
-//    보는 유일한 계정**이고 재설정 창구가 없다. 세션을 8시간·30분으로 더 엄하게 잡은 판단과
-//    같은 이유로 여기도 더 엄해야 앞뒤가 맞는다.
+// 🔴 최소 길이는 고객사(10자)보다 **높다**(검수 M-7). 이유·숫자는 앱과 같은 한 곳에 있다:
+//    `lib/password-policy.ts`의 OPERATOR_PASSWORD_MIN_LEN.
+//    ⚠️ 여기에 숫자를 다시 적지 말 것 — 2026-11-20에 웹 [내 계정] 화면이 고객사용 10자를 쓰는
+//       바람에 "명령은 12자, 화면은 10자"로 갈렸다(검수 치명 1). 그래서 상수 하나로 모았다.
 //    ⚠️ 30분 유휴 때문에 하루에 몇 번씩 다시 입력하게 되는데, 그 불편이 "짧고 뻔한 비번"을
 //       유도한다. 그래서 길이는 숫자로 강제하고, 아래에서 통문장(띄어쓰기 포함)을 권한다.
-const PASSWORD_MIN_LEN = 12;
+const PASSWORD_MIN_LEN = OPERATOR_PASSWORD_MIN_LEN;
 
 const prisma = new PrismaClient();
 
