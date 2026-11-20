@@ -7,6 +7,9 @@ import { Sidebar, type NavKey } from "@/app/components/Sidebar";
 import { LogoutButton } from "@/app/components/LogoutButton";
 import { NotificationBell } from "@/app/components/NotificationBell";
 import { NavProvider, NavOpenButton } from "@/app/components/MobileNav";
+import { HelpFab } from "@/app/components/HelpFab";
+import { helpFor } from "@/lib/help-content";
+import { guideSectionHref } from "@/lib/guide";
 
 // ⚠️ isOwner를 여기 적어 두는 이유: 사이드바가 이 값으로 "내 근태" 묶음을 줄지 정한다.
 //    타입에 없으면 어느 화면에서 user를 줄여 넘겨도 tsc가 통과해, 회사 계정에 근태 메뉴가 조용히 되살아난다(검수 2차 10).
@@ -18,7 +21,9 @@ import { NavProvider, NavOpenButton } from "@/app/components/MobileNav";
 //    교대근무 회사에서 [근무표] 메뉴가 조용히 사라진다. 그래서 여기에도 적어 둔다.
 type ShellUser = { id?: string; name: string; role: string; isOwner?: boolean; companyId?: string; mustChangePassword?: boolean; company: { name: string; logoName?: string | null; approvalMode?: string | null; shiftMode?: number | null } };
 
-export function AppShell({
+// ⚠️ async 서버 컴포넌트다(떠 있는 [도움말]의 안내서 링크를 만들 때 사본 정보를 읽는다).
+//    호출하는 화면 54곳은 그대로 <AppShell …>로 쓰면 된다 — 이미 Sidebar 도 async 서버 컴포넌트다.
+export async function AppShell({
   user,
   active,
   title,
@@ -36,6 +41,14 @@ export function AppShell({
   // 🔒 임시 비밀번호로 로그인한 상태면 어떤 화면도 열지 않고 새 비밀번호 설정으로 보낸다(검수 H-4).
   //    이 컴포넌트를 로그인 화면 46개가 모두 거치므로, 새 화면을 만들어도 자동으로 보호된다.
   if (user.mustChangePassword) redirect("/change-password");
+
+  // 떠 있는 [도움말] 버튼 — **이 화면에 대한 설명이 있을 때만** 그린다(빈 창을 보여 주지 않는다).
+  //  · [도움말] 화면 자신에서는 숨긴다 — 이미 안내서를 보고 있는 자리라 군더더기다.
+  //  · 안내서 링크는 역할에 맞는 안내서만 만들어진다(직원에게 관리자 안내서를 권하지 않는다).
+  const helpEntry = active === "help" ? null : helpFor(active);
+  const helpGuideHref = helpEntry?.guide
+    ? await guideSectionHref(helpEntry.guide.book, helpEntry.guide.anchor, user.role)
+    : null;
 
   return (
     // NavProvider가 .app-row를 대신 그린다 — 폰에서 [☰]로 여는 메뉴 서랍의 열림 상태를 들고 있어야 해서다.
@@ -63,6 +76,7 @@ export function AppShell({
         </header>
         <div className="page">{children}</div>
       </main>
+      {helpEntry && <HelpFab entry={helpEntry} guideHref={helpGuideHref} />}
     </NavProvider>
   );
 }

@@ -1,4 +1,7 @@
-// [관리자 전용] 고객사 사용 안내서 열람·내려받기 — 로그인 확인 후 webapp/guide-files 의 사본을 내려준다.
+// 고객사 사용 안내서 열람·내려받기 — 로그인한 사람에게 **역할에 맞는 안내서만** 내려준다.
+//  🔴 "관리자 전용 통로"가 **아니다.** 직원도 직원용 안내서는 받는다(관리자 안내서만 403).
+//     누가 무엇을 볼 수 있는지는 lib/guide.ts 의 canRead **한 곳**이 정한다 — 여기서 역할을 다시 따지지 말 것.
+//     (예전엔 role !== "admin" 을 여기 박아 뒀다. 주석만 보고 그 검사를 되살리면 직원 [도움말]이 조용히 깨진다.)
 //  · 주소 끝에 `?download=1` 이 붙으면 **파일로 저장**, 없으면 **새 탭에서 바로 보기**.
 //  · 만드는 방식은 기존 [회사 문서] 통로(app/api/company-doc/[id]/route.ts)와 같게 맞췄다(새 방식을 만들지 않는다).
 //  · 안내서는 **우리가 만든 파일**이고 움직이는 코드(script)가 0개다(글·그림만) → 우리 주소에서 그대로 보여도 안전하다.
@@ -11,6 +14,7 @@ import { guideBySlug, guidePath, canRead } from "@/lib/guide";
 export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const me = await getCurrentUser();
   // ⚠️ 이 주소는 화면의 <a href>로 **브라우저가 직접 여는** 링크다(대시보드 [사용 안내서] 카드).
+  //    ([도움말] 화면 app/help, 그리고 떠 있는 [도움말] 창의 "그림까지 자세히 보기")
   //    로그인이 풀린 뒤 클릭하면 새 탭에 날 텍스트(JSON)만 뜨므로 로그인 화면으로 보낸다(사람이 여는 GET).
   if (!me) return NextResponse.redirect(new URL("/login", req.url));
 
@@ -19,7 +23,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   if (!guide) return NextResponse.json({ message: "안내서를 찾을 수 없습니다." }, { status: 404 });
   // 🔒 안내서마다 볼 수 있는 사람이 다르다 — 직원용은 모두가, 관리자 안내서는 관리자만.
   //    판단은 [도움말] 화면과 **같은 함수**(lib/guide.ts canRead)가 한다.
-  if (!canRead(guide, me.role)) return NextResponse.json({ message: "관리자만 볼 수 있습니다." }, { status: 403 });
+  if (!canRead(guide, me.role)) return NextResponse.json({ message: "이 안내서는 관리자만 볼 수 있습니다." }, { status: 403 });
 
   const download = new URL(req.url).searchParams.get("download") === "1";
 

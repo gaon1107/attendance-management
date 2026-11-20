@@ -55,7 +55,12 @@ try {
     const src = path.join(SRC_DIR, name);
     const dest = path.join(DEST_DIR, name);
     const s = fs.statSync(src);
-    manifest.files[name] = { bytes: s.size, updatedAt: new Date(s.mtimeMs).toISOString() };
+    // 🔴 안내서 안에 **어떤 장이 있는지** 기록해 둔다(<section id="s0">…).
+    //    화면별 도움말이 "이 화면은 안내서 05장" 하고 보내는데, 안내서가 바뀌어 그 장이 사라지면
+    //    엉뚱한 곳으로 가 버린다. 목록을 적어 두면 없는 장일 때 **그냥 맨 위로** 열 수 있다(무해).
+    //    ⚠️ 여기서 읽는 것은 원본이다 — 사본과 내용이 같으므로 결과는 같다.
+    const anchors = [...new Set([...fs.readFileSync(src, "utf8").matchAll(/\sid="(s\d+)"/g)].map((m) => m[1]))];
+    manifest.files[name] = { bytes: s.size, updatedAt: new Date(s.mtimeMs).toISOString(), anchors };
 
     if (fs.existsSync(dest)) {
       const d = fs.statSync(dest);

@@ -1,7 +1,7 @@
 // 고객사 사용 안내서 — **어떤 안내서가 있고 어느 파일인지 이 파일 한 곳에서만 정한다.** (사장님 지시 2026-11-20)
 //
 // 왜 한 곳에 모으나
-//  · 화면(대시보드 카드)과 내려주는 통로(app/api/guide/[slug]/route.ts)가 **같은 목록**을 본다.
+//  · 화면([도움말] — app/help/page.tsx)과 내려주는 통로(app/api/guide/[slug]/route.ts)가 **같은 목록**을 본다.
 //    두 곳에 따로 적으면 한쪽만 고쳐서 "버튼은 보이는데 눌러도 안 열리는" 상태가 된다.
 //
 // ⚠️ 안내서 원본은 docs/12_안내서/ 에 있고, 그 원본을 굽는 것은 scripts/build-guide.mjs 다(건드리지 않는다).
@@ -62,7 +62,7 @@ export function guidePath(g: GuideDef): string {
 export type GuideInfo = GuideDef & { updatedAt: Date; bytes: number };
 
 /** 사본을 만들 때 scripts/sync-guide.mjs 가 함께 적어 둔 목록표(만든 날짜·크기). */
-type Manifest = { files?: Record<string, { bytes?: number; updatedAt?: string } | undefined> };
+type Manifest = { files?: Record<string, { bytes?: number; updatedAt?: string; anchors?: string[] } | undefined> };
 
 async function readManifest(): Promise<Manifest> {
   try {
@@ -95,6 +95,25 @@ export async function listAvailableGuides(role: string): Promise<GuideInfo[]> {
     }
   }
   return out;
+}
+
+/** 화면별 도움말 창의 [그림까지 자세히 보기] 주소를 만든다. 볼 수 없거나 안내서가 없으면 null.
+ *  🔴 안내서가 바뀌어 그 장(anchor)이 사라졌으면 **장 없이** 맨 위로 연다 —
+ *     없는 장을 가리키면 조용히 엉뚱한 곳(맨 위)으로 가는데, 그럴 바에는 처음부터 맨 위가 정직하다.
+ *     장 목록은 사본을 만들 때 기록해 둔다(scripts/sync-guide.mjs → manifest.json). */
+export async function guideSectionHref(slug: string, anchor: string | undefined, role: string): Promise<string | null> {
+  const g = guideBySlug(slug);
+  if (!g || !canRead(g, role)) return null;
+  try {
+    const st = await fs.stat(guidePath(g));
+    if (!st.isFile()) return null;
+  } catch {
+    return null; // 사본이 없다 — 링크를 걸면 눌러도 안 열린다.
+  }
+  const base = `/api/guide/${g.slug}`;
+  if (!anchor) return base;
+  const have = (await readManifest()).files?.[g.file]?.anchors ?? [];
+  return have.includes(anchor) ? `${base}#${anchor}` : base;
 }
 
 /** 2.3MB · 712KB 처럼 사람이 읽기 좋은 크기(1MB 미만은 KB — "0.0MB" 로 보이지 않게). */
