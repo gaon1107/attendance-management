@@ -4,6 +4,9 @@
 import Link from "next/link";
 import { getLandingStats, TREND_DAYS } from "@/lib/public-stats";
 import { TRIAL_DAYS } from "@/lib/trial";
+// 구독 요금(구간제, 2026-11-20 확정). ⚠️ 금액을 이 파일에 직접 적지 말 것 — 요금은 lib/pricing.ts
+//    한 곳에서만 온다. 화면과 청구가 다른 값을 쓰면 "광고한 값과 청구한 값이 다른" 분쟁이 된다.
+import { PRICE_TIERS, QUOTE_OVER, formatWon, tierLabel } from "@/lib/pricing";
 // 히어로의 3D 일러스트 — 마우스 위치를 읽어야 해서 **그림 한 장만** 클라이언트 컴포넌트로 떼어 냈다.
 // 이 페이지는 그대로 서버 컴포넌트다(FAQ도 여전히 JS 없이 <details>로 동작한다).
 import { LandingHeroFigure } from "@/app/components/LandingHeroFigure";
@@ -261,20 +264,69 @@ const stats = [
 ];
 
 // ── FAQ ──
+/**
+ * FAQ에서 예로 드는 구간(두 번째 = 6~10명).
+ * ⚠️ `PRICE_TIERS[1]`을 직접 쓰지 않는 이유: lib/pricing.ts에서 구간을 1개로 줄이면 undefined가 되고,
+ *    이 배열은 모듈 최상위라 **빌드/프리렌더 단계에서 터진다**(공개 홈화면이 안 뜬다). (검수 중간 5)
+ */
+const FAQ_TIER_INDEX = Math.min(1, PRICE_TIERS.length - 1);
+const FAQ_TIER = PRICE_TIERS[FAQ_TIER_INDEX];
 const faqs = [
   { q: "얼굴인증을 꼭 써야 하나요?", a: "아니요. 얼굴인증과 GPS 중 직원이 직접 고를 수 있고, 둘 다 강제가 아닙니다. 생체정보 동의는 언제든 철회·삭제할 수 있어요." },
   { q: "5인 미만 사업장도 쓸 수 있나요?", a: "네. 인원 수 제한 없이 사용할 수 있습니다. 5인 이상 사업장에 필요한 근로시간 기록·보존 기능도 기본으로 제공합니다." },
+  // ── 요금 질문 3개 (2026-11-20 구간제 전환과 함께 추가) ──
+  //    ⚠️ 금액·구간 이름은 lib/pricing.ts에서 가져온다. 여기 숫자를 직접 적으면 요금표와 어긋난다.
+  //    ⚠️ **"자동으로 결제되지 않습니다"라고 쓰지 않는다.** 자동결제(KIS 빌링)는 가입 때 카드 등록을
+  //       권하는 방식이라(plan-구독결제-요금제.md 3장), 그 고객은 체험이 끝나면 **실제로 자동 결제된다.**
+  //       그날 이 문장은 거짓이 되고 캡처 한 장으로 끝나는 표시광고 분쟁이 된다. (검수 치명 2)
+  //       쓸 수 있는 말은 각주와 같은 **"결제는 직접 신청하실 때만 시작됩니다"**다(시작 시점에 한정).
+  //    ⚠️ 반대로 **"체험이 끝나도 계속 쓸 수 있다"는 뜻으로도 쓰지 않는다** — 미납 시 직원 출퇴근 차단이
+  //       확정돼 있다(lib/trial.ts 주석). 다만 그 차단은 **아직 만들지 않았다.** 그래서 "출퇴근이 멈춘다"고
+  //       지금 적으면 그것도 거짓이다. 어느 쪽도 단정하지 않고 "안내드린다"까지만 쓴다.
+  //       → 6단계(미납 차단)를 만들 때 이 답에 차단 범위를 **반드시 추가**할 것. (검수 중간 1)
+  //    ⚠️ "직원이 줄면 내려간다"는 **시점을 반드시 밝힌다.** 그냥 "내려갑니다"라고 쓰면 월중 감원 시
+  //       "지금 내려 달라, 차액 돌려 달라"는 요구가 되고, 환불 정책(plan 4장: 결제한 기간 환불 없음)과
+  //       충돌한다. (검수 중간 2)
+  { q: "며칠만 일하는 알바도 1명으로 세나요?", a: `재직 중인 직원으로 셉니다. 다만 요금은 구간제라 구간 안에서는 인원이 늘어도 요금이 같습니다. 예를 들어 ${tierLabel(FAQ_TIER_INDEX) ?? ""} 구간은 몇 명이든 월 ${formatWon(FAQ_TIER.monthly)}입니다(부가세 별도).` },
+  // ⚠️ "체험이 끝나기 전에 안내드립니다"라고 쓰지 않는다 — **만료 사전 안내를 보내는 기능이 없다.**
+  //    `trialStatus`를 쓰는 곳은 관리자 대시보드의 남은 기간 띠와 운영자 목록의 "곧 만료" 분류뿐이고
+  //    메일·문자 발송 경로가 없다. 지킬 주체가 없는 약속은 적지 않는다 — 숫자 밴드에서 "100% 근로기준법
+  //    대응"을 뺀 것과 같은 기준이다. (검수 중간 3)
+  //    대신 **지금도 참이고 결제가 붙은 뒤에도 참인 것**만 적는다: ① 결제는 신청할 때 시작된다(정책)
+  //    ② 남은 기간은 로그인 후 화면에 보인다(실제 동작) ③ 계속 쓰려면 유료 신청이 필요하다(확정 정책).
+  //    ③이 "안 내면 그냥 계속 쓰는 건가?"라는 오해를 막는다. 차단 **범위**는 6단계에서 추가한다.
+  { q: `${TRIAL_DAYS}일 무료 체험이 끝나면 어떻게 되나요?`, a: "결제는 직접 신청하실 때만 시작됩니다. 남은 체험 기간은 로그인 후 관리자 화면 맨 위에 표시되며, 요금은 이 페이지에 공개돼 있습니다. 체험이 끝난 뒤에도 계속 이용하시려면 유료 신청이 필요합니다." },
+  { q: "직원이 늘면 요금은 어떻게 되나요?", a: "구간을 넘을 때만 올라갑니다. 올리기 전에 금액을 먼저 보여 드리고 동의를 받으며, 직원이 줄면 다음 결제분부터 낮은 구간으로 적용됩니다." },
   { q: "기존 급여 프로그램과 연동되나요?", a: "실근무시간·근태 데이터를 내보낼 수 있어 급여 정산에 활용할 수 있습니다. 주요 급여 서비스와의 직접 연동은 순차적으로 추가하고 있습니다." },
   { q: "근로시간 기록은 얼마나 보관되나요?", a: "근로기준법에 따라 3년간 안전하게 보관하며, 언제든 법정 근로기록으로 내보낼 수 있습니다." },
 ];
 
-// ── 요금제 (사장님 확정 2026-08-09) ──
-//   ① 무료: 30일 체험  ② **직원** 1명당 1,000원 **부가세 별도**  ③ 최소 결제 인원 없음  ④ 경쟁사 가격은 적지 않음
-//   ⑤ **관리자는 과금 대상이 아니다**(2026-08-09 사장님 지시로 변경 — 처음엔 관리자도 세는 안이었다).
-//   ⚠️ 가격은 고객과의 약속이다. 이 숫자·조건을 바꿀 때는 **반드시 사장님 확인**을 받는다.
-//   ⚠️ "부가세 별도"는 표시광고 상 반드시 함께 보여야 한다(빼면 1,100원을 1,000원이라 광고한 셈이 된다).
-//      가격 블록을 뺀 뒤로 그 표기가 있는 곳은 **제목(h2) 하나뿐**이다.
-const PRICE_PER_PERSON = 1000;
+// ── 요금제 (사장님 확정 2026-11-20 — **구간제**) ──
+//   ① 무료: 30일 체험  ② **직원 수 구간별 정액**, 전부 **부가세 별도**
+//   ③ **공개 표의 마지막 구간을 넘으면 공개 가격이 없다(별도 협의).** 지금은 150명이 마지막이다.
+//      🔴 이 숫자를 주석에 적어 두지 않는다 — 화면은 `QUOTE_OVER`(마지막 구간의 max 파생값)를 쓴다.
+//      구간이 바뀌면 화면은 따라가는데 주석만 옛 숫자로 남아, 다음 사람이 "주석에는 201명이라 적혀
+//      있으니 구간이 빠진 게 실수"라고 판단해 **카드로 받을 수 없는 구간을 되살린다**(검수 중간 1).
+//      왜 150명에서 끊기는지는 lib/pricing.ts 머리말 ①(KIS 한도는 부가세 포함 총액 기준)에 있다.
+//   ④ 경쟁사 가격은 적지 않음  ⑤ **관리자는 과금 대상이 아니다**(2026-08-09 지시) — 재직 중인 직원만 센다.
+//   ⚠️ 2026-08-09의 "직원 1명당 1,000원 / 최소 결제 인원 없음"은 **폐기됐다.** 알바·계약직이 며칠만 일해도
+//      1명분이 과금되면 고객이 그들을 등록하지 않아 근로기록에 구멍이 난다(사장님 지적 2026-11-20).
+//   ⚠️ **금액을 이 파일에 적지 않는다.** 구간표는 lib/pricing.ts 한 곳에만 있다(위 import 주석 참조).
+//   ⚠️ 가격은 고객과의 약속이다. 숫자·구간을 바꿀 때는 **반드시 사장님 확인**을 받는다.
+//   ⚠️ "부가세 별도"는 표시광고 상 반드시 함께 보여야 한다(빼면 5,500원을 5,000원이라 광고한 셈이 된다).
+//      규칙은 **"금액이 보이는 모든 자리"**다(개수를 세어 적지 말 것 — 자리가 늘면 주석만 틀어진다).
+//      지금은 제목(h2)·요금표 caption 2개·FAQ 문장이 해당된다.
+//   근거·결정 과정·앞으로의 단계: 루트 plan-구독결제-요금제.md
+
+/**
+ * 홈화면 요금표에서 접지 않고 바로 보여 줄 구간 수. 타겟이 중소기업 사무직이라 30명까지는 펼쳐 둔다.
+ * ⚠️ `Math.min`을 쓰는 이유: lib/pricing.ts에서 구간을 6개 이하로 줄이면 `PRICE_TIERS[TIERS_SHOWN - 1]`이
+ *    undefined가 되어 **공개 홈화면이 통째로 500**이 된다. "요금은 pricing.ts만 고치면 된다"고 적어 둔
+ *    약속이 홈페이지를 내리게 하면 안 된다. (검수 중간 5)
+ */
+const TIERS_SHOWN = Math.min(6, PRICE_TIERS.length);
+/** 접어 둘 구간이 실제로 있는지. 없으면 `<details>`를 아예 그리지 않는다. */
+const HAS_FOLDED_TIERS = PRICE_TIERS.length > TIERS_SHOWN;
 // 여기 적는 것은 **실제로 있는 기능만**이다(홈화면 비교표와 같은 원칙).
 //  · 없는 기능을 적으면 그대로 허위광고가 된다. 새 줄을 넣기 전에 코드에 그 기능이 있는지 확인할 것.
 const priceIncludes = [
@@ -870,31 +922,101 @@ export default async function Home() {
         <div style={{ maxWidth: WRAP, margin: "0 auto", padding: "clamp(48px,7vw,72px) 24px" }}>
           <div style={{ textAlign: "center", marginBottom: "clamp(28px,4vw,40px)" }}>
             <div style={eyebrow}>요금제</div>
-            {/* ⚠️ "쓴 만큼만"이라고 쓰지 않는다 — 종량제(출근한 날만 과금)로 읽힌다. 실제는 인원 수 × 정액이다.
+            {/* ⚠️ "쓴 만큼만"이라고 쓰지 않는다 — 종량제(출근한 날만 과금)로 읽힌다.
+                   실제는 **직원 수 구간별 정액**이다(2026-11-20 구간제 전환. 그 전엔 인원 수 × 정액이었다).
                 ⚠️ **관리자는 세지 않는다**(2026-08-09 사장님 지시). 그래서 단위가 "계정"이 아니라 "직원"이다 —
                    아래 각주와 반드시 같은 말이어야 한다.
-                ⚠️ 가격 블록을 뺀 뒤로 **부가세 표기가 있는 곳은 이 제목뿐이다.** 여기서 빼지 말 것. */}
+                ⚠️ 부가세 표기는 이 제목에만 있는 것이 아니다 — 요금표 caption에도 있다(2026-11-20에 표가
+                   생겼다). "중복이니까" 어느 한쪽을 지우지 말 것: 접힌 표를 펼치면 제목이 화면 밖으로
+                   밀려 나가 금액만 보이는 화면이 생긴다(검수 중간 4·경미 1). */}
             {/* ⚠️ "(부가세 별도)"만 작게 — 강조할 말이 아니라는 사장님 지시(2026-08-09).
-                   다만 **지우거나 흐리게 만들지는 않는다.** 표시광고상 가격 옆에서 읽혀야 하고,
-                   가격 블록을 뺀 뒤로 이 표기가 있는 곳은 페이지에서 여기 하나뿐이다.
+                   다만 **지우거나 흐리게 만들지는 않는다.** 표시광고상 가격 옆에서 읽혀야 한다.
                    색은 본문색 그대로 두고 크기·굵기만 낮춘다(--text-sub로 바꾸면 대비가 더 떨어진다). */}
             <h2 style={h2}>
-              직원 수만큼만, 직원 1명당 월 {PRICE_PER_PERSON.toLocaleString("ko-KR")}원
+              직원 수 구간별 월 {formatWon(PRICE_TIERS[0].monthly)}부터
               <span style={{ fontSize: "clamp(13px,1.7vw,16px)", fontWeight: 600, marginLeft: 4, whiteSpace: "nowrap" }}>(부가세 별도)</span>
             </h2>
+            {/* ⚠️ "최소 인원도 없습니다"는 뺐다 — 구간제로 바뀌어 1~5명도 첫 구간 요금이 바닥이다(거짓이 된다). */}
             <p style={{ marginTop: 12, marginBottom: 0, fontSize: 16, color: "var(--text-sub)", lineHeight: 1.65 }}>
-              최소 인원도, 단말기 구입비도 없습니다. 30일 동안 먼저 써 보세요.
+              구간 안에서는 직원이 늘어도 요금이 그대로입니다. 단말기 구입비도 없습니다. {TRIAL_DAYS}일 동안 먼저 써 보세요.
             </p>
           </div>
 
           <div className="landing-hover-card" style={{ maxWidth: 720, margin: "0 auto", padding: "clamp(28px,4vw,40px)" }}>
-            {/* ⚠️ 2026-08-09 사장님 지시로 **가격 블록을 통째로 뺐다**(큰 1,000원 + "/1계정·월" + "부가세 별도"
-                   + "최소 결제 인원 없음" 상자). 바로 위 제목과 안내문이 같은 말을 이미 하고 있어 반복이었다.
-                   → 가격·부가세 표기는 이제 **제목(h2) 한 곳**이 책임진다. 제목에서 "(부가세 별도)"를 빼면
-                     페이지 어디에도 부가세 안내가 없어져 표시광고 문제가 된다. 반드시 함께 유지할 것. */}
+            {/* 구간 요금표 (2026-11-20 구간제 전환으로 추가) — 2026-08-09에 뺐던 "가격 블록"이 돌아온 자리다.
+                   그때는 상품이 하나·가격이 한 줄이라 제목과 반복이었지만, 이제는 구간이 여러 개라 표가
+                   없으면 방문자가 자기 회사 요금을 알 수 없다.
+                ⚠️ 숫자는 전부 lib/pricing.ts에서 온다. 여기 직접 적으면 청구 금액과 어긋난다.
+                   **구간 개수도 적지 않는다** — 구간이 늘거나 줄면 주석만 틀어진다(검수 경미 1).
+                ⚠️ caption의 "(부가세 별도)"를 빼지 말 것 — 금액이 나란히 보이는 자리라 표시광고상 함께
+                   읽혀야 한다. 제목(h2)의 표기와 **둘 다** 유지한다.
+                ⚠️ 뒤쪽 구간은 <details>로 접는다. 전부 펼치면 휴대폰에서 요금 섹션만 한 화면을 넘긴다.
+                   이 페이지는 서버 컴포넌트라 JS를 쓸 수 없고, <details>는 JS 없이 접힌다(FAQ와 같은 방식). */}
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 15 }}>
+              {/* ⚠️ 머리말을 바깥 <div>가 아니라 <caption>으로 둔 이유: 표와 **붙어서** 움직인다.
+                     <div>에 두면 접힌 표를 펼칠 때 머리말이 화면 위로 밀려 나가 **금액만 보이는 화면**이
+                     생겨 "(부가세 별도)"가 함께 읽히지 않는다(검수 중간 4). 화면낭독기에도 표 이름으로
+                     읽힌다(검수 경미 3). 접힌 표에도 같은 caption을 둔다 — 중복이 아니라 안전장치다. */}
+              <caption style={{ captionSide: "top", textAlign: "left", fontSize: 15, fontWeight: 700, color: "var(--text)", paddingBottom: 10 }}>
+                직원 수 구간별 월 요금
+                <span style={{ fontSize: 13, fontWeight: 600, marginLeft: 4, color: "var(--text-sub)" }}>(부가세 별도)</span>
+              </caption>
+              <tbody>
+                {/* ⚠️ 라벨이 없으면 그 행을 **아예 그리지 않는다.** "(빈칸) 32,000원"처럼 금액만 보이는 행은
+                       이 페이지가 가장 피하는 모양새다. 지금은 인덱스가 구조적으로 범위 안이라 도달할 수
+                       없지만, 구간표를 손댔을 때 조용히 깨지는 길을 아예 없애 둔다(검수 경미 3). */}
+                {PRICE_TIERS.slice(0, TIERS_SHOWN).map((t, i) => {
+                  const label = tierLabel(i);
+                  if (!label) return null;
+                  return (
+                    <tr key={t.max}>
+                      <th scope="row" style={{ textAlign: "left", padding: "9px 0", fontWeight: 600, color: "var(--text)", borderTop: i === 0 ? undefined : "1px solid var(--border)" }}>{label}</th>
+                      <td style={{ textAlign: "right", padding: "9px 0", fontWeight: 700, whiteSpace: "nowrap", borderTop: i === 0 ? undefined : "1px solid var(--border)" }}>{formatWon(t.monthly)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {HAS_FOLDED_TIERS && (
+              <details>
+                <summary style={{ cursor: "pointer", fontSize: 14, fontWeight: 600, color: "var(--primary)", padding: "8px 0" }}>
+                  {PRICE_TIERS[TIERS_SHOWN - 1].max + 1}명 이상 요금 보기
+                </summary>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 15 }}>
+                  <caption style={{ captionSide: "top", textAlign: "left", fontSize: 14, fontWeight: 700, color: "var(--text)", paddingBottom: 8 }}>
+                    {PRICE_TIERS[TIERS_SHOWN - 1].max + 1}명 이상 월 요금
+                    <span style={{ fontSize: 13, fontWeight: 600, marginLeft: 4, color: "var(--text-sub)" }}>(부가세 별도)</span>
+                  </caption>
+                  <tbody>
+                    {/* 위 표와 같은 이유로 라벨 없는 행은 그리지 않는다(검수 경미 3). */}
+                    {PRICE_TIERS.slice(TIERS_SHOWN).map((t, i) => {
+                      const label = tierLabel(TIERS_SHOWN + i);
+                      if (!label) return null;
+                      return (
+                        <tr key={t.max}>
+                          <th scope="row" style={{ textAlign: "left", padding: "9px 0", fontWeight: 600, color: "var(--text)", borderTop: "1px solid var(--border)" }}>{label}</th>
+                          <td style={{ textAlign: "right", padding: "9px 0", fontWeight: 700, whiteSpace: "nowrap", borderTop: "1px solid var(--border)" }}>{formatWon(t.monthly)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </details>
+            )}
+            {/* 별도 협의 안내는 **접지 않는다** — 큰 회사일수록 문의가 중요한데 접어 두면 한 번 더 눌러야
+                   발견한다(검수 경미 4).
+                ⚠️ 여기에 금액을 짐작해 적지 말 것. 공개 가격이 없는 이유는 두 가지 실제 제약이다 —
+                   KIS 1회 결제 한도(**부가세 포함 총액** 기준)와 얼굴서버 동시 처리량 미측정.
+                   자세한 계산은 lib/pricing.ts 머리말에 있다. */}
+            <p style={{ marginTop: 10, marginBottom: 0, fontSize: 14, color: "var(--text-sub)", lineHeight: 1.6 }}>
+              <strong style={{ color: "var(--text)" }}>{QUOTE_OVER + 1}명 이상</strong>은 요금을 따로 안내드립니다.
+            </p>
+
             {/* ⚠️ "전부 들어 있습니다"라고 단정하지 않는다 — 문자 발송(아이원24)처럼 건당 비용이 붙는 외부
-                   서비스가 있고, 얼굴서버 라이선스 단가도 계약 사항이라 코드로 확인되지 않는다(검수 중간 3). */}
-            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>이 가격에 들어 있는 것</div>
+                   서비스가 있고, 얼굴서버 라이선스 단가도 계약 사항이라 코드로 확인되지 않는다(검수 중간 3).
+                ⚠️ "이 가격에"가 아니라 **"모든 구간에"**다 — 구간제로 바꾼 뒤로 "이 가격"이 어느 금액인지
+                   가리킬 수 없다. */}
+            <div style={{ fontSize: 15, fontWeight: 700, marginTop: "clamp(20px,2.5vw,28px)", marginBottom: 14 }}>모든 구간에 들어 있는 것</div>
             <ul className="landing-price-feats">
               {priceIncludes.map((t) => (
                 <li key={t} style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 15, color: "var(--text)", lineHeight: 1.6 }}>
@@ -908,7 +1030,9 @@ export default async function Home() {
 
             <div style={{ marginTop: "clamp(24px,3vw,32px)", textAlign: "center" }}>
               <Link href="/signup" style={{ height: 52, padding: "0 30px", display: "inline-flex", alignItems: "center", borderRadius: 10, background: "var(--primary)", color: "#fff", fontSize: 16, fontWeight: 700, textDecoration: "none", boxShadow: "0 10px 24px rgba(37,99,235,0.28)" }}>
-                30일 무료로 시작하기
+                {/* 숫자를 직접 적지 않는다 — lib/trial.ts가 "홈화면 문구와 같은 값이어야 한다"고 적어 둔
+                       지점이다(검수 경미 2). 보이는 글자는 그대로 "30일 무료로 시작하기"다. */}
+                {TRIAL_DAYS}일 무료로 시작하기
               </Link>
             </div>
             {/* 각주 — 결제가 붙는 순간 분쟁이 되는 지점만 미리 밝힌다.
@@ -917,12 +1041,17 @@ export default async function Home() {
                    그리고 퇴사자는 deactivatedAt이 찍혀 로그인도 집계도 빠지지만 **계정 행은 남는다**.
                    셀 것과 안 셀 것을 둘 다 적는다.
                 ⚠️ **관리자는 세지 않는다**(2026-08-09 사장님 지시). 위 제목과 반드시 같은 말이어야 한다.
-                ⚠️ "자동으로 결제되지 않습니다"는 **지금 사실이다** — 가입 때 결제수단을 받지 않고 청구 코드가 없다.
-                   결제가 붙으면 이 문장부터 다시 볼 것(그대로 두면 그날 거짓말이 된다). */}
+                ⚠️ 2026-11-20: "체험 기간이 끝나도 자동으로 결제되지 않습니다"를 **"결제는 직접 신청하실 때만
+                   시작됩니다"**로 바꿨다. 앞 문장은 자동결제(KIS 빌링)가 붙는 날 거짓이 되지만, 뒷 문장은
+                   자동결제가 **고객이 고르는 선택 사항**이라 붙은 뒤에도 사실이다. 되돌리지 말 것.
+                ⚠️ 구간 초과 시 "먼저 보여 주고 동의를 받는다"는 **약속이다.** 3단계에서 그 동의 화면을
+                   만들기 전에는 요금을 올려 청구하지 않는다(plan-구독결제-요금제.md 3장). */}
             <p style={{ marginTop: 14, marginBottom: 0, textAlign: "center", fontSize: 13, color: "var(--text-sub)", lineHeight: 1.7 }}>
               재직 중인 직원 수로 계산합니다(관리자·회사 대표계정·퇴사 처리된 계정은 빼고 셉니다)
               <br />
-              체험 기간이 끝나도 자동으로 결제되지 않습니다 · 지문·카드 인식기 같은 단말기 구입 비용이 없습니다
+              직원이 늘어 구간을 넘으면 올라가는 금액을 먼저 보여 드리고 동의를 받은 뒤에만 적용합니다
+              <br />
+              결제는 직접 신청하실 때만 시작됩니다 · 지문·카드 인식기 같은 단말기 구입 비용이 없습니다
             </p>
           </div>
         </div>
