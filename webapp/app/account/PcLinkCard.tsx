@@ -2,8 +2,9 @@
 // [계정] PC 연결 카드 — 내 PC의 PC-OFF 프로그램에 입력할 연결코드를 발급받고, 내 기기를 확인·해제한다.
 //  · 코드는 6자리·5분 유효·1회용. 발급하면 이전 코드는 무효가 된다.
 //  · 본인 데이터 열람권: 내 PC에서 일어난 일(잠금·해제·일시사용)을 직원 본인도 볼 수 있게 최근 기록을 함께 보여준다.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { issuePairCode, revokeAgentDevice } from "@/app/actions/pcoff";
+import { PC_OFF_DOWNLOAD_PATH, PC_OFF_IS_PREVIEW } from "@/lib/pcoff-download";
 // ⚠️ lib/pcoff는 **순수 모듈**이라 브라우저에서 써도 된다(서버 전용은 lib/pcoff-policy.ts).
 import { isTempUseType } from "@/lib/pcoff";
 
@@ -23,6 +24,10 @@ export function PcLinkCard({ devices, events, pcOffOn, exempt }: {
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // 프로그램에 넣을 서버 주소 = 지금 이 사이트 주소(브라우저에서만 안다 — 첫 그림 뒤 1회)
+  const [origin, setOrigin] = useState("");
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- 브라우저 주소는 화면이 뜬 뒤에만 알 수 있다(1회)
+  useEffect(() => setOrigin(window.location.origin), []);
 
   async function onIssue() {
     setPending(true);
@@ -45,6 +50,18 @@ export function PcLinkCard({ devices, events, pcOffOn, exempt }: {
         {!pcOffOn && <><br /><span style={{ color: "var(--text-sub)" }}>지금은 회사가 PC-OFF를 사용하지 않아 잠기지 않습니다.</span></>}
         {exempt && <><br /><span style={{ color: "var(--warning)", fontWeight: 700 }}>회원님은 잠금 예외자로 지정돼 있어 PC가 잠기지 않습니다.</span></>}
       </p>
+
+      {/* 프로그램이 아직 없으면 여기서 내려받는다(2026-11-20 — 관리자가 주소를 안 보내 줘도 찾을 수 있게) */}
+      <div style={{ background: "#F9FAFB", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", marginBottom: 16, fontSize: 13, lineHeight: 1.7, wordBreak: "keep-all" }}>
+        <b>프로그램이 아직 없나요?</b> <b>회사 PC에서</b>{" "}
+        {/* download 속성을 일부러 쓰지 않는다 — 붙이면 파일이 없거나 몰릴 때 브라우저가 "다운로드 실패"만 보이고
+            서버의 한글 안내가 안 보인다. 성공 때는 서버가 첨부(Content-Disposition)로 보내므로 그대로 내려받아진다. */}
+        <a href={PC_OFF_DOWNLOAD_PATH} style={{ color: "var(--primary)", fontWeight: 700 }}>PC-OFF 내려받기</a>
+        (약 60MB — 휴대폰에서는 받지 마세요)를 눌러 받은 뒤 실행하세요. 처음 실행하면 뜨는 연결 창
+        (또는 시계 옆 ^ 안의 전원 아이콘 → [상태 · 연결 설정...])에{" "}
+        서버 주소 <b style={{ fontFamily: "ui-monospace, monospace" }}>{origin || "(이 사이트 주소)"}</b>와 아래 연결코드를 넣으세요.
+        {PC_OFF_IS_PREVIEW && <><br /><span style={{ color: "#B45309" }}>지금은 시험판이라 PC를 다시 켜면 프로그램을 다시 실행해야 합니다.</span></>}
+      </div>
 
       <button
         type="button"

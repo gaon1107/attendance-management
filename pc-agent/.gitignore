@@ -1,6 +1,8 @@
 # .NET 빌드 산출물 (용량 큼 — 저장 안 함, dotnet build로 다시 만듦)
 bin/
 obj/
+# 시험판·공개용 내려받기 묶음(실행 파일 60MB대) — 깃에 넣지 않는다. 서버에 올리는 절차는 deploy/server/README.md
+/bin-시험판/
 
 # Visual Studio 개인 설정
 *.user

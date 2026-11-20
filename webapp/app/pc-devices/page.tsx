@@ -6,6 +6,7 @@ import { after } from "next/server";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
+import { PcOffDownloadCard } from "./PcOffDownloadCard";
 import { isDeviceOnline } from "@/lib/agent-auth";
 import { revokeAgentDevice, setPcOffExempt } from "@/app/actions/pcoff";
 import { purgeAgentEventsDaily } from "@/lib/pcoff-retention";
@@ -92,6 +93,9 @@ export default async function PcDevicesPage() {
           </span>
         </div>
       )}
+
+      {/* 직원에게 보낼 설치 주소·안내문(2026-11-20) — 관리자가 복사해 카톡·문자로 보낸다 */}
+      <PcOffDownloadCard />
 
       {/* 잠겼어야 하는데 기록이 안 온 PC — 설치형 앱은 작업관리자로 끌 수 있으므로(지시서 §0)
            "기록이 안 왔다"를 알아채는 것이 유일한 실질 방어선이다. */}

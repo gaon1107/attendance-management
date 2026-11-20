@@ -89,6 +89,28 @@ printf '%s\0%s\0%s\0' "--reset" "이메일" "$P" | docker exec -i -e APP_BASE_UR
 - 기록: `/data/backup/backup.log`(공용) · `/var/log/attendance-backup.log`(근태). 공용 스크립트 수정 전 원본: `/root/gaon_daily_backup.sh.bak-20261118-attendance`.
 - ⚠️ `CLOCK_PHOTO_KEY`·`.env.production`은 **어떤 백업에도 없다** — 사장님이 따로 보관한 값으로 되살린다.
 
+## PC-OFF 내려받기 파일 (2026-11-20)
+
+- 주소 `https://attend.newgaon.com/download/pc-off` → nginx가 서버 파일 `/var/www/attend-downloads/pc-off.zip`을 그대로 내려준다(앱 무관, 공개).
+  관리자 [PC관리]·직원 [계정 → 내 PC 연결]이 이 주소를 안내한다(`webapp/lib/pcoff-download.ts`).
+- 파일은 **깃에 넣지 않는다**(60MB대). 이 PC에서 만들어 서버로 올린다.
+
+**새 파일로 바꾸는 순서** (주소는 그대로)
+1. 이 PC에서 배포판을 만든다 — **Release**만(Release에는 테스트 모드가 없다. Debug 실행 파일을 올리면 직원이 `--test-mode`로 잠금을 우회한다):
+   ```powershell
+   cd pc-agent; dotnet publish src\NewgaonPcOff\NewgaonPcOff.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
+   ```
+   → `bin-시험판\public\PC-OFF\NewgaonPcOff.exe`로 복사 → `bin-시험판\public`에서 `tar.exe -a -c -f ..\pc-off.zip PC-OFF` (윈도우 기본 tar — 표준 `/` 경로로 묶인다).
+2. **임시 이름으로** 올린다: `scp pc-off.zip gaon-main:/var/www/attend-downloads/pc-off.zip.new`
+   (바로 덮어쓰면 올리는 동안 받은 직원이 깨진 파일을 받는다)
+3. 서버에서 **내용 확인**(서버에 unzip이 없다 — python 사용): `python3 -m zipfile -l /var/www/attend-downloads/pc-off.zip.new` → `PC-OFF/`(폴더 줄)과 `PC-OFF/NewgaonPcOff.exe` **두 줄만** 있어야 한다(.bat·다른 파일이 있으면 멈춤).
+   올린 파일과 이 PC 파일의 `sha256sum`이 같은지도 본다.
+4. 한순간에 교체: `mv -f pc-off.zip.new pc-off.zip && chmod 644 pc-off.zip`
+5. 확인: `curl -sI https://attend.newgaon.com/download/pc-off` → 200·`Content-Disposition: attachment`·크기.
+- **처음 열 때 순서**: 파일 올리기 → nginx 반영(아래 "nginx·HTTPS"의 고칠 때 절차) → 마지막에 웹앱 배포.
+  (웹앱이 먼저 나가면 그 사이 직원 링크가 앱의 404로 간다)
+- 제한: 전용 구역 `att_dl`(IP당 분당 120·순간 200) · 동시 연결 IP당 10·사이트 20 · 연결당 2MB/s(전체 최대 ≈320Mbps — 회선 속도 미확인이라 보수적으로). 걸리면 한글 안내(429)가 나온다.
+
 ## 새 버전 반영
 
 ```bash

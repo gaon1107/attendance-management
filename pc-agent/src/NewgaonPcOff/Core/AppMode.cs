@@ -31,7 +31,16 @@ internal static class AppMode
     /// </summary>
     public const string TestAutoLockOnceNote = "테스트 모드에서 자동 잠금은 실행당 1회";
 
-    /// <summary>앱이 켜질 때 딱 한 번 부른다.</summary>
+    /// <summary>
+    /// 앱이 켜질 때 딱 한 번 부른다.
+    ///
+    /// 🔴 2026-11-20(공개 내려받기 검수 치명): <b>배포판(Release)에서는 테스트 모드를 켤 수 없다.</b>
+    ///  · 공개 주소로 실행 파일을 나눠 주면, 직원이 바로가기 대상 뒤에 <c>--test-mode</c>만 붙여
+    ///    "하루 한 번 60초 잠기고 풀리는" PC를 만들 수 있다. 이때도 잠금·해제 기록은 정상으로 올라가서
+    ///    서버의 미보고 감시(webapp/lib/pcoff-alert.ts — 유일한 실질 방어선)가 알아채지 못한다.
+    ///  · .NET 실행 파일은 되돌려 읽기 쉬워 인자 이름을 숨기는 것은 방어가 아니다 → 배포판에서 코드째 뺀다.
+    ///  · 개발 실행(<c>PC-OFF_테스트실행.bat</c> = dotnet build = Debug)에서는 그대로 쓸 수 있다.
+    /// </summary>
     public static void Parse(string[]? args)
     {
         if (args == null) return;
@@ -40,10 +49,15 @@ internal static class AppMode
         {
             if (string.Equals((a ?? "").Trim(), TestFlag, StringComparison.OrdinalIgnoreCase))
             {
+#if !DEBUG
+                Log.Warn("테스트 모드 인자를 받았지만 배포판에서는 쓸 수 없어 무시합니다(평소 실행으로 동작).");
+                return;
+#else
                 TestMode = true;
                 Log.Warn($"테스트 모드로 실행합니다 — 잠금화면은 {TestAutoUnlock.TotalSeconds:0}초 뒤 스스로 풀립니다. " +
                          "그 뒤로는 저절로 잠기지 않습니다([테스트] 잠금화면 미리보기로만).");
                 return;
+#endif
             }
         }
     }
