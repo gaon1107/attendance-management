@@ -16,6 +16,7 @@ import { toISODate } from "@/lib/period";
 import { countUncheckedAnomalies } from "@/lib/anomaly";
 import { purgeWorkRecordsDaily } from "@/lib/work-record-retention";
 import { trialStatus, trialLastDay, formatKoreanDate } from "@/lib/trial";
+import { listAvailableGuides, formatGuideSize } from "@/lib/guide";
 import { DashboardCalendar } from "./DashboardCalendar";
 import { LatestNoticeModal } from "./LatestNoticeModal";
 import type { DayData } from "@/app/schedule/ScheduleCalendar";
@@ -322,6 +323,11 @@ export default async function DashboardPage() {
     </div>
   );
 
+  // ── 사용 안내서 (사장님 지시 2026-11-20) ────────────────────────────────
+  //  · 관리자가 제품 안에서 바로 열어 보거나, 파일로 받아 직원에게 보낼 수 있게 한다.
+  //  · **파일이 있는 것만** 돌아온다 → 없으면 카드를 아예 그리지 않는다(눌러도 안 되는 버튼 금지).
+  const guides = await listAvailableGuides();
+
   // ── 무료 체험 남은 기간 띠 (사장님 지시 2026-08-09) ─────────────────────
   //  · 이 화면은 관리자 전용이라(위 role 검사) **직원에게는 보이지 않는다.**
   //  · ⚠️ 지금은 **알리기만 한다.** 만료돼도 아무 기능도 막지 않는다 — 결제 수단이 아직 없어서,
@@ -541,6 +547,62 @@ export default async function DashboardPage() {
               </div>
             </div>
           </section>
+
+          {/* 사용 안내서 (사장님 지시 2026-11-20) — [열기]는 새 탭에서 바로 보기, [내려받기]는 파일로 저장.
+              직원용 안내서를 여기 함께 둔 이유: 직원은 이미 자기 화면에서 출퇴근을 하고 있고, 이 파일은
+              **관리자가 입사 때 메일·메신저로 한 번 보내 주는 용도**로 만든 단일 파일이다(그림이 안에 들어 있어
+              파일 하나만 보내면 된다). 그래서 보내는 사람(관리자)의 화면에 둔다. */}
+          {guides.length > 0 && (
+            <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+              <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", fontSize: 15, fontWeight: 700 }}>
+                사용 안내서
+              </div>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {guides.map((g, i) => (
+                  <div
+                    key={g.slug}
+                    style={{ padding: "14px 18px", borderBottom: i < guides.length - 1 ? "1px solid #F3F4F6" : "none" }}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", wordBreak: "keep-all" }}>{g.title}</div>
+                    <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 3, lineHeight: 1.5, wordBreak: "keep-all" }}>
+                      {g.desc}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                      <a
+                        href={`/api/guide/${g.slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`${g.title} 새 탭에서 열기`}
+                        style={{
+                          display: "inline-flex", alignItems: "center", height: 38, padding: "0 16px",
+                          borderRadius: 8, background: "var(--primary)", color: "#fff",
+                          fontSize: 13, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap",
+                        }}
+                      >
+                        열기
+                      </a>
+                      <a
+                        href={`/api/guide/${g.slug}?download=1`}
+                        download={g.file}
+                        aria-label={`${g.title} 파일로 내려받기`}
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 6, height: 38, padding: "0 14px",
+                          borderRadius: 8, background: "#fff", border: "1px solid var(--border)", color: "var(--text)",
+                          fontSize: 13, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap",
+                        }}
+                      >
+                        <Icon name="download" size={14} />내려받기
+                      </a>
+                    </div>
+                    {/* 기준일 = 안내서를 만든 날. 화면이 바뀌었는데 안내서가 옛것이면 여기서 드러난다. */}
+                    <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 9, fontVariantNumeric: "tabular-nums" }}>
+                      {`기준일 ${g.updatedAt.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" })} · ${formatGuideSize(g.bytes)}`}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       </div>
     </AppShell>

@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "sync-guide": "node scripts/sync-guide.mjs",
+    "predev": "node scripts/sync-guide.mjs || exit 0",
+    "prebuild": "node scripts/sync-guide.mjs || exit 0",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
