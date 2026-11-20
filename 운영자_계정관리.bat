@@ -15,15 +15,12 @@ REM  [중요] `call node` 를 쓰지 않는다 - call 이 캐럿(^)을 한 번 더 escape 해서 
 REM   다른 값이 들어간다(zz^a@x.com -> zz^^a@x.com).
 REM  [주의] 실제 일은 전부 webapp\scripts\create-operator.mjs 가 한다. 규칙(길이·중복·형식)도 그쪽.
 
-if not exist "scripts\create-operator.mjs" (
-  echo.
-  echo  [오류] 프로그램 파일을 찾을 수 없습니다.
-  echo         이 파일은 근태관리 폴더 안에 둔 채로 실행해야 합니다.
-  echo         (지금 위치: %CD%)
-  echo.
-  pause
-  exit /b 1
-)
+REM  [함정] 괄호로 묶은 if 블록 안에서 echo 문구에 ")" 를 쓰면 **그 자리에서 블록이 끝난다.**
+REM   2026-11-20 이걸로 사고가 났다: 안내문에 "(지금 위치: ...)" 를 넣었더니 그 뒤의
+REM   pause/exit 가 조건과 상관없이 **항상** 실행돼, 더블클릭하면 창이 떴다가 엔터 한 번에
+REM   닫히고 메뉴가 아예 나오지 않았다. 그래서 블록을 쓰지 않고 goto 로 분기한다.
+REM   아래 :noprog 처럼 echo 문구에도 괄호를 넣지 않는다.
+if not exist "scripts\create-operator.mjs" goto noprog
 
 :menu
 cls
@@ -182,3 +179,12 @@ set "OP_EMAIL="
 echo.
 pause
 goto menu
+
+:noprog
+echo.
+echo  [오류] 프로그램 파일을 찾을 수 없습니다.
+echo         이 파일은 근태관리 폴더 안에 든 채로 실행해야 합니다.
+echo         지금 위치는 %CD% 입니다.
+echo.
+pause
+exit /b 1
