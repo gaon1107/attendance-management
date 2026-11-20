@@ -51,9 +51,15 @@ try {
   // 🔴 기존 목록표를 **이어서** 쓴다. 통째로 새로 쓰면, 원본 폴더는 있는데 html 하나가 잠깐 없는 상태로
   //    돌렸을 때 그 파일의 기록(장 목록·만든 날짜)이 사라진다 → 링크가 맨 위로 가고 기준일이 거짓이 된다(검수 경미 11).
   const manifest = { files: {} };
+  //    ⚠️ 단, **사본 폴더에 실제로 남아 있는 파일만** 이어받는다. 안 그러면 이름이 바뀌어 없어진
+  //       안내서의 기록이 옛 날짜 그대로 영원히 남는다(재검수 경미 2).
   try {
     const old = JSON.parse(fs.readFileSync(MANIFEST, "utf8"));
-    if (old && typeof old.files === "object") manifest.files = { ...old.files };
+    if (old && typeof old.files === "object") {
+      for (const [k, v] of Object.entries(old.files)) {
+        if (fs.existsSync(path.join(DEST_DIR, k))) manifest.files[k] = v;
+      }
+    }
   } catch {
     // 목록표가 아직 없다 — 새로 만든다.
   }

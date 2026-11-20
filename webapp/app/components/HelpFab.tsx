@@ -113,9 +113,13 @@ export function HelpFab({
             <Icon name="help" size={14} />전체 안내서
           </Link>
         </div>
+        {/* ⚠️ 조사("이/가")를 쓰지 않는다 — 장 이름 끝이 받침 없는 글자면("…보기", "…안내")
+            "보기이 펼쳐집니다"처럼 어색해진다. 이름을 모르는 자리에서는 조사를 피한다. */}
+        {/* 🔴 guideHref 를 꼭 함께 본다 — 직원이 관리자 안내서를 못 보는 화면에서는 버튼이 없는데
+            이름표만 남아 "열린다"고 말하게 된다(장 이름은 역할과 무관하게 넘어온다). */}
         {guideHref && guideLabel && (
           <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 8, wordBreak: "keep-all" }}>
-            {`[그림까지 자세히 보기]를 누르면 안내서의 「${guideLabel}」이 펼쳐집니다.`}
+            {`[그림까지 자세히 보기] → 안내서 「${guideLabel}」 장이 열립니다.`}
           </div>
         )}
       </Modal>
