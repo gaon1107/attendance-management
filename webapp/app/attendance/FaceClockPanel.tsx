@@ -11,6 +11,7 @@ import { clockOut } from "@/app/actions/attendance";
 import { ClockInPanel } from "./ClockInPanel";
 import { FaceGuide } from "@/app/components/FaceGuide";
 import { Icon } from "@/app/components/Icon";
+import { getOfficePosition, geoFailMessage, GEO_RETRY_MESSAGE, GEO_NO_LOCATION_NOTE } from "@/lib/geo-client";
 
 type Msg = { type: "ok" | "err" | "info"; text: string } | null;
 type WorkMode = "office" | "home" | "field";
@@ -70,6 +71,19 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
   const [phase, setPhase] = useState<"idle" | "camera" | "fallback">("idle");
   const [mode, setMode] = useState<WorkMode>("office");
   const coordsRef = useRef<{ lat: number; lng: number } | null>(null);
+  // 위치를 끝내 못 가져왔을 때 촬영 화면 위에 띄울 안내(2026-11-20) — 출근 뒤엔 패널이 바뀌어 사라지므로 촬영 전에 보여 준다.
+  const [geoWarn, setGeoWarn] = useState<string | null>(null);
+  // 위치 확인(보통 0~16초, 권한 창을 무시하면 최대 약 40초) 중 버튼을 또 누르면 카메라가 두 번 열려 앞의 카메라가 꺼지지 않는다 → 동기 잠금
+  const locatingRef = useRef(false);
+  const [locating, setLocating] = useState(false);
+  // 위치 요청 번호(검수 M-3): 위치를 기다리는 중 [일반 방식]으로 옮기거나 화면을 떠나면 번호를 올려,
+  //   늦게 도착한 결과가 카메라를 강제로 열지 않게 한다(옮긴 화면이 카메라 화면으로 바뀌는 혼란 방지).
+  const geoReqRef = useRef(0);
+  function abandonLocating() {
+    geoReqRef.current += 1;
+    locatingRef.current = false;
+    setLocating(false);
+  }
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false); // 더블클릭 즉시 차단용(상태 갱신은 비동기라 ref로 동기 차단)
   const unmountedRef = useRef(false); // 화면 이탈 후 늦게 도착한 카메라 스트림을 끄기 위한 표시
@@ -83,6 +97,7 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
     unmountedRef.current = false;
     return () => {
       unmountedRef.current = true;
+      geoReqRef.current += 1; // 떠난 뒤 도착한 위치 결과는 버린다(M-3)
       stopCamera(); // 화면 떠날 때 카메라 끄기
     };
   }, []);
@@ -132,18 +147,27 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
 
   // 출근: 근무형태 버튼 → (사무실이면 현재 위치 수집: 실패해도 진행) → 카메라
   function startClockIn(m: WorkMode) {
+    if (locatingRef.current) return;
     setMode(m);
     coordsRef.current = null;
-    if (m === "office" && navigator.geolocation) {
+    setGeoWarn(null);
+    if (m === "office") {
+      locatingRef.current = true;
+      setLocating(true);
       setMsg({ type: "info", text: "현재 위치 확인 중…" });
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          coordsRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          openCamera();
-        },
-        () => openCamera(), // 위치 거부/실패해도 얼굴 확인으로 진행(서버가 IP로도 확인)
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
+      // 정밀 위치 → 실패 시 대략 위치로 한 번 더(lib/geo-client.ts). 끝내 실패해도 얼굴 확인으로 진행(서버가 IP로도 확인),
+      // 다만 이유를 촬영 화면에 띄워 직원이 알고 고칠 수 있게 한다.
+      const reqId = ++geoReqRef.current;
+      getOfficePosition(() => {
+        if (geoReqRef.current === reqId) setMsg({ type: "info", text: GEO_RETRY_MESSAGE });
+      }).then((r) => {
+        if (geoReqRef.current !== reqId) return; // 그사이 일반 방식으로 옮겼거나 화면을 떠남 — 버린다(M-3)
+        locatingRef.current = false;
+        setLocating(false);
+        if (r.ok) coordsRef.current = { lat: r.lat, lng: r.lng };
+        else setGeoWarn(geoFailMessage(r.reason));
+        openCamera();
+      });
     } else {
       openCamera();
     }
@@ -256,6 +280,7 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
     stopCamera();
     setPhase("idle");
     setMsg(null);
+    setGeoWarn(null);
   }
 
   const bigBtn = (bg: string): React.CSSProperties => ({
@@ -296,6 +321,11 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
     return (
       // 화면 표시 크기만 제한(가운데 정렬) — 촬영은 카메라 원본 해상도로 하므로 화질·판독 기준엔 영향 없음.
       <div style={{ maxWidth: 420, margin: "0 auto" }}>
+        {geoWarn && action === "in" && (
+          <div style={{ marginBottom: 10, padding: "10px 12px", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, fontSize: 13, color: "#92400E", lineHeight: 1.6, wordBreak: "keep-all" }}>
+            <b>위치를 확인하지 못했습니다.</b> {geoWarn} {GEO_NO_LOCATION_NOTE} 고친 뒤 [취소]를 누르고 다시 시도할 수 있습니다.
+          </div>
+        )}
         <div style={{ position: "relative", width: "100%", aspectRatio: "4 / 3", background: "#111827", borderRadius: 12, overflow: "hidden" }}>
           <video ref={videoRef} playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }} />
           <FaceGuide minPercent={minPercent} />
@@ -310,7 +340,7 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
         {msg && <MsgBox msg={msg} />}
         <div style={{ textAlign: "center", marginTop: 12 }}>
           {/* 촬영/제출 중에는 비활성 — 진행 중 전환으로 "취소했는데 뒤늦게 처리"되는 레이스 방지 */}
-          <button type="button" style={{ ...linkBtn, opacity: submitting ? 0.5 : 1, cursor: submitting ? "default" : "pointer" }} disabled={submitting} onClick={() => { stopCamera(); setPhase("fallback"); setMsg(null); }}>
+          <button type="button" style={{ ...linkBtn, opacity: submitting ? 0.5 : 1, cursor: submitting ? "default" : "pointer" }} disabled={submitting} onClick={() => { stopCamera(); setPhase("fallback"); setMsg(null); setGeoWarn(null); }}>
             얼굴 인증이 안 되나요? 일반 방식으로 {action === "in" ? "출근" : "퇴근"}하기
           </button>
         </div>
@@ -323,12 +353,12 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
     <div>
       {action === "in" ? (
         <>
-          <button type="button" onClick={() => startClockIn("office")} style={{ ...bigBtn("var(--primary)"), marginBottom: 12 }}>
+          <button type="button" disabled={locating} onClick={() => startClockIn("office")} style={{ ...bigBtn("var(--primary)"), marginBottom: 12, opacity: locating ? 0.6 : 1 }}>
             <Icon name="face" size={20} style={{ marginRight: 8 }} />얼굴로 사무실 출근
           </button>
           <div style={{ display: "flex", gap: 12 }}>
-            <button type="button" onClick={() => startClockIn("home")} style={secondaryBtn}><Icon name="home" style={{ marginRight: 6 }} />재택근무</button>
-            <button type="button" onClick={() => startClockIn("field")} style={secondaryBtn}><Icon name="car" style={{ marginRight: 6 }} />외근</button>
+            <button type="button" disabled={locating} onClick={() => startClockIn("home")} style={{ ...secondaryBtn, opacity: locating ? 0.6 : 1 }}><Icon name="home" style={{ marginRight: 6 }} />재택근무</button>
+            <button type="button" disabled={locating} onClick={() => startClockIn("field")} style={{ ...secondaryBtn, opacity: locating ? 0.6 : 1 }}><Icon name="car" style={{ marginRight: 6 }} />외근</button>
           </div>
           <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 12 }}>
             버튼을 누르면 웹캠으로 본인 확인 후 출근됩니다. 사무실 출근만 위치를 확인해요.
@@ -341,7 +371,7 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
       )}
       {msg && <MsgBox msg={msg} />}
       <div style={{ textAlign: "center", marginTop: 10 }}>
-        <button type="button" style={linkBtn} onClick={() => { setPhase("fallback"); setMsg(null); }}>
+        <button type="button" style={linkBtn} onClick={() => { abandonLocating(); setPhase("fallback"); setMsg(null); setGeoWarn(null); }}>
           얼굴 없이 일반 방식으로 {action === "in" ? "출근" : "퇴근"}하기
         </button>
       </div>
