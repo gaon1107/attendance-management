@@ -155,7 +155,9 @@ export function tierFor(employees: number): PriceTier | null {
  * 재직 직원 수가 몇 번째 구간인지(PRICE_TIERS의 자리). 공개 표를 넘거나 숫자가 아니면 **null**.
  *
  * `PRICE_TIERS.findIndex(...)`를 직접 쓰지 말고 이 함수를 쓴다 — findIndex는 못 찾으면 **-1**을
- * 돌려주고, 그 -1을 `tierLabel`에 넘기면 라벨이 빈칸이 된다. 201명 회사에서 정확히 그 -1이 나온다.
+ * 돌려주고, 그 -1을 `tierLabel`에 넘기면 라벨이 빈칸이 된다. **공개 표의 마지막
+ * 구간(`QUOTE_OVER`)을 넘는 회사**에서 정확히 그 -1이 나온다. 주석에 인원 수를 직접
+ * 적지 않는다 — 구간표가 바뀐 날 옛 숫자로 남아 다음 사람을 오답으로 몰고 가기 쉽다.
  * (검수 중간 6)
  */
 export function tierIndexFor(employees: number): number | null {
