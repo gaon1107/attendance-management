@@ -265,6 +265,21 @@ async function main() {
       console.error(`✖ 그런 운영자 계정이 없습니다: ${email}`);
       process.exit(1);
     }
+    // 🔴 **마지막 남은 쓸 수 있는 계정은 끄지 못하게 막는다**(2026-11-20 사장님 승인, 검수 범위 밖 지적).
+    //    끄면 /operator 로 들어갈 길이 0이 된다. 운영자에게는 비밀번호·아이디 찾기 창구가 없어서
+    //    웹으로는 되돌릴 방법이 전혀 없고, 운영 서버라면 서버에 들어가 `docker exec` 를 해야 한다.
+    //    "끄기"는 흔히 4번(잠금 풀기)을 누르려다 잘못 들어와 벌어지는 실수라 더 막아 둘 값어치가 있다.
+    //  · 이미 꺼져 있는 계정을 또 끄는 것은 상태가 변하지 않으므로 검사하지 않는다(`found.active`).
+    //  · 못 끄게 해서 생기는 손해(새 계정을 먼저 만들어야 함)보다 들어갈 길이 0이 되는 손해가 훨씬 크다.
+    if (!active && found.active) {
+      const liveCount = await prisma.operator.count({ where: { active: true } });
+      if (liveCount <= 1) {
+        console.error(`✖ 지금 쓸 수 있는 운영자 계정이 이것 하나뿐이라 끌 수 없습니다: ${email}`);
+        console.error("  끄면 운영자 화면에 들어갈 길이 없어지고, 웹에는 되돌릴 창구가 없습니다.");
+        console.error("  먼저 다른 운영자 계정을 만든 뒤(계정관리 도구 5번) 끄세요.");
+        process.exit(1);
+      }
+    }
     await prisma.operator.update({ where: { email }, data: { active } });
     // 끌 때는 열려 있던 로그인도 함께 끊는다 — 끄기가 즉시 효력을 갖게.
     //  (세션 조회에서도 active를 매번 확인하지만, 여기서 지우면 DB에 남지도 않는다)
