@@ -7,7 +7,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentOperator } from "@/lib/operator-session";
-import { getCompanyDetail, TRIAL_SOON_DAYS, LAST_USE_WINDOW_DAYS } from "@/lib/operator-companies";
+import { getCompanyDetail, getCompanyAccessSummary, TRIAL_SOON_DAYS, LAST_USE_WINDOW_DAYS, ACCESS_WINDOW_DAYS } from "@/lib/operator-companies";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { formatKoreanDate } from "@/lib/trial";
 import { OperatorHeader } from "../../OperatorHeader";
@@ -39,6 +39,8 @@ export default async function OperatorCompanyPage({ params }: { params: Promise<
   if (!/^[a-z0-9]{10,40}$/i.test(id)) notFound();
   const c = await getCompanyDetail(id);
   if (!c) notFound();
+  // 접속 현황(합계·날짜만 — 개별 로그인 기록은 보여주지 않는다. lib/operator-companies.ts 주석)
+  const acc = await getCompanyAccessSummary(c.id);
 
   const { ip, userAgent } = readClientMeta(await headers());
   await recordAccess({
@@ -81,6 +83,29 @@ export default async function OperatorCompanyPage({ params }: { params: Promise<
             </div>
           ))}
         </div>
+
+        {/* 접속 현황 — 2026-11-20 사장님 요청. 합계·날짜만(누가·몇 시·IP는 보이지 않음 = 고객사 직원 개인정보 보호) */}
+        <section style={{ ...card, marginBottom: 16 }}>
+          <h2 style={{ ...h2, marginBottom: 4 }}>접속 현황</h2>
+          <p style={{ fontSize: 13, color: "var(--text-sub)", margin: "0 0 10px", lineHeight: 1.6, wordBreak: "keep-all" }}>
+            회사 전체 합계만 보여 줍니다(아래 숫자는 최근 {ACCESS_WINDOW_DAYS}일 기준). 누가 언제 어디서 접속했는지(개별 기록)는 고객사 직원 개인정보라 이 화면에서 볼 수 없습니다.
+          </p>
+          <Row label="마지막 접속일" value={acc.lastActiveDay ? ymd(acc.lastActiveDay) : `${LAST_USE_WINDOW_DAYS}일 넘게 없음`} />
+          <Row label="회사 계정 로그인" value={acc.ownerLastLoginDay ? `마지막 ${ymd(acc.ownerLastLoginDay)}` : `${LAST_USE_WINDOW_DAYS}일 넘게 없음`} />
+          <Row label="접속 계정" value={`${acc.activeAccounts30d}개${acc.ownerActive30d ? " (회사 계정 포함)" : ""}`} />
+          <Row label="로그인" value={`${acc.logins30d}회 · ${acc.loginAccounts30d}개 계정`} />
+          <Row
+            label="로그인 실패"
+            value={
+              <span style={{ color: acc.loginFails30d >= 10 ? "var(--danger)" : undefined, fontWeight: acc.loginFails30d >= 10 ? 700 : undefined }}>
+                {acc.loginFails30d}회 (비밀번호 틀림){acc.loginFails30d >= 10 ? " — 비밀번호를 여러 번 틀린 계정이 있는지 고객사에 확인해 보세요" : ""}
+              </span>
+            }
+          />
+          <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 10, lineHeight: 1.6, wordBreak: "keep-all" }}>
+            직원은 한 번 로그인하면 쓰는 동안 로그인이 유지되므로 로그인 횟수가 적은 것이 정상입니다. 실제 사용 여부는 &lsquo;접속 계정&rsquo;과 &lsquo;마지막 접속일&rsquo;로 보세요.
+          </div>
+        </section>
 
         <div className="split-2">
           <section style={card}>
