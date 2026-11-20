@@ -4,13 +4,18 @@ REM   해석하므로, 사장님이 입력칸에 따옴표(")·앰퍼샌드(&)·캐럿(^)·파이프(|)를
 REM   ① 문장이 깨져 창이 설명 없이 즉시 닫히거나 ② 화면에 보이는 값과 저장되는 값이 달라진다.
 REM   둘 다 2026-11-20 검수에서 실측된 중간 등급이다. !변수! 는 해석이 끝난 뒤에 값을 넣으므로
 REM   특수문자가 섞여도 글자 그대로 다뤄진다.
-REM   [남은 한계] 이 방식에서는 입력에 느낌표(!)가 있으면 그 글자가 사라진다. 이메일·이름에
-REM   느낌표를 쓰는 경우가 사실상 없고, 비밀번호는 아래 PowerShell 이 따로 받으므로 영향 없다.
+REM   (입력에 든 느낌표는 그대로 보존된다 - set /p 는 받은 글자에 지연확장을 적용하지 않는다.
+REM    2026-11-20 실측: a!b@x.com · a!FOO!b@x.com 모두 변수값·화면표시·자식 전달값이 입력과 동일.)
+REM  cd 가 실패하면 cmd 가 영어 섞인 경고를 먼저 뱉어 비개발자를 놀라게 한다. 숨기고,
+REM  아래 검사에서 우리 안내문으로 설명한다.
+REM  [중요] cd 는 반드시 setlocal **앞**에 둔다. %~dp0 는 글자로 끼워진 뒤 지연확장을 한 번 더
+REM     통과하므로, setlocal 이 먼저면 **폴더 이름에 느낌표가 있을 때 그 글자가 지워진**
+REM     엉뚱한 경로로 cd 해서 "프로그램 파일을 찾을 수 없습니다"가 뜬다(2026-11-20 검수
+REM     중간 1, `bang!dir` 폴더로 실측). 순서를 바꿔도 다른 영향은 없다 - setlocal 은
+REM     현재 폴더도 함께 저장·복원한다.
+cd /d "%~dp0webapp" 2>nul
 setlocal EnableDelayedExpansion
 title 운영자 계정 관리 (이 PC)
-REM  cd 가 실패하면 cmd 가 영어 섞인 경고를 먼저 뱉어 비개발자를 놀라게 한다. 숨기고,
-REM  바로 아래 검사에서 우리 안내문으로 설명한다.
-cd /d "%~dp0webapp" 2>nul
 
 REM == 운영자(본사) 계정 관리 도우미 (2026-11-20) ==============================
 REM  왜 만들었나: 운영자 계정은 웹에 비밀번호 찾기 창구가 없다(일부러 그렇다 - 회원사
@@ -34,8 +39,9 @@ if not exist "scripts\create-operator.mjs" goto noprog
 
 REM  [안전장치] 키보드가 아닌 곳에서 실행되면(자동화·작업 스케줄러·입력 리다이렉트)
 REM   set /p 가 아무것도 못 받고 즉시 돌아와 :menu 가 **CPU를 태우며 영원히 반복**된다.
-REM   2026-11-20 실측(검증 중 2분간 멈춤). 빈 입력이 연달아 20번이면 설명하고 끝낸다.
-REM   사람이 엔터만 20번 연달아 누르는 일은 없으므로 손으로 쓸 때는 걸리지 않는다.
+REM   2026-11-20 실측(검증 중 2분간 멈춤). 빈 입력이 연달아 100번이면 설명하고 끝낸다.
+REM   한도가 20이면 **엔터를 꾹 누르고 있을 때** 키보드 자동반복(초당 30회)으로 1초 안에 차서
+REM   사람도 걸린다(검수 경미 3). 그래서 100으로 둔다.
 set "emptyhits=0"
 
 :menu
@@ -57,10 +63,10 @@ echo.
 echo    0) 끝내기
 echo.
 set "sel="
-set /p sel=번호를 누르고 엔터:
+set /p sel=번호를 누르고 엔터: 
 if defined sel goto menupick
 set /a emptyhits+=1
-if !emptyhits! GEQ 20 goto stuck
+if !emptyhits! GEQ 100 goto stuck
 goto menu
 
 :menupick
@@ -90,7 +96,7 @@ echo.
 node scripts/create-operator.mjs --list
 echo.
 set "email="
-set /p email=바꿀 계정의 아이디(이메일):
+set /p email=바꿀 계정의 아이디(이메일): 
 if not defined email goto menu
 echo.
 echo    [확인] 이 계정의 비밀번호를 바꿉니다.
@@ -99,7 +105,7 @@ echo.
 REM  3번(아이디 바꾸기)과 같은 확인 단계. 운영자가 둘 이상이 되면 "엉뚱한 사람의 비밀번호가
 REM  조용히 바뀌는" 사고가 나므로, 되돌릴 수 없는 작업 앞에는 전부 이 단계를 둔다.
 set "ok="
-set /p ok=이대로 바꿀까요? 바꾸려면 y 를 누르고 엔터:
+set /p ok=이대로 바꿀까요? 바꾸려면 y 를 누르고 엔터: 
 if /i not "!ok!"=="y" goto menu
 set "OP_EMAIL=!email!"
 echo.
@@ -123,17 +129,17 @@ echo    * 비밀번호는 그대로 유지됩니다.
 echo    * 열려 있던 로그인은 모두 끊기고, 새 아이디로 다시 로그인하게 됩니다.
 echo.
 set "oldid="
-set /p oldid=지금 아이디:
+set /p oldid=지금 아이디: 
 if not defined oldid goto menu
 set "newid="
-set /p newid=새 아이디:
+set /p newid=새 아이디: 
 if not defined newid goto menu
 echo.
 echo    [확인] !oldid!
 echo             -^> !newid!
 echo.
 set "ok="
-set /p ok=이대로 바꿀까요? 바꾸려면 y 를 누르고 엔터:
+set /p ok=이대로 바꿀까요? 바꾸려면 y 를 누르고 엔터: 
 if /i not "!ok!"=="y" goto menu
 set "OP_EMAIL=!oldid!"
 set "OP_NEW_EMAIL=!newid!"
@@ -154,7 +160,7 @@ echo.
 node scripts/create-operator.mjs --list
 echo.
 set "email="
-set /p email=잠금을 풀 아이디:
+set /p email=잠금을 풀 아이디: 
 if not defined email goto menu
 set "OP_EMAIL=!email!"
 echo.
@@ -177,10 +183,10 @@ REM  :create 첫 줄 cls 가 메뉴의 경고를 지우므로, 이 줄이 없으면 5번에만 안내가 
 node scripts/create-operator.mjs --list
 echo.
 set "email="
-set /p email=새 아이디(이메일):
+set /p email=새 아이디(이메일): 
 if not defined email goto menu
 set "who="
-set /p who=이름(화면과 기록에 표시됩니다):
+set /p who=이름(화면과 기록에 표시됩니다): 
 if not defined who goto menu
 set "OP_EMAIL=!email!"
 set "OP_NAME=!who!"
@@ -206,10 +212,24 @@ echo.
 node scripts/create-operator.mjs --list
 echo.
 set "email="
-set /p email=대상 아이디:
+set /p email=대상 아이디: 
 if not defined email goto menu
 set "onoffsel="
-set /p onoffsel=끄려면 1, 켜려면 2 를 누르고 엔터:
+set /p onoffsel=끄려면 1, 켜려면 2 를 누르고 엔터: 
+REM  끄기는 그 아이디로 로그인할 수 없게 만들고 열려 있던 로그인도 전부 끊는다.
+REM  4번(잠금 풀기)을 누르려다 잘못 들어와 1 을 치면 **지금 쓰는 계정이 꺼진다.** 이 PC 에서는
+REM  같은 메뉴 2 로 되살릴 수 있지만 운영 서버라면 서버에 들어가야 한다. 그래서 2·3번과 같은
+REM  확인 단계를 **끄기에만** 둔다(켜기는 위험하지 않아 그대로). 2026-11-20 검수 중간 3.
+if not "!onoffsel!"=="1" goto onoffgo
+echo.
+echo    [확인] 이 계정을 끕니다. 그 아이디로 로그인할 수 없게 됩니다.
+echo             !email!
+echo.
+set "ok="
+set /p ok=이대로 끌까요? 끄려면 y 를 누르고 엔터: 
+if /i not "!ok!"=="y" goto menu
+
+:onoffgo
 set "OP_EMAIL=!email!"
 echo.
 if "!onoffsel!"=="1" node scripts/create-operator.mjs --off-env
@@ -222,8 +242,8 @@ goto menu
 
 :stuck
 echo.
-echo  [안내] 키보드 입력을 받을 수 없어 끝냅니다.
-echo         이 창은 사람이 직접 눌러 쓰는 도구입니다.
+echo  [안내] 입력이 계속 비어 있어 끝냅니다.
+echo         다시 더블클릭해 주세요.
 echo.
 exit /b 1
 
@@ -231,7 +251,7 @@ exit /b 1
 echo.
 echo  [오류] 프로그램 파일을 찾을 수 없습니다.
 echo         이 파일은 근태관리 폴더 안에 든 채로 실행해야 합니다.
-echo         지금 위치는 %CD% 입니다.
+echo         지금 위치는 !CD! 입니다.
 echo.
 pause
 exit /b 1

@@ -8,7 +8,7 @@ docker-compose*.yml text eol=lf
 # 서버 E nginx 설정(2026-11-18 운영 준비 4단계) — 이 파일을 서버로 그대로 복사한다
 deploy/server/nginx/*.conf text eol=lf
 # 배치 파일(.bat)은 내려받을 때 항상 윈도우식 줄바꿈(CRLF)으로 펼쳐지도록 고정한다(2026-11-20).
-# 저장소 속에는 어느 파일이나 LF로 보관된다(git 기본 동작). 이 줄이 없으면 받는 PC의 설정
+# 이 줄 덕분에 .bat 은 저장소에 LF로 보관되고 받을 때 CRLF로 펼쳐진다. 이 줄이 없으면 받는 PC의 설정
 # (core.autocrlf)에 따라 LF 그대로 펼쳐지는데, 그러면 cmd가 줄을 잘못 읽어 메뉴가 아예
 # 뜨지 않는다(2026-11-20 실제 실행으로 확인). 저장소 안 .bat 5개 전부에 적용된다.
 *.bat text eol=crlf

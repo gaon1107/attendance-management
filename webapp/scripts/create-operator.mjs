@@ -205,16 +205,21 @@ async function main() {
   // ── 목록 보기 ──
   if (a === "--list") {
     const rows = await prisma.operator.findMany({ orderBy: { createdAt: "asc" } });
-    if (rows.length === 0) {
-      console.log("운영자 계정이 아직 없습니다.");
-      return;
-    }
     // 🔴 **어느 DB를 보고 있는지 먼저 밝힌다**(검수 치명 1). 이 명령은 실행한 곳의 DB만 본다.
     //    운영 서버(attend.newgaon.com)의 계정은 그 서버 안에서
     //    `docker exec attendance-app node scripts/create-operator.mjs ...` 로 고친다
     //    (deploy/server/README.md). 이 줄이 없으면 개발 PC에서 고쳐 놓고 "운영도 바뀐 줄"
     //    아는 사고가 난다 — 화면에는 성공이라 뜨는데 운영은 그대로인 상태가 가장 위험하다.
+    //
+    //  🔴 이 줄은 **계정 0건 검사보다 먼저** 와야 한다(2026-11-20 검수 중간 2). 전에는 0건이면
+    //     여기 오기 전에 return 해서 DB 위치가 한 번도 안 찍혔다. 그런데 "계정 0건"은 바로
+    //     **첫 운영자를 만드는 상황**이고, 계정관리 도구 5번(새 계정)은 화면을 지운 뒤 이 명령으로
+    //     위치를 보여 주는 구조라 — 가장 필요한 지점에서만 안내가 사라지는 셈이었다.
     console.log(`지금 보는 곳: ${dbLocation()}`);
+    if (rows.length === 0) {
+      console.log("운영자 계정이 아직 없습니다.");
+      return;
+    }
     console.log(`운영자 계정 ${rows.length}개`);
     const now = new Date();
     for (const r of rows) {
