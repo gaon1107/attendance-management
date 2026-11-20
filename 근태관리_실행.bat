@@ -33,7 +33,19 @@ echo    * 끄려면 이 검은 창에서 Ctrl+C 를 누르거나 창을 닫으세요.
 echo ============================================================
 echo.
 
-echo [4.5] 이전 화면 찌꺼기(캐시) 정리 중... (404 예방)
+REM ── 이미 켜져 있는 서버 끄기 (2026-11-20 추가) ───────────────────────────────
+REM  왜 필요한가: 예전엔 이 단계가 없어서, 서버를 켜 둔 채로 이 파일을 다시 실행하면
+REM   ① 아래 .next 삭제가 **실패**한다(돌고 있는 서버가 그 폴더를 잡고 있다 - 2>nul 이라
+REM      조용히 넘어가서 눈치채기 어렵다). 그래서 옛 화면이 그대로 뜬다.
+REM   ② 3000 포트가 차 있으니 새 서버가 3001로 밀린다. 두 서버가 같은 .next 를 공유해
+REM      캐시가 깨지고, 아래 브라우저 열기는 3000(옛 서버)을 가리킨다.
+REM  → 그래서 캐시를 지우기 전에 먼저 끈다. 3000/3001 에서 듣고 있는 node 만 고른다
+REM    (다른 프로그램이 그 포트를 쓰고 있어도 건드리지 않는다). 끈 뒤 2초 쉬어 포트를 비운다.
+echo [4.5] 이미 켜져 있는 서버가 있으면 먼저 끕니다... (포트 3000, 3001)
+powershell -NoProfile -Command "$n=0; Get-NetTCPConnection -LocalPort 3000,3001 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { $pr = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; if ($pr -and $pr.ProcessName -eq 'node') { Stop-Process -Id $pr.Id -Force -ErrorAction SilentlyContinue; $n++ } }; if ($n -gt 0) { Start-Sleep -Seconds 2 }"
+echo.
+
+echo [4.6] 이전 화면 찌꺼기(캐시) 정리 중... (404 예방)
 rd /s /q ".next" 2>nul
 echo.
 
