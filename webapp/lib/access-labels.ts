@@ -121,6 +121,12 @@ function baseMetaLabel(meta: string): string {
     //     훑어보는 운영 점검이 가장 중요한 두 사건에서 작동하지 않는다(검수 치명 2).
     operator_password_change: "운영자 본인 비밀번호 변경",
     operator_password_change_denied: "운영자 비밀번호 변경 실패(현재 비밀번호 오류)",
+    //  · 위 "본인 변경"(웹 [내 계정])과 **다른 이름**을 쓴다. 이쪽은 서버 명령·계정관리 도구로
+    //    바꾼 것이라 "현재 비밀번호를 몰라도 바꿀 수 있는" 경로다. 같은 이름이면 기록에서
+    //    그 차이가 사라져, 비밀번호를 모르는 사람이 서버로 바꾼 사건을 구분할 수 없다.
+    //  🔴 2026-11-20 사장님 지시로 추가: 이날 "바꿨는데 로그인이 안 된다"를 조사했는데,
+    //     비밀번호 변경이 기록을 남기지 않아 **변경이 실제로 일어났는지 확인할 수 없었다.**
+    operator_password_reset: "운영자 비밀번호 재설정(서버 명령)",
     operator_name_change: "운영자 본인 이름 변경",
     // 서버 명령(scripts/create-operator.mjs --email)으로 로그인 아이디를 바꾼 사건.
     operator_email_change: "운영자 아이디(이메일) 변경",

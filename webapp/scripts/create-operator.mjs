@@ -380,18 +380,46 @@ async function main() {
   const passwordHash = await hashPassword(password);
 
   if (existing) {
-    await prisma.operator.update({
-      where: { email },
-      data: {
-        passwordHash,
-        // 비밀번호를 새로 정했으니 실패 횟수·잠금을 함께 푼다(잠겨서 못 들어오는 상태를 이 명령으로 구제).
-        failedLoginCount: 0,
-        lockedUntil: null,
-      },
-    });
-    // 🔴 비밀번호를 바꿨으면 **열려 있던 로그인을 전부 끊는다.** 안 끊으면 예전 비밀번호를 아는
-    //    사람이 이미 열어 둔 창으로 계속 들어와 있을 수 있다(비밀번호 변경의 목적이 사라진다).
-    const gone = await prisma.operatorSession.deleteMany({ where: { operatorId: existing.id } });
+    // 비밀번호 교체 + 세션 정리 + 기록을 **한 묶음**으로 한다(아이디 변경 --email 과 같은 규칙).
+    //  그래야 "비밀번호는 바뀌었는데 기록은 없는" 중간 상태가 생기지 않는다.
+    //
+    //  🔴 기록을 남기는 이유(2026-11-20 사장님 지시): 이날 "비밀번호를 바꿨는데 로그인이 안 된다"를
+    //     조사하면서, 변경이 실제로 일어났는지 **아무도 확인할 수 없다**는 것이 드러났다.
+    //     아이디 변경은 기록을 남기는데 비밀번호 변경만 빠져 있었다.
+    //  🔴 비밀번호 자체는 절대 남기지 않는다 — 언제·누가·어느 계정인지만 남긴다.
+    //  🔴 companyId·userId 는 **반드시 null** — 그래야 고객사 화면으로 새지 않는다
+    //     (app/actions/operator.ts 의 logOperator 와 같은 규칙).
+    //  🔴 meta 값을 새로 만들면 **lib/access-labels.ts 에도 반드시 같이 넣는다.** 빠뜨리면
+    //     [운영자 접속 기록] 화면과 엑셀에서 "무슨 일인지"가 빈칸으로 나온다(2026-11-20 검수 치명 2).
+    //
+    //  🔴 열려 있던 로그인을 전부 끊는 이유: 안 끊으면 예전 비밀번호를 아는 사람이 이미 열어 둔
+    //     창으로 계속 들어와 있을 수 있다(비밀번호 변경의 목적이 사라진다).
+    const [, gone] = await prisma.$transaction([
+      prisma.operator.update({
+        where: { email },
+        data: {
+          passwordHash,
+          // 비밀번호를 새로 정했으니 실패 횟수·잠금을 함께 푼다(잠겨서 못 들어오는 상태를 이 명령으로 구제).
+          failedLoginCount: 0,
+          lockedUntil: null,
+        },
+      }),
+      prisma.operatorSession.deleteMany({ where: { operatorId: existing.id } }),
+      prisma.accessEvent.create({
+        data: {
+          companyId: null,
+          userId: null,
+          actorName: `운영자 ${existing.name}`,
+          emailTried: email,
+          kind: "config",
+          result: "success",
+          ip: null,
+          userAgent: null,
+          device: "서버 명령",
+          meta: "operator_password_reset",
+        },
+      }),
+    ]);
     console.log(`✔ 비밀번호를 새로 정했습니다: ${email} (열려 있던 로그인 ${gone.count}건 해제)`);
     // 🔴 꺼진 계정은 **되살리지 않는다**(검수 M-2). 끄기는 "이 사람은 이제 못 들어온다"는 의사표시라,
     //    비밀번호를 바꿨다는 이유로 조용히 되살리면 그 의사표시가 뒤집힌다.
