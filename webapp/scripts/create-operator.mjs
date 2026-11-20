@@ -130,14 +130,32 @@ const LOGIN_ACCEPTS_EMAIL =
  *    한쪽만 느슨하면 그 길로 **"앱 로그인이 받아주지 않는 주소"**를 가진 계정이 만들어지고,
  *    운영자에게는 재설정 창구가 없어 서버에 들어오지 않고는 되돌릴 수 없다.
  */
+/** 지금 보고 있는 DB가 운영 서버의 것인가. (운영은 Docker 안의 /data/db/... 를 쓴다 — deploy/server) */
+function isProductionDb() {
+  return (process.env.DATABASE_URL ?? "").replace(/^file:/, "").startsWith("/data/");
+}
+
 /** 지금 이 명령이 보고 있는 DB가 어디인지 사람 말로. (개발 PC인지 운영 서버인지 구분하려고) */
 function dbLocation() {
   const url = process.env.DATABASE_URL ?? "";
   if (!url) return "알 수 없음 (DATABASE_URL 없음)";
   const file = url.replace(/^file:/, "");
-  // 운영은 Docker 안의 /data/db/... 를 쓴다(deploy/server). 개발 PC는 prisma/dev.db.
-  const where = file.startsWith("/data/") ? "운영 서버" : "이 PC(개발용)";
+  const where = isProductionDb() ? "운영 서버" : "이 PC(개발용)";
   return `${where} — ${file}`;
+}
+
+/**
+ * "새 운영자 계정을 만드는 방법"을 **지금 있는 곳에 맞게** 안내한다.
+ *
+ * 🔴 왜 나눠야 하나(2026-11-21 검수 경미 1): 개발 PC에는 더블클릭하는 `운영자_계정관리.bat` 이 있지만
+ *    **운영 서버(docker)에는 그 파일이 없다.** 운영에서 "계정관리 도구 5번을 쓰세요"라고 안내하면
+ *    따라 할 수 없는 길을 가리키는 셈이다. 안내가 틀리면 급한 순간에 더 헤매게 된다.
+ */
+function howToMakeAnother() {
+  return isProductionDb()
+    // 형태를 deploy/server/README.md 와 **같게** 맞춘다(그 문서가 운영 작업의 기준이다).
+    ? '  먼저 다른 운영자 계정을 만든 뒤 끄세요:\n    docker exec attendance-app node scripts/create-operator.mjs "새이메일" "새비밀번호" "이름"'
+    : "  먼저 다른 운영자 계정을 만든 뒤(계정관리 도구 5번) 끄세요.";
 }
 
 function checkEmailOrExit(email) {
@@ -272,12 +290,38 @@ async function main() {
     //  · 이미 꺼져 있는 계정을 또 끄는 것은 상태가 변하지 않으므로 검사하지 않는다(`found.active`).
     //  · 못 끄게 해서 생기는 손해(새 계정을 먼저 만들어야 함)보다 들어갈 길이 0이 되는 손해가 훨씬 크다.
     if (!active && found.active) {
-      const liveCount = await prisma.operator.count({ where: { active: true } });
-      if (liveCount <= 1) {
-        console.error(`✖ 지금 쓸 수 있는 운영자 계정이 이것 하나뿐이라 끌 수 없습니다: ${email}`);
+      // 끄고 나면 남게 될 **켜져 있는** 계정들.
+      const others = await prisma.operator.findMany({
+        where: { active: true, id: { not: found.id } },
+        select: { email: true, lastLoginAt: true },
+        orderBy: { createdAt: "asc" },
+      });
+      if (others.length === 0) {
+        console.error(`✖ 지금 켜져 있는 운영자 계정이 이것 하나뿐이라 끌 수 없습니다: ${email}`);
         console.error("  끄면 운영자 화면에 들어갈 길이 없어지고, 웹에는 되돌릴 창구가 없습니다.");
-        console.error("  먼저 다른 운영자 계정을 만든 뒤(계정관리 도구 5번) 끄세요.");
+        console.error(howToMakeAnother());
+        // 🔴 유출 대응 길을 함께 알려 준다(2026-11-21 검수 중간 2). 비밀번호가 샌 것 같아 **지금 당장**
+        //    끊어야 하는 상황에서 "새 계정부터 만드세요"는 압박 속에서 가장 하기 어려운 일이다.
+        //    실제로는 --reset 이 비밀번호 교체와 **열려 있던 세션 전부 삭제**를 한 묶음으로 하므로,
+        //    끄지 않고도 공격자를 즉시 끊을 수 있다. 막다른 길이 아니라는 것을 여기서 말해 줘야 한다.
+        console.error("");
+        console.error("  계정이 유출된 것 같으면 끄는 대신 비밀번호를 바꾸세요(계정관리 도구 2번).");
+        console.error("  비밀번호가 바뀌면서 열려 있던 로그인이 전부 끊깁니다.");
         process.exit(1);
+      }
+      // 🔴 "켜져 있는 수"와 "실제로 들어갈 수 있는 수"는 다르다(2026-11-21 검수 중간 1).
+      //    새로 만든 계정은 비밀번호를 잘못 적어 뒀어도 [사용중]으로 보인다. 그 상태에서 지금 쓰던
+      //    계정을 끄면, 가드를 통과하고도 결국 **들어갈 길이 0**이 된다 — 가드가 막으려던 바로 그 상태다.
+      //    그래서 "한 번이라도 로그인에 성공한 적 있는" 계정이 하나도 안 남으면 **크게 알려 준다.**
+      //    (막지는 않는다 — 다른 방법으로 비밀번호를 확인했을 수 있고, 되돌리기가 쉽다.)
+      if (!others.some((o) => o.lastLoginAt)) {
+        console.log("");
+        console.log("⚠ 잠깐 — 남게 될 계정은 아직 한 번도 로그인에 성공한 적이 없습니다:");
+        for (const o of others) console.log(`    · ${o.email}  (로그인 이력 없음)`);
+        console.log("  비밀번호를 잘못 적어 뒀다면 이 계정을 끄는 순간 들어갈 길이 사라집니다.");
+        console.log("  위 계정으로 **먼저 로그인해 보신 뒤** 끄시길 권합니다.");
+        console.log(`  이미 껐다면 바로 되돌릴 수 있습니다 — 계정관리 도구 6번에서 2(켜기), 또는  --on "${email}"`);
+        console.log("");
       }
     }
     await prisma.operator.update({ where: { email }, data: { active } });
