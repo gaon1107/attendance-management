@@ -76,7 +76,7 @@ function LivenessCell({ photos }: { photos?: ClockPhotoLite[] }) {
 }
 
 export function DetailTable({ detail, showLiveness = false }: { detail: DayDetail; showLiveness?: boolean }) {
-  const { entries, totalMinutes, days, lateCount, earlyLeaveCount, absentCount, hasRule, hasEndRule } = detail;
+  const { entries, totalMinutes, days, lateCount, earlyLeaveCount, absentCount, awayCount, hasRule, hasEndRule } = detail;
 
   const kpis = [
     { label: "근무일수", value: `${days}`, unit: "일", color: "var(--text)" },
@@ -88,6 +88,19 @@ export function DetailTable({ detail, showLiveness = false }: { detail: DayDetai
 
   return (
     <>
+      {/* 승인된 출장·재택으로 결근에서 빠진 날이 있으면 그 사실을 적는다(2026-11-21).
+          ⚠️ 요약 카드를 6개로 늘리지 않는다 — .kpi-grid-5 는 5칸 전용이라 레이아웃이 깨진다. */}
+      {awayCount > 0 && (
+        <div
+          style={{
+            marginBottom: 12, padding: "10px 14px", borderRadius: 10,
+            background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534",
+            fontSize: 13, lineHeight: 1.6, wordBreak: "keep-all", overflowWrap: "break-word",
+          }}
+        >
+          {`이 기간에 출장·재택으로 승인된 ${awayCount}일은 결근에서 빠졌습니다. 그날은 출퇴근 기록이 없어 실근무시간이 0으로 집계됩니다.`}
+        </div>
+      )}
       <div className="kpi-grid-5" style={{ marginBottom: 16 }}>
         {kpis.map((k) => (
           <div key={k.label} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 20px" }}>
@@ -137,6 +150,28 @@ export function DetailTable({ detail, showLiveness = false }: { detail: DayDetai
                         <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{monthDayDow(e.date)}</td>
                         <td style={{ ...td, color: "#9CA3AF" }} colSpan={4}>—</td>
                         <td style={td}><span style={{ fontSize: 13, fontWeight: 700, color: "var(--danger)" }}>결근</span></td>
+                        <td style={{ ...td, color: "#9CA3AF" }}>—</td>
+                        <td style={{ ...td, textAlign: "right", color: "#9CA3AF" }}>—</td>
+                        {showLiveness && <td style={{ ...td, color: "#9CA3AF" }}>—</td>}
+                      </tr>
+                    );
+                  }
+                  // 승인된 출장·재택인데 출퇴근 기록이 없는 날 — 결근이 아니다(2026-11-21).
+                  //  색은 휴가(파랑)·결근(연빨강)과 구분되는 **연초록**. 근무시간은 "—" 로 둔다
+                  //  (기록이 없으니 없다고 적는다 — 시간을 지어내지 않는다).
+                  if (e.type === "away") {
+                    return (
+                      <tr key={`w${i}`} style={{ borderBottom: "1px solid #F3F4F6", background: "#F0FDF4" }}>
+                        <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{monthDayDow(e.date)}</td>
+                        <td style={{ ...td, color: "#9CA3AF" }} colSpan={4}>—</td>
+                        <td style={td}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "#0F766E" }}>
+                            {e.kind === "trip" ? "출장" : "재택근무"}
+                          </span>
+                          <span style={{ fontSize: 12, color: "var(--text-sub)", marginLeft: 6, wordBreak: "keep-all" }}>
+                            승인 · 출퇴근 미기록
+                          </span>
+                        </td>
                         <td style={{ ...td, color: "#9CA3AF" }}>—</td>
                         <td style={{ ...td, textAlign: "right", color: "#9CA3AF" }}>—</td>
                         {showLiveness && <td style={{ ...td, color: "#9CA3AF" }}>—</td>}

@@ -10,6 +10,7 @@ import { RangeCalendarNav } from "@/app/components/RangeCalendarNav";
 import { DetailTable } from "@/app/components/DetailTable";
 import { MonthCalendar } from "@/app/components/MonthCalendar";
 import { buildDayEntries } from "@/lib/dayentries";
+import { loadAwayDays, awayOf } from "@/lib/away-server";
 import { leaveLabelByDate, leaveTypeByDate } from "@/lib/leave";
 import { loadOffDays } from "@/lib/holiday-server";
 import { parseAnchor, rangeFor, shiftAnchor, toISODate } from "@/lib/period";
@@ -67,7 +68,9 @@ export default async function MyRecordsPage({
     // 교대제면 그날 조 기준으로 지각/조퇴/결근 판정(비교대면 ctx=null → 기존 로직 그대로).
     const shiftCtx = await loadShiftContext(me!.companyId, toISODate(start), toISODate(end));
     const shiftResolver = shiftCtx ? (iso: string) => resolveShift(shiftCtx, me!.id, me!.shiftGroupId, iso) : undefined;
-    return buildDayEntries(rows, me!.workDays, company, start, end, leaveLabelByDate(leaves), offDays, leaveTypeByDate(leaves), shiftResolver);
+    // 승인된 출장·재택일(결근 아님) — 리포트·근로기록부와 **같은 단일 출처**를 쓴다.
+    const awayDays = awayOf(await loadAwayDays(me!.companyId, start, end), me!.id);
+    return buildDayEntries(rows, me!.workDays, company, start, end, leaveLabelByDate(leaves), offDays, leaveTypeByDate(leaves), shiftResolver, awayDays);
   }
 
   // ── 달력 보기 (월 단위) ──────────────────────────────

@@ -16,6 +16,7 @@ import { toISODate } from "@/lib/period";
 import { countUncheckedAnomalies } from "@/lib/anomaly";
 import { purgeWorkRecordsDaily } from "@/lib/work-record-retention";
 import { trialStatus, trialLastDay, formatKoreanDate } from "@/lib/trial";
+import { loadAwayDays } from "@/lib/away-server";
 import { DashboardCalendar } from "./DashboardCalendar";
 import { LatestNoticeModal } from "./LatestNoticeModal";
 import type { DayData } from "@/app/schedule/ScheduleCalendar";
@@ -150,17 +151,26 @@ export default async function DashboardPage() {
   });
   const onLeaveTodayIds = new Set(onLeaveToday.map((l) => l.userId));
 
-  // 오늘 미출근 = 오늘이 근무일인데 아직 출근 기록이 없고, 휴가도 아닌 직원
+  // 오늘 출장·재택을 승인받은 직원(2026-11-21 사장님 결정 C안).
+  //  · 이들을 [미출근]에 섞어 두면 관리자가 "허가해 준 사람"을 매일 미출근으로 보게 된다.
+  //  · 그렇다고 조용히 빼 버리면 **승인받고 출퇴근을 누르지 않은 사실**이 아무 데도 안 보인다 →
+  //    리포트에서만 '출장 (승인 · 출퇴근 미기록)'으로 뒤늦게 드러난다.
+  //    그래서 **따로 떼어 한 줄로 보여 준다** — 그날 안에 직원에게 눌러 달라고 할 수 있게.
+  const tomorrowMidnight = new Date(startOfToday.getTime() + 86400000);
+  const awayTodayIds = new Set((await loadAwayDays(me.companyId, startOfToday, tomorrowMidnight)).keys());
+
+  // 오늘 미출근 = 오늘이 근무일인데 아직 출근 기록이 없고, 휴가도 아니고, 출장·재택 승인도 아닌 직원
   const clockedInIds = new Set(todays.map((r) => r.userId));
-  const absentNames = employees
-    .filter((e) => {
-      // 근무요일 + 쉬는날(공휴일·회사휴무일) 제외는 공통. 교대제는 추가로 오늘 조 배정(≠휴무)까지 있어야 근무예정.
-      const workday = isEffectiveWorkDay(now, effectiveWorkDays(e.workDays, company?.workDays), offDays);
-      const workingToday = shiftCtx ? workday && resolveShift(shiftCtx, e.id, e.shiftGroupId, todayISO) !== null : workday;
-      return workingToday && !clockedInIds.has(e.id) && !onLeaveTodayIds.has(e.id);
-    })
-    .map((e) => e.name);
+  const workingTodayOf = (e: { id: string; workDays: string | null; shiftGroupId: string | null }) => {
+    // 근무요일 + 쉬는날(공휴일·회사휴무일) 제외는 공통. 교대제는 추가로 오늘 조 배정(≠휴무)까지 있어야 근무예정.
+    const workday = isEffectiveWorkDay(now, effectiveWorkDays(e.workDays, company?.workDays), offDays);
+    return shiftCtx ? workday && resolveShift(shiftCtx, e.id, e.shiftGroupId, todayISO) !== null : workday;
+  };
+  const notClockedIn = employees.filter((e) => workingTodayOf(e) && !clockedInIds.has(e.id) && !onLeaveTodayIds.has(e.id));
+  const absentNames = notClockedIn.filter((e) => !awayTodayIds.has(e.id)).map((e) => e.name);
   const absentCount = absentNames.length;
+  // 출장·재택을 승인받았는데 아직 출퇴근을 누르지 않은 사람
+  const awayPendingNames = notClockedIn.filter((e) => awayTodayIds.has(e.id)).map((e) => e.name);
 
   // 지각 직원 이름(오늘 출근기록 기준)
   const lateNames = [...lateUserIds].map((id) => todays.find((r) => r.userId === id)?.user.name ?? "직원");
@@ -425,6 +435,20 @@ export default async function DashboardPage() {
                 </div>
                 {absentCount > 0 && <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 4, lineHeight: 1.5 }}>{absentNames.join(", ")}</div>}
               </Link>
+              {/* 출장·재택 승인인데 출퇴근 미기록 (사장님 결정 2026-11-21 C안) — 있을 때만.
+                  🔴 이 사람들은 위 [미출근]에서 빠져 있다. 여기 없으면 "허가해 줬는데 안 누른 것"을
+                     그날 안에 알 방법이 없고, 월말 리포트에서야 드러난다(그때는 고치기 어렵다). */}
+              {awayPendingNames.length > 0 && (
+                <div style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 13, color: "var(--text-sub)", fontWeight: 700, wordBreak: "keep-all" }}>출장·재택 승인</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: "#0F766E", whiteSpace: "nowrap" }}>{awayPendingNames.length}명</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--text-sub)", marginTop: 4, lineHeight: 1.5, wordBreak: "keep-all" }}>
+                    {`${awayPendingNames.join(", ")} — 아직 출퇴근을 누르지 않았습니다(결근으로 세지 않습니다)`}
+                  </div>
+                </div>
+              )}
               {/* 지각 */}
               <Link href="/records" style={{ padding: "12px 18px", borderBottom: "1px solid #F3F4F6", textDecoration: "none", color: "var(--text)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>

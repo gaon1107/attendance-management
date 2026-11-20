@@ -70,6 +70,12 @@ export function MonthCalendar({
           } else if (e?.type === "leave") {
             bg = "#EFF6FF";
             badge = { text: "휴가", color: "#2563EB" };
+          } else if (e?.type === "away") {
+            // 승인된 출장·재택인데 출퇴근 기록이 없는 날(2026-11-21). 결근이 아니라 '일하기로 허가된 날'이라
+            //  배경은 출근과 같은 계열(#F0FDF4)을 쓰고, 배지 색을 청록으로 달리해 '출근'과 구분한다.
+            //  ⚠️ 표 보기(DetailTable)의 같은 줄과 **같은 값**을 쓴다 — 한쪽만 바꾸면 탭마다 색이 달라진다.
+            bg = "#F0FDF4";
+            badge = { text: e.kind === "trip" ? "출장" : "재택", color: "#0F766E" };
           } else if (e?.type === "absent") {
             // 2026-08-23: #FEF2F2 → #FEF7F7. 표 보기(DetailTable)의 결근 행과 **같은 값**을 쓴다.
             //  한쪽만 바꾸면 [표]와 [달력] 탭을 오갈 때 같은 결근이 다른 색으로 보인다.
@@ -114,6 +120,8 @@ export function MonthCalendar({
         <Legend color="#2563EB" label="휴가" />
         <Legend color="#DC2626" label="결근" />
         <Legend color="#6D28D9" label="휴일근무" />
+        {/* 승인된 출장·재택(출퇴근 미기록) — 위 배지와 같은 청록. 범례에 없으면 달력에서 본 색을 설명할 길이 없다. */}
+        <Legend color="#0F766E" label="출장·재택" />
       </div>
     </section>
   );

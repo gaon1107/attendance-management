@@ -1,6 +1,7 @@
 // 근태 상세(직원별/내근태)용 계산 — 출퇴근 기록 + 결근(과거 근무일 무기록)을 날짜별로 합치고 집계한다.
 import { workedMinutes, isLate, isEarlyLeave, effectiveEnd } from "@/lib/worktime";
 import { toISODate } from "@/lib/period";
+import type { AwayKind } from "@/lib/away-server";
 import { effectiveWorkDays, isEffectiveWorkDay } from "@/lib/workdays";
 import { leaveTypeLabel, leaveSuppressesLate, leaveSuppressesEarly } from "@/lib/leave";
 import { judgeByShift, type ResolvedShift } from "@/lib/shift";
@@ -29,7 +30,10 @@ export type DayEntry =
   // approvedLeave: 그날 승인된 반차/조퇴 라벨(있으면 지각·조퇴 대신 이 뱃지를 보여줌). 없으면 null.
   | { type: "att"; date: Date; rec: AttRow; holiday: boolean; late: boolean | null; early: boolean | null; approvedLeave: string | null; minutes: number }
   | { type: "absent"; date: Date }
-  | { type: "leave"; date: Date; label: string };
+  | { type: "leave"; date: Date; label: string }
+  // 승인된 출장·재택인데 출퇴근 기록이 없는 날 — 결근이 아니다(2026-11-21 사장님 결정).
+  //  🔴 근무시간은 더하지 않는다. 기록이 없는 시간을 지어내지 않는다(lib/away-server.ts 머리말).
+  | { type: "away"; date: Date; kind: AwayKind };
 
 export type DayDetail = {
   entries: DayEntry[]; // 날짜 내림차순(출퇴근 기록 + 결근 + 휴가)
@@ -37,7 +41,8 @@ export type DayDetail = {
   days: number; // 출근한 날 수
   lateCount: number;
   earlyLeaveCount: number; // 조퇴 건수
-  absentCount: number; // 결근 일수
+  absentCount: number; // 결근 일수(승인된 출장·재택일은 빠진다)
+  awayCount: number; // 승인된 출장·재택인데 출퇴근 기록이 없는 날 수
   leaveDaysCount: number; // 이 기간에 휴가로 처리된 근무일 수
   hasRule: boolean; // 출근 기준시각이 설정돼 있는가(지각 판정 가능 여부)
   hasEndRule: boolean; // 퇴근 기준시각이 설정돼 있는가(조퇴 판정 가능 여부)
@@ -58,7 +63,11 @@ export function buildDayEntries(
   leaveTypeByDate: Map<string, string> = new Map(),
   // [교대제] 그날 그 직원의 조를 돌려주는 해석기(휴무=null). 넘기면 지각/조퇴/결근을 조 기준으로 판정한다.
   //  안 넘기면(비교대) 아래 로직 전부 기존 그대로 = 회귀 0. (호출부가 loadShiftContext+resolveShift로 만든다)
-  shiftResolver?: (dateISO: string) => ResolvedShift | null
+  shiftResolver?: (dateISO: string) => ResolvedShift | null,
+  // 승인된 출장·재택일(ISO → 종류). 이 날은 결근이 아니라 '출장'/'재택' 줄로 남는다.
+  //  ⚠️ 안 넘기면 기존 동작 그대로(전부 결근) — 리포트와 숫자가 어긋나므로 **호출부는 반드시 넘긴다.**
+  //     위치 인자가 길어 필수로 바꾸면 기존 호출 2곳이 모두 깨지므로, 대신 호출부에 경고를 달아 뒀다.
+  awayDays: Map<string, AwayKind> = new Map()
 ): DayDetail {
   const nowForCalc = new Date(); // 미퇴근 기록의 근무시간 상한 계산 기준(검수 C-6)
   const wd = effectiveWorkDays(userWorkDays, company?.workDays);
@@ -106,6 +115,7 @@ export function buildDayEntries(
   const limit = end < startOfToday ? end : startOfToday;
   const extraEntries: DayEntry[] = [];
   let absentCount = 0;
+  let awayCount = 0;
   let leaveDaysCount = 0;
   for (let cur = new Date(start); cur < limit; cur = new Date(cur.getTime() + 86400000)) {
     const iso = toISODate(cur);
@@ -114,8 +124,15 @@ export function buildDayEntries(
       extraEntries.push({ type: "leave", date: new Date(cur), label: leaveByDate.get(iso)! });
       leaveDaysCount++;
     } else if (isWorkDay(cur, iso)) {
-      extraEntries.push({ type: "absent", date: new Date(cur) });
-      absentCount++;
+      // 우선순위는 리포트(lib/report-days.ts)와 같다: 휴가 > 출장·재택 > 결근.
+      const away = awayDays.get(iso);
+      if (away) {
+        extraEntries.push({ type: "away", date: new Date(cur), kind: away });
+        awayCount++;
+      } else {
+        extraEntries.push({ type: "absent", date: new Date(cur) });
+        absentCount++;
+      }
     }
   }
 
@@ -125,5 +142,5 @@ export function buildDayEntries(
   const lateCount = attEntries.filter((e) => e.type === "att" && e.late === true).length;
   const earlyLeaveCount = attEntries.filter((e) => e.type === "att" && e.early === true).length;
 
-  return { entries, totalMinutes, days, lateCount, earlyLeaveCount, absentCount, leaveDaysCount, hasRule, hasEndRule };
+  return { entries, totalMinutes, days, lateCount, earlyLeaveCount, absentCount, awayCount, leaveDaysCount, hasRule, hasEndRule };
 }
