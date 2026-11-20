@@ -159,7 +159,13 @@ export async function adminIssuePairCode(userId: string): Promise<AdminPairCodeR
   if (target.deactivatedAt) return { error: "퇴사 처리된 직원에게는 발급할 수 없습니다." };
   if (target.isOwner) return { error: "회사 계정은 PC를 연결할 수 없습니다." };
 
-  const r = await createPairCodeFor(target.id);
+  // 발급자를 코드에 남긴다(검수 M-1) → 연결되면 그 PC에 "관리자 발급으로 연결"이 표시된다.
+  //  관리자가 **자기** PC용으로 발급한 것은 본인 연결과 같으므로 표시하지 않는다.
+  //  이름은 40자까지만(긴 이름이 화면을 깨뜨리지 않게 — 재검수 경미 3). 글자 단위로 자른다(이모지 반쪽 방지).
+  const r = await createPairCodeFor(
+    target.id,
+    target.id === me.id ? undefined : { id: me.id, name: Array.from(me.name).slice(0, 40).join("") }
+  );
   // "이름:대상" 형식 = 접속기록 화면에 "PC 연결코드 대신 발급 · 대상: 홍길동"(lib/access-labels.ts accessMetaLabel)
   //  — 대상 직원 이름과 계정 id 끝 6자(동명이인 구분)만. 코드 값은 절대 남기지 않는다.
   await logAdminAction(me, "config", `pcoff_pair_code_admin:${target.name} (계정 ${target.id.slice(-6)})`);
@@ -169,7 +175,7 @@ export async function adminIssuePairCode(userId: string): Promise<AdminPairCodeR
 }
 
 // 연결코드 만들기(공통) — 본인 발급·관리자 발급이 **같은 규칙**을 쓴다. 호출 전에 권한·대상 확인을 끝낼 것.
-async function createPairCodeFor(userId: string): Promise<PairCodeResult> {
+async function createPairCodeFor(userId: string, issuedBy?: { id: string; name: string }): Promise<PairCodeResult> {
   // 🔒 무효화 → 생성을 **한 트랜잭션**으로 묶는다(검수 중간 M-2, 2026-11-20).
   //    관리자 발급과 직원 본인 발급이 거의 같은 순간에 오면, 따로 실행할 경우 둘 다 무효화를 먼저 마치고 각자 만들어
   //    "사람당 살아있는 코드 1개"가 깨진다. SQLite는 쓰기 트랜잭션을 한 번에 하나씩만 처리하므로 이것으로 직렬화된다.
@@ -197,7 +203,9 @@ async function createPairCodeFor(userId: string): Promise<PairCodeResult> {
     }
 
     const expiresAt = new Date(Date.now() + PAIR_CODE_TTL_MIN * 60 * 1000);
-    await tx.agentPairCode.create({ data: { userId, code, expiresAt } });
+    await tx.agentPairCode.create({
+      data: { userId, code, expiresAt, issuedById: issuedBy?.id ?? null, issuedByName: issuedBy?.name ?? null },
+    });
     return { code, expiresAt: expiresAt.toISOString() };
   });
 }

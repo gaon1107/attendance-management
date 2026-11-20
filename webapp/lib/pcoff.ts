@@ -78,6 +78,16 @@ export function isTempUseType(type: string): boolean {
   return type === TEMP_USE_TYPE || type === TEMP_USE_OFFLINE_TYPE;
 }
 
+// 연결(paired) 기록의 meta "admin_issued:관리자이름" → 화면 문구(2026-11-20 — 관리자가 직원 대신 발급한 코드로 연결).
+//  쓰는 곳: [PC관리] 기록 표·직원 [계정] 내 기록(app/api/agent/pair/route.ts가 남긴다). 해당 없으면 null.
+export const ADMIN_ISSUED_META_PREFIX = "admin_issued:";
+export function adminIssuedText(type: string, meta: string | null | undefined): string | null {
+  // 연결(paired) 기록에만 적용 — 일시사용 사유 등 다른 기록의 meta가 우연히 같은 글자로 시작해도 바꾸지 않는다(재검수 경미 2)
+  if (type !== "paired" || !meta || !meta.startsWith(ADMIN_ISSUED_META_PREFIX)) return null;
+  const name = meta.slice(ADMIN_ISSUED_META_PREFIX.length).trim();
+  return `관리자${name ? ` ${name}` : ""} 발급 코드로 연결`;
+}
+
 // 알림 시점 CSV("10,5") → [10,5]. 잘못된 값은 조용히 버리고, 큰 수부터 정렬한다.
 //  · 0 이하·240분(4시간) 초과·숫자 아님은 제외. 중복 제거.
 export function parseNotifyMins(csv: string | null | undefined): number[] {

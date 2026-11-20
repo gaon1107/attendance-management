@@ -8,6 +8,8 @@ import {
   consumePairCode, generateDeviceToken, hashToken,
   isPairBlocked, recordPairFail, clearPairFails, tooLarge, MAX_BODY_PAIR,
 } from "@/lib/agent-auth";
+import { ADMIN_ISSUED_META_PREFIX } from "@/lib/pcoff";
+import { recordAccess } from "@/lib/access-log";
 
 const MAX_NAME_LEN = 80;
 
@@ -65,23 +67,56 @@ export async function POST(req: Request) {
   //  · 기존 기기를 지우지 않고 새 토큰으로 갱신 → 그 PC의 과거 이벤트 기록이 끊기지 않는다.
   const existing = await prisma.agentDevice.findFirst({
     where: { userId: user.id, companyId: user.companyId, deviceName },
-    select: { id: true },
+    select: { id: true, revokedAt: true },
   });
 
+  // 🔒 관리자가 직원 대신 발급한 코드로는 **지금 살아 있는** 같은 이름의 PC를 가로채지 못한다(재검수 M-a).
+  //    컴퓨터 이름은 앱이 보내는 값이라 흉내 낼 수 있다. 막지 않으면 관리자가 자기 PC를 직원 PC 이름으로 연결해
+  //    직원의 진짜 PC를 끊고(토큰 교체) 그 이름으로 잠금 기록을 만들 수 있다.
+  //    같은 PC를 다시 설치하는 정상 상황이면 [PC관리]에서 먼저 연결 해제 → 그 기록이 남는다.
+  if (claimed.issuedById && existing && !existing.revokedAt) {
+    return NextResponse.json(
+      { error: "이 직원에게 같은 컴퓨터 이름으로 연결된 PC가 이미 있습니다. [PC관리]에서 기존 연결을 해제하거나 컴퓨터 이름을 바꾼 뒤, 새 연결코드로 다시 시도해 주세요." },
+      { status: 409 }
+    );
+  }
+
+  // 관리자가 직원 대신 발급한 코드로 연결했으면 그 관리자를 기기에 적는다(2026-11-20 검수 M-1).
+  //  · [PC관리]·직원 본인 [계정]에 "관리자 발급 코드로 연결된 적 있는 PC"로 보인다 — 직원 모르게 그 이름으로 연결하는 일을 드러낸다.
+  //  · 🔒 한 번 적히면 **지우지 않는다**(재검수 M-a): 직원이 나중에 본인 코드로 다시 연결해도 표시가 남는다.
+  //    (덮어쓰면 직원의 정상적인 재연결이 흔적을 지워 버린다) 관리자 발급으로 다시 연결하면 그 관리자로 바뀐다.
+  const pairedBy = claimed.issuedById
+    ? { pairedByAdminId: claimed.issuedById, pairedByAdminName: claimed.issuedByName }
+    : {};
   const device = existing
     ? await prisma.agentDevice.update({
         where: { id: existing.id },
-        data: { tokenHash, agentVersion, pairedAt: new Date(), lastSeenAt: new Date(), revokedAt: null },
+        data: { tokenHash, agentVersion, pairedAt: new Date(), lastSeenAt: new Date(), revokedAt: null, ...pairedBy },
         select: { id: true },
       })
     : await prisma.agentDevice.create({
-        data: { companyId: user.companyId, userId: user.id, deviceName, tokenHash, agentVersion, lastSeenAt: new Date() },
+        data: { companyId: user.companyId, userId: user.id, deviceName, tokenHash, agentVersion, lastSeenAt: new Date(), ...pairedBy },
         select: { id: true },
       });
 
+  // 관리자 발급 연결은 **접속기록(2년 보관)**에도 남긴다(재검수 M-a) — 연결 기록(paired)은 시스템 기록이라 90일 뒤 파기되지만,
+  //  그 PC가 만든 잠금·해제 기록은 3년 보관이라 분쟁 때 "그 기간은 관리자 발급 연결이었다"는 근거가 먼저 사라지면 안 된다.
+  //  행위자 = 코드를 발급한 관리자(실제로 PC에 넣은 사람은 알 수 없다). 실패해도 연결은 계속(recordAccess는 예외를 삼킨다).
+  if (claimed.issuedById) {
+    await recordAccess({
+      companyId: user.companyId, userId: claimed.issuedById, actorName: claimed.issuedByName,
+      kind: "config", result: "success", ip, userAgent: req.headers.get("user-agent"),
+      meta: `pcoff_admin_pair_connected:${user.name} (PC ${deviceName})`,
+    });
+  }
+
   // 연결 사실을 기록(관리자 [PC관리]에서 "언제 연결했나" 확인 — 감사 목적).
+  //  meta: 관리자 발급이면 "admin_issued:관리자이름" — 기록 목록에도 남는다(기기 표시는 다시 연결하면 바뀌지만 이 기록은 남는다).
   await prisma.agentEvent.create({
-    data: { companyId: user.companyId, userId: user.id, deviceId: device.id, type: "paired", at: new Date() },
+    data: {
+      companyId: user.companyId, userId: user.id, deviceId: device.id, type: "paired", at: new Date(),
+      meta: claimed.issuedById ? `${ADMIN_ISSUED_META_PREFIX}${claimed.issuedByName ?? ""}`.slice(0, 120) : null,
+    },
   });
 
   clearPairFails(ip);

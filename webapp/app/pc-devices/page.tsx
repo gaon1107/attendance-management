@@ -11,7 +11,7 @@ import { AdminPairCodeCard } from "./AdminPairCodeCard";
 import { isDeviceOnline } from "@/lib/agent-auth";
 import { revokeAgentDevice, setPcOffExempt } from "@/app/actions/pcoff";
 import { purgeAgentEventsDaily } from "@/lib/pcoff-retention";
-import { RETENTION_WORK_LABEL, RETENTION_SYSTEM_LABEL, isTempUseType, TEMP_USE_TYPE, TEMP_USE_OFFLINE_TYPE } from "@/lib/pcoff";
+import { RETENTION_WORK_LABEL, RETENTION_SYSTEM_LABEL, isTempUseType, TEMP_USE_TYPE, TEMP_USE_OFFLINE_TYPE, adminIssuedText } from "@/lib/pcoff";
 import { listPcOffUnreported, listOfflineTempUseOveruse, PCOFF_ALERT_GRACE_MIN } from "@/lib/pcoff-alert";
 
 // 사건 종류 → 사람이 읽는 라벨. ⚠️ app/api/agent/events/route.ts의 ALLOWED_TYPES와 짝이다(늘릴 때 함께).
@@ -49,7 +49,7 @@ export default async function PcDevicesPage() {
     prisma.company.findUnique({ where: { id: me.companyId }, select: { pcOffOn: true, workEndTime: true, pcOffDelayMin: true } }),
     prisma.agentDevice.findMany({
       where: { companyId: me.companyId },
-      select: { id: true, deviceName: true, agentVersion: true, pairedAt: true, lastSeenAt: true, revokedAt: true, user: { select: { name: true, email: true, pcOffExempt: true } } },
+      select: { id: true, deviceName: true, agentVersion: true, pairedAt: true, lastSeenAt: true, revokedAt: true, pairedByAdminName: true, pairedByAdminId: true, user: { select: { name: true, email: true, pcOffExempt: true } } },
       orderBy: [{ revokedAt: "asc" }, { lastSeenAt: "desc" }],
     }),
     // 잠금 예외자로 지정할 수 있는 **사람** 목록. 회사 계정은 PC를 쓰지 않으므로 제외(검수 10).
@@ -212,7 +212,15 @@ export default async function PcDevicesPage() {
                         </span>
                       </div>
                     </td>
-                    <td style={td}>{d.deviceName}</td>
+                    <td style={td}>
+                      {d.deviceName}
+                      {/* 관리자가 직원 대신 발급한 코드로 연결된 PC(2026-11-20) — 직원 [계정]에도 같은 표시가 보인다 */}
+                      {d.pairedByAdminId && (
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#B45309", marginTop: 2 }}>
+                          관리자{d.pairedByAdminName ? ` ${d.pairedByAdminName}` : ""} 발급 코드로 연결된 적 있음
+                        </div>
+                      )}
+                    </td>
                     <td style={td}><StatusPill revoked={revoked} online={isOn} /></td>
                     <td style={{ ...td, color: "var(--text-sub)", fontSize: 14 }}>{d.agentVersion ?? "-"}</td>
                     <td style={{ ...td, fontSize: 14, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{fmt(d.pairedAt)}</td>
@@ -326,7 +334,7 @@ export default async function PcDevicesPage() {
                     </td>
                     {/* 일시사용인데 사유가 비어 있으면 "-"가 아니라 미확인임을 밝힌다(사유를 지어내지 않는다) */}
                     <td style={{ ...td, fontSize: 14, color: "var(--text-sub)", wordBreak: "keep-all" }}>
-                      {e.meta ?? (isTempUseType(e.type) ? "(사유 미확인)" : "-")}
+                      {adminIssuedText(e.type, e.meta) ?? e.meta ?? (isTempUseType(e.type) ? "(사유 미확인)" : "-")}
                     </td>
                   </tr>
                 );

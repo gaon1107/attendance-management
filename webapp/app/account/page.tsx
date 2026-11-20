@@ -17,10 +17,21 @@ export default async function AccountPage() {
   if (!me) redirect("/login");
 
   // PC-OFF: 내 기기와 내 기록(본인 것만). 기존 카드 데이터와 무관하게 따로 조회한다.
+  // 관리자 발급 PC가 해제돼도 이 기간 동안은 직원 화면에 "해제됨"으로 남긴다(재검수 M-b).
+  const adminPairShownSince = new Date();
+  adminPairShownSince.setDate(adminPairShownSince.getDate() - 90);
   const [myDevices, myEvents] = await Promise.all([
     prisma.agentDevice.findMany({
-      where: { userId: me.id, companyId: me.companyId, revokedAt: null },
-      select: { id: true, deviceName: true, pairedAt: true, lastSeenAt: true },
+      // 지금 연결된 PC + **관리자 발급으로 연결됐다가 90일 안에 해제된 PC**(재검수 M-b, 2026-11-20).
+      //  관리자가 대신 연결해 기록을 만든 뒤 해제하면 직원 화면에서 바로 사라져 직원이 알 수 없었다.
+      where: {
+        userId: me.id, companyId: me.companyId,
+        OR: [
+          { revokedAt: null },
+          { pairedByAdminId: { not: null }, revokedAt: { gte: adminPairShownSince } },
+        ],
+      },
+      select: { id: true, deviceName: true, pairedAt: true, lastSeenAt: true, revokedAt: true, pairedByAdminId: true, pairedByAdminName: true },
       orderBy: { pairedAt: "desc" },
     }),
     prisma.agentEvent.findMany({
@@ -89,7 +100,10 @@ export default async function AccountPage() {
             deviceName: d.deviceName,
             pairedAt: d.pairedAt.toISOString(),
             lastSeenAt: d.lastSeenAt ? d.lastSeenAt.toISOString() : null,
-            online: isDeviceOnline(d.lastSeenAt),
+            online: !d.revokedAt && isDeviceOnline(d.lastSeenAt),
+            // 관리자가 대신 발급한 코드로 연결됐으면 그 관리자 이름(없으면 null) — 직원도 알 수 있게(2026-11-20)
+            pairedByAdmin: d.pairedByAdminId ? (d.pairedByAdminName ?? "") : null,
+            revokedAt: d.revokedAt ? d.revokedAt.toISOString() : null,
           }))}
           events={myEvents.map((e) => ({
             id: e.id, type: e.type, at: e.at.toISOString(), meta: e.meta, deviceName: e.device.deviceName,

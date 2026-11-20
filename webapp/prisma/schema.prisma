@@ -969,6 +969,11 @@ model AgentDevice {
   pairedAt     DateTime  @default(now())
   lastSeenAt   DateTime? // 마지막 생존신호(정책 조회·이벤트 전송 시 갱신). 10분 내면 "온라인"으로 본다.
   revokedAt    DateTime? // 관리자가 연결 해제한 시각. 값이 있으면 이 토큰은 즉시 무효(401).
+  // 지금 연결이 관리자가 대신 발급한 코드로 이뤄졌으면 그 관리자(2026-11-20, add-only). null = 직원 본인 코드로 연결.
+  //  · [PC관리]와 직원 본인 [계정] 화면에 "관리자 발급으로 연결"로 보인다(직원도 알 수 있게 — 노무 분쟁 대비).
+  //  · 다시 연결하면 그때의 코드 기준으로 덮어쓴다(본인 코드로 다시 연결하면 null로 돌아감).
+  pairedByAdminId   String?
+  pairedByAdminName String?
   events       AgentEvent[]
 
   @@index([companyId])
@@ -985,6 +990,11 @@ model AgentPairCode {
   expiresAt DateTime
   usedAt    DateTime? // 사용된 시각. 값이 있으면 재사용 불가.
   createdAt DateTime  @default(now())
+  // 관리자가 직원 대신 발급했으면 그 관리자(2026-11-20, add-only). null = 직원 본인 발급.
+  //  · 연결(/api/agent/pair) 때 AgentDevice.pairedByAdmin*으로 옮겨 적는다 → "직원 모르게 그 이름으로 연결" 흔적을 남긴다.
+  //  · 이름은 스냅샷(관리자가 퇴사·개명해도 당시 이름이 남게).
+  issuedById   String?
+  issuedByName String?
 
   @@index([userId])
   @@index([code])

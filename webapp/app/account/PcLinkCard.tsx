@@ -6,9 +6,13 @@ import { useEffect, useState } from "react";
 import { issuePairCode, revokeAgentDevice } from "@/app/actions/pcoff";
 import { PC_OFF_DOWNLOAD_PATH, PC_OFF_IS_PREVIEW } from "@/lib/pcoff-download";
 // ⚠️ lib/pcoff는 **순수 모듈**이라 브라우저에서 써도 된다(서버 전용은 lib/pcoff-policy.ts).
-import { isTempUseType } from "@/lib/pcoff";
+import { isTempUseType, adminIssuedText } from "@/lib/pcoff";
 
-type Device = { id: string; deviceName: string; pairedAt: string; lastSeenAt: string | null; online: boolean };
+type Device = {
+  id: string; deviceName: string; pairedAt: string; lastSeenAt: string | null; online: boolean;
+  pairedByAdmin: string | null; // 관리자 발급 코드로 연결된 적 있으면 그 관리자 이름(이름 없으면 "")
+  revokedAt: string | null;     // 관리자 발급 PC가 해제된 경우에만 값이 온다(90일간 보여 줌)
+};
 type EventRow = { id: string; type: string; at: string; meta: string | null; deviceName: string };
 
 const EVENT_TEXT: Record<string, string> = {
@@ -86,7 +90,7 @@ export function PcLinkCard({ devices, events, pcOffOn, exempt }: {
 
       {/* 내 기기 */}
       <div style={{ marginTop: 20 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>연결된 내 PC ({devices.length}대)</div>
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>연결된 내 PC ({devices.filter((d) => !d.revokedAt).length}대)</div>
         {devices.length === 0 ? (
           <div style={{ fontSize: 13, color: "var(--text-sub)" }}>아직 연결된 PC가 없습니다.</div>
         ) : (
@@ -97,19 +101,29 @@ export function PcLinkCard({ devices, events, pcOffOn, exempt }: {
                   <div style={{ fontSize: 14, fontWeight: 700 }}>
                     {d.deviceName}
                     <span style={{ fontSize: 12, fontWeight: 700, marginLeft: 8, color: d.online ? "var(--success)" : "var(--text-sub)" }}>
-                      {d.online ? "켜짐" : "꺼짐"}
+                      {d.revokedAt ? `해제됨(${fmt(d.revokedAt)})` : d.online ? "켜짐" : "꺼짐"}
                     </span>
                   </div>
                   <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 2, fontVariantNumeric: "tabular-nums" }}>
                     연결 {fmt(d.pairedAt)} · 마지막 연락 {d.lastSeenAt ? fmt(d.lastSeenAt) : "-"}
                   </div>
+                  {/* 관리자가 대신 발급한 코드로 연결된 PC — 내가 연결한 PC가 아니면 바로 알 수 있게(2026-11-20) */}
+                  {/* 문구(재검수 경미 4): 정상적인 대리 설치에도 계속 보이므로 겁주지 않게. 해제를 권하지 않는다
+                      (직원 해제는 누가 했는지 기록이 남지 않는 기존 한계가 있어 — 회사에 알리는 쪽으로 안내) */}
+                  {d.pairedByAdmin !== null && (
+                    <div style={{ fontSize: 12, color: "#B45309", marginTop: 2, wordBreak: "keep-all", lineHeight: 1.5 }}>
+                      관리자{d.pairedByAdmin ? ` ${d.pairedByAdmin}` : ""}이(가) 발급한 코드로 연결된 적 있는 PC입니다. 내가 설치를 맡긴 PC가 아니라면 회사에 알려 주세요.
+                    </div>
+                  )}
                 </div>
-                <form action={revokeAgentDevice}>
-                  <input type="hidden" name="deviceId" value={d.id} />
-                  <button type="submit" style={{ height: 34, padding: "0 14px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--danger)", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                    연결 해제
-                  </button>
-                </form>
+                {!d.revokedAt && (
+                  <form action={revokeAgentDevice}>
+                    <input type="hidden" name="deviceId" value={d.id} />
+                    <button type="submit" style={{ height: 34, padding: "0 14px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", color: "var(--danger)", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                      연결 해제
+                    </button>
+                  </form>
+                )}
               </div>
             ))}
           </div>
@@ -126,7 +140,9 @@ export function PcLinkCard({ devices, events, pcOffOn, exempt }: {
                 <span style={{ fontSize: 13, color: "var(--text-sub)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{fmt(e.at)}</span>
                 <span style={{ fontSize: 13, fontWeight: 700 }}>{EVENT_TEXT[e.type] ?? e.type}</span>
                 <span style={{ fontSize: 12, color: "var(--text-sub)", flex: 1, textAlign: "right", wordBreak: "keep-all" }}>
-                  {e.meta ?? (isTempUseType(e.type) ? "(사유 미확인)" : e.deviceName)}
+                  {/* 관리자 발급 연결 줄에도 어느 PC인지 붙인다(PC가 2대 이상인 직원 — 재검수 경미 1) */}
+                  {(() => { const t = adminIssuedText(e.type, e.meta); return t ? `${t} · ${e.deviceName}` : null; })()
+                    ?? e.meta ?? (isTempUseType(e.type) ? "(사유 미확인)" : e.deviceName)}
                 </span>
               </div>
             ))}

@@ -171,12 +171,15 @@ export function isDeviceOnline(lastSeenAt: Date | null): boolean {
 
 // ── 연결코드 검증(페어링) ─────────────────────────────────────────────
 // 코드가 맞고·안 만료됐고·아직 안 쓴 것이면 그 코드의 주인(userId)을 돌려준다.
-export async function consumePairCode(code: string): Promise<{ userId: string; codeId: string } | null> {
+export async function consumePairCode(
+  code: string
+): Promise<{ userId: string; codeId: string; issuedById: string | null; issuedByName: string | null } | null> {
   if (!/^\d{6}$/.test(code)) return null;
 
   const rows = await prisma.agentPairCode.findMany({
     where: { code, usedAt: null, expiresAt: { gt: new Date() } },
-    select: { id: true, userId: true },
+    // issuedBy* = 관리자가 직원 대신 발급한 코드면 그 관리자(2026-11-20) — 연결된 PC에 표시하려고 함께 꺼낸다
+    select: { id: true, userId: true, issuedById: true, issuedByName: true },
   });
 
   // ⚠️ 살아있는 같은 코드가 2개 이상이면 **누구 것인지 알 수 없다** → 실패시킨다(재발급 유도).
@@ -192,5 +195,5 @@ export async function consumePairCode(code: string): Promise<{ userId: string; c
   });
   if (claimed.count !== 1) return null;
 
-  return { userId: hit.userId, codeId: hit.id };
+  return { userId: hit.userId, codeId: hit.id, issuedById: hit.issuedById, issuedByName: hit.issuedByName };
 }
