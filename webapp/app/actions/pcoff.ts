@@ -133,32 +133,73 @@ export async function issuePairCode(): Promise<PairCodeResult> {
   //    연결 자체를 막아 두면 에이전트 API 경로가 애초에 열리지 않는다(agent-auth.ts에서도 다시 막는다 = 이중 방어).
   if (me.isOwner) return { error: "회사 계정은 PC를 연결할 수 없습니다. 직원 계정으로 로그인해 주세요." };
 
-  // 이전에 발급한 안 쓴 코드는 무효화한다 — 동시에 여러 개가 살아있지 않게(추측 대상 축소).
-  await prisma.agentPairCode.updateMany({
-    where: { userId: me.id, usedAt: null },
-    data: { usedAt: new Date() },
-  });
-  // 다 쓴·만료된 옛 코드는 정리한다(행이 무한정 쌓이지 않게). 최근 1일 것만 남긴다.
-  await prisma.agentPairCode.deleteMany({
-    where: { userId: me.id, createdAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
-  });
-
-  // 아주 낮은 확률이지만 지금 살아있는 코드와 겹칠 수 있어 몇 번 다시 뽑는다.
-  let code = generatePairCode();
-  for (let i = 0; i < 5; i++) {
-    const clash = await prisma.agentPairCode.findFirst({
-      where: { code, usedAt: null, expiresAt: { gt: new Date() } },
-      select: { id: true },
-    });
-    if (!clash) break;
-    code = generatePairCode();
-  }
-
-  const expiresAt = new Date(Date.now() + PAIR_CODE_TTL_MIN * 60 * 1000);
-  await prisma.agentPairCode.create({ data: { userId: me.id, code, expiresAt } });
-
+  const r = await createPairCodeFor(me.id);
   revalidatePath("/account");
-  return { code, expiresAt: expiresAt.toISOString() };
+  return r;
+}
+
+// ── 연결코드 발급(관리자가 직원 대신) — 2026-11-20 사장님 요청 ─────────────
+// 관리자(또는 전산 담당)가 직원 PC를 직접 돌며 설치하는 회사용. [PC관리]에서 직원을 골라 발급한다.
+//  · 직원 본인 발급([계정])은 그대로 둔다 — 두 방식 모두 쓴다.
+//  · 코드는 "이 PC = 그 직원"을 묶는 열쇠다. 그래서 관리자 권한·회사 격리·재직 중인 사람 계정만 허용하고,
+//    누가 누구 코드를 발급했는지 감사기록에 남긴다(나중에 "내가 연결한 적 없는 PC" 분쟁의 근거).
+export type AdminPairCodeResult = PairCodeResult & { userName?: string };
+
+export async function adminIssuePairCode(userId: string): Promise<AdminPairCodeResult> {
+  const me = await getCurrentUser();
+  if (!me || me.role !== "admin") return { error: "권한이 없습니다." };
+  if (typeof userId !== "string" || !/^[a-z0-9]{10,40}$/i.test(userId)) return { error: "직원을 선택해 주세요." };
+
+  // 회사 격리 + 재직 중 + 사람 계정만(회사 계정은 PC를 연결하지 않는다 — 본인 발급과 같은 규칙)
+  const target = await prisma.user.findFirst({
+    where: { id: userId, companyId: me.companyId },
+    select: { id: true, name: true, isOwner: true, deactivatedAt: true },
+  });
+  if (!target) return { error: "직원을 찾을 수 없습니다." };
+  if (target.deactivatedAt) return { error: "퇴사 처리된 직원에게는 발급할 수 없습니다." };
+  if (target.isOwner) return { error: "회사 계정은 PC를 연결할 수 없습니다." };
+
+  const r = await createPairCodeFor(target.id);
+  // "이름:대상" 형식 = 접속기록 화면에 "PC 연결코드 대신 발급 · 대상: 홍길동"(lib/access-labels.ts accessMetaLabel)
+  //  — 대상 직원 이름과 계정 id 끝 6자(동명이인 구분)만. 코드 값은 절대 남기지 않는다.
+  await logAdminAction(me, "config", `pcoff_pair_code_admin:${target.name} (계정 ${target.id.slice(-6)})`);
+  // revalidatePath 하지 않는다 — 발급으로 [PC관리] 화면에 바뀌는 것이 없는데 화면 전체 집계를 다시 돌리게 된다(검수 경미 3).
+  //   기기 목록은 실제 연결(/api/agent/pair) 뒤 화면을 다시 열면 보인다.
+  return { ...r, userName: target.name };
+}
+
+// 연결코드 만들기(공통) — 본인 발급·관리자 발급이 **같은 규칙**을 쓴다. 호출 전에 권한·대상 확인을 끝낼 것.
+async function createPairCodeFor(userId: string): Promise<PairCodeResult> {
+  // 🔒 무효화 → 생성을 **한 트랜잭션**으로 묶는다(검수 중간 M-2, 2026-11-20).
+  //    관리자 발급과 직원 본인 발급이 거의 같은 순간에 오면, 따로 실행할 경우 둘 다 무효화를 먼저 마치고 각자 만들어
+  //    "사람당 살아있는 코드 1개"가 깨진다. SQLite는 쓰기 트랜잭션을 한 번에 하나씩만 처리하므로 이것으로 직렬화된다.
+  return prisma.$transaction(async (tx) => {
+    // 이전에 발급한 안 쓴 코드는 무효화한다 — 동시에 여러 개가 살아있지 않게(추측 대상 축소).
+    //  (관리자가 발급하면 그 직원이 받아 둔 코드도 무효가 된다 — 사람당 살아있는 코드는 언제나 1개)
+    await tx.agentPairCode.updateMany({
+      where: { userId, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    // 다 쓴·만료된 옛 코드는 정리한다(행이 무한정 쌓이지 않게). 최근 1일 것만 남긴다.
+    await tx.agentPairCode.deleteMany({
+      where: { userId, createdAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+    });
+
+    // 아주 낮은 확률이지만 지금 살아있는 코드와 겹칠 수 있어 몇 번 다시 뽑는다.
+    let code = generatePairCode();
+    for (let i = 0; i < 5; i++) {
+      const clash = await tx.agentPairCode.findFirst({
+        where: { code, usedAt: null, expiresAt: { gt: new Date() } },
+        select: { id: true },
+      });
+      if (!clash) break;
+      code = generatePairCode();
+    }
+
+    const expiresAt = new Date(Date.now() + PAIR_CODE_TTL_MIN * 60 * 1000);
+    await tx.agentPairCode.create({ data: { userId, code, expiresAt } });
+    return { code, expiresAt: expiresAt.toISOString() };
+  });
 }
 
 // ── 기기 연결 해제 ────────────────────────────────────────────────────

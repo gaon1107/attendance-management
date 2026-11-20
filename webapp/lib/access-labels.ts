@@ -98,6 +98,7 @@ function baseMetaLabel(meta: string): string {
     pcoff_rule: "PC-OFF 잠금 규칙",
     pcoff_exempt: "PC-OFF 잠금 예외자",
     pcoff_device_revoke: "PC 연결 해제",
+    pcoff_pair_code_admin: "PC 연결코드 대신 발급",
     // 생체정보 열람(app/api/clock-photo) — "clock_photo:직원이름" 형식으로 누구 사진을 봤는지 남긴다
     clock_photo: "출퇴근 사진 열람",
     // 비로그인 창구(actions/auth.ts·password-reset.ts) — 남용 감지용

@@ -7,6 +7,7 @@ import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { PcOffDownloadCard } from "./PcOffDownloadCard";
+import { AdminPairCodeCard } from "./AdminPairCodeCard";
 import { isDeviceOnline } from "@/lib/agent-auth";
 import { revokeAgentDevice, setPcOffExempt } from "@/app/actions/pcoff";
 import { purgeAgentEventsDaily } from "@/lib/pcoff-retention";
@@ -96,6 +97,8 @@ export default async function PcDevicesPage() {
 
       {/* 직원에게 보낼 설치 주소·안내문(2026-11-20) — 관리자가 복사해 카톡·문자로 보낸다 */}
       <PcOffDownloadCard />
+      {/* 직원 대신 연결코드 발급(2026-11-20) — 대상은 아래 예외자 목록과 같은 "재직 중인 사람 계정"(회사 계정 제외) */}
+      <AdminPairCodeCard employees={employees.map((e) => ({ id: e.id, name: e.name, email: e.email }))} />
 
       {/* 잠겼어야 하는데 기록이 안 온 PC — 설치형 앱은 작업관리자로 끌 수 있으므로(지시서 §0)
            "기록이 안 왔다"를 알아채는 것이 유일한 실질 방어선이다. */}
