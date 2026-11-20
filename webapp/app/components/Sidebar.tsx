@@ -45,6 +45,7 @@ export type NavKey =
   | "approvals" // 결재함(내 차례 결재) — 부서장 결재선 켠 회사만
   | "pending-approvals" // 밀린 결재(관리자 전용) — 회사 전체 대기 중 결재를 모아 보고 대리 처리
   | "approval-history" // 결재 이력(관리자 전용) — 회사 전체 신청·승인·반려 조회
+  | "subscription" // 구독·요금(관리자 전용) — 지금 우리 회사 요금·구간표·무료기간 조회. 결제 기능은 아직 없다
   | "account"; // 계정 설정 — 사이드바 메뉴엔 없고(프로필 아바타로 진입) 하이라이트용 키
 
 type Item = { key: NavKey; href: string; label: string; icon: string };
@@ -62,6 +63,7 @@ const ICON: Record<NavKey, string> = {
   "auth-method": '<path d="M12 11a3 3 0 0 0-3 3v3"/><path d="M6 8a8 8 0 0 1 12 0"/><path d="M4 12a10 10 0 0 1 16 0"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M20 12a8 8 0 1 0-8 8"/><path d="M12 8v4l3 2"/>',
   company: '<path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01M13 9h.01M13 13h.01M13 17h.01"/>',
+  subscription: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/>',
   account: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
   leave: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M9 14l2 2 4-4"/>',
   "leave-approvals": '<rect x="2" y="2" width="10" height="12" rx="1.5"/><path d="M5 6h4M5 9h4M5 12h3"/><path d="M14 18l3 3 5.5-6.5"/>',
@@ -100,6 +102,7 @@ const LABEL: Record<NavKey, string> = {
   "auth-method": "인증방식",
   settings: "설정",
   company: "회사정보",
+  subscription: "구독·요금",
   account: "계정",
   leave: "휴가",
   "leave-approvals": "휴가승인",
@@ -243,7 +246,10 @@ function groupsFor(role: string, showApprovals: boolean, isOwner: boolean, useSh
       { id: "hr", caption: "인사 정보", items: toItems(["employees", "notifications", "leave-summary"]) },
       // [근무표]는 교대근무를 켠 회사에만 (위 "근태 운영" 주석 참고).
       // 자리는 [휴게시간] 다음 — 둘 다 "근무 규칙을 정해 두는 것"이라 성격이 같다.
-      { id: "ana", caption: "분석·설정", items: toItems(["reports", "break-time", ...(useShifts ? (["shifts"] as NavKey[]) : []), "company", "settings"]) },
+      // [구독·요금]은 [회사정보] 바로 다음 — 둘 다 "회사 자체에 관한 것"이라 성격이 같다.
+      //  ⚠️ 관리자 묶음에만 둔다(아래 직원 키 목록에는 넣지 않는다). 직원이 회사 요금을 볼 이유가 없고,
+      //     화면 자체도 관리자가 아니면 /attendance로 돌려보낸다.
+      { id: "ana", caption: "분석·설정", items: toItems(["reports", "break-time", ...(useShifts ? (["shifts"] as NavKey[]) : []), "company", "subscription", "settings"]) },
       { id: "sec", caption: "보안·기기", items: toItems(["biometrics", "pc-devices", "security"]) },
     ];
     if (!isOwner) {

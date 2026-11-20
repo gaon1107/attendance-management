@@ -144,6 +144,12 @@ if (process.env.NODE_ENV !== "production") {
  *    값이다. `tierFor(count).monthly`를 그대로 청구에 넣으면 **재직 직원이 0명인 회사에 5,000원이
  *    청구된다.** 직원 0명 회사에 청구할지는 아직 정해지지 않았다(plan-구독결제-요금제.md 2장).
  *    결제를 붙이는 단계에서 호출처가 `employees <= 0`을 **명시적으로** 처리해야 한다. (검수 중간 7c)
+ *
+ * @deprecated 🔴 **새 코드에서 쓰지 말고 `quoteFor`를 쓸 것.** 2026-11-20 기준 이 함수를 부르는 곳은
+ *   저장소에 하나도 없다(홈화면은 `PRICE_TIERS`·`tierLabel`, [구독·요금] 화면은 `quoteFor`를 쓴다).
+ *   `quoteFor`는 금액을 말할 수 없는 경우(0명·공개표 초과)를 **타입으로 분리**해 위 사고를 컴파일에서
+ *   막는데, 이 함수를 쓰면 그 방어를 그냥 지나친다. 지우지 않고 남긴 이유는 요금표 조회 자체는 멀쩡해
+ *   운영 중 제거가 득보다 위험하기 때문이다 — 다만 **청구 금액에는 절대 쓰지 않는다.** (검수 중간 3)
  */
 export function tierFor(employees: number): PriceTier | null {
   if (!Number.isFinite(employees)) return null;
@@ -192,4 +198,76 @@ export function tierLabel(index: number): string | null {
   if (!Number.isInteger(index) || index < 0 || index >= PRICE_TIERS.length) return null;
   const from = index === 0 ? 1 : PRICE_TIERS[index - 1].max + 1;
   return `${from}~${PRICE_TIERS[index].max}명`;
+}
+
+/** 구간의 시작 인원(1~5명 → 1, 6~10명 → 6). 범위 밖이면 null. */
+export function tierFrom(index: number): number | null {
+  if (!Number.isInteger(index) || index < 0 || index >= PRICE_TIERS.length) return null;
+  return index === 0 ? 1 : PRICE_TIERS[index - 1].max + 1;
+}
+
+/**
+ * 한 회사의 요금 산출 결과.
+ *
+ * 🔴 **금액이 없는 경우를 타입으로 분리한 이유**(2026-11-20, plan-구독결제-요금제.md 2장의 빨간 경고):
+ *   `tierFor(0)`은 **표시용으로** 첫 구간(5,000원)을 돌려준다. 그래서 `tierFor(count).monthly`를
+ *   그대로 청구에 쓰면 **재직 직원이 0명인 회사에 5,000원이 청구된다.** 숫자 하나로 돌려주면
+ *   호출처가 0명 검사를 잊어도 컴파일이 통과해 조용히 사고가 난다.
+ *   → `kind`를 좁히지 않으면 `monthly`를 꺼낼 수 없게 만들어, **타입검사가 그 사고를 막는다.**
+ *   금액을 말할 수 없는 두 경우는 각각 다른 안내가 필요하므로 이름도 나눈다:
+ *     · `none` = 과금 대상 직원이 0명 → 금액을 보여주지 않는다("대상 직원 없음").
+ *     · `quote` = 공개 표의 마지막 구간을 넘음 → "별도 협의"(카드 1회 한도 때문, 머리말 ① 참조).
+ */
+export type Quote =
+  | { kind: "none"; employees: number }
+  | { kind: "quote"; employees: number }
+  | {
+      kind: "tier";
+      employees: number;
+      tierIndex: number;
+      /** "6~10명" */
+      label: string;
+      /** 공급가(부가세 별도) */
+      monthly: number;
+      /** 부가세 */
+      vat: number;
+      /** 카드에서 실제로 빠지는 금액(부가세 포함) */
+      total: number;
+      /** 다음 구간. 마지막 구간이면 null(그 위는 별도 협의). */
+      next: { label: string; monthly: number; /** 몇 명 더 등록하면 다음 구간인가 */ addMore: number } | null;
+    };
+
+/**
+ * 재직 직원 수로 그 회사의 요금을 산출한다. **순수함수**(임시 라우트로 검증 가능, webapp/CLAUDE.md).
+ *
+ * 세는 대상은 `lib/pricing-server.ts`의 `countBillableEmployees`가 정한다 —
+ * 재직 중인 **직원**만이고 관리자·회사 계정·퇴사자는 빠진다(2026-08-09 확정).
+ */
+export function quoteFor(employees: number): Quote {
+  // 숫자가 아니거나(NaN·Infinity) 0명 이하면 금액을 말하지 않는다.
+  //  ⚠️ 지금은 "0명"과 "숫자가 아님"을 한 묶음(`none`)으로 본다. DB 집계값만 들어오므로 문제가 없고,
+  //     실패 방향도 안전한 쪽이다(과다청구가 아니라 청구 누락). 다만 결제 단계에서 입력값을 파싱해
+  //     넘기기 시작하면 **청구가 조용히 빠진다** → 그때 `none`과 `invalid`로 나눌 것. (검수 경미 2)
+  if (!Number.isFinite(employees) || employees <= 0) return { kind: "none", employees };
+  const tierIndex = tierIndexFor(employees);
+  if (tierIndex === null) return { kind: "quote", employees };
+  const tier = PRICE_TIERS[tierIndex];
+  const label = tierLabel(tierIndex);
+  if (label === null) return { kind: "quote", employees }; // 도달 불가(방어)
+  const money = withVat(tier.monthly);
+  const nextIndex = tierIndex + 1;
+  let next: { label: string; monthly: number; addMore: number } | null = null;
+  if (nextIndex < PRICE_TIERS.length) {
+    const nextLabel = tierLabel(nextIndex);
+    const nextFrom = tierFrom(nextIndex);
+    if (nextLabel !== null && nextFrom !== null) {
+      next = {
+        label: nextLabel,
+        monthly: PRICE_TIERS[nextIndex].monthly,
+        // 소수 인원(이론상)에도 "몇 명 더"가 1 이상이 되도록 올림한다.
+        addMore: Math.max(1, Math.ceil(nextFrom - employees)),
+      };
+    }
+  }
+  return { kind: "tier", employees, tierIndex, label, monthly: tier.monthly, vat: money.vat, total: money.total, next };
 }
