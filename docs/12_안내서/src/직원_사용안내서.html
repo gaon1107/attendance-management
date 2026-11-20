@@ -1,6 +1,7 @@
 <title>직원용 출퇴근 안내</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@500;700;800&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<!-- 글꼴은 **PC·휴대폰에 이미 있는 것만** 쓴다(외부에서 받아오지 않는다).
+     ① 인터넷이 없어도 모양이 똑같다  ② 안내서를 여는 직원 기기 정보가 바깥으로 나가지 않는다 -->
 <style>
   /* 레이아웃: 한 단으로 쌓이는 짧은 안내문. 휴대폰에서 읽는 것을 기본으로 본다. */
   :root {
@@ -17,8 +18,8 @@
     --green:   #15803D;
     --green-soft: #ECFAF1;
 
-    --font-display: "Gothic A1", "맑은 고딕", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
-    --font-body: "IBM Plex Sans KR", "맑은 고딕", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    --font-display: "Pretendard", "Apple SD Gothic Neo", "맑은 고딕", "Malgun Gothic", system-ui, sans-serif;
+    --font-body: "Pretendard", "Apple SD Gothic Neo", "맑은 고딕", "Malgun Gothic", system-ui, sans-serif;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -234,6 +235,11 @@
       </figure>
     </div>
 
+    <figure>
+      <span class="shot"><img src="img/m-32-얼굴출퇴근.webp" alt="얼굴인증을 쓰는 직원의 출퇴근 화면. 카메라 칸이 함께 보인다." loading="lazy"></span>
+      <figcaption>등록을 마치면 버튼이 <b>[얼굴로 출근하기] · [얼굴로 퇴근하기]</b>로 바뀝니다. 누르면 카메라가 열리고, 얼굴이 확인되면 기록됩니다. 어둡거나 마스크를 썼을 때는 바로 아래 <b>[얼굴 없이 일반 방식으로]</b>를 누르면 됩니다 — 출퇴근이 막히는 일은 없습니다.</figcaption>
+    </figure>
+
     <div class="note tip">
       <span class="tag">알아두세요</span>
       <p>등록한 얼굴은 <b>본인 확인에만</b> 쓰입니다. 마음이 바뀌면 같은 화면에서 <b>[등록한 얼굴 삭제]</b>로 언제든 지울 수 있고, 그 뒤에는 GPS로 출퇴근하시면 됩니다.</p>
@@ -299,7 +305,11 @@
       </figure>
       <figure>
         <span class="shot"><img src="img/m-23-외출외근.webp" alt="외출·외근 신청 화면." loading="lazy"></span>
-        <figcaption><b>[외출외근]</b> · <b>[초과근무]</b> · <b>[재택]</b> · <b>[출장]</b> — 미리 신청하는 것들입니다.</figcaption>
+        <figcaption><b>[외출외근]</b> — 미리 알리는 외근 신청입니다.</figcaption>
+      </figure>
+      <figure>
+        <span class="shot"><img src="img/m-24-초과근무.webp" alt="초과근무 사전 신청 화면." loading="lazy"></span>
+        <figcaption><b>[초과근무]</b> — 야근을 미리 신청합니다. <b>[재택]</b>·<b>[출장]</b>도 같은 방식입니다.</figcaption>
       </figure>
     </div>
   </section>

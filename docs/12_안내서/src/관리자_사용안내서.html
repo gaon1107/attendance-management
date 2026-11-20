@@ -1,6 +1,7 @@
 <title>근태관리 사용 안내서</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@500;700;800&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<!-- 글꼴은 **PC에 이미 있는 것만** 쓴다(외부에서 받아오지 않는다).
+     ① 인터넷이 없는 곳에서 열어도 모양이 똑같다  ② 안내서를 여는 고객사 PC 정보가 바깥으로 나가지 않는다 -->
 <style>
   /* 레이아웃: 데스크톱은 왼쪽 고정 목차 + 본문 한 단, 폰에서는 목차가 접히고 한 단으로 쌓인다. */
   :root {
@@ -18,8 +19,8 @@
     --red-soft: #FDF0F0;
     --green:   #15803D;
 
-    --font-display: "Gothic A1", "맑은 고딕", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
-    --font-body: "IBM Plex Sans KR", "맑은 고딕", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    --font-display: "Pretendard", "Apple SD Gothic Neo", "맑은 고딕", "Malgun Gothic", system-ui, sans-serif;
+    --font-body: "Pretendard", "Apple SD Gothic Neo", "맑은 고딕", "Malgun Gothic", system-ui, sans-serif;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -549,6 +550,11 @@
         </figure>
       </div>
 
+      <figure>
+        <span class="shot phone"><img src="img/m-32-얼굴출퇴근.webp" alt="얼굴인증을 쓰는 직원의 출퇴근 화면. 카메라 칸이 함께 보인다." loading="lazy"></span>
+        <figcaption>얼굴 등록을 마치면 그 직원의 버튼이 <b>[얼굴로 출근하기] · [얼굴로 퇴근하기]</b>로 바뀝니다(누르면 카메라가 열립니다). 바로 아래에 <b>[얼굴 없이 일반 방식으로]</b>가 <b>항상</b> 있어서, 어둡거나 마스크를 썼을 때도 출퇴근이 막히지 않습니다.</figcaption>
+      </figure>
+
       <h3>4 · 매일 출근·퇴근 누르기</h3>
       <figure>
         <span class="shot phone">
@@ -596,6 +602,10 @@
         <figure>
           <span class="shot phone"><img src="img/m-23-외출외근.webp" alt="외출·외근 신청 화면." loading="lazy"></span>
           <figcaption><b>[외출외근]</b> — 미리 알리는 외근 신청입니다.</figcaption>
+        </figure>
+        <figure>
+          <span class="shot phone"><img src="img/m-24-초과근무.webp" alt="초과근무 사전 신청 화면." loading="lazy"></span>
+          <figcaption><b>[초과근무]</b> — 야근을 미리 신청합니다. <b>[재택]</b>·<b>[출장]</b>도 같은 방식입니다.</figcaption>
         </figure>
       </div>
     </section>

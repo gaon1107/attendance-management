@@ -19,18 +19,43 @@
 //
 // ⚠️ 얼굴 등록 화면은 **가짜 카메라**(크로미움 테스트 패턴)로 찍힌다. 실제 사람 얼굴이 아니다.
 //    안내서에서는 "카메라가 켜진 자리"를 보여주는 용도로만 쓰고, 설명으로 보완한다.
-import { chromium } from "file:///C:/Users/%EC%A3%BC%EC%9D%B8%EB%8B%98/AppData/Roaming/npm/node_modules/playwright/index.mjs";
 import { PrismaClient } from "@prisma/client";
 import sharp from "sharp";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
+
+// playwright 는 이 프로젝트의 의존성이 아니라 **전역 설치**를 쓴다(화면 캡처 전용이라
+//  webapp 배포물에 넣을 이유가 없다). 경로를 소스에 박아 두면 PC·계정이 바뀌는 순간
+//  안내서 재생성이 통째로 멈추고, 사용자 폴더 이름이 깃에 올라간다 → 매번 찾아서 쓴다.
+async function loadChromium() {
+  try {
+    return (await import("playwright")).chromium; // 나중에 npm i -D playwright 를 해도 그대로 동작
+  } catch { /* 전역에서 찾는다 */ }
+  const roots = [
+    process.env.APPDATA && path.join(process.env.APPDATA, "npm", "node_modules", "playwright", "index.mjs"),
+    process.env.npm_config_prefix && path.join(process.env.npm_config_prefix, "node_modules", "playwright", "index.mjs"),
+    "/usr/local/lib/node_modules/playwright/index.mjs",
+  ].filter(Boolean);
+  for (const p of roots) {
+    if (fs.existsSync(p)) return (await import(pathToFileURL(p).href)).chromium;
+  }
+  console.error("✖ playwright 를 찾지 못했습니다. 먼저 아래 두 줄을 실행해 주세요:");
+  console.error("    npm i -g playwright");
+  console.error("    npx playwright install chromium");
+  process.exit(1);
+}
 
 const BASE = "http://localhost:3000";
-const PW = process.argv[2];
+// 🔒 비밀번호는 환경변수를 **먼저** 본다. 인자로 주면 PowerShell 기록·작업관리자 명령줄에 평문으로 남는다.
+//    (환경변수로 주는 법:  $env:DEMO_PW = "..." ; node scripts/make-guide-shots.mjs "" 출력폴더)
+const PW = process.env.DEMO_PW || process.argv[2];
 const OUT_DIR = path.resolve(process.argv[3] || "guide-shots");
 
 if (!PW) {
-  console.log("사용법: node scripts/make-guide-shots.mjs \"<데모 계정 비밀번호>\" [출력폴더]");
+  console.error("사용법: node scripts/make-guide-shots.mjs \"<데모 계정 비밀번호>\" [출력폴더]");
+  console.error("  또는: $env:DEMO_PW = \"<비밀번호>\" 로 미리 넣어 두고 비밀번호 자리를 \"\" 로 둔다(기록에 안 남음).");
+  console.error("  ※ 인자로 주셨다면 끝나고 PowerShell 에서 Clear-History 를 한 번 실행해 주세요.");
   process.exit(1);
 }
 
@@ -46,9 +71,33 @@ const OFFICE = { latitude: 37.500622, longitude: 127.036456 };
 const DESK = { width: 1440, height: 900 };
 const PHONE = { width: 390, height: 844 };
 
+// 🔴 지난번 PNG 를 반드시 지우고 시작한다.
+//    안 지우면 이번에 **못 찍은 화면이 지난번 그림으로 다시 구워져**, 바뀐 화면을 설명하는
+//    안내서에 옛 그림이 실린 채로 "완료"가 뜬다. 조용히 틀리는 쪽이 제일 위험하다.
 fs.mkdirSync(OUT_DIR, { recursive: true });
 const raw = path.join(OUT_DIR, "_raw");
+fs.rmSync(raw, { recursive: true, force: true });
 fs.mkdirSync(raw, { recursive: true });
+
+// 찍혀야 하는 그림의 **전체 목록**. 맨 끝에서 이 목록과 대조해 하나라도 빠지면 실패로 끝낸다.
+const EXPECTED = [
+  "pc-01-홈화면", "pc-02-회원가입", "pc-03-로그인", "pc-04-초기설정",
+  "pc-10-대시보드", "pc-11-직원관리", "pc-12-직원추가-초대링크", "pc-13-부서직급",
+  "pc-20-근태현황", "pc-21-현황판", "pc-22-리포트", "pc-23-초과근무현황", "pc-24-직원근태상세",
+  "pc-30-휴가승인", "pc-31-정정승인",
+  "pc-40-설정", "pc-40b-설정-근무규칙", "pc-41-회사정보", "pc-42-구독요금", "pc-43-생체정보", "pc-44-일정",
+  "m-01-초대가입", "m-02-로그인", "m-03-메뉴",
+  "m-10-출퇴근", "m-10b-출퇴근-다른상태", "m-11-인증방식",
+  "m-20-내근태", "m-21-휴가신청", "m-22-정정신청", "m-23-외출외근", "m-24-초과근무",
+  "m-30-생체정보동의", "m-31-얼굴등록", "m-31b-얼굴등록-카메라", "m-32-얼굴출퇴근",
+];
+const taken = new Set();
+const skipped = [];
+/** 못 찍고 넘어간 것을 **반드시 말한다**. 조용히 넘어가면 빠진 줄 아무도 모른다. */
+function skip(name, why) {
+  skipped.push(`${name} — ${why}`);
+  console.warn(`  ⚠ 건너뜀: ${name} (${why})`);
+}
 
 /** 화면이 조용해질 때까지 기다린다. 애니메이션·지도 타일 때문에 넉넉히 준다. */
 async function settle(page, ms = 900) {
@@ -77,20 +126,24 @@ async function openDetails(page) {
   });
 }
 
-/** 화면의 특정 부분으로 스크롤한다(그 부분이 화면 가운데 오게). 없으면 조용히 넘어간다. */
+/** 화면의 특정 부분으로 스크롤한다(그 부분이 화면 가운데 오게). */
 async function scrollTo(page, text) {
   const el = page.getByText(text, { exact: false }).first();
-  if (await el.count()) {
-    await el.scrollIntoViewIfNeeded().catch(() => {});
-    await page.evaluate(() => window.scrollBy(0, -120)); // 제목이 맨 위에 딱 붙지 않게
-    await page.waitForTimeout(500);
+  if (!(await el.count())) {
+    // 글자가 바뀌었는데 모르고 지나가면 **엉뚱한 자리**가 찍힌다 → 알린다.
+    console.warn(`  ⚠ 화면에서 "${text}" 를 찾지 못해 스크롤하지 않았습니다(그림이 엉뚱할 수 있음).`);
+    return;
   }
+  await el.scrollIntoViewIfNeeded().catch(() => {});
+  await page.evaluate(() => window.scrollBy(0, -120)); // 제목이 맨 위에 딱 붙지 않게
+  await page.waitForTimeout(500);
 }
 
 async function shot(page, name, { full = false } = {}) {
   const file = path.join(raw, `${name}.png`);
   await page.screenshot({ path: file, fullPage: full });
   const { width, height } = await sharp(file).metadata();
+  taken.add(name);
   console.log(`  · ${name}.png  ${width}×${height}`);
   return file;
 }
@@ -105,6 +158,45 @@ async function login(page, email) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+// 개발 서버가 떠 있는지 먼저 본다. 안 보면 30초 뒤에 영어 오류만 나와서 원인을 알 수 없다.
+try {
+  const res = await fetch(BASE, { method: "GET" });
+  if (!res.ok && res.status >= 500) throw new Error(`HTTP ${res.status}`);
+} catch (e) {
+  console.error(`✖ 개발 서버(${BASE})에 연결하지 못했습니다. 먼저 서버를 켜 주세요.`);
+  console.error(`  (바탕화면의 근태관리_실행.bat 를 더블클릭하거나, webapp 에서 npm run dev)`);
+  console.error("  원인:", e?.message);
+  process.exit(1);
+}
+
+// 🔒 데모 데이터를 건드리기 전에 **지금 보고 있는 DB가 개발 DB가 맞는지** 확인한다.
+//    스크립트의 DB 연결과 dev 서버의 DB 연결은 별개라, 실수로 다른 DB를 가리키면
+//    "A DB 의 사람을 바꾸고 B DB 의 화면을 찍는" 조용한 사고가 난다.
+const prisma = new PrismaClient();
+const dbUrl = process.env.DATABASE_URL || "";
+if (dbUrl && !/dev\.db/i.test(dbUrl)) {
+  console.error(`✖ 개발 DB(dev.db)가 아닙니다: ${dbUrl}`);
+  console.error("  이 스크립트는 개발 DB 전용입니다. 운영·검증 DB에서는 돌리지 않습니다.");
+  await prisma.$disconnect();
+  process.exit(1);
+}
+const demoCompany = await prisma.company.findFirst({
+  where: { name: "주식회사 한빛솔루션", isDemo: true },
+  select: { id: true },
+});
+if (!demoCompany) {
+  console.error("✖ 데모 회사(주식회사 한빛솔루션)가 없습니다. 먼저 만들어 주세요:");
+  console.error('    node scripts/seed-demo.mjs "<비밀번호>"');
+  await prisma.$disconnect();
+  process.exit(1);
+}
+// 지난 실행에서 만든 초대가 남아 있으면 캡처에 2줄·3줄로 쌓여 그림이 지저분해진다. 먼저 비운다.
+{
+  const r = await prisma.invite.deleteMany({ where: { companyId: demoCompany.id } });
+  if (r.count) console.log(`· 지난 초대 ${r.count}건을 정리했습니다(캡처에 여러 줄로 쌓이지 않게).`);
+}
+
+const chromium = await loadChromium();
 const browser = await chromium.launch({
   headless: true,
   args: [
@@ -194,6 +286,8 @@ try {
       await detail.click();
       await settle(page, 1200);
       await shot(page, "pc-24-직원근태상세");
+    } else {
+      skip("pc-24-직원근태상세", "근태 현황 표에 눌러 들어갈 직원 줄이 없습니다");
     }
 
     // 초대 링크 만들기 → 실제 토큰 확보(초대 화면 캡처에 필요)
@@ -206,15 +300,17 @@ try {
     await settle(page, 300);
     const box = page.locator('input[readonly]').first();
     if (await box.count()) inviteUrl = await box.inputValue();
+    if (!inviteUrl) skip("pc-12 초대 링크", "초대 링크 칸을 찾지 못했습니다");
     console.log(`  · 초대 링크 확보: ${inviteUrl ? "성공" : "실패"}`);
 
-    // 🔴 화면에 보이는 주소만 운영 주소로 바꿔 찍는다.
-    //    개발 PC에서 찍으면 `http://localhost:3000/...` 이 박히는데, 고객사 안내서에 그 주소가 들어가면
-    //    "여길 눌러 보세요" 하고 **열리지 않는 주소**를 안내하는 꼴이 된다.
-    //    ※ 실제 이동은 위에서 읽어 둔 inviteUrl(localhost)로 한다 — 보이는 글자만 바꾼다.
+    // 🔴 화면에 보이는 주소만 바꿔 찍는다. 두 가지를 동시에 막는다.
+    //  ① 개발 PC에서 찍으면 `http://localhost:3000/...` 이 박힌다 → 고객이 눌러도 안 열리는 주소를 안내하는 꼴.
+    //  ② **진짜 초대 토큰**이 고객 배포 문서에 선명하게 박힌다. 지금은 주소가 달라 쓸 수 없지만,
+    //     토큰은 "7일간 그 회사에 가입할 수 있는 열쇠"다. 그림에는 가짜 토큰만 남긴다.
+    //  ※ 실제 이동은 위에서 읽어 둔 inviteUrl(진짜 주소)로 한다 — 보이는 글자만 바꾼다.
     await page.evaluate(() => {
       const el = document.querySelector("input[readonly]");
-      if (el) el.value = el.value.replace(/^https?:\/\/[^/]+/, "https://attend.newgaon.com");
+      if (el) el.value = "https://attend.newgaon.com/invite/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6";
     });
     await scrollTo(page, "직원 초대");
     await shot(page, "pc-12-직원추가-초대링크");
@@ -244,6 +340,8 @@ try {
       await page.goto(inviteUrl, { waitUntil: "domcontentloaded" });
       await settle(page);
       await shot(page, "m-01-초대가입", { full: true });
+    } else {
+      skip("m-01-초대가입", "앞 단계에서 초대 링크를 얻지 못했습니다");
     }
 
     await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
@@ -277,6 +375,8 @@ try {
       await menu.click().catch(() => {});
       await settle(page, 700);
       await shot(page, "m-03-메뉴");
+    } else {
+      skip("m-03-메뉴", "폰 화면에서 메뉴(☰) 버튼을 찾지 못했습니다");
     }
 
     await ctx.close();
@@ -322,15 +422,63 @@ try {
   //  고객사 직원이 실제로 보게 될 "카메라가 켜진 등록 화면"을 찍으려면 아직 등록 전인 사람이 필요하다.
   //  → 데모 회사의 한소영(원래 GPS)을 **잠깐** 얼굴인증 + 동의함 + 미등록으로 바꿔 찍고 **반드시 되돌린다.**
   //  🔴 데모 회사(@hanbit.example) 계정 하나만 건드린다. 원복은 finally 로 보장한다.
+  //
+  //  🔴 **[촬영하기] 를 누르는 코드를 절대 추가하지 말 것.**
+  //     누르면 얼굴서버(GaonFR)에 가짜 얼굴이 **실제로 등록**되는데, 여기서는 DB만 되돌리므로
+  //     `faceEnrolledAt`이 null 로 돌아가 화면의 [등록한 얼굴 삭제] 버튼이 사라진다
+  //     (그 버튼은 등록 횟수 > 0 일 때만 보인다) → **지울 방법이 없는 생체정보**가 서버에 남는다.
+  //     정상 경로(app/actions/authmethod.ts)만이 얼굴서버까지 함께 지운다.
   {
-    const prisma = new PrismaClient();
-    let before = null;
-    try {
-      before = await prisma.user.findFirst({
-        where: { email: EMP_GPS2 },
-        select: { id: true, authMethod: true, faceConsentAt: true, faceEnrolledAt: true, faceEnrollCount: true },
-      });
-      if (before) {
+    // 되돌릴 값은 **고정 상수**다. "바꾸기 직전의 DB 값"을 되돌림 기준으로 쓰면,
+    // 한 번이라도 원복에 실패해 망가진 값이 남았을 때 다음 실행이 그 값을 "원래대로"라며
+    // 다시 써 넣어 **오염이 영구히 굳는다**(검수 치명 1).
+    const RESTORE = { authMethod: "gps", faceConsentAt: null, faceEnrolledAt: null, faceEnrollCount: 0 };
+    const before = await prisma.user.findFirst({
+      where: { email: EMP_GPS2, companyId: demoCompany.id }, // 🔒 데모 회사 소속만
+      select: { id: true, name: true, authMethod: true, faceConsentAt: true, faceEnrolledAt: true, faceEnrollCount: true },
+    });
+
+    const dirty =
+      !before ||
+      before.authMethod !== RESTORE.authMethod ||
+      before.faceConsentAt !== null ||
+      before.faceEnrolledAt !== null ||
+      before.faceEnrollCount !== 0;
+
+    if (!before) {
+      skip("m-31b-얼굴등록-카메라", `데모 직원(${EMP_GPS2})을 찾지 못했습니다`);
+    } else if (dirty) {
+      // 평소 상태가 아니면 **건드리지 않는다**. 지난번 원복이 실패했다는 뜻이다.
+      console.error(`  ✖ ${before.name} 계정이 평소 상태가 아닙니다 — 이번 캡처를 건너뜁니다.`);
+      console.error(`    지금 값: ${JSON.stringify(before)}`);
+      console.error(`    손으로 되돌릴 값: ${JSON.stringify(RESTORE)}`);
+      skip("m-31b-얼굴등록-카메라", "데모 직원 계정이 평소 상태가 아님");
+    } else {
+      // 실패했을 때 사람이 복구할 수 있게, 바꾸기 **전에** 원래 값을 화면에 남긴다.
+      console.log(`  · ${before.name} 계정을 잠시 얼굴인증으로 바꿉니다. 원래 값: ${JSON.stringify(RESTORE)}`);
+
+      let restored = false;
+      const restore = async (label) => {
+        if (restored) return;
+        restored = true;
+        try {
+          await prisma.user.update({ where: { id: before.id }, data: RESTORE });
+          console.log(`  · ${before.name} 계정을 원래대로 되돌렸습니다(GPS)${label ? ` [${label}]` : ""}.`);
+        } catch (e) {
+          // 🔴 여기서 실패하면 사람이 고쳐야 한다. 조용히 끝내지 않는다.
+          console.error("  ✖✖ 되돌리기에 실패했습니다. 아래 값으로 직접 고쳐 주세요.");
+          console.error(`      대상: ${EMP_GPS2} (id ${before.id})`);
+          console.error(`      값  : ${JSON.stringify(RESTORE)}`);
+          console.error("      원인:", e?.message);
+          process.exitCode = 1;
+        }
+      };
+      // Ctrl+C·창 닫기로 멈출 때도 되돌린다. Node 는 SIGINT 에서 finally 를 실행하지 않는다.
+      const onSignal = async () => { await restore("강제 종료"); await prisma.$disconnect().catch(() => {}); process.exit(130); };
+      process.once("SIGINT", onSignal);
+      process.once("SIGTERM", onSignal);
+
+      try {
         await prisma.user.update({
           where: { id: before.id },
           data: { authMethod: "face", faceConsentAt: new Date(), faceEnrolledAt: null, faceEnrollCount: 0 },
@@ -342,25 +490,33 @@ try {
         await settle(page, 2600); // 카메라가 켜지고 타원 가이드가 그려질 시간
         await shot(page, "m-31b-얼굴등록-카메라", { full: true });
         await ctx.close();
+      } finally {
+        await restore();
+        process.off("SIGINT", onSignal);
+        process.off("SIGTERM", onSignal);
       }
-    } finally {
-      if (before) {
-        await prisma.user.update({
-          where: { id: before.id },
-          data: {
-            authMethod: before.authMethod,
-            faceConsentAt: before.faceConsentAt,
-            faceEnrolledAt: before.faceEnrolledAt,
-            faceEnrollCount: before.faceEnrollCount,
-          },
-        });
-        console.log("  · 한소영 계정을 원래대로 되돌렸습니다(GPS).");
-      }
-      await prisma.$disconnect();
     }
   }
 } finally {
   await browser.close();
+  await prisma.$disconnect().catch(() => {});
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 🔴 찍어야 할 그림이 전부 나왔는지 대조한다.
+//    이게 없으면 몇 장이 빠져도 "✔ 완료"가 뜨고, 그 자리엔 지난번 그림이 그대로 실린다.
+const missing = EXPECTED.filter((n) => !taken.has(n));
+const extra = [...taken].filter((n) => !EXPECTED.includes(n));
+if (extra.length) console.warn(`\n⚠ 목록에 없는 그림을 찍었습니다(EXPECTED 에 추가해 주세요): ${extra.join(", ")}`);
+if (missing.length) {
+  console.error(`\n✖ 찍지 못한 그림 ${missing.length}장:`);
+  for (const n of missing) console.error(`   · ${n}`);
+  if (skipped.length) {
+    console.error("  건너뛴 이유:");
+    for (const s of skipped) console.error(`   · ${s}`);
+  }
+  console.error("\n  이 상태로는 안내서를 만들지 마세요 — 빠진 자리에 옛 그림이 실립니다.");
+  process.exitCode = 1;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -382,5 +538,7 @@ for (const f of fs.readdirSync(raw).filter((x) => x.endsWith(".png"))) {
   total += kb;
   console.log(`  · ${path.basename(out)}  ${kb}KB`);
 }
-console.log(`\n✔ 완료 — ${OUT_DIR}  (webp 합계 약 ${Math.round(total / 1024 * 10) / 10}MB)`);
+const okMark = process.exitCode ? "⚠ 일부 실패" : "✔ 완료";
+console.log(`\n${okMark} — ${OUT_DIR}  (webp ${EXPECTED.length - missing.length}/${EXPECTED.length}장 · 합계 약 ${Math.round(total / 1024 * 10) / 10}MB)`);
 console.log("  원본 PNG는 _raw 폴더에 남아 있습니다(다시 구울 때 사용).");
+if (process.exitCode) console.log("  🔴 위 '찍지 못한 그림' 을 해결한 뒤 다시 돌려 주세요.");
