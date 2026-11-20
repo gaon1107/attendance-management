@@ -19,8 +19,20 @@ const COOKIE_NAME = "session";
 //    여기에 12시간 유휴를 걸면, 평소 안 쓰던 회사 계정이 정작 필요한 순간(관리자 전원 퇴사 등)
 //    비밀번호를 기억 못 해 **회사가 영구히 잠긴다.** 회사 계정의 존재 이유가 정반대가 된다(검수 치명 2).
 //    → 복구 경로를 먼저 만든 뒤에 조인다. 그전까지는 기존 정책(30일·유휴 없음)을 유지한다.
-const EMPLOYEE_MAX_MS = 30 * 24 * 60 * 60 * 1000; // 30일
+//
+// 2026-11-20 사장님 승인: 직원(·회사계정)은 "쓰는 동안 계속 유지" — 마지막 사용 후 30일 안 쓰면 그때 만료.
+//   예전엔 로그인 순간부터 30일 고정이라 매일 출퇴근해도 30일째에 한 번 튕겼다(휴대폰 홈 화면 앱 사용 시 불편).
+//   · 연장은 아래 getCurrentUser의 "마지막 활동 시각 갱신"(5분에 한 번)에서 DB 만료(expiresAt)를 함께 미는 방식.
+//   · 브라우저 쿠키는 길게(COOKIE_LONG_MS) 두고 **실제 만료 판단은 DB**가 한다 — getCurrentUser는 서버 화면에서도
+//     불려 쿠키를 다시 쓸 수 없어서다.
+//   · 🔒 최대 수명 1년(SESSION_HARD_MAX_MS, 검수 중간 M-1): 연장에 상한이 없으면 출입증(토큰)을 훔친 사람이
+//     30일에 한 번만 써도 영구히 로그인된다. 로그인 시각(createdAt)부터 1년이 지나면 무조건 다시 로그인.
+//     쿠키도 1년이라 정상 사용자는 잃는 것이 없다(= "쓰는 동안 유지, 단 1년에 한 번은 다시 로그인").
+//   · 실무 관리자(짧은 정책)는 그대로: 7일 고정 + 12시간 유휴. 연장하지 않는다.
+const EMPLOYEE_MAX_MS = 30 * 24 * 60 * 60 * 1000; // 30일(마지막 사용 기준)
 const ADMIN_MAX_MS = 7 * 24 * 60 * 60 * 1000; // 7일
+const SESSION_HARD_MAX_MS = 365 * 24 * 60 * 60 * 1000; // 연장해도 넘지 못하는 최대 수명(로그인 시각 기준)
+const COOKIE_LONG_MS = SESSION_HARD_MAX_MS; // 직원 쿠키 수명 = 최대 수명(브라우저 상한 400일 이내)
 const ADMIN_IDLE_MS = 12 * 60 * 60 * 1000; // 12시간 미사용 → 끊음
 /** 마지막 활동 시각을 다시 쓰기까지의 최소 간격. ⚠️ 이게 없으면 화면 열 때마다 DB 쓰기가 터진다. */
 const IDLE_TOUCH_MS = 5 * 60 * 1000;
@@ -43,7 +55,8 @@ export async function createSession(userId: string, known?: { role: string; isOw
     const found = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, isOwner: true } });
     u = found ?? { role: "admin", isOwner: false }; // 모르면 가장 짧은 정책
   }
-  const maxMs = isTightPolicy(u) ? ADMIN_MAX_MS : EMPLOYEE_MAX_MS;
+  const tight = isTightPolicy(u);
+  const maxMs = tight ? ADMIN_MAX_MS : EMPLOYEE_MAX_MS;
 
   const token = randomBytes(32).toString("hex");
   const now = new Date();
@@ -55,7 +68,8 @@ export async function createSession(userId: string, known?: { role: string; isOw
     httpOnly: true, // JS로 못 읽게(보안)
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
-    expires: expiresAt,
+    // 관리자 = DB 만료와 같게(7일 고정). 직원 = 길게 — DB 만료가 사용할 때마다 밀리므로 쿠키가 먼저 죽지 않게.
+    expires: tight ? expiresAt : new Date(now.getTime() + COOKIE_LONG_MS),
     path: "/",
   });
 }
@@ -115,7 +129,20 @@ export async function getCurrentUser(opts?: { allowMustChange?: boolean }) {
     try {
       await prisma.session.updateMany({
         where: { token, OR: [{ lastSeenAt: null }, { lastSeenAt: { lt: cutoff } }] },
-        data: { lastSeenAt: now },
+        // 직원·회사계정은 만료도 "지금부터 30일"로 민다(쓰는 동안 유지). 실무 관리자는 7일 고정이라 손대지 않는다.
+        //  ⚠️ 판단 기준은 **지금의 역할**(session.user) — 관리자로 승격되면 owner.ts가 만료를 7일로 당기고,
+        //     그 뒤로는 여기서 다시 늘어나지 않는다.
+        //  · 임시 비밀번호 상태(로그인 화면·비밀번호 변경 화면에서만 여기까지 옴)는 연장하지 않는다(검수 경미 4).
+        //  · 연장 값은 로그인 시각 + 1년을 넘지 않는다(최대 수명, 위 정책 주석).
+        data:
+          isTightPolicy(session.user) || session.user.mustChangePassword
+            ? { lastSeenAt: now }
+            : {
+                lastSeenAt: now,
+                expiresAt: new Date(
+                  Math.min(now.getTime() + EMPLOYEE_MAX_MS, session.createdAt.getTime() + SESSION_HARD_MAX_MS)
+                ),
+              },
       });
     } catch (e) {
       // ⚠️ 에러 객체를 통째로 찍지 않는다 — Prisma 검증 에러는 인자(세션 토큰)를 펼쳐 넣는다(사규 8).
