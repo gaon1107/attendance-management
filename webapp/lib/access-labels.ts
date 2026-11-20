@@ -122,6 +122,8 @@ function baseMetaLabel(meta: string): string {
     operator_password_change: "운영자 본인 비밀번호 변경",
     operator_password_change_denied: "운영자 비밀번호 변경 실패(현재 비밀번호 오류)",
     operator_name_change: "운영자 본인 이름 변경",
+    // 서버 명령(scripts/create-operator.mjs --email)으로 로그인 아이디를 바꾼 사건.
+    operator_email_change: "운영자 아이디(이메일) 변경",
     // 회사 계정(마스터 열쇠)의 복구 기준이 바뀌는 사건 — 가장 무겁게 봐야 할 기록이다.
     owner_recovery_phone_change: "회사 계정 복구용 연락처 변경",
     //  · 실패는 성공과 **다른 이름**을 쓴다. 같으면 접속기록에서 실패 시도까지 "변경 5건"처럼 읽혀

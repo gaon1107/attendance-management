@@ -3,6 +3,7 @@
 // 사용법 (webapp 폴더에서):
 //   node scripts/create-operator.mjs "이메일" "비밀번호" "이름"          ← 새 계정
 //   node scripts/create-operator.mjs --reset "이메일" "새 비밀번호"      ← 비밀번호 바꾸기
+//   node scripts/create-operator.mjs --email "지금 이메일" "새 이메일"    ← 아이디 바꾸기
 //   node scripts/create-operator.mjs --list                            ← 계정 목록(잠금 상태까지)
 //   node scripts/create-operator.mjs --unlock "이메일"                  ← 잠금만 풀기
 //   node scripts/create-operator.mjs --off "이메일"                     ← 계정 끄기(지우지 않는다)
@@ -76,12 +77,21 @@ function usage() {
 
   node scripts/create-operator.mjs "이메일" "비밀번호" "이름"        새 계정 만들기
   node scripts/create-operator.mjs --reset "이메일" "새 비밀번호"    비밀번호 바꾸기
+  node scripts/create-operator.mjs --email "지금 이메일" "새 이메일"  아이디 바꾸기
   node scripts/create-operator.mjs --list                          계정 목록(잠금 상태까지)
   node scripts/create-operator.mjs --unlock "이메일"                잠금만 풀기
   node scripts/create-operator.mjs --off "이메일"                   계정 끄기
   node scripts/create-operator.mjs --on  "이메일"                   계정 켜기
 
   ※ 비밀번호는 ${PASSWORD_MIN_LEN}자 이상. 기억하기 쉬운 통문장을 권합니다(띄어쓰기도 됩니다).
+
+  ※ 값을 **환경변수로** 받는 모드도 있습니다(도우미 프로그램용 — 비밀번호가 명령줄에
+     남지 않고, 따옴표가 섞여도 값이 변하지 않습니다):
+       --reset-env   OP_EMAIL + OP_NEW_PW
+       --email-env   OP_EMAIL + OP_NEW_EMAIL
+       --create-env  OP_EMAIL + OP_NEW_PW + OP_NAME
+       --unlock-env / --off-env / --on-env   OP_EMAIL
+     쉬운 사용법: 저장소 맨 위의 **운영자_계정관리.bat** 을 더블클릭하세요.
 `);
   process.exit(1);
 }
@@ -96,8 +106,76 @@ function isAsciiEmail(v) {
   return /^[\x20-\x7E]+$/.test(v);
 }
 
+/**
+ * 이메일(로그인 아이디)이 쓸 수 있는 값인지 보고, 아니면 이유를 말하고 끝낸다.
+ *
+ * 🔴 **계정을 만들 때와 아이디를 바꿀 때가 같은 기준을 써야 한다**(2026-11-20에 하나로 묶었다).
+ *    한쪽만 느슨하면 그 길로 **"앱 로그인이 받아주지 않는 주소"**를 가진 계정이 만들어지고,
+ *    운영자에게는 재설정 창구가 없어 서버에 들어오지 않고는 되돌릴 수 없다.
+ */
+/** 지금 이 명령이 보고 있는 DB가 어디인지 사람 말로. (개발 PC인지 운영 서버인지 구분하려고) */
+function dbLocation() {
+  const url = process.env.DATABASE_URL ?? "";
+  if (!url) return "알 수 없음 (DATABASE_URL 없음)";
+  const file = url.replace(/^file:/, "");
+  // 운영은 Docker 안의 /data/db/... 를 쓴다(deploy/server). 개발 PC는 prisma/dev.db.
+  const where = file.startsWith("/data/") ? "운영 서버" : "이 PC(개발용)";
+  return `${where} — ${file}`;
+}
+
+function checkEmailOrExit(email) {
+  // 🔴 **로그인 화면과 같은 수준으로 조인다**(검수 중간 1). 로그인 입력칸은 `type="email"`이라
+  //    브라우저가 `abcd@`·`@abcd`·`a b@c.com` 같은 주소는 **제출 자체를 막는다.** 예전처럼
+  //    "@가 있고 5자 이상"만 보면, 오타 한 번(`...co,kr`·도메인 빠뜨림·공백 끼임)으로
+  //    **그 계정으로 웹에 영영 못 들어가는 상태**가 된다(운영자는 재설정 창구가 없다).
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    console.error("✖ 이메일 형식이 올바르지 않습니다. (예: hong@gaon.co.kr)");
+    console.error("  로그인 화면이 받아주지 않는 주소로 바꾸면 그 계정으로 들어갈 수 없습니다.");
+    process.exit(1);
+  }
+  if (!isAsciiEmail(email)) {
+    console.error("✖ 이메일에 한글·특수문자가 들어 있습니다. 로그인 화면이 받아주지 않으므로 영문 주소를 써주세요.");
+    process.exit(1);
+  }
+  // 🔴 앱의 로그인이 이 길이를 넘으면 **비밀번호를 보기도 전에 거부**한다.
+  //    여기서 막지 않으면 그 순간 "로그인할 수 없는 운영자 계정"이 만들어진다
+  //    (재설정 창구가 없으므로 되돌릴 방법도 없다 — 고객사 쪽 검수 치명 1과 같은 함정).
+  if (email.length > EMAIL_MAX_LEN) {
+    console.error(`✖ 이메일은 ${EMAIL_MAX_LEN}자 이하여야 합니다.`);
+    process.exit(1);
+  }
+}
+
 async function main() {
-  const [a, b, c] = process.argv.slice(2);
+  let [a, b, c] = process.argv.slice(2);
+
+  // ── 값을 **환경변수로** 받는 모드 (2026-11-20, 검수 치명 2) ──────────────────
+  //  🔴 왜 필요한가: 비밀번호·아이디를 명령 인자로 주면 두 가지가 깨진다.
+  //    ① **따옴표가 섞이면 값이 달라진다.** PowerShell이 `"`를 먹어서, 사장님이 친 것과
+  //       **다른 비밀번호가 저장된다**(실측: `ab"cd 1234567` → `abcd 1234567`). 입력이 화면에
+  //       보이지 않으니 원인을 짐작할 수도 없고, 다시 해도 같은 결과라 빠져나올 수 없다.
+  //    ② **실행 중 프로세스 목록에 비밀번호가 그대로 보인다**(Get-CimInstance Win32_Process).
+  //       `deploy/server/README.md`가 "비밀번호가 들어가는 명령은 명령줄에 적지 않는다"고
+  //       못박은 규칙을 정면으로 어긴다.
+  //  → 도우미(운영자_계정관리.bat)는 이 모드만 쓴다. 사람이 손으로 칠 때는 기존 방식 그대로.
+  //  ⚠️ 아래는 **값을 바꿔 끼울 뿐** 그 뒤 처리는 기존 분기를 그대로 탄다(검증·중복검사 동일).
+  if (a === "--reset-env") {
+    a = "--reset";
+    b = process.env.OP_EMAIL ?? "";
+    c = process.env.OP_NEW_PW ?? "";
+  } else if (a === "--email-env") {
+    a = "--email";
+    b = process.env.OP_EMAIL ?? "";
+    c = process.env.OP_NEW_EMAIL ?? "";
+  } else if (a === "--create-env") {
+    a = process.env.OP_EMAIL ?? "";
+    b = process.env.OP_NEW_PW ?? "";
+    c = process.env.OP_NAME ?? "";
+  } else if (a === "--unlock-env" || a === "--off-env" || a === "--on-env") {
+    a = a.replace("-env", "");
+    b = process.env.OP_EMAIL ?? "";
+  }
+
   if (!a) usage();
 
   // ── 목록 보기 ──
@@ -107,6 +185,12 @@ async function main() {
       console.log("운영자 계정이 아직 없습니다.");
       return;
     }
+    // 🔴 **어느 DB를 보고 있는지 먼저 밝힌다**(검수 치명 1). 이 명령은 실행한 곳의 DB만 본다.
+    //    운영 서버(attend.newgaon.com)의 계정은 그 서버 안에서
+    //    `docker exec attendance-app node scripts/create-operator.mjs ...` 로 고친다
+    //    (deploy/server/README.md). 이 줄이 없으면 개발 PC에서 고쳐 놓고 "운영도 바뀐 줄"
+    //    아는 사고가 난다 — 화면에는 성공이라 뜨는데 운영은 그대로인 상태가 가장 위험하다.
+    console.log(`지금 보는 곳: ${dbLocation()}`);
     console.log(`운영자 계정 ${rows.length}개`);
     const now = new Date();
     for (const r of rows) {
@@ -164,6 +248,65 @@ async function main() {
     return;
   }
 
+  // ── 아이디(이메일) 바꾸기 ── (2026-11-20 사장님 요청)
+  //  🔴 비밀번호는 건드리지 않는다. 아이디만 갈아끼운다.
+  //  🔴 **열려 있던 로그인은 전부 끊는다.** 로그인 아이디가 바뀌는 것은 계정의 신원이 바뀌는
+  //     사건이라, 바꾸기 전에 열어 둔 창이 살아 있으면 "누가 무엇으로 들어와 있는지"가 흐려진다
+  //     (--off 가 세션을 지우는 것과 같은 이유).
+  if (a === "--email") {
+    const oldEmail = (b ?? "").trim().toLowerCase();
+    const newEmail = (c ?? "").trim().toLowerCase();
+    if (!oldEmail || !newEmail) usage();
+    checkEmailOrExit(newEmail);
+    if (oldEmail === newEmail) {
+      console.error("✖ 지금 아이디와 같습니다. 바꿀 내용이 없습니다.");
+      process.exit(1);
+    }
+    const found = await prisma.operator.findUnique({ where: { email: oldEmail } });
+    if (!found) {
+      console.error(`✖ 그런 운영자 계정이 없습니다: ${oldEmail}`);
+      console.error("  (지금 있는 계정은  --list  로 볼 수 있습니다)");
+      process.exit(1);
+    }
+    const taken = await prisma.operator.findUnique({ where: { email: newEmail } });
+    if (taken) {
+      console.error(`✖ 그 아이디는 이미 다른 운영자가 쓰고 있습니다: ${newEmail}`);
+      process.exit(1);
+    }
+    // 아이디 교체 + 세션 정리 + 기록을 **한 묶음**으로(둘 중 하나만 된 상태를 만들지 않는다).
+    //  잠금·실패 횟수도 함께 정리한다 — 옛 아이디로 쌓인 실패 흔적을 새 아이디가 물려받을 이유가 없다.
+    //  🔴 접속기록을 남기는 이유(검수 중간 3): **계정의 신원이 바뀌는 사건**인데 [운영자 접속
+    //     기록] 화면에 흔적이 0이면, 월 1회 기록 점검에서 이 일이 보이지 않는다.
+    //     companyId·userId 는 **반드시 null** — 그래야 고객사 화면으로 새지 않는다
+    //     (app/actions/operator.ts 의 logOperator 와 같은 규칙).
+    await prisma.$transaction([
+      prisma.operator.update({
+        where: { id: found.id },
+        data: { email: newEmail, failedLoginCount: 0, lockedUntil: null },
+      }),
+      prisma.operatorSession.deleteMany({ where: { operatorId: found.id } }),
+      prisma.accessEvent.create({
+        data: {
+          companyId: null,
+          userId: null,
+          actorName: `운영자 ${found.name}`,
+          emailTried: newEmail,
+          kind: "config",
+          result: "success",
+          ip: null,
+          userAgent: null,
+          device: "서버 명령",
+          meta: `operator_email_change(이전 아이디 ${oldEmail})`,
+        },
+      }),
+    ]);
+    console.log(`✔ 아이디를 바꿨습니다: ${found.name} — ${oldEmail} → ${newEmail}`);
+    console.log("  · 비밀번호는 그대로입니다.");
+    console.log("  · 열려 있던 로그인은 모두 끊겼습니다. 새 아이디로 다시 로그인하세요.");
+    if (!found.active) console.log("  ⚠ 다만 이 계정은 지금 **꺼져 있습니다.** --on 으로 켜야 로그인됩니다.");
+    return;
+  }
+
   // ── 만들기 / 비밀번호 변경 ──
   //  🔴 기존 계정의 비밀번호를 바꿀 때는 **--reset 을 반드시 붙여야 한다**(검수 E-6).
   //     예전에는 이메일만 맞으면 조용히 덮어썼다. 운영자가 두 명일 때 이메일을 잘못 적으면
@@ -174,21 +317,8 @@ async function main() {
   const password = (isReset ? c : b) ?? "";
   const name = (isReset ? "" : (c ?? "")).trim();
 
-  if (!email.includes("@") || email.length < 5) {
-    console.error("✖ 이메일 형식이 올바르지 않습니다.");
-    process.exit(1);
-  }
-  if (!isAsciiEmail(email)) {
-    console.error("✖ 이메일에 한글·특수문자가 들어 있습니다. 로그인 화면이 받아주지 않으므로 영문 주소를 써주세요.");
-    process.exit(1);
-  }
-  // 🔴 앱의 로그인이 이 길이를 넘으면 **비밀번호를 보기도 전에 거부**한다.
-  //    여기서 막지 않으면 그 순간 "로그인할 수 없는 운영자 계정"이 만들어진다
-  //    (재설정 창구가 없으므로 되돌릴 방법도 없다 — 고객사 쪽 검수 치명 1과 같은 함정).
-  if (email.length > EMAIL_MAX_LEN) {
-    console.error(`✖ 이메일은 ${EMAIL_MAX_LEN}자 이하여야 합니다.`);
-    process.exit(1);
-  }
+  // 이메일 검사는 아이디 변경(--email)과 **같은 함수**를 쓴다(기준이 갈리지 않게).
+  checkEmailOrExit(email);
   if (password.length < PASSWORD_MIN_LEN) {
     console.error(`✖ 비밀번호는 ${PASSWORD_MIN_LEN}자 이상이어야 합니다.`);
     process.exit(1);

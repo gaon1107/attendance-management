@@ -23,8 +23,9 @@ export default async function OperatorAccountPage() {
       <main style={{ padding: "24px 28px", maxWidth: 980 }}>
         <h1 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 4px" }}>내 계정</h1>
         <p style={{ fontSize: 13, color: "var(--text-sub)", margin: "0 0 20px", wordBreak: "keep-all", lineHeight: 1.6 }}>
-          로그인 아이디는 <strong>{me.email}</strong> 입니다. 아이디는 이 화면에서 바꿀 수 없습니다 —
-          바꾸려면 서버에서 계정을 새로 만들어야 합니다.
+          로그인 아이디는 <strong>{me.email}</strong> 입니다. 아이디는 이 화면에서 바꿀 수 없고,
+          서버에서 <strong>운영자_계정관리</strong> 도구(또는 <code>create-operator.mjs --email</code>)로 바꿉니다.
+          계정을 새로 만들 필요는 없습니다.
         </p>
 
         <div className="split-2">
