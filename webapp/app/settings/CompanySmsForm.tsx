@@ -25,6 +25,9 @@ export type CompanySmsStatusView = {
   keyReady: boolean;
   connected: boolean;
   updatedLabel: string | null;
+  /** 저장할 때마다 바뀌는 값(1/1000초 단위 시각). 폼을 새로 그려 입력했던 비밀번호를 지우는 기준 — 분 단위 표시값은
+   *  같은 분에 두 번 저장하면 안 바뀌어 비밀번호가 칸에 남았다(2026-11-21 확인). */
+  updatedKey: string;
 };
 
 const card: React.CSSProperties = {
@@ -97,6 +100,41 @@ function Result({ state }: { state: CompanySmsFormState }) {
   if (state?.ok && state.message)
     return <div style={{ fontSize: 13, color: "var(--success)", fontWeight: 700, wordBreak: "keep-all", lineHeight: 1.6 }}>{state.message}</div>;
   return null;
+}
+
+/**
+ * 저장된 비밀번호 자리 표시 — 학원관리처럼 칸에 ●●●●●●●●가 보이게 한다(사장님 요청 2026-11-21).
+ *  · 🔒 **진짜 비밀번호와 무관한 고정 글자**다. 실제 값·길이는 서버에서 화면으로 절대 오지 않는다.
+ *  · 이 칸에는 name이 없다 — 서버로 가는 값은 아래 숨은 칸(name="password")이다. 손대지 않았으면 빈 값을 보내
+ *    "기존 비밀번호 유지"가 되고, 이 고정 글자가 비밀번호로 저장되는 일은 없다.
+ */
+const PW_MASK = "********";
+
+function SavedPasswordInput({ saved }: { saved: boolean }) {
+  const [pw, setPw] = useState(saved ? PW_MASK : "");
+  const untouched = saved && pw === PW_MASK;
+  return (
+    <>
+      <input
+        id="sms-pw"
+        type="password"
+        autoComplete="new-password"
+        value={pw}
+        // 누르면 비워서 새 비밀번호를 바로 입력할 수 있게 한다.
+        onFocus={() => {
+          if (untouched) setPw("");
+        }}
+        // 아무것도 안 넣고 나가면 다시 ●●●●로 — "저장돼 있다"는 표시를 되살린다.
+        onBlur={() => {
+          if (saved && pw === "") setPw(PW_MASK);
+        }}
+        onChange={(e) => setPw(e.target.value)}
+        placeholder="비즈모아샷 비밀번호"
+        style={inputStyle}
+      />
+      <input type="hidden" name="password" value={untouched ? "" : pw} />
+    </>
+  );
 }
 
 function StatusPill({ status }: { status: CompanySmsStatusView }) {
@@ -239,7 +277,7 @@ export function CompanySmsForm({ status, myPhone }: { status: CompanySmsStatusVi
         <div style={card}>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>계정 정보</div>
           {/* 저장할 때마다 key가 바뀌어 폼이 새로 그려진다 → 입력했던 비밀번호가 화면에 남지 않는다. */}
-          <form key={status.updatedLabel ?? "new"} action={submitSave} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <form key={status.updatedKey} action={submitSave} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div>
               <label style={labelStyle} htmlFor="sms-id">비즈모아샷 아이디</label>
               <input
@@ -254,17 +292,10 @@ export function CompanySmsForm({ status, myPhone }: { status: CompanySmsStatusVi
             </div>
             <div>
               <label style={labelStyle} htmlFor="sms-pw">비즈모아샷 비밀번호</label>
-              <input
-                id="sms-pw"
-                name="password"
-                type="password"
-                autoComplete="new-password"
-                placeholder={status.passwordSaved ? "저장됨 — 바꿀 때만 입력" : "비즈모아샷 비밀번호"}
-                style={inputStyle}
-              />
+              <SavedPasswordInput saved={status.passwordSaved} />
               <div style={hintStyle}>
                 {status.passwordSaved
-                  ? "✓ 비밀번호가 저장돼 있습니다. 비즈모아샷 비밀번호를 바꿨을 때만 입력하세요. 비워 두면 저장된 비밀번호를 그대로 씁니다."
+                  ? "✓ 비밀번호가 저장돼 있습니다. 비즈모아샷 비밀번호를 바꿨을 때만 칸을 눌러 새로 입력하세요. 그대로 두면 저장된 비밀번호를 씁니다."
                   : "비밀번호는 암호화해 저장하며, 저장한 뒤에는 누구도 화면에서 다시 볼 수 없습니다."}
               </div>
             </div>

@@ -186,6 +186,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             keyReady: smsStatus.keyReady,
             connected: smsStatus.connected,
             // 서버 시간대(Asia/Seoul) 기준으로 글자로 만들어 넘긴다 — 날짜 객체를 그대로 넘기면 화면 쪽 시간대로 바뀐다.
+            updatedKey: smsStatus.updatedAt ? smsStatus.updatedAt.toISOString() : "new",
             updatedLabel: smsStatus.updatedAt
               ? smsStatus.updatedAt.toLocaleString("ko-KR", {
                   timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
