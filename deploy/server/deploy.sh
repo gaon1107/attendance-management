@@ -66,23 +66,35 @@ log "시작 — 현재 $(git rev-parse --short HEAD)"
 git pull --ff-only origin main
 log "받은 버전 $(git rev-parse --short HEAD) $(git log -1 --format=%s | cut -c1-60)"
 
-# 지금 돌고 있는 상자의 이미지(되돌리기용)를 먼저 적어 둔다
+# 지금 돌고 있는 상자의 이미지에 임시 이름(running)을 붙여 둔다.
+# 빌드 뒤에는 고유번호(ID)만으로 옛 이미지를 찾지 못하는 Docker 저장 방식(containerd)이 있어서, 빌드 **전에** 이름으로 잡아 둔다.
 RUNNING=$(docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null || echo false)
 RUNNING_IMG=$(docker inspect -f '{{.Image}}' "$CONTAINER" 2>/dev/null || echo "")
+if [ -n "$RUNNING_IMG" ]; then
+  docker image tag "$RUNNING_IMG" attendance-app:running
+fi
 
 # 새 이미지를 먼저 만든다 — 상자는 아직 그대로 돈다. 빌드가 실패하면 여기서 멈추고 운영은 영향이 없다.
 log "새 이미지 만들기"
 "${COMPOSE[@]}" build
-NEW_IMG=$(docker image inspect -f '{{.Id}}' attendance-app:latest)
 
-if [ -n "$RUNNING_IMG" ] && [ "$RUNNING_IMG" = "$NEW_IMG" ]; then
+# 내용 비교: 고유번호(ID)는 같은 내용이어도 빌드 기록 때문에 매번 바뀔 수 있어서, 층(layer) 목록 + 실행 설정으로 비교한다.
+image_content() { docker image inspect -f '{{json .RootFS.Layers}}{{json .Config}}' "$1"; }
+
+if [ -n "$RUNNING_IMG" ] && [ "$(image_content attendance-app:running)" = "$(image_content attendance-app:latest)" ]; then
   # 문서만 바꾼 푸시·다시 돌리기 등. 여기서 previous 를 다시 붙이면 진짜 직전 버전이 이름을 잃고 정리돼 되돌릴 수 없게 된다.
-  log "앱 내용 변화 없음(이미지 같음) — 반영 전 백업·직전 이미지 보관을 건너뜀"
+  # latest 도 지금 돌던 이미지로 되돌려 둔다(같은 내용의 새 번호 이미지는 아래 정리 때 사라진다).
+  docker image tag attendance-app:running attendance-app:latest
+  log "앱 내용 변화 없음 — 반영 전 백업·직전 이미지 보관을 건너뜀"
 elif [ "$RUNNING" = "true" ]; then
-  # 반영 전 백업(첫 설치처럼 상자가 없으면 건너뜀). 실패하면 반영하지 않는다.
+  # 반영 전 백업(첫 설치처럼 상자가 없으면 건너뜀). 실패하면 반영하지 않는다 — latest 도 원래대로 돌려놓아
+  # 누가 손으로 compose up 을 쳐도 백업 없는 새 버전이 올라가지 않게 한다.
   log "반영 전 백업"
-  bash "$APP_DIR/deploy/server/backup-attendance.sh"
-  docker image tag "$RUNNING_IMG" attendance-app:previous
+  if ! bash "$APP_DIR/deploy/server/backup-attendance.sh"; then
+    docker image tag attendance-app:running attendance-app:latest
+    log "❌ 반영 전 백업 실패 — 반영하지 않습니다(운영 상자 그대로, latest 원래대로)"; exit 1
+  fi
+  docker image tag attendance-app:running attendance-app:previous
   log "직전 이미지를 attendance-app:previous 로 보관"
 fi
 
@@ -94,6 +106,8 @@ for i in $(seq 1 36); do
   STATE=$(docker inspect -f '{{.State.Health.Status}}' "$CONTAINER" 2>/dev/null || echo "none")
   if [ "$STATE" = "healthy" ]; then
     log "✅ 완료 — 상자 정상(healthy)"
+    # 임시 이름표만 뗀다(같은 이미지에 previous/latest 이름이 남아 있으므로 이미지는 지워지지 않는다)
+    docker image rm attendance-app:running > /dev/null 2>&1 || true
     # 이 서비스(app=attendance) 표시가 있는 이름 없는 옛 이미지만 정리 — LMS 등 다른 이미지는 건드리지 않는다
     docker image prune -f --filter label=app=attendance > /dev/null
     exit 0
