@@ -22,6 +22,7 @@ import { hashPassword, verifyPassword } from "@/lib/password";
 import { sendSms, normalizePhone, smsConfigured } from "@/lib/sms";
 import { recordAccess } from "@/lib/access-log";
 import { ownerRecoveryState, type OwnerRecoveryFields } from "@/lib/owner-recovery";
+import { COMPANY_SMS_READY } from "@/lib/company-sms";
 import { randomInt } from "crypto";
 
 /**
@@ -40,6 +41,24 @@ import { randomInt } from "crypto";
 const OWNER_FIELDS = { phoneChangedAt: true, phoneVerifiedAt: true, phoneVerifiedNumber: true } as const;
 function ownerBlocked(user: { isOwner: boolean } & OwnerRecoveryFields, now: Date): boolean {
   return user.isOwner && !ownerRecoveryState(user, now).ready;
+}
+
+/**
+ * 💰 이 계정의 문자 찾기를 막을 것인가 — 2026-11-21 사장님 확정 요금 규칙.
+ *  · **가온 계정 문자는 회사 계정(회사 관리자) 인증 문자 하나뿐**이다. 직원 비밀번호 찾기 문자는
+ *    **그 회사의 모아샷 계정**으로만 나간다(요금은 회사 부담). 회사 계정이 없거나 잔액이 없으면
+ *    1차(문자)는 막히고 2차(관리자 임시비번)로 간다. 가온 계정으로 대신 보내지 않는다(사장님이 거절).
+ *  · 회사별 모아샷 계정 기능이 아직 없으므로 지금은 **모든 회사에서 직원 문자 찾기가 막힌다**
+ *    (COMPANY_SMS_READY=false). 그 기능이 생기면 이 판정을 "그 회사 계정이 연결됐는가"로,
+ *    발송도 그 회사 계정으로 바꾼다.
+ *  · 🔴 화면에서 숨기는 것만으로는 안 된다 — 서버 액션은 화면과 무관하게 호출된다(머리말 ②).
+ *    그래서 발급(issueResetCodeInner)과 확인(checkResetCode) **양쪽**이 이 함수를 본다.
+ *    막혀 있는 동안 이미 발급된 직원 코드도 확인 단계에서 거부된다.
+ *  · 막혀도 밖으로 보이는 답은 그대로 같다(머리말 ②) — "직원이라서 막혔다"가 새지 않는다.
+ */
+function selfResetBlocked(user: { isOwner: boolean } & OwnerRecoveryFields, now: Date): boolean {
+  if (user.isOwner) return ownerBlocked(user, now);
+  return !COMPANY_SMS_READY;
 }
 
 // ── 정책 값(전부 여기 한 곳에서만 고친다) ──────────────────────────────────
@@ -127,8 +146,9 @@ async function issueResetCodeInner(
 
   // 아래는 전부 조용히 종료한다 — 사유를 하나라도 알려주면 계정·전화번호 확인 창구가 된다.
   //  · 계정 없음 / 퇴사자 / 🔒 복구 준비가 안 된 회사 계정(ownerRecoveryState — 스위치·번호 확인·72시간 대기)
+  //  · 💰 회사 문자 계정이 없는 회사의 직원(selfResetBlocked — 가온 계정으로 직원 문자를 보내지 않는다)
   //  · 전화번호 뒷자리 불일치(전화번호 미등록이면 phoneTailMatches가 항상 false)
-  if (!user || user.deactivatedAt || ownerBlocked(user, now)) return;
+  if (!user || user.deactivatedAt || selfResetBlocked(user, now)) return;
   if (!phoneTailMatches(user.phone, phoneTail)) return;
 
   // ── 1분 1건: DB 유니크 슬롯으로 선점한다(actions/sms.ts의 P2002 선점 패턴과 같은 방식). ──
@@ -265,7 +285,8 @@ export async function checkResetCode(
     select: { id: true, companyId: true, name: true, deactivatedAt: true, isOwner: true, phone: true, ...OWNER_FIELDS },
   });
   // 🔒 확인 단계에서도 다시 판정한다 — 인증번호를 받은 뒤 번호가 바뀌었으면(=72시간 잠금 시작) 그 코드는 못 쓴다.
-  if (!user || user.deactivatedAt || ownerBlocked(user, now)) return { ok: false };
+  //    직원 문자 찾기가 꺼진 동안에는 이미 발급된 직원 코드도 여기서 막힌다(selfResetBlocked).
+  if (!user || user.deactivatedAt || selfResetBlocked(user, now)) return { ok: false };
 
   const live = await findLiveCode(user.id, now);
   if (!live) return { ok: false };

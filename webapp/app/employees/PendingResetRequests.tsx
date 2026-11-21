@@ -1,7 +1,8 @@
 "use client";
 // 비밀번호 재설정 요청 대기열(관리자) — 직원이 접수한 요청을 보고 "임시 비밀번호 발급"을 누른다.
 // 발급하면 임시 비밀번호가 화면에 표시되고, 관리자가 그 값을 직원에게 전달한다.
-// (직원 스스로 문자로 되찾는 길은 [비밀번호 찾기]에 따로 있다. 여기 문자 보내기는 회사 문자 계정 연결 뒤 — lib/company-sms.ts)
+// (직원 스스로 문자로 되찾는 길은 그 회사의 문자 계정이 연결돼야 열린다 — 지금은 꺼져 있어 이 대기열이 직원의 유일한 길이다.
+//  여기 문자 보내기도 회사 문자 계정 연결 뒤 — lib/company-sms.ts)
 import { useState, useTransition } from "react";
 import { issueTempPassword } from "@/app/actions/password-reset";
 import { sendTempPasswordSms } from "@/app/actions/sms";

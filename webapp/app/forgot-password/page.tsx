@@ -1,6 +1,9 @@
 // 비밀번호 찾기 — 경로가 두 가지다.
-//  [A] 문자 인증코드(직원 스스로, 관리자 없이 밤·주말에도 됨) — 문자 발송이 설정돼 있을 때만 보여준다.
-//  [B] 관리자 승인(기존) — 전화번호가 없거나 문자가 꺼져 있을 때의 유일한 길. 항상 남겨 둔다.
+//  [A] 문자 인증코드(관리자 없이 밤·주말에도 됨) — 문자 발송이 설정돼 있을 때만 보여준다.
+//      · 회사 계정: 가온 계정 문자로 된다(복구 번호를 확인해 둔 경우).
+//      · 직원: **그 회사의 모아샷 계정**이 있어야 된다(2026-11-21 요금 규칙, lib/company-sms.ts).
+//        회사별 계정 기능이 아직 없어 지금은 직원에게 [A]를 기본으로 보여주지 않는다.
+//  [B] 관리자 승인(기존) — 직원이 문자로 못 찾을 때의 길. 항상 남겨 둔다.
 //
 // ⚠️ 이 파일이 서버 컴포넌트인 이유: 문자 발송 설정 여부(.env)는 서버에서만 읽을 수 있다.
 //    설정이 안 됐는데 [A]를 보여주면 "인증번호를 보냈다"고 해놓고 영영 오지 않는 화면이 된다.
@@ -8,6 +11,7 @@ import { connection } from "next/server";
 import { smsConfigured } from "@/lib/sms";
 import { ForgotPasswordForm } from "./ForgotPasswordForm";
 import { OWNER_RECOVERY_ENABLED } from "@/lib/owner-recovery";
+import { COMPANY_SMS_READY } from "@/lib/company-sms";
 
 export default async function ForgotPasswordPage() {
   // 🔴 [2026-11-21 검수 치명 1] 요청마다 새로 그리게 한다. 이 줄이 없으면 Next가 이 화면을 **빌드할 때 한 번**
@@ -48,7 +52,11 @@ export default async function ForgotPasswordPage() {
         <span style={{ fontSize: 18, fontWeight: 700 }}>근태관리</span>
       </div>
 
-      <ForgotPasswordForm smsEnabled={smsEnabled} ownerRecoveryEnabled={OWNER_RECOVERY_ENABLED} />
+      <ForgotPasswordForm
+        smsEnabled={smsEnabled}
+        ownerRecoveryEnabled={OWNER_RECOVERY_ENABLED}
+        employeeSmsEnabled={COMPANY_SMS_READY}
+      />
     </div>
   );
 }
