@@ -1,8 +1,8 @@
 {
   "files": {
     "근태관리_사용안내서.html": {
-      "bytes": 2376301,
-      "updatedAt": "2026-11-20T14:50:04.484Z",
+      "bytes": 2987409,
+      "updatedAt": "2026-11-21T04:45:50.670Z",
       "anchors": [
         "s0",
         "s1",
@@ -12,14 +12,32 @@
         "s5",
         "s6",
         "s7",
+        "s7-tell",
+        "s7-notice",
+        "s7-schedule",
+        "s7-notifications",
+        "s7-month",
+        "s7-leave-summary",
+        "s7-break-time",
+        "s7-company",
+        "s7-company-info",
+        "s7-settings",
+        "s7-account",
+        "s7-sec",
+        "s7-biometrics",
+        "s7-security",
+        "s7-pc-devices",
+        "s7-opt",
+        "s7-shifts",
+        "s7-approvals",
         "s8",
         "s9",
         "s10"
       ]
     },
     "근태관리_직원안내서.html": {
-      "bytes": 729534,
-      "updatedAt": "2026-11-20T14:50:04.499Z",
+      "bytes": 748946,
+      "updatedAt": "2026-11-21T04:45:50.691Z",
       "anchors": []
     }
   }

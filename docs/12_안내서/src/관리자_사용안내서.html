@@ -314,7 +314,7 @@
         <li><a href="#s4"><span class="n">04</span><span>직원 휴대폰 사용법</span></a></li>
         <li><a href="#s5"><span class="n">05</span><span>근태 현황 보기</span></a></li>
         <li><a href="#s6"><span class="n">06</span><span>신청과 승인</span></a></li>
-        <li><a href="#s7"><span class="n">07</span><span>그 밖의 화면</span></a></li>
+        <li><a href="#s7"><span class="n">07</span><span>그 밖의 화면 (13개)</span></a></li>
         <li><a href="#s8"><span class="n">08</span><span>요금</span></a></li>
         <li><a href="#s9"><span class="n">09</span><span>자주 묻는 질문</span></a></li>
         <li><a href="#s10"><span class="n">10</span><span>용어 풀이</span></a></li>
@@ -729,25 +729,79 @@
       <div class="sec-head">
         <span class="sec-num">07</span>
         <h2 class="sec-title">그 밖의 화면</h2>
-        <p class="sec-lead">자주 쓰지는 않지만 알아 두면 좋은 화면들입니다.</p>
+        <p class="sec-lead">날마다 열지는 않지만, 한 번은 알아 두셔야 하는 화면들입니다. 성격별로 묶었습니다.</p>
       </div>
 
+      <h3 id="s7-tell">알리고 나누는 것</h3>
       <div class="pair">
-        <figure>
+        <figure id="s7-notice">
+          <span class="shot"><img src="img/pc-50-공지.webp" alt="공지사항 화면. 왼쪽에 새 공지 작성칸, 오른쪽에 올라간 공지 목록이 있다." loading="lazy"></span>
+          <figcaption><b>[공지]</b> — 제목과 내용을 적고 <b>[공지 등록]</b>을 누르면 바로 올라갑니다. 가장 최근 공지는 <b>관리자 대시보드와 직원 화면에도</b> 보입니다. 올리고 지우는 것은 <b>관리자만</b> 할 수 있고, 직원에게는 읽기 전용입니다.</figcaption>
+        </figure>
+        <figure id="s7-schedule">
           <span class="shot"><img src="img/pc-44-일정.webp" alt="일정 캘린더 화면. 공휴일과 회사 휴무일, 회사 일정이 표시된다." loading="lazy"></span>
           <figcaption><b>[일정]</b> — 공휴일은 자동으로 들어옵니다. <b>회사 휴무일</b>(창립기념일 등)을 여기에 넣으면 그날은 결근으로 보지 않습니다.</figcaption>
         </figure>
-        <figure>
+        <figure id="s7-notifications">
+          <span class="shot"><img src="img/pc-51-알림.webp" alt="알림 센터 화면. 처리 필요 건수와 휴가 신청 대기 안내가 보인다." loading="lazy"></span>
+          <figcaption><b>[알림]</b> — <b>승인을 기다리는 신청</b>만 모아 보여 줍니다. 오른쪽 버튼을 누르면 그 신청 화면으로 바로 갑니다. ※ 오늘 미출근·지각·조퇴와 주 52시간 초과는 여기가 아니라 <b>[대시보드]</b>에서 봅니다.</figcaption>
+        </figure>
+      </div>
+
+      <h3 id="s7-month">달마다 챙기는 것</h3>
+      <div class="pair">
+        <figure id="s7-leave-summary">
+          <span class="shot"><img src="img/pc-52-연차정산.webp" alt="연차정산 화면. 총 발생·사용·결재대기·잔여 숫자와 직원별 표가 보인다." loading="lazy"></span>
+          <figcaption><b>[연차정산]</b> — 직원마다 연차가 며칠 생겼고 며칠 썼는지, 며칠 남았는지 한 해 단위로 봅니다. <b>잔여 = 발생 − 사용 − 결재대기</b>입니다 — 아직 승인 전인 신청도 미리 빼서 보여 주므로 <b>같은 연차를 두 번 쓰는 일이 없습니다.</b> 연도를 바꿔 지난해도 보고, <b>엑셀로 내려받을</b> 수 있습니다. <b>재직 중인 직원만</b> 집계됩니다.</figcaption>
+        </figure>
+        <figure id="s7-break-time">
+          <span class="shot"><img src="img/pc-53-휴게시간.webp" alt="휴게시간 관리 화면. 위에 휴게 기준 설정, 아래에 직원별 근무·휴게·판정 표가 있다." loading="lazy"></span>
+          <figcaption><b>[휴게시간]</b> — 근로기준법이 정한 휴게시간(4시간 초과 근무 시 <b>30분 이상</b>, 8시간 초과 시 <b>1시간 이상</b>)을 지키고 있는지 <b>점검하는</b> 화면입니다. 휴게시간은 직원이 <b>[외출]&rarr;[복귀]</b>를 누른 시간으로 셉니다. <b>점검·표시 전용이라 근무시간에서 휴게를 자동으로 빼지 않습니다</b> — 이 화면 때문에 리포트나 급여 숫자가 달라지지는 않습니다. 회사 기준은 법정 최소보다 <b>낮게는 정할 수 없습니다.</b></figcaption>
+        </figure>
+      </div>
+
+      <h3 id="s7-company">회사와 내 계정</h3>
+      <div class="pair">
+        <figure id="s7-company-info">
           <span class="shot"><img src="img/pc-41-회사정보.webp" alt="회사 정보 화면." loading="lazy"></span>
           <figcaption><b>[회사정보]</b> — 회사 이름·주소·사업자번호를 고칩니다.</figcaption>
         </figure>
-        <figure>
+        <figure id="s7-settings">
+          <span class="shot"><img src="img/pc-40-설정.webp" alt="설정 화면." loading="lazy"></span>
+          <figcaption><b>[설정]</b> — 02장에서 정한 근무 기준을 다시 바꿉니다.</figcaption>
+        </figure>
+        <figure id="s7-account">
+          <span class="shot"><img src="img/pc-56-계정.webp" alt="계정 설정 화면. 내 정보, 비밀번호 변경, 내 PC 연결 칸이 있다." loading="lazy"></span>
+          <figcaption><b>[계정]</b> — 오른쪽 위 내 이름을 눌러 들어갑니다. 비밀번호를 바꾸려면 <b>지금 쓰는 비밀번호를 먼저</b> 넣어야 합니다. 아래 <b>[내 PC 연결]</b>에서 PC-OFF 프로그램에 넣을 <b>6자리 연결코드</b>를 받습니다(회사 계정으로 로그인했을 때는 이 칸이 보이지 않습니다).</figcaption>
+        </figure>
+      </div>
+
+      <h3 id="s7-sec">보안과 기기</h3>
+      <div class="pair">
+        <figure id="s7-biometrics">
           <span class="shot"><img src="img/pc-43-생체정보.webp" alt="생체정보 관리 화면. 얼굴 등록 현황과 동의 현황이 보인다." loading="lazy"></span>
           <figcaption><b>[생체정보]</b> — 누가 얼굴을 등록했고 동의했는지 봅니다. <b>법이 요구하는 관리 기록</b>이라 그대로 두시면 됩니다.</figcaption>
         </figure>
-        <figure>
-          <span class="shot"><img src="img/pc-40-설정.webp" alt="설정 화면." loading="lazy"></span>
-          <figcaption><b>[설정]</b> — 02장에서 정한 근무 기준을 다시 바꿉니다.</figcaption>
+        <figure id="s7-security">
+          <span class="shot"><img src="img/pc-55-보안로그.webp" alt="보안로그 화면. 이상 접속·로그인 이력·접속 로그·차단 IP 네 개의 탭이 있다." loading="lazy"></span>
+          <figcaption><b>[보안로그]</b> — 누가 언제 어디서 접속했는지 봅니다. 위 탭 네 개로 나눠 봅니다 — <b>[이상 접속]</b>(평소와 다른 접속) · <b>[로그인 이력]</b>(성공·실패·로그아웃) · <b>[접속 로그]</b>(화면에서 한 주요 동작) · <b>[차단 IP]</b>. 뒤의 둘은 기간을 골라 <b>엑셀로 내려받을</b> 수 있습니다. ※ [이상 접속]의 <b>[확인함]</b>은 보고 있는 기간뿐 아니라 <b>누른 시각 이전 전부</b>를 확인 처리합니다.</figcaption>
+        </figure>
+        <figure id="s7-pc-devices">
+          <span class="shot"><img src="img/pc-54-PC관리.webp" alt="PC 관리 화면. 설치 주소와 안내문, 연결코드 발급, 연결된 PC 현황이 있다." loading="lazy"></span>
+          <figcaption><b>[PC관리]</b> — 근무시간이 끝나면 회사 PC 화면이 잠기는 <b>PC-OFF 프로그램</b>을 관리합니다. 설치 주소와 안내문을 복사해 직원에게 보내고, 직원 대신 <b>6자리 연결코드</b>를 발급할 수도 있습니다. <b>PC-OFF를 켜고 끄는 것은 [설정 &rarr; 보안·PC]</b>입니다 — 꺼져 있으면 어떤 PC도 잠기지 않고, 화면 맨 위에 그렇게 표시됩니다.</figcaption>
+        </figure>
+      </div>
+
+      <h3 id="s7-opt">켠 회사에만 보이는 메뉴</h3>
+      <p>아래 두 메뉴는 <b>그 기능을 켠 회사에만</b> 왼쪽 메뉴에 나타납니다. 켜지 않으셨다면 안 보이는 것이 정상입니다.</p>
+      <div class="pair">
+        <figure id="s7-shifts">
+          <span class="shot"><img src="img/pc-57-근무표.webp" alt="근무표 화면. 직원마다 요일별로 조를 고르는 표가 있다." loading="lazy"></span>
+          <figcaption><b>[근무표]</b> — 교대근무(2교대·3교대)를 하는 회사에서 어느 직원이 어느 조인지 정합니다. <b>먼저 [설정 &rarr; 근무 규칙]에서 교대근무와 조별 시각을 정해야</b> 이 메뉴가 생깁니다. 요일마다 각 직원의 조를 고르면 <b>매주 자동으로 반복</b>되고, 그 조의 시각을 기준으로 지각·조퇴를 판정합니다.</figcaption>
+        </figure>
+        <figure id="s7-approvals">
+          <span class="shot"><img src="img/pc-58-결재함.webp" alt="결재함 화면. 내 차례인 휴가 신청 두 건에 승인·반려 버튼이 있다." loading="lazy"></span>
+          <figcaption><b>[결재함]</b> — 여러 사람이 차례로 승인하는 <b>결재선</b>을 쓰는 회사에서, <b>지금 내 차례인 것만</b> 모아 봅니다. 승인하면 다음 결재자에게 넘어가고 마지막 단계에서 확정됩니다. <b>전결</b> 표시가 있으면 <b>내 승인에서 바로 최종 확정</b>됩니다. 결재 방식은 <b>[직원관리]</b> 화면 안 '휴가·근태정정 결재방식'에서 정합니다. ※ 기본값은 '단일 승인'(관리자 한 명이 바로 승인)이고, 그때는 이 메뉴가 없습니다.</figcaption>
         </figure>
       </div>
     </section>
