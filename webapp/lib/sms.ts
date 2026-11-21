@@ -10,6 +10,7 @@
 import { sendSms as moashotSendSms } from "@newgaon/moashot";
 import { normalizePhone } from "@/lib/phone";
 import { prisma } from "@/lib/db";
+import { loadCompanySmsAccount } from "@/lib/company-sms-account";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔴 [보안검수 M7] 문자 발송 상한 — 요금 폭탄 방지 + **한 회사가 다른 회사의 문자를 막지 못하게**.
@@ -75,10 +76,19 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
 /** 지난 windowMs 동안 실제로 나갔거나 나가는 중인 문자 건수. companyId를 주면 그 회사만. */
+/**
+ * 회사 계정(그 회사 요금)으로 나가는 발송기록 종류. **전체 상한(GLOBAL_*)에서는 세지 않는다**(회사별 상한에는 센다).
+ *  · 전체 상한은 가온 요금과 가온 보안 문자 몫을 지키는 장치다. 회사 돈으로 나간 문자까지 세면, 가입 회사 몇 곳이
+ *    시험 문자만 보내도 가온 보안 문자(회사 계정 복구) 여유가 줄어든다(2026-11-21 검수 M-3).
+ *  · 기존 종류(가온 계정 발송)는 하나도 빠지지 않는다 — 이 목록에 새로 생긴 종류만 넣는다.
+ *  · ⏳ 2단계에서 직원 비밀번호 찾기·초대·임시비번을 회사 계정으로 옮기면, 그 기록도 "회사 계정"으로 나눠 세야 한다.
+ */
+export const COMPANY_ACCOUNT_SMS_KINDS = ["sms_test"];
+
 async function countRecentSends(now: Date, windowMs: number, companyId?: string): Promise<number> {
   return prisma.smsLog.count({
     where: {
-      ...(companyId ? { companyId } : {}),
+      ...(companyId ? { companyId } : { kind: { notIn: COMPANY_ACCOUNT_SMS_KINDS } }),
       createdAt: { gte: new Date(now.getTime() - windowMs) },
       OR: [
         { result: { in: ["success", "unknown"] } },
@@ -231,4 +241,88 @@ export async function sendSms(opts: { to: string; text: string; subject?: string
     // 모듈은 예외를 결과로 바꿔 주지만, 혹시 모를 예외도 이 함수 밖으로 던지지 않는다(호출부 약속).
     return { ok: false, detail: e instanceof Error ? e.message : "문자 발송 중 오류가 발생했습니다." };
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 회사 계정 발송 (2026-11-21, 메시지 관리 1단계) — **그 회사가 등록한 비즈모아샷 계정**으로 보낸다(요금은 회사 부담).
+//  · 위 sendSms(가온 계정)는 **건드리지 않았다** — 회사 계정(회사 관리자) 인증 문자 3곳이 쓰는 공용 함수라,
+//    본문을 나누다 회귀가 나면 회사 계정 복구가 조용히 망가진다. 그래서 옆에 따로 둔다(2단계에서 합칠지 다시 본다).
+//  · 1단계에서는 [설정 → 문자·알림톡]의 **시험 문자**만 이 함수를 쓴다.
+//  · 발송 주소(MOASHOT_SEND_URL)는 가온 계정과 같은 .env 값을 쓴다 — 없거나 http면 **보내지 않는다**
+//    (개발 PC에서 실수로 실제 문자가 나가지 않게 하는 안전장치. 모듈 규칙과 같다).
+//  · 🔒 회사 격리: 계정은 opts.companyId의 것만 꺼낸다(loadCompanySmsAccount). 다른 회사 계정으로 보낼 길이 없다.
+//  · 상한(quotaBlock)은 가온 계정과 똑같이 적용한다 — 기록(SmsLog)을 **먼저** 만들고 부를 것(위 "어떻게 세나").
+//    회사 계정 발송기록은 전체 상한(GLOBAL_*)에서 뺀다 — 위 COMPANY_ACCOUNT_SMS_KINDS(검수 M-3).
+//  · 결과가 불확실한 실패(시간 초과·응답 도중 끊김)는 uncertain=true — 실제로 접수·과금됐을 수 있어
+//    부르는 쪽이 "결과 미확인(unknown)"으로 기록하게 한다(실패로 두면 요금 상한에서 빠진다).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 문자 회사가 접수를 거절했을 때(응답 원문이 있는 실패) 회사 관리자에게 보여 줄 문구. */
+export const COMPANY_SMS_REJECTED_DETAIL =
+  "문자 회사가 접수를 거절했습니다. 비즈모아샷 아이디·비밀번호, 발신번호 사전등록 여부, 충전 잔액을 확인해 주세요.";
+
+export type CompanySmsResult = SmsResult & { uncertain?: boolean };
+
+/** 요청이 나간 뒤 결과를 모르게 된 실패인가 — 모듈(@newgaon/moashot postRaw)의 한글 오류 문구 기준. */
+function isUncertainFailure(detail: string | null | undefined): boolean {
+  return /시간 초과|연결이 끊겼|연결이 닫혔/.test(detail ?? "");
+}
+
+export async function sendCompanySms(opts: { to: string; text: string; subject?: string; companyId: string; purpose: SmsPurpose }): Promise<CompanySmsResult> {
+  const sendUrl = (process.env.MOASHOT_SEND_URL ?? "").trim();
+  if (!sendUrl || !isAllowedSendUrl(sendUrl)) {
+    return { ok: false, detail: "서버에 문자 발송 주소가 설정되지 않아 보내지 않았습니다. 가온 고객지원에 문의해 주세요." };
+  }
+
+  const acc = await loadCompanySmsAccount(opts.companyId);
+  if (!acc) return { ok: false, detail: "회사 문자 계정이 연결되지 않았거나, 저장된 비밀번호를 쓸 수 없습니다. 비밀번호를 다시 저장해 주세요." };
+
+  const to = normalizePhone(opts.to);
+  if (to.length < 9 || to.length > 12) return { ok: false, detail: "수신 전화번호가 올바르지 않습니다." };
+
+  const text = opts.text ?? "";
+  if (text.trim() === "") return { ok: false, detail: "보낼 내용이 없습니다." };
+
+  {
+    const blocked = await quotaBlock(opts.companyId, opts.purpose, new Date(), true);
+    if (blocked) return { ok: false, detail: blocked };
+  }
+
+  try {
+    const r = await moashotSendSms(
+      {
+        account: { id: acc.id, password: acc.password, sender: acc.sender },
+        to,
+        text,
+        title: opts.subject ?? "근태관리 알림",
+      },
+      { sendUrl, timeoutMs: SEND_TIMEOUT_MS }
+    );
+    if (r.ok) return { ok: true, detail: "접수 성공" };
+    if (r.raw) {
+      // 응답 원문은 화면·기록에 쌓지 않는다(위 sendSms와 같은 규칙). 서버 로그에만 짧게.
+      console.error("[sms] 회사 계정 발송을 문자 회사가 거절:", { companyId: opts.companyId }, r.raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120));
+      return { ok: false, detail: COMPANY_SMS_REJECTED_DETAIL };
+    }
+    return { ok: false, detail: friendlyCompanyError(r.error), uncertain: isUncertainFailure(r.error) };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : null;
+    return { ok: false, detail: friendlyCompanyError(msg), uncertain: isUncertainFailure(msg) };
+  }
+}
+
+/** 문자 회사에 닿지 못했을 때의 안내(회사 관리자가 화면에서 본다). */
+const COMPANY_SMS_UNREACHABLE_DETAIL = "문자 회사에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+
+/**
+ * 회사 관리자에게 보여 줄 실패 사유로 바꾼다.
+ *  · 모듈이 만든 사유는 한글이라 그대로 쓴다(예: "문자 발송 주소가 설정되지 않아…").
+ *  · 한글이 없는 사유는 연결 오류 원문(예: "connect ECONNREFUSED …")이다 — 비개발자 화면에 그대로 내보내지 않고
+ *    서버 로그에만 남긴다(2026-11-21 화면 검증에서 영어 원문이 그대로 보였다).
+ */
+function friendlyCompanyError(raw: string | null | undefined): string {
+  const s = (raw ?? "").trim();
+  if (s && /[가-힣]/.test(s)) return s;
+  if (s) console.error("[sms] 회사 계정 발송 연결 오류:", s.slice(0, 160));
+  return COMPANY_SMS_UNREACHABLE_DETAIL;
 }

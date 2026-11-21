@@ -14,6 +14,8 @@ export const SETTINGS_TABS = [
   { key: "work", label: "근무 규칙", hint: "근무시간 · 공휴일 · 외출 사유" },
   { key: "auth", label: "출퇴근 인증", hint: "얼굴 기준 · 사내망 · 사업장 위치" },
   { key: "security", label: "보안·PC", hint: "이상접속 · PC-OFF" },
+  // 2026-11-21 메시지 관리 1단계 — 회사별 비즈모아샷 계정(직원 문자는 회사 계정으로만 보낸다).
+  { key: "message", label: "문자·알림톡", hint: "비즈모아샷 계정 · 발신번호 · 시험 문자" },
 ] as const;
 
 export type SettingsTabKey = (typeof SETTINGS_TABS)[number]["key"];

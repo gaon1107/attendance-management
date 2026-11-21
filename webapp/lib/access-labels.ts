@@ -143,6 +143,10 @@ function baseMetaLabel(meta: string): string {
     //  · 실패는 kind="login_fail"로 남긴다 — [이상접속]·[차단 후보]가 그 종류만 세기 때문(재검수 M-3).
     password_change: "본인 비밀번호 변경",
     password_change_denied: "본인 비밀번호 변경 실패(현재 비밀번호 오류)",
+    // 회사별 문자 계정(actions/company-sms.ts, 2026-11-21) — 값은 남기지 않고 "바꿨다"는 사실만.
+    sms_account_save: "회사 문자 계정 저장",
+    sms_account_clear: "회사 문자 계정 연결 해제",
+    sms_test_send: "회사 문자 계정 시험 문자",
     // ── 아래 5건은 액션이 기록하는데 사전에 없어 **화면·엑셀에서 공란**이던 것들(2026-08-16 전수 대조) ──
     temp_password_expired: "임시 비밀번호 기한 만료",
     password_reset: "관리자 비밀번호 재설정",

@@ -14,7 +14,9 @@ import { LivenessRuleForm } from "./LivenessRuleForm";
 import { AlertRulesForm } from "./AlertRulesForm";
 import { HolidayForm } from "./HolidayForm";
 import { PcOffForm } from "./PcOffForm";
+import { CompanySmsForm } from "./CompanySmsForm";
 import { SettingsTabs, SettingsTabHint, resolveTab } from "./SettingsTabs";
+import { getCompanySmsAccountStatus } from "@/lib/company-sms-account";
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   // 어느 탭을 보고 있는지. 모르는 값이 들어오면 첫 탭으로 되돌린다(주소를 손으로 고쳐도 안전).
@@ -66,6 +68,16 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   ]);
   const syncedCount = await prisma.holiday.count();
   const syncedYears = holidayYears.map((h) => `${h.year}년`).join("·");
+
+  // [문자·알림톡] 탭 데이터 — **이 탭을 열 때만** 읽는다(위 "조회는 탭과 무관하게 전부" 원칙의 예외).
+  //  · 상태를 만들려면 저장된 비밀번호를 한 번 풀어 봐야 하는데, 서버 키가 없거나 바뀌었으면 풀 때마다 서버 로그에
+  //    오류가 찍힌다. 다른 탭을 볼 때마다 그 오류가 쌓이면 진짜 문제를 가린다.
+  //  · ⚠️ 비밀번호 값은 상태에 담기지 않는다(lib/company-sms-account.ts) — 화면으로 나가는 건 "저장됨/쓸 수 있음"뿐.
+  const smsStatus = tab === "message" ? await getCompanySmsAccountStatus(me.companyId) : null;
+  const myPhone =
+    tab === "message"
+      ? (await prisma.user.findUnique({ where: { id: me.id }, select: { phone: true } }))?.phone ?? ""
+      : "";
 
   return (
     <AppShell user={me} active="settings" title="설정" subtitle={`${me.company.name} · 관리자 ${me.name}`}>
@@ -162,6 +174,26 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             />
           </div>
         </>
+      )}
+
+      {tab === "message" && smsStatus && (
+        <CompanySmsForm
+          status={{
+            smsId: smsStatus.smsId,
+            sender: smsStatus.sender,
+            passwordSaved: smsStatus.passwordSaved,
+            passwordUsable: smsStatus.passwordUsable,
+            keyReady: smsStatus.keyReady,
+            connected: smsStatus.connected,
+            // 서버 시간대(Asia/Seoul) 기준으로 글자로 만들어 넘긴다 — 날짜 객체를 그대로 넘기면 화면 쪽 시간대로 바뀐다.
+            updatedLabel: smsStatus.updatedAt
+              ? smsStatus.updatedAt.toLocaleString("ko-KR", {
+                  timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+                })
+              : null,
+          }}
+          myPhone={myPhone}
+        />
       )}
     </AppShell>
   );

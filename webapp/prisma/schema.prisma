@@ -161,6 +161,17 @@ model Company {
   pcOffTempReasons String @default("긴급 장애 대응, 고객 요청 마감, 결재자 부재, 기타")
   agentDevices   AgentDevice[]
   agentEvents    AgentEvent[]
+  // ── 회사별 비즈모아샷 문자 계정 (2026-11-21, 메시지 관리 1단계 — plan-회사별문자-메시지관리.md) ──
+  //  · 직원 문자(비밀번호 찾기·초대·임시비번·공지·알림톡)는 **이 회사 계정**으로만 보낸다(요금은 회사 부담).
+  //    가온 계정(.env MOASHOT_*)은 회사 계정(회사 관리자) 인증 문자 전용이다(lib/company-sms.ts).
+  //  · 전부 비어 있어도 된다 = 연결 안 함(기존 회사 무영향).
+  smsId          String?   // 비즈모아샷 로그인 아이디
+  // 🔒 비밀번호는 **암호문으로만** 저장한다 — "enc:v1:..."(lib/sms-crypto.ts, 키 .env SMS_CRED_KEY).
+  //    발송 순간에만 푼다. 평문 저장 금지(사규 8). 화면에 다시 보여 주지 않는다("저장됨"만 표시).
+  smsPasswordEnc String?
+  smsSender      String?   // 발신번호(숫자만). 회사가 비즈모아샷에 사전등록한 번호여야 한다.
+  kakaoSenderKey String?   // 카카오 알림톡 발신프로필키(4단계). 비밀은 아니다(채널 식별값).
+  smsAccountUpdatedAt DateTime? // 계정을 마지막으로 저장·해제한 시각(화면 표시용)
 }
 
 // 회사 첨부문서 — 사업자등록증·통장사본 등. 종류(kind)별 최신 1건만 유지(재업로드 시 이전 파일 교체·삭제).
