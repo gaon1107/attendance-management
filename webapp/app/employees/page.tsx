@@ -72,12 +72,14 @@ export default async function EmployeesPage() {
     where: { companyId: me.companyId, usedAt: null, expiresAt: { gt: new Date() } },
     orderBy: { createdAt: "desc" },
   });
-  // 문자로 이미 보낸 초대(중복발송 방지 표시). 성공 발송 이력이 있는 inviteId 집합.
+  // 문자로 이미 보낸 초대(중복발송 방지 표시). 성공 = "발송됨", 결과 미확인 = 다시 보낼 수 없으니 따로 알린다
+  //  (예전엔 성공만 세서, 결과 미확인 초대에 버튼이 다시 보이고 눌러도 계속 거부됐다 — 2단계 검수 M-2).
   const sentInviteLogs = await prisma.smsLog.findMany({
-    where: { companyId: me.companyId, kind: "invite", result: "success", refId: { in: invites.map((i) => i.id) } },
-    select: { refId: true },
+    where: { companyId: me.companyId, kind: "invite", result: { in: ["success", "unknown"] }, refId: { in: invites.map((i) => i.id) } },
+    select: { refId: true, result: true },
   });
-  const sentInviteIds = new Set(sentInviteLogs.map((s) => s.refId).filter((x): x is string => !!x));
+  const sentInviteIds = new Set(sentInviteLogs.filter((s) => s.result === "success").map((s) => s.refId).filter((x): x is string => !!x));
+  const unknownInviteIds = new Set(sentInviteLogs.filter((s) => s.result === "unknown").map((s) => s.refId).filter((x): x is string => !!x));
   // 이 회사가 비즈모아샷 계정을 연결했는가 — 초대·임시비번 [문자로 보내기]를 보여 줄지(서버 액션과 같은 판정).
   const smsReady = await companySmsReady(me.companyId);
 
@@ -198,7 +200,7 @@ export default async function EmployeesPage() {
                       </button>
                     </form>
                   </div>
-                  <InviteLink path={`/invite/${inv.token}`} inviteId={inv.id} smsSent={sentInviteIds.has(inv.id)} smsReady={smsReady} />
+                  <InviteLink path={`/invite/${inv.token}`} inviteId={inv.id} smsSent={sentInviteIds.has(inv.id)} smsUnknown={unknownInviteIds.has(inv.id)} smsReady={smsReady} />
                 </div>
               ))}
             </div>

@@ -8,11 +8,14 @@ export function InviteLink({
   path,
   inviteId,
   smsSent,
+  smsUnknown,
   smsReady,
 }: {
   path: string;
   inviteId: string;
   smsSent?: boolean;
+  /** 이 초대 문자가 "결과 미확인"으로 끝났는가 — 다시 보낼 수 없으니 버튼 대신 안내를 보여 준다. */
+  smsUnknown?: boolean;
   /** 이 회사가 비즈모아샷 계정을 연결했는가(서버 판정 companySmsReady) — 아니면 문자 칸을 그리지 않는다. */
   smsReady: boolean;
 }) {
@@ -20,6 +23,7 @@ export function InviteLink({
   const [copied, setCopied] = useState(false);
   const [phone, setPhone] = useState("");
   const [sent, setSent] = useState(!!smsSent);
+  const [unknown, setUnknown] = useState(!!smsUnknown);
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState("");
   const [, startTransition] = useTransition();
@@ -53,7 +57,8 @@ export function InviteLink({
       fd.set("phone", phone);
       const res = await sendInviteSms({}, fd);
       setSending(false);
-      if (res.error) setErr(res.error);
+      if (res.unknown) setUnknown(true);
+      else if (res.error) setErr(res.error);
       else setSent(true);
     });
   }
@@ -80,7 +85,13 @@ export function InviteLink({
       {/* 문자 발송(선택) — 초대 1건당 1회.
           🔴 회사가 비즈모아샷 계정을 연결하지 않았으면 입력칸·버튼을 그리지 않는다 — 예전에 보낸 기록만 보인다.
              (요금은 그 회사 계정에서 나간다. 판정·거부는 서버 app/actions/sms.ts도 똑같이 한다) */}
-      {!smsReady && !sent ? null : sent ? (
+      {unknown ? (
+        // 결과 미확인 — 다시 보낼 수 없다(이중 발송 방지). 링크 복사로 전달하게 안내한다.
+        <div style={{ fontSize: 12, color: "#92400E", fontWeight: 700, lineHeight: 1.6, wordBreak: "keep-all" }}>
+          문자 결과 미확인 — 문자 회사의 응답이 늦었습니다. 실제로 나갔을 수 있으니 직원에게 받았는지 확인하고, 안 왔으면 위
+          링크를 복사해 전달해 주세요.
+        </div>
+      ) : !smsReady && !sent ? null : sent ? (
         <div style={{ fontSize: 12, color: "#15803D", fontWeight: 700 }}>문자 발송됨 ✓ (초대당 1회)</div>
       ) : (
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

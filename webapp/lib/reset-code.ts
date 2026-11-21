@@ -54,8 +54,10 @@ function ownerBlocked(user: { isOwner: boolean } & OwnerRecoveryFields, now: Dat
  *    그래서 발급(issueResetCodeInner)과 확인(checkResetCode) **양쪽**이 이 함수를 본다.
  *    막혀 있는 동안 이미 발급된 직원 코드도 확인 단계에서 거부된다.
  *  · 막혀도 밖으로 보이는 답은 그대로 같다(머리말 ②) — "직원이라서 막혔다"가 새지 않는다.
- *  · ⏱️ 회사 연결 여부는 **회사 계정이어도 먼저 조회**한다 — 계정 종류에 따라 DB 조회 횟수가 달라지면
- *    응답 시간으로 "회사 계정인가/연결된 회사인가"를 가늠할 여지가 생긴다(1단계 검수 L-1·L-4).
+ *  · ⏱️ 회사 연결 여부는 **회사 계정이어도 먼저 조회**한다 — 회사 계정과 직원의 DB 조회 횟수를 맞춘다.
+ *    ⚠️ 그것뿐이다(2단계 검수 L-3): 없는 이메일(조회 1회)·연결 안 한 회사 직원(2회)·연결한 회사 직원(3회 이상)의
+ *    차이는 남는다. 로컬 SQLite라 1ms 미만이고 같은 성격의 차이는 예전에도 있었다. 발급 창구는 after()로 응답 뒤에
+ *    돌아 시간이 새지 않고, 확인 창구만 해당한다.
  */
 async function selfResetBlocked(
   user: { isOwner: boolean; companyId: string } & OwnerRecoveryFields,

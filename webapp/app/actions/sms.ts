@@ -18,7 +18,13 @@ import { companySmsReady } from "@/lib/company-sms-account";
 const COMPANY_SMS_OFF =
   "문자 보내기는 [설정 → 문자·알림톡]에서 회사의 비즈모아샷 계정을 연결한 뒤에 쓸 수 있습니다. 지금은 링크·비밀번호를 복사해 직접 전달해 주세요.";
 
-type ActionResult = { error?: string; ok?: boolean };
+// unknown: 문자 회사 응답이 늦어 **나갔는지 모른다**(시간 초과 등). 화면은 버튼을 다시 그리지 않고 "결과 미확인"을 보여 준다
+//  — 슬롯을 풀지 않으므로 다시 눌러도 거부되기 때문이다(2단계 검수 M-2).
+type ActionResult = { error?: string; ok?: boolean; unknown?: boolean };
+
+/** 결과 미확인 안내(같은 문구를 발송 직후·다시 눌렀을 때 함께 쓴다). */
+const UNKNOWN_DETAIL =
+  "문자 회사의 응답이 늦어 결과를 확인하지 못했습니다. 실제로 나갔을 수 있으니 직원에게 받았는지 확인해 주시고, 안 왔으면 복사해서 직접 전달해 주세요.";
 
 // 이 시간이 지나도 "보내는 중"인 기록은 정상 진행일 수 없다(문자 API 호출은 10초 제한).
 const STALE_PENDING_MS = 5 * 60 * 1000;
@@ -81,6 +87,12 @@ async function claimSendFinalize(input: {
     logId = log.id;
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      // 이미 있는 기록이 "결과 미확인"이면 그대로 알린다 — "보내는 중"이라고 하면 사실이 아니다(2단계 검수 M-2).
+      const prev = await prisma.smsLog.findFirst({
+        where: { companyId: input.companyId, kind: input.kind, refId: input.refId },
+        select: { result: true },
+      });
+      if (prev?.result === "unknown") return { error: UNKNOWN_DETAIL, unknown: true };
       return { error: "이미 문자를 보냈거나 보내는 중입니다.(중복 발송 방지)" };
     }
     throw e;
@@ -106,10 +118,7 @@ async function claimSendFinalize(input: {
   //  (풀면 다시 눌러 이중 발송·이중 과금이 된다). 관리자는 직원에게 받았는지 물어보고, 안 왔으면 복사해 전달한다.
   if (res.uncertain) {
     await finalize({ result: "unknown", detail: res.detail.slice(0, 200) });
-    return {
-      error:
-        "문자 회사의 응답이 늦어 결과를 확인하지 못했습니다. 실제로 나갔을 수 있으니 직원에게 받았는지 확인해 주시고, 안 왔으면 복사해서 직접 전달해 주세요.",
-    };
+    return { error: UNKNOWN_DETAIL, unknown: true };
   }
   // 실패: 과금 안 됨 → refId를 풀어 재시도 허용(실패 기록은 남김).
   await finalize({ result: "fail", refId: null, detail: res.detail.slice(0, 200) });

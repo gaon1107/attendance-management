@@ -116,7 +116,8 @@ export async function saveCompanySmsAccount(_prev: CompanySmsFormState, formData
     },
   });
   if (saved.count === 0) {
-    return { error: "방금 다른 관리자가 문자 계정을 바꿨습니다. 화면을 새로 고친 뒤 다시 저장해 주세요." };
+    // 같은 관리자가 저장을 두 번 눌러도 여기로 온다(검수 L-6) — "다른 관리자"로 단정하지 않는다.
+    return { error: "방금 문자 계정이 바뀌었습니다(다른 관리자나 다른 창에서 저장됨). 화면을 새로 고친 뒤 다시 저장해 주세요." };
   }
 
   const { ip, userAgent } = readClientMeta(await headers());

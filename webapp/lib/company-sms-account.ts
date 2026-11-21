@@ -4,6 +4,7 @@
 //  · 🔒 회사 격리: 모든 함수는 companyId 하나만 받고 그 회사 행만 읽는다. 다른 회사 계정으로 보낼 길이 없어야 한다.
 import { prisma } from "@/lib/db";
 import { decryptSmsPassword, hasSmsCryptoKey, isSmsEncrypted } from "@/lib/sms-crypto";
+import { companySmsSendAvailable } from "@/lib/moashot-send-url";
 
 /** 발송에 쓰는 계정(비밀번호는 평문 — 발송 직전에만 만들고 어디에도 남기지 않는다). */
 export type CompanySmsAccount = { id: string; password: string; sender: string };
@@ -49,6 +50,8 @@ export async function getCompanySmsAccountStatus(companyId: string): Promise<Com
  *  · 🔒 화면에 "켜져 있다"를 보여 주는 곳과 서버에서 막는 곳이 **같은 판정**을 써야 한다(어긋나면 버튼은 있는데 거부).
  */
 export async function companySmsReady(companyId: string): Promise<boolean> {
+  // 서버에 발송 주소가 없으면(개발 PC·운영 설정 실수) 계정이 있어도 못 보낸다 → 버튼도 숨긴다(2단계 검수 L-4).
+  if (!companySmsSendAvailable()) return false;
   return (await loadCompanySmsAccount(companyId)) !== null;
 }
 

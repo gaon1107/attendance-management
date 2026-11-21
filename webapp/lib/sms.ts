@@ -7,9 +7,12 @@
 //  · 예전에 쓰던 아이원24 연동은 근태 운영에서 한 번도 켠 적이 없어 걷어냈다.
 //  ※ 계정(아이디·비번·발신번호·발송주소)은 .env에서만 읽는다(하드코딩 금지). 하나라도 없으면 보내지 않는다.
 import { sendSms as moashotSendSms } from "@newgaon/moashot";
-import { normalizePhone } from "@/lib/phone";
+import { normalizePhone, toLocalPhone, isMobilePhone } from "@/lib/phone";
 import { prisma } from "@/lib/db";
 import { loadCompanySmsAccount } from "@/lib/company-sms-account";
+import { isAllowedSendUrl, companySmsSendAvailable } from "@/lib/moashot-send-url";
+// 기존 import 경로(@/lib/sms)를 쓰는 곳을 위해 다시 내보낸다.
+export { companySmsSendAvailable };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔴 [보안검수 M7] 문자 발송 상한 — 요금 폭탄 방지 + **한 회사가 다른 회사의 문자를 막지 못하게**.
@@ -100,16 +103,25 @@ async function countRecentSends(now: Date, windowMs: number, companyId?: string)
  * 상한 판정. 통과면 null, 막히면 화면용 문구.
  *  · `includesThis`: 지금 보내려는 건의 발송기록이 이미 세어지는가(sendSms 안 = true, 미리 묻기 = false).
  *  · DB를 못 읽으면 **보내지 않는다** — 셀 수 없는 문자는 요금 상한 밖이다.
+ *  · `viaCompany`: 회사 계정 발송이면 **회사별 상한만** 본다(2단계 검수 M-1). 전체 상한은 가온 요금·가온 보안 문자 몫을
+ *    지키는 장치라, 가온 발송이 많은 시간에 **회사 돈으로 보내는 문자까지 멈추면 안 된다** — 그러면 한 회사(또는 공격자)가
+ *    다른 회사들의 유료 문자를 멈출 수 있다.
  */
-async function quotaBlock(companyId: string, purpose: SmsPurpose, now: Date, includesThis: boolean): Promise<string | null> {
+async function quotaBlock(
+  companyId: string,
+  purpose: SmsPurpose,
+  now: Date,
+  includesThis: boolean,
+  viaCompany = false
+): Promise<string | null> {
   // includesThis=false면 "이걸 하나 더 보내면?"으로 센다.
   const extra = includesThis ? 0 : 1;
   try {
     const [cHour, cDay, gHour, gDay] = await Promise.all([
       countRecentSends(now, HOUR_MS, companyId),
       countRecentSends(now, DAY_MS, companyId),
-      countRecentSends(now, HOUR_MS),
-      countRecentSends(now, DAY_MS),
+      viaCompany ? Promise.resolve(0) : countRecentSends(now, HOUR_MS),
+      viaCompany ? Promise.resolve(0) : countRecentSends(now, DAY_MS),
     ]);
     const cMaxHour = purpose === "security" ? SMS_COMPANY_MAX_PER_HOUR : SMS_COMPANY_GENERAL_MAX_PER_HOUR;
     const cMaxDay = purpose === "security" ? SMS_COMPANY_MAX_PER_DAY : SMS_COMPANY_GENERAL_MAX_PER_DAY;
@@ -117,6 +129,7 @@ async function quotaBlock(companyId: string, purpose: SmsPurpose, now: Date, inc
       console.error(`[sms] 회사별 발송 상한 도달(${purpose}) — 회사 ${companyId}: 1시간 ${cHour}/${cMaxHour}, 24시간 ${cDay}/${cMaxDay}. 이 회사 발송을 멈춘다.`);
       return SMS_COMPANY_LIMIT_DETAIL;
     }
+    if (viaCompany) return null; // 회사 계정 발송은 전체 상한을 보지 않는다(위 머리말)
     const maxHour = purpose === "security" ? SMS_GLOBAL_MAX_PER_HOUR : SMS_GENERAL_MAX_PER_HOUR;
     const maxDay = purpose === "security" ? SMS_GLOBAL_MAX_PER_DAY : SMS_GENERAL_MAX_PER_DAY;
     if (gHour + extra > maxHour || gDay + extra > maxDay) {
@@ -171,16 +184,7 @@ function account(): { id: string; password: string; sender: string; sendUrl: str
   return { id, password, sender, sendUrl };
 }
 
-/** 모듈(sms.js isSecureSendUrl)과 같은 규칙 — https만, 시험용 내 컴퓨터 주소만 http 허용. */
-function isAllowedSendUrl(url: string): boolean {
-  try {
-    const u = new URL(url);
-    if (u.protocol === "https:") return true;
-    return u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]", "::1"].includes(u.hostname);
-  } catch {
-    return false;
-  }
-}
+// 발송 주소 규칙(isAllowedSendUrl)은 lib/moashot-send-url.ts에 있다 — 연결 판정(company-sms-account)도 같이 써서 뗐다.
 
 let badConfigWarned = false;
 function warnBadConfigOnce(): void {
@@ -266,15 +270,7 @@ function isUncertainFailure(detail: string | null | undefined): boolean {
   return /시간 초과|연결이 끊겼|연결이 닫혔/.test(detail ?? "");
 }
 
-/**
- * 회사 계정 발송에 쓸 발송 주소가 서버에 설정돼 있는가(.env MOASHOT_SEND_URL, https).
- *  · 가온 계정(smsConfigured)과 달리 아이디·비밀번호는 회사가 넣으므로 **주소만** 본다.
- *  · 개발 PC처럼 주소가 없으면 회사 문자는 하나도 나가지 않는다(실수 발송 방지).
- */
-export function companySmsSendAvailable(): boolean {
-  const sendUrl = (process.env.MOASHOT_SEND_URL ?? "").trim();
-  return !!sendUrl && isAllowedSendUrl(sendUrl);
-}
+// companySmsSendAvailable(발송 주소가 설정돼 있는가)도 lib/moashot-send-url.ts로 옮겼다(아래에서 다시 내보낸다).
 
 export async function sendCompanySms(opts: { to: string; text: string; subject?: string; companyId: string; purpose: SmsPurpose }): Promise<CompanySmsResult> {
   const sendUrl = (process.env.MOASHOT_SEND_URL ?? "").trim();
@@ -285,14 +281,16 @@ export async function sendCompanySms(opts: { to: string; text: string; subject?:
   const acc = await loadCompanySmsAccount(opts.companyId);
   if (!acc) return { ok: false, detail: "회사 문자 계정이 연결되지 않았거나, 저장된 비밀번호를 쓸 수 없습니다. 비밀번호를 다시 저장해 주세요." };
 
-  const to = normalizePhone(opts.to);
-  if (to.length < 9 || to.length > 12) return { ok: false, detail: "수신 전화번호가 올바르지 않습니다." };
+  // 회사 요금 문자는 **휴대폰 번호로만** 보낸다(2단계 검수 L-5). 비즈모아샷은 접수까지만 알려 주므로 유선(02·070)으로도
+  // 접수·과금될 수 있는데, 받는 사람이 없다. 국제 표기(+82)는 국내 번호로 바꿔서 본다.
+  const to = toLocalPhone(opts.to);
+  if (!isMobilePhone(to)) return { ok: false, detail: "받는 번호가 휴대폰 번호가 아닙니다(문자를 받을 수 있는 휴대폰 번호만 보낼 수 있습니다)." };
 
   const text = opts.text ?? "";
   if (text.trim() === "") return { ok: false, detail: "보낼 내용이 없습니다." };
 
   {
-    const blocked = await quotaBlock(opts.companyId, opts.purpose, new Date(), true);
+    const blocked = await quotaBlock(opts.companyId, opts.purpose, new Date(), true, true);
     if (blocked) return { ok: false, detail: blocked };
   }
 

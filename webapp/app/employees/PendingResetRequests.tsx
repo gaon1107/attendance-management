@@ -27,7 +27,7 @@ export function PendingResetRequests({
   const [, startTransition] = useTransition();
   const [copiedId, setCopiedId] = useState<string | null>(null);
   // 문자 발송 상태 { [reqId]: "sending"|"sent" } + 오류
-  const [smsState, setSmsState] = useState<Record<string, "sending" | "sent">>({});
+  const [smsState, setSmsState] = useState<Record<string, "sending" | "sent" | "unknown">>({});
   const [smsErr, setSmsErr] = useState<Record<string, string>>({});
 
   function handleSendSms(id: string, temp: string) {
@@ -38,7 +38,11 @@ export function PendingResetRequests({
       fd.set("requestId", id);
       fd.set("temp", temp);
       const res = await sendTempPasswordSms({}, fd);
-      if (res.error) {
+      if (res.unknown) {
+        // 결과 미확인 — 버튼을 되살리면 눌러도 계속 거부된다(슬롯 유지). 안내만 보여 준다(2단계 검수 M-2).
+        setSmsState((s) => ({ ...s, [id]: "unknown" }));
+        setSmsErr((e) => ({ ...e, [id]: res.error ?? "" }));
+      } else if (res.error) {
         setSmsState((s) => { const n = { ...s }; delete n[id]; return n; });
         setSmsErr((e) => ({ ...e, [id]: res.error! }));
       } else {
@@ -130,6 +134,10 @@ export function PendingResetRequests({
                     {smsState[r.id] === "sent" ? (
                       <span style={{ height: 36, display: "inline-flex", alignItems: "center", padding: "0 14px", border: "1px solid #BBF7D0", borderRadius: 8, background: "#F0FDF4", color: "#15803D", fontSize: 13, fontWeight: 700 }}>
                         문자 발송됨 ✓
+                      </span>
+                    ) : smsState[r.id] === "unknown" ? (
+                      <span style={{ height: 36, display: "inline-flex", alignItems: "center", padding: "0 14px", border: "1px solid #FDE68A", borderRadius: 8, background: "#FFFBEB", color: "#92400E", fontSize: 13, fontWeight: 700 }}>
+                        문자 결과 미확인
                       </span>
                     ) : !smsReady ? null : (
                       // 🔴 회사가 비즈모아샷 계정을 연결하지 않았으면 버튼을 그리지 않는다(요금은 회사 계정).
