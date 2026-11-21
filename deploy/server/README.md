@@ -113,11 +113,32 @@ printf '%s\0%s\0%s\0' "--reset" "이메일" "$P" | docker exec -i -e APP_BASE_UR
 
 ## 새 버전 반영
 
+**2026-11-21부터 자동이다: 깃허브 `main`에 푸시하면 곧바로 운영에 반영된다.** (학원관리와 같은 방식)
+- 흐름: 푸시 → 깃허브 Actions(`.github/workflows/deploy.yml`) → 배포 전용 열쇠로 서버 E 접속 → 서버가 `deploy.sh` 실행 → 바깥에서 로그인 화면 200 확인.
+- 결과 보기: 깃허브 저장소 → **Actions** 탭(초록 ✔ = 성공, 빨간 ✖ = 실패. 눌러 보면 deploy.sh 기록이 그대로 나온다).
+- 푸시 없이 한 번 더: Actions → "Deploy attendance to gaon-main" → **Run workflow**.
+- ⚠️ 푸시 = 운영 반영이므로 **푸시는 근무시간 밖에** 한다(열린 화면의 버튼이 잠깐 오류 난다).
+
+수동 반영(자동이 고장 났을 때도 그대로 된다):
 ```bash
 bash /opt/attendance/deploy/server/deploy.sh
 ```
-- 깃허브에 올린다고 자동으로 반영되지 않는다(시범 기간 안전을 위해 수동).
 - 스크립트가 **반영 전에 백업을 뜨고**, 직전 이미지를 `attendance-app:previous`로 남긴 뒤 새 상자로 바꾼다.
+- 배포 두 개가 겹치면 뒤의 것이 앞의 것이 끝날 때까지 기다린다(잠금 `/run/attendance-deploy.lock`, 최대 15분).
+- 빌드가 실패하면 교체 전에 멈추므로 기존 상자가 그대로 돈다.
+
+### 배포 전용 열쇠 (자동 배포용)
+
+| 항목 | 값 |
+|---|---|
+| 서버 쪽 | `/root/.ssh/authorized_keys` 의 `attendance-actions-deploy` 줄. 앞에 `restrict,command="/bin/bash /opt/attendance/deploy/server/deploy.sh"` 가 붙어 있어 **deploy.sh 외에는 아무것도 못 한다** |
+| 깃허브 쪽 | 저장소 Settings → Secrets and variables → Actions: `SERVER_HOST`·`SERVER_PORT`·`SERVER_USER`·`SERVER_SSH_KEY` |
+| 열쇠 원본 | 깃허브 Secrets 에만 있다(PC 파일은 등록 후 지웠다). 잃거나 새면 아래처럼 새로 만든다 |
+
+열쇠 바꾸기(새 PC에서 `ssh-keygen -t ed25519 -N '' -C attendance-actions-deploy -f 새열쇠`로 만든 뒤):
+1. 서버: `authorized_keys`에서 `attendance-actions-deploy` 줄을 지우고 새 공개키를 같은 앞머리(`restrict,command=...`)로 넣는다(먼저 `cp`로 백업).
+2. 깃허브: `SERVER_SSH_KEY`를 새 열쇠 내용으로 바꾼다. → Run workflow 로 확인 → PC의 열쇠 파일 삭제.
+자동 배포를 잠시 끄려면: 서버에서 그 줄 맨 앞에 `#`을 붙인다(깃허브 Actions는 실패로 표시되고, 운영은 그대로).
 
 ## 되돌리기 — 직전 이미지로
 

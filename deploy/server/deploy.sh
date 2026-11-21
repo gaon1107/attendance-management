@@ -1,5 +1,7 @@
 #!/bin/bash
-# 근태관리 배포(반영) (2026-11-18, 운영 준비 2-4) — 서버 E에서 사람이 직접 실행할 때만 반영된다(자동 배포 아님).
+# 근태관리 배포(반영) (2026-11-18, 운영 준비 2-4)
+# 2026-11-21부터 깃허브 main 푸시 때 자동으로도 실행된다(.github/workflows/deploy.yml → 배포 전용 열쇠의 강제명령).
+# 사람이 직접 실행하는 방법도 그대로 쓸 수 있다.
 #
 # 사용: bash /opt/attendance/deploy/server/deploy.sh
 # 하는 일:
@@ -17,6 +19,16 @@ CONTAINER="attendance-app"
 COMPOSE=(docker compose -f docker-compose.prod.yml)
 
 log() { echo "[deploy] $(date '+%F %T') $*"; }
+
+# 배포가 두 개 겹치지 않게 잠근다(자동 배포 도중 사람이 또 돌리는 경우 등). 앞 배포가 끝날 때까지 최대 15분 기다린다.
+# 백업 스크립트의 잠금(/run/attendance-backup.lock)과는 다른 파일이다.
+DEPLOY_LOCK="${ATT_DEPLOY_LOCK:-/run/attendance-deploy.lock}"
+command -v flock > /dev/null || { log "❌ 잠금 도구(flock)가 없습니다 — util-linux 설치 필요"; exit 1; }
+exec 8>"$DEPLOY_LOCK" || { log "❌ 잠금 파일을 열 수 없습니다 ($DEPLOY_LOCK)"; exit 1; }
+if ! flock -n 8; then
+  log "다른 배포가 진행 중입니다 — 끝날 때까지 기다립니다(최대 15분)"
+  flock -w 900 8 || { log "❌ 15분 넘게 다른 배포가 끝나지 않아 멈춥니다"; exit 1; }
+fi
 
 cd "$APP_DIR"
 if [ ! -f webapp/.env.production ]; then
