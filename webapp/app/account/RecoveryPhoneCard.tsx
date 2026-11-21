@@ -6,7 +6,10 @@
 //    그때 "복구용 번호가 지금도 받을 수 있는 번호인가"를 아무도 확인해 본 적이 없으면 회사가 잠긴다.
 //    → 번호가 없거나 확인이 필요할 때는 **경고 색으로 눈에 띄게** 띄운다(그냥 두면 아무도 안 본다).
 import { useActionState, useState } from "react";
-import { changeRecoveryPhone } from "@/app/actions/account";
+import { changeRecoveryPhone, sendRecoveryPhoneCode, confirmRecoveryPhone } from "@/app/actions/account";
+
+/** lib/owner-recovery.ts ownerRecoveryState의 결과를 화면용으로 줄인 것. */
+type RecoveryReason = "ready" | "disabled" | "no_phone" | "not_mobile" | "not_verified" | "locked";
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -24,19 +27,27 @@ const labelStyle: React.CSSProperties = { display: "block", fontSize: 13, fontWe
 export function RecoveryPhoneCard({
   maskedPhone,
   usable,
-  recoveryEnabled,
+  recoveryReason,
+  unlockLabel,
+  smsReady,
 }: {
   maskedPhone: string | null; // null = 등록된 번호 없음
   /** 등록된 번호가 **문자를 받을 수 있는 휴대폰**인가. 유선번호가 이미 저장돼 있을 수 있다. */
   usable: boolean;
-  /** 회사 계정 복구 기능이 실제로 켜져 있는가(lib/owner-recovery.ts). 문자 설정 여부와 다르다. */
-  recoveryEnabled: boolean;
+  /** 지금 문자로 회사 계정을 되찾을 수 있는가와 그 이유(lib/owner-recovery.ts). 문자 설정 여부와 다르다. */
+  recoveryReason: RecoveryReason;
+  /** 72시간 대기 중이면 풀리는 시각(서버에서 만든 글자). */
+  unlockLabel: string | null;
+  /** 확인 문자를 보낼 수 있는가(문자 계정 설정 여부). */
+  smsReady: boolean;
 }) {
   const [state, formAction, pending] = useActionState(changeRecoveryPhone, {});
+  const recoveryEnabled = recoveryReason !== "disabled";
   // 번호가 없거나 문자를 못 받는 번호면 처음부터 펼쳐 둔다.
   const missing = !maskedPhone;
   const unusable = !!maskedPhone && !usable;
-  const needsFix = missing || unusable;
+  const unverified = !missing && !unusable && recoveryReason === "not_verified";
+  const needsFix = missing || unusable || unverified;
   const [open, setOpen] = useState(needsFix);
 
   // 🔴 입력칸은 **React 상태로 관리한다(제어 컴포넌트).** 비제어로 두면 안 되는 이유:
@@ -111,13 +122,36 @@ export function RecoveryPhoneCard({
                 이 번호로는 <b>문자를 받을 수 없습니다</b>(휴대폰이 아닙니다). 휴대폰 번호로 바꿔 주세요.
               </div>
             ) : (
-              <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 6 }}>
-                담당자가 바뀌었거나 지금 쓰지 않는 번호라면 반드시 바꿔 주세요.
-              </div>
+              <>
+                {recoveryReason === "ready" && recoveryEnabled && (
+                  <div style={{ fontSize: 13, color: "#15803D", fontWeight: 700, marginTop: 8 }}>
+                    ✓ 확인된 번호입니다. 비밀번호를 잊으면 로그인 화면의 [비밀번호를 잊으셨나요?]에서 이 번호로
+                    인증번호를 받아 직접 바꿀 수 있습니다.
+                  </div>
+                )}
+                {recoveryReason === "locked" && (
+                  // 🔒 번호를 바꾼 직후 72시간 — 세션을 훔친 사람이 자기 번호를 심고 바로 빼가는 것을 막는 대기.
+                  <div style={{ fontSize: 13, color: "#92400E", fontWeight: 700, marginTop: 8 }}>
+                    확인된 번호입니다. 다만 번호를 바꾼 지 얼마 되지 않아 <b>{unlockLabel ?? "72시간 뒤"}부터</b> 문자로
+                    되찾을 수 있습니다. (몰래 번호를 바꾸고 바로 비밀번호를 가져가는 것을 막기 위한 대기입니다)
+                  </div>
+                )}
+                {unverified && (
+                  <div style={{ fontSize: 13, color: "#92400E", fontWeight: 700, marginTop: 8 }}>
+                    아직 <b>확인되지 않은 번호</b>입니다. 이 번호로 인증번호를 받아 확인해야 비밀번호를 잊었을 때
+                    문자로 되찾을 수 있습니다.
+                  </div>
+                )}
+                <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 6 }}>
+                  담당자가 바뀌었거나 지금 쓰지 않는 번호라면 반드시 바꿔 주세요.
+                </div>
+              </>
             )}
           </>
         )}
       </div>
+
+      {unverified && <VerifyBlock smsReady={smsReady} />}
 
       {!recoveryEnabled && (
         // 🔴 판정 기준이 "문자 설정 여부"가 아니라 **"회사 계정 복구 기능이 켜졌는가"**여야 한다.
@@ -337,6 +371,89 @@ export function RecoveryPhoneCard({
               )
             )}
           </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// ── 번호 확인 — "이 번호로 인증번호 받기" → 6자리 입력 → 확인 ──────────────────
+//  · 확인이 끝나면 서버가 화면을 새로 그려(revalidatePath) 카드 상태가 "확인됨"으로 바뀐다.
+//  · 인증번호 입력칸은 제어 컴포넌트로 둔다 — React 19는 폼 액션이 끝나면 입력칸을 비우므로,
+//    틀렸을 때 방금 친 숫자가 사라져 "어디가 틀렸지?"를 볼 수 없게 된다(위 카드와 같은 이유).
+function VerifyBlock({ smsReady }: { smsReady: boolean }) {
+  const [sendState, sendAction, sending] = useActionState(sendRecoveryPhoneCode, {});
+  const [checkState, checkAction, checking] = useActionState(confirmRecoveryPhone, {});
+  const [code, setCode] = useState("");
+  // 한 번이라도 보냈으면 입력칸을 연다(확인 실패 응답도 sent:true를 돌려준다).
+  const sent = !!sendState?.sent || !!checkState?.sent;
+
+  if (!smsReady) {
+    return (
+      <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6, wordBreak: "keep-all" }}>
+        문자 발송이 아직 연결되지 않아 지금은 번호를 확인할 수 없습니다. 연결되면 여기에서 확인할 수 있습니다.
+      </div>
+    );
+  }
+  if (checkState?.verified) {
+    return (
+      <div style={{ fontSize: 13, color: "#15803D", fontWeight: 700, marginBottom: 16 }}>✓ 번호를 확인했습니다.</div>
+    );
+  }
+
+  const btn: React.CSSProperties = {
+    height: 44, padding: "0 18px", borderRadius: 8, fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer",
+  };
+  return (
+    <div
+      style={{
+        background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "14px 16px", marginBottom: 16,
+        display: "flex", flexDirection: "column", gap: 12, lineHeight: 1.6, wordBreak: "keep-all",
+      }}
+    >
+      <form action={sendAction}>
+        <button
+          type="submit"
+          disabled={sending}
+          style={{ ...btn, border: sent ? "1px solid var(--border)" : "none", background: sent ? "#fff" : "var(--primary)", color: sent ? "var(--text-sub)" : "#fff", opacity: sending ? 0.6 : 1 }}
+        >
+          {sending ? "보내는 중..." : sent ? "인증번호 다시 받기" : "이 번호로 인증번호 받기"}
+        </button>
+        {sendState?.sent && !sendState.error && (
+          <div style={{ fontSize: 13, color: "#166534", marginTop: 8 }}>
+            인증번호를 보냈습니다. 문자로 받은 6자리를 5분 안에 입력해 주세요.
+          </div>
+        )}
+        {sendState?.error && (
+          <div style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700, marginTop: 8 }}>{sendState.error}</div>
+        )}
+      </form>
+
+      {sent && (
+        <form action={checkAction} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <label style={labelStyle}>인증번호 6자리</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              name="code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="000000"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/[^0-9]/g, ""))}
+              style={{ ...inputStyle, maxWidth: 180, letterSpacing: 4, background: "#fff" }}
+            />
+            <button
+              type="submit"
+              disabled={checking}
+              style={{ ...btn, border: "none", background: "var(--primary)", color: "#fff", opacity: checking ? 0.6 : 1 }}
+            >
+              {checking ? "확인 중..." : "확인"}
+            </button>
+          </div>
+          {checkState?.error && (
+            <div style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700 }}>{checkState.error}</div>
+          )}
         </form>
       )}
     </div>

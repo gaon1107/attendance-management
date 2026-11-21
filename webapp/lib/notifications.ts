@@ -6,6 +6,9 @@ import { prisma } from "@/lib/db";
 import { countUncheckedAnomalies } from "@/lib/anomaly";
 import { listPcOffUnreported, listOfflineTempUseOveruse } from "@/lib/pcoff-alert";
 
+/** 회사 계정 문자 재설정 경고를 알림센터에 남겨 두는 기간. */
+const OWNER_RESET_ALERT_DAYS = 7;
+
 export type AdminNotification = {
   key: string;
   title: string;
@@ -75,8 +78,40 @@ export const listAdminNotifications = cache(async (companyId: string): Promise<{
     console.warn("[notifications] 오프라인 일시사용 초과 집계 실패(알림센터는 정상 표시):", e);
   }
 
+  // 🔴 회사 계정 비밀번호가 **문자 인증으로** 바뀐 일(최근 7일) — 회사 계정 복구의 마지막 안전장치.
+  //  · 왜: 복구 번호를 쥔 사람(예: 퇴사한 가입 담당자)이 몰래 회사 열쇠를 되찾으면 아무도 모른다.
+  //    관리자들이 알림센터에서 보게 해 "우리가 한 일이 아니면" 바로 조치하게 한다(lib/owner-recovery.ts ③).
+  //  · 읽음 저장이 없는 실시간 집계라 **7일이 지나면 저절로 사라진다**(처리 버튼으로 지울 수 없다 — 지우면
+  //    그 사람이 지울 수도 있다).
+  //  · 부가기능 — 실패해도 알림센터 본체는 뜬다.
+  let ownerSmsReset = 0;
+  try {
+    const owners = await prisma.user.findMany({ where: { companyId, isOwner: true }, select: { id: true } });
+    if (owners.length > 0) {
+      ownerSmsReset = await prisma.accessEvent.count({
+        where: {
+          companyId,
+          userId: { in: owners.map((o) => o.id) },
+          meta: "password_reset_by_sms_code",
+          result: "success",
+          createdAt: { gte: new Date(Date.now() - OWNER_RESET_ALERT_DAYS * 24 * 60 * 60 * 1000) },
+        },
+      });
+    }
+  } catch (e) {
+    console.warn("[notifications] 회사 계정 문자 재설정 집계 실패(알림센터는 정상 표시):", e);
+  }
+
   const items: AdminNotification[] = [];
   // 보안이 가장 위(위험). 그다음 결재/요청.
+  if (ownerSmsReset > 0) {
+    items.push({
+      key: "owner-sms-reset", title: "회사 계정 비밀번호 변경(문자 인증)",
+      detail: `최근 ${OWNER_RESET_ALERT_DAYS}일 안에 회사 계정의 비밀번호가 문자 인증으로 바뀌었습니다. 회사에서 한 일이 아니라면 즉시 확인하세요.`,
+      count: ownerSmsReset, countLabel: `${ownerSmsReset}건`,
+      href: "/security/access", cta: "기록 보기", severity: "danger",
+    });
+  }
   if (anomalyCount > 0) {
     items.push({
       key: "anomaly", title: "이상 접속", detail: "로그인 이상 징후를 확인하세요.",

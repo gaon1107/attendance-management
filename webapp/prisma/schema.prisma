@@ -251,6 +251,13 @@ model User {
   //    (예전엔 "24시간 1회"였는데, 오타를 하루 동안 못 고치는 사고가 생겨 기준을 바꿨다.
   //     지금 요금·스팸 방어는 "실제 문자 발송 건수(SmsLog) 24시간 3건"이 담당한다 — 검수 N-1.)
   phoneChangedAt DateTime?
+  // 회사 계정 복구용 번호를 **문자 인증번호로 확인한** 시각과 그때의 번호(숫자만). 회사 계정만 채운다.
+  //  · 왜 번호까지 남기나: 확인 뒤에 번호가 어떤 경로로든 바뀌면 "확인됨"이 새 번호에 그대로 붙는다.
+  //    두 값이 지금 phone과 같을 때만 확인된 것으로 본다(lib/owner-recovery.ts ownerRecoveryState).
+  //    → 앞으로 번호를 바꾸는 창구가 새로 생겨도 확인 상태가 저절로 풀린다.
+  //  · add-only(nullable) — 기존 계정은 null = "아직 확인 안 함".
+  phoneVerifiedAt     DateTime?
+  phoneVerifiedNumber String?
   position       String?   // 직급/직책 라벨 (예: 사원·대리·과장·부장). 표시용. 서열 비교는 jobGrade.level로.
   // 직급 서열(결재선용). 회사 직급표(JobGrade)의 한 직급을 가리킨다. null=미지정 → 직급 기반 결재선에서 제외.
   //  · add-only(nullable) — 기존 직원 전부 null = 기존 동작 그대로(회귀 0).
@@ -714,6 +721,28 @@ model PasswordResetCode {
   createdAt DateTime @default(now())
 
   // 살아있는 코드 찾기·하루 발송량 세기·재발송 간격 확인이 전부 (userId, createdAt)로 돈다.
+  @@index([userId, createdAt])
+}
+
+// 회사 계정 복구용 번호 확인 인증번호 — "이 번호가 정말 받을 수 있는 내 휴대폰인가"를 확인한다.
+//  · 비밀번호 찾기 인증번호(PasswordResetCode)와 **일부러 테이블을 나눴다.** 같이 쓰면 번호 확인용으로
+//    받은 번호가 비밀번호 재설정에도 통하게 되고, 그 반대도 된다. 용도가 다른 열쇠는 섞지 않는다.
+//  · 규칙(원문 미저장·1분 1건 유니크 슬롯·시도 상한·실제 발송 건만 세기)은 PasswordResetCode와 같다.
+model PhoneVerifyCode {
+  id        String   @id @default(cuid())
+  companyId String
+  userId    String
+  // 확인하려는 번호(숫자만). 확인하는 순간 이 번호가 **지금 등록된 번호와 같아야** 통과한다.
+  phone     String
+  codeHash  String // scrypt 해시. 원문 미저장.
+  slotKey   String   @unique // "userId_분번호" — 1분 1건을 DB가 보장
+  expiresAt DateTime
+  attemptCount  Int       @default(0)
+  sentAt        DateTime? // 문자가 실제로 나간 시각. 하루 상한은 이 값이 있는 건만 센다.
+  usedAt        DateTime?
+  invalidatedAt DateTime?
+  createdAt DateTime @default(now())
+
   @@index([userId, createdAt])
 }
 

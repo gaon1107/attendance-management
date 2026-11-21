@@ -32,4 +32,58 @@
 //    · 🔴 **세션 정책(lib/session.ts)을 함께 재검토**한다. 거기 15~21행이 "회사 계정은 복구 수단이
 //      0이라 유휴 만료 대상에서 뺀다"고 적어 두었는데, 이 스위치를 켜는 순간 그 전제가 바뀐다.
 //      스위치만 켜고 session.ts를 그대로 두면, 로드맵 ④(세션 조이기)가 영영 잊힌다.
+import { toLocalPhone, isMobilePhone } from "@/lib/phone";
+
 export const OWNER_RECOVERY_ENABLED = false;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 회사 계정이 **지금** 문자로 비밀번호를 되찾을 수 있는가 — 판정은 이 함수 하나에서만 한다.
+//  · lib/reset-code.ts(실제로 막는 곳)와 [계정 설정]·대시보드·알림센터(보여주는 곳)가 같은 함수를 쓴다.
+//    두 곳이 따로 판단하면 "화면은 된다는데 실제로는 안 되는" 어긋남이 생긴다(이 파일 머리말의 사고).
+//
+// 🔴 2026-08-12에 한 번 열었다가 되돌린 이유 = "회수할 수 없는 뒷문"
+//    가입한 담당자의 폰 번호가 그대로 복구 번호가 되는데, 그 사람이 나가도 회사가 막을 길이 없었다.
+//    그래서 열기 전에 아래 세 가지를 붙였다(2026-11-21).
+//   ① **번호 확인** — 그 번호로 인증번호를 받아 입력해야 "확인됨". 확인한 번호와 지금 번호가 다르면 무효.
+//      (가입 때 적은 번호·오타·해지된 번호로는 복구가 열리지 않는다)
+//   ② **번호를 바꾸면 72시간 잠금** — 세션을 훔친 사람이 자기 번호를 심고 곧바로 비밀번호를 빼가는 것을 막는다.
+//      그 사이 옛 번호로 "연락처가 바뀌었다"는 문자가 가고(actions/account.ts), 원래 담당자가 되돌릴 시간이 된다.
+//   ③ **회사 계정 비밀번호가 문자로 바뀌면 알림센터에 경고** — 관리자들이 7일 동안 본다(lib/notifications.ts).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 복구 번호를 바꾼 뒤 문자 복구를 잠가 두는 시간. */
+export const OWNER_RECOVERY_LOCK_MS = 72 * 60 * 60 * 1000;
+
+export type OwnerRecoveryFields = {
+  phone: string | null;
+  phoneChangedAt: Date | null;
+  phoneVerifiedAt: Date | null;
+  phoneVerifiedNumber: string | null;
+};
+
+export type OwnerRecoveryState =
+  | { ready: true }
+  | { ready: false; reason: "disabled" | "no_phone" | "not_mobile" | "not_verified" }
+  | { ready: false; reason: "locked"; unlockAt: Date };
+
+/** 확인된 번호인가 — 확인한 번호가 지금 번호와 같고, 마지막 변경 이후에 확인했어야 한다. */
+export function phoneIsVerified(u: OwnerRecoveryFields): boolean {
+  if (!u.phoneVerifiedAt || !u.phoneVerifiedNumber) return false;
+  if (toLocalPhone(u.phoneVerifiedNumber) !== toLocalPhone(u.phone)) return false;
+  // 번호를 바꾸는 창구가 확인 상태를 지우는 것을 잊어도, 바꾼 시각이 확인보다 뒤면 무효로 본다.
+  if (u.phoneChangedAt && u.phoneVerifiedAt.getTime() < u.phoneChangedAt.getTime()) return false;
+  return true;
+}
+
+export function ownerRecoveryState(u: OwnerRecoveryFields, now: Date = new Date()): OwnerRecoveryState {
+  if (!OWNER_RECOVERY_ENABLED) return { ready: false, reason: "disabled" };
+  if (!toLocalPhone(u.phone)) return { ready: false, reason: "no_phone" };
+  if (!isMobilePhone(u.phone)) return { ready: false, reason: "not_mobile" };
+  if (!phoneIsVerified(u)) return { ready: false, reason: "not_verified" };
+  if (u.phoneChangedAt) {
+    // 바꾼 시각이 미래(서버 시계 되감김)여도 잠금으로 본다 — 의심스러우면 닫는 쪽.
+    const unlockAt = new Date(u.phoneChangedAt.getTime() + OWNER_RECOVERY_LOCK_MS);
+    if (now.getTime() < unlockAt.getTime()) return { ready: false, reason: "locked", unlockAt };
+  }
+  return { ready: true };
+}

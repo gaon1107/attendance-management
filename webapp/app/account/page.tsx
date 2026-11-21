@@ -8,7 +8,8 @@ import { RecoveryPhoneCard } from "./RecoveryPhoneCard";
 import { prisma } from "@/lib/db";
 import { isDeviceOnline } from "@/lib/agent-auth";
 import { maskPhone, isMobilePhone } from "@/lib/phone";
-import { OWNER_RECOVERY_ENABLED } from "@/lib/owner-recovery";
+import { ownerRecoveryState } from "@/lib/owner-recovery";
+import { smsConfigured } from "@/lib/sms";
 
 const MY_EVENT_LIMIT = 20; // [내 PC 기록]에 보여줄 최근 건수(본인 데이터 열람권)
 
@@ -41,6 +42,14 @@ export default async function AccountPage() {
       take: MY_EVENT_LIMIT,
     }),
   ]);
+
+  // 회사 계정 복구 상태 — [비밀번호 찾기]가 실제로 막는 판정(lib/reset-code.ts)과 **같은 함수**로 계산한다.
+  //  · 풀리는 시각은 서버에서 글자로 만들어 넘긴다(브라우저 시간대에 따라 다르게 보이지 않게).
+  const recovery = me.isOwner ? ownerRecoveryState(me) : null;
+  const unlockLabel =
+    recovery && !recovery.ready && recovery.reason === "locked"
+      ? recovery.unlockAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })
+      : null;
 
   const info: { label: string; value: string }[] = [
     { label: "이름", value: me.name },
@@ -83,8 +92,11 @@ export default async function AccountPage() {
           // ⚠️ 이미 저장된 번호가 유선(02·070 등)일 수 있다 — 가입 검증이 숫자 9~11자리만 봤기 때문.
           //    "등록돼 있으니 안심"하다가 정작 필요할 때 문자를 못 받는 사고를 막는다(검수 치명 3).
           usable={isMobilePhone(me.phone)}
-          // ⚠️ 문자 설정 여부가 아니라 **회사 계정 복구 개방 여부**로 판단한다(검수 치명 2).
-          recoveryEnabled={OWNER_RECOVERY_ENABLED}
+          // ⚠️ 문자 설정 여부가 아니라 **회사 계정 복구 판정**으로 표시한다(검수 치명 2).
+          recoveryReason={!recovery || recovery.ready ? "ready" : recovery.reason}
+          unlockLabel={unlockLabel}
+          // 번호 확인 문자를 보낼 수 있는가(문자 계정 설정 여부). 복구 개방 여부와는 다른 값이다.
+          smsReady={smsConfigured()}
         />
       )}
 

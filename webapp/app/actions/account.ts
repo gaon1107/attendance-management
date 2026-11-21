@@ -10,6 +10,7 @@ import { recordFail, recordSuccess, PASSWORD_MAX_LEN, PASSWORD_INPUT_HARD_LIMIT 
 import { PASSWORD_MIN_LEN } from "@/lib/password-policy";
 import { passwordAttemptAllowed } from "@/lib/password-attempt-limit";
 import { checkPasswordStrength } from "@/lib/password-strength";
+import { issuePhoneVerifyCode, confirmPhoneVerifyCode } from "@/lib/phone-verify";
 import { headers } from "next/headers";
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
@@ -357,10 +358,17 @@ export async function changeRecoveryPhone(
         id: me.id,
         OR: [{ phoneChangedAt: null }, { phoneChangedAt: { lt: cutoff } }, { phoneChangedAt: { gt: clockSkewed } }],
       },
-      data: { phone: next, phoneChangedAt: now },
+      // 🔒 번호가 바뀌면 "확인됨"을 지운다 — 확인은 **그 번호**에 대한 것이다(lib/owner-recovery.ts).
+      //    (판정 쪽도 번호가 다르면 무효로 보지만, 남은 값이 오해를 부르지 않게 함께 비운다.)
+      data: { phone: next, phoneChangedAt: now, phoneVerifiedAt: null, phoneVerifiedNumber: null },
     });
     if (claimed.count === 0) return false;
     await tx.passwordResetCode.updateMany({
+      where: { userId: me.id, usedAt: null, invalidatedAt: null },
+      data: { invalidatedAt: now },
+    });
+    // 옛 번호로 보낸 "번호 확인" 인증번호도 닫는다.
+    await tx.phoneVerifyCode.updateMany({
       where: { userId: me.id, usedAt: null, invalidatedAt: null },
       data: { invalidatedAt: now },
     });
@@ -463,4 +471,53 @@ export async function changeRecoveryPhone(
 
   revalidatePath("/account");
   return { ok: true, notified };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 회사 계정 — 복구용 번호 확인(인증번호 받기 → 입력). 규칙은 lib/phone-verify.ts.
+//  · 회사 계정 본인만. 확인이 끝나야 [비밀번호 찾기]의 문자 복구가 열린다(lib/owner-recovery.ts).
+//  · 현재 비밀번호를 다시 묻지 않는다: 이 동작은 "이미 등록된 번호"를 확인할 뿐 아무것도 바꾸지 않고,
+//    인증번호는 **그 번호를 가진 사람**만 받는다. 번호를 바꾸는 창구(위 changeRecoveryPhone)는 비밀번호를 묻는다.
+// ═══════════════════════════════════════════════════════════════════════════
+type VerifyState = { error?: string; sent?: boolean; verified?: boolean };
+
+// 입력값이 없다(지금 등록된 번호로 보낸다) — 그래서 이전 상태·폼 값을 받지 않는다.
+export async function sendRecoveryPhoneCode(): Promise<VerifyState> {
+  const me = await getCurrentUser();
+  if (!me) return { error: "로그인이 필요합니다." };
+  if (!me.isOwner) return { error: "이 기능은 회사 계정에서만 사용할 수 있습니다." };
+  try {
+    const r = await issuePhoneVerifyCode({ id: me.id, companyId: me.companyId, phone: me.phone });
+    return r.ok ? { sent: true } : { error: r.error };
+  } catch (e) {
+    console.error("[account] 번호 확인 인증번호 발송 오류:", e instanceof Error ? e.message : String(e));
+    return { error: "인증번호를 보내지 못했습니다. 잠시 후 다시 시도해 주세요." };
+  }
+}
+
+export async function confirmRecoveryPhone(_prev: VerifyState, formData: FormData): Promise<VerifyState> {
+  const me = await getCurrentUser();
+  if (!me) return { error: "로그인이 필요합니다." };
+  if (!me.isOwner) return { error: "이 기능은 회사 계정에서만 사용할 수 있습니다." };
+  const code = String(formData.get("code") ?? "").trim();
+  if (!/^d{6}$/.test(code)) return { sent: true, error: "문자로 받은 6자리 숫자를 입력해 주세요." };
+  let r: { ok: true } | { ok: false; error: string };
+  try {
+    r = await confirmPhoneVerifyCode({ id: me.id, companyId: me.companyId, phone: me.phone }, code);
+  } catch (e) {
+    console.error("[account] 번호 확인 오류:", e instanceof Error ? e.message : String(e));
+    return { sent: true, error: "확인 중 문제가 생겼습니다. 잠시 후 다시 시도해 주세요." };
+  }
+  if (!r.ok) return { sent: true, error: r.error };
+
+  // 감사기록 — 회사 열쇠의 복구 수단이 "열린" 순간이다. 번호 값은 남기지 않는다.
+  const { ip, userAgent } = readClientMeta(await headers());
+  await recordAccess({
+    companyId: me.companyId, userId: me.id, actorName: me.name, emailTried: me.email,
+    kind: "config", result: "success", ip, userAgent, meta: "owner_recovery_phone_verified",
+  });
+  revalidatePath("/account");
+  revalidatePath("/dashboard");
+  return { verified: true };
 }

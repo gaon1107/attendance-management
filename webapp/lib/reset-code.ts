@@ -21,7 +21,7 @@ import { Prisma } from "@prisma/client";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { sendSms, normalizePhone, smsConfigured } from "@/lib/sms";
 import { recordAccess } from "@/lib/access-log";
-import { OWNER_RECOVERY_ENABLED } from "@/lib/owner-recovery";
+import { ownerRecoveryState, type OwnerRecoveryFields } from "@/lib/owner-recovery";
 import { randomInt } from "crypto";
 
 /**
@@ -32,9 +32,14 @@ import { randomInt } from "crypto";
  *    화면의 "아직 복구 안 됩니다" 경고가 사라진 것을 보고 "이제 되찾을 수 있다"고 믿는데,
  *    실제로는 이 파일이 여전히 막고 있어 **인증번호가 영영 오지 않는다**(검수 치명 2의 부활).
  *    이제 두 곳이 같은 상수를 보므로 그 어긋남이 구조적으로 불가능하다.
+ *
+ * 2026-11-21: 스위치 하나 → **판정 함수 하나**(ownerRecoveryState)로 넓혔다. 스위치가 켜져 있어도
+ *    ①번호를 문자로 확인했고 ②번호를 바꾼 지 72시간이 지났을 때만 열린다. 화면도 같은 함수를 쓴다.
+ *    직원·관리자 계정은 이 판정과 무관하다(isOwner가 false면 언제나 통과).
  */
-function ownerBlocked(isOwner: boolean): boolean {
-  return isOwner && !OWNER_RECOVERY_ENABLED;
+const OWNER_FIELDS = { phoneChangedAt: true, phoneVerifiedAt: true, phoneVerifiedNumber: true } as const;
+function ownerBlocked(user: { isOwner: boolean } & OwnerRecoveryFields, now: Date): boolean {
+  return user.isOwner && !ownerRecoveryState(user, now).ready;
 }
 
 // ── 정책 값(전부 여기 한 곳에서만 고친다) ──────────────────────────────────
@@ -117,13 +122,13 @@ async function issueResetCodeInner(
 
   const user = await prisma.user.findUnique({
     where: { email },
-    select: { id: true, companyId: true, name: true, phone: true, deactivatedAt: true, isOwner: true, company: { select: { name: true } } },
+    select: { id: true, companyId: true, name: true, phone: true, deactivatedAt: true, isOwner: true, ...OWNER_FIELDS, company: { select: { name: true } } },
   });
 
   // 아래는 전부 조용히 종료한다 — 사유를 하나라도 알려주면 계정·전화번호 확인 창구가 된다.
   //  · 계정 없음 / 퇴사자 / 🔒 회사 계정(스위치가 꺼져 있는 동안은 이 경로로 못 되찾는다)
   //  · 전화번호 뒷자리 불일치(전화번호 미등록이면 phoneTailMatches가 항상 false)
-  if (!user || user.deactivatedAt || ownerBlocked(user.isOwner)) return;
+  if (!user || user.deactivatedAt || ownerBlocked(user, now)) return;
   if (!phoneTailMatches(user.phone, phoneTail)) return;
 
   // ── 1분 1건: DB 유니크 슬롯으로 선점한다(actions/sms.ts의 P2002 선점 패턴과 같은 방식). ──
@@ -250,9 +255,10 @@ export async function checkResetCode(
 ): Promise<{ ok: true; userId: string } | { ok: false }> {
   const user = await prisma.user.findUnique({
     where: { email },
-    select: { id: true, companyId: true, name: true, deactivatedAt: true, isOwner: true },
+    select: { id: true, companyId: true, name: true, deactivatedAt: true, isOwner: true, phone: true, ...OWNER_FIELDS },
   });
-  if (!user || user.deactivatedAt || ownerBlocked(user.isOwner)) return { ok: false };
+  // 🔒 확인 단계에서도 다시 판정한다 — 인증번호를 받은 뒤 번호가 바뀌었으면(=72시간 잠금 시작) 그 코드는 못 쓴다.
+  if (!user || user.deactivatedAt || ownerBlocked(user, now)) return { ok: false };
 
   const live = await findLiveCode(user.id, now);
   if (!live) return { ok: false };

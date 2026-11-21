@@ -17,6 +17,7 @@ import { countUncheckedAnomalies } from "@/lib/anomaly";
 import { purgeWorkRecordsDaily } from "@/lib/work-record-retention";
 import { trialStatus, trialLastDay, formatKoreanDate } from "@/lib/trial";
 import { loadAwayDays } from "@/lib/away-server";
+import { ownerRecoveryState } from "@/lib/owner-recovery";
 import { DashboardCalendar } from "./DashboardCalendar";
 import { LatestNoticeModal } from "./LatestNoticeModal";
 import type { DayData } from "@/app/schedule/ScheduleCalendar";
@@ -350,6 +351,26 @@ export default async function DashboardPage() {
         ? { bg: "#FFF7ED", border: "#FED7AA", fg: "#9A3412" } // 얼마 안 남음
         : { bg: "#EFF6FF", border: "#BFDBFE", fg: "#1E40AF" }; // 넉넉함
 
+  // ── 회사 계정 복구 준비 안내 (2026-11-21) ─────────────────────────────────
+  //  · 왜 여기에: 회사 계정은 평소 잘 안 쓰는 계정이라 [계정 설정]에만 두면 아무도 번호를 확인하지 않는다.
+  //    그러면 복구 기능이 있어도 정작 필요한 날 쓸 수 없다(lib/owner-recovery.ts 머리말의 점검 항목).
+  //  · 관리자 모두에게 보인다 — 회사 계정이 아닌 관리자는 직접 고칠 수 없으니 "회사 계정으로 확인하라"고만 안내한다.
+  //  · 기능이 꺼져 있거나(disabled) 72시간 대기(locked) 중이면 띄우지 않는다 — 할 수 있는 일이 없다.
+  //  · 부가기능이라 실패해도 대시보드는 그대로 뜬다.
+  let ownerRecoveryTodo = false;
+  try {
+    const owner = await prisma.user.findFirst({
+      where: { companyId: me.companyId, isOwner: true, deactivatedAt: null },
+      select: { phone: true, phoneChangedAt: true, phoneVerifiedAt: true, phoneVerifiedNumber: true },
+    });
+    if (owner) {
+      const st = ownerRecoveryState(owner);
+      ownerRecoveryTodo = !st.ready && (st.reason === "no_phone" || st.reason === "not_mobile" || st.reason === "not_verified");
+    }
+  } catch (e) {
+    console.warn("[dashboard] 회사 계정 복구 상태 확인 실패(안내 생략):", e);
+  }
+
   return (
     <AppShell user={me} active="dashboard" title="대시보드" subtitle={me.company.name} right={datePill}>
       {trial && trialTone && (
@@ -371,6 +392,28 @@ export default async function DashboardPage() {
               <strong>{`무료 이용 기간: ${formatKoreanDate(trialLastDay(trial.endsAt))}까지`}</strong>
               {` (${trial.daysLeft}일 남음)`}
             </>
+          )}
+        </div>
+      )}
+      {ownerRecoveryTodo && (
+        <div
+          role="status"
+          style={{
+            marginBottom: 16, padding: "12px 16px", borderRadius: 10,
+            background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E",
+            fontSize: 14, lineHeight: 1.6, wordBreak: "keep-all", overflowWrap: "break-word",
+          }}
+        >
+          <strong>회사 계정의 복구용 휴대폰 번호를 확인해 주세요.</strong>
+          {me.isOwner ? (
+            <>
+              {" 확인해 두어야 비밀번호를 잊었을 때 문자로 직접 되찾을 수 있습니다. "}
+              <Link href="/account" style={{ color: "#92400E", fontWeight: 700, textDecoration: "underline" }}>
+                계정 설정에서 확인하기
+              </Link>
+            </>
+          ) : (
+            " 회사 계정으로 로그인해 [계정 설정]에서 확인해 두어야, 회사 계정 비밀번호를 잊었을 때 되찾을 수 있습니다."
           )}
         </div>
       )}

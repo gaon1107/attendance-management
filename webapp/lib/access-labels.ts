@@ -115,6 +115,7 @@ function baseMetaLabel(meta: string): string {
     reset_code_blocked: "인증번호 요청 차단(과다 요청)",
     reset_code_verify_blocked: "인증번호 확인 차단(과다 요청)",
     password_reset_by_sms_code: "본인 비밀번호 재설정(문자 인증)",
+    owner_recovery_phone_verified: "회사 계정 복구용 연락처 확인(문자 인증)",
     // 운영자(본사) 본인 계정 변경 — /operator/account. (2026-11-20 추가)
     //  🔴 이 세 줄이 없으면 [운영자 접속 기록]에서 **"무슨 일인지"가 공란("—")**으로 나온다.
     //     그러면 비밀번호를 찍어 본 시도가 로그인 문에서 난 실패와 구분되지 않아, 월 1회 기록을
