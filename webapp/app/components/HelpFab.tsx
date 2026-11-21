@@ -119,7 +119,7 @@ export function HelpFab({
             이름표만 남아 "열린다"고 말하게 된다(장 이름은 역할과 무관하게 넘어온다). */}
         {guideHref && guideLabel && (
           <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 8, wordBreak: "keep-all" }}>
-            {`[그림까지 자세히 보기] → 안내서 「${guideLabel}」 장이 열립니다.`}
+            {`[그림까지 자세히 보기] → 안내서의 「${guideLabel}」 자리가 열립니다.`}
           </div>
         )}
       </Modal>

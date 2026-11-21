@@ -54,6 +54,24 @@ const G = {
   price: { book: "admin" as const, anchor: "s8", label: "08 요금" },
   /** 직원 배포용 안내서 — 장 구분이 없어 통째로 연다(짧은 문서다). */
   emp: { book: "employee" as const, label: "직원용 출퇴근 안내" },
+
+  // ── 07장 안의 **화면 하나하나** (2026-11-21) ─────────────────────────
+  //  07장에 화면이 13개 들어가면서 장 맨 위로만 보내면 사장님이 스크롤로 찾아야 했다.
+  //  안내서의 그 화면 자리(<figure id="s7-…">)로 바로 연다.
+  //  ⚠️ 여기 anchor 를 바꾸면 **안내서의 id 도 함께** 바꿔야 한다 — 짝이 안 맞으면
+  //     없는 자리로 보내는 셈이라 조용히 07장 맨 위로 열린다(lib/guide.ts 가 목록과 대조).
+  etcNotice: { book: "admin" as const, anchor: "s7-notice", label: "07 그 밖의 화면 — 공지" },
+  etcSchedule: { book: "admin" as const, anchor: "s7-schedule", label: "07 그 밖의 화면 — 일정" },
+  etcAlerts: { book: "admin" as const, anchor: "s7-notifications", label: "07 그 밖의 화면 — 알림" },
+  etcLeaveSum: { book: "admin" as const, anchor: "s7-leave-summary", label: "07 그 밖의 화면 — 연차정산" },
+  etcBreak: { book: "admin" as const, anchor: "s7-break-time", label: "07 그 밖의 화면 — 휴게시간" },
+  etcCompany: { book: "admin" as const, anchor: "s7-company-info", label: "07 그 밖의 화면 — 회사정보" },
+  etcAccount: { book: "admin" as const, anchor: "s7-account", label: "07 그 밖의 화면 — 계정" },
+  etcBio: { book: "admin" as const, anchor: "s7-biometrics", label: "07 그 밖의 화면 — 생체정보" },
+  etcSecurity: { book: "admin" as const, anchor: "s7-security", label: "07 그 밖의 화면 — 보안로그" },
+  etcPc: { book: "admin" as const, anchor: "s7-pc-devices", label: "07 그 밖의 화면 — PC관리" },
+  etcShifts: { book: "admin" as const, anchor: "s7-shifts", label: "07 그 밖의 화면 — 근무표" },
+  etcApprovals: { book: "admin" as const, anchor: "s7-approvals", label: "07 그 밖의 화면 — 결재함" },
 };
 
 export const HELP: Partial<Record<HelpKey, HelpEntry>> = {
@@ -252,7 +270,7 @@ export const HELP: Partial<Record<HelpKey, HelpEntry>> = {
     title: "회사정보",
     intro: "회사 이름·로고·사업자 정보를 보고 고치는 화면입니다.",
     items: ["여기서 정한 회사 이름과 로고가 직원 화면에도 보입니다"],
-    guide: G.etc,
+    guide: G.etcCompany,
   },
   schedule: {
     title: "일정 캘린더",
@@ -270,7 +288,7 @@ export const HELP: Partial<Record<HelpKey, HelpEntry>> = {
         "일정을 더하거나 고치는 것은 관리자만 할 수 있습니다",
       ],
     },
-    guide: G.etc,
+    guide: G.etcSchedule,
   },
   subscription: {
     title: "구독·요금",
@@ -295,6 +313,7 @@ export const HELP: Partial<Record<HelpKey, HelpEntry>> = {
       intro: "회사가 올린 공지를 보는 화면입니다.",
       items: ["공지를 올리거나 지우는 것은 관리자만 할 수 있습니다"],
     },
+    guide: G.etcNotice,
   },
   "leave-summary": {
     title: "연차정산",
@@ -305,6 +324,7 @@ export const HELP: Partial<Record<HelpKey, HelpEntry>> = {
       "[엑셀 내보내기]로 받아 보관하거나 전달할 수 있습니다",
       "재직 중인 직원만 집계됩니다",
     ],
+    guide: G.etcLeaveSum,
   },
   "break-time": {
     title: "휴게시간 관리",
@@ -316,6 +336,7 @@ export const HELP: Partial<Record<HelpKey, HelpEntry>> = {
       "점검·표시 전용입니다 — 근무시간에서 휴게를 자동으로 빼지 않으므로 리포트 숫자는 달라지지 않습니다",
       "회사 기준은 법정 최소(30분·60분) 이상으로 정해 주세요 — 화면에서 그보다 낮은 값은 입력되지 않습니다",
     ],
+    guide: G.etcBreak,
   },
   shifts: {
     title: "근무표",
@@ -325,6 +346,7 @@ export const HELP: Partial<Record<HelpKey, HelpEntry>> = {
       "그 뒤 여기서 직원을 조에 배정합니다",
       "배정된 조의 시각을 기준으로 지각·조퇴를 판정합니다",
     ],
+    guide: G.etcShifts,
   },
   "pc-devices": {
     title: "PC 관리",
@@ -335,6 +357,7 @@ export const HELP: Partial<Record<HelpKey, HelpEntry>> = {
       "연결된 PC와 사용 기록을 봅니다",
       "PC-OFF를 켜고 끄는 것은 [설정 → 보안·PC]에서 합니다",
     ],
+    guide: G.etcPc,
   },
   security: {
     title: "보안로그",
@@ -346,6 +369,7 @@ export const HELP: Partial<Record<HelpKey, HelpEntry>> = {
       "[차단 IP] — 접속을 막은 주소 목록",
       "[로그인 이력]·[접속 로그]는 기간을 골라 엑셀로 내려받을 수 있습니다",
     ],
+    guide: G.etcSecurity,
   },
   notifications: {
     title: "알림 센터",
@@ -354,12 +378,13 @@ export const HELP: Partial<Record<HelpKey, HelpEntry>> = {
       "오른쪽 버튼을 누르면 그 신청 화면으로 바로 갑니다",
       "오늘 미출근·지각·조퇴와 주 52시간 초과는 여기가 아니라 대시보드에서 봅니다",
     ],
+    guide: G.etcAlerts,
   },
   approvals: {
     title: "결재함",
     intro: "지금 내 차례인 결재만 모아 보는 화면입니다. 결재선(부서장 결재 또는 상신자 지정)을 쓰는 회사에서만 보입니다.",
     items: ["내 차례인 신청을 승인하거나 반려합니다", "내 차례가 아닌 것은 여기 보이지 않습니다"],
-    guide: G.approve,
+    guide: G.etcApprovals,
   },
   "pending-approvals": {
     title: "밀린 결재",
@@ -388,6 +413,7 @@ export const HELP: Partial<Record<HelpKey, HelpEntry>> = {
       "비밀번호를 바꾸려면 현재 비밀번호를 먼저 넣어야 합니다",
       "[내 PC 연결]에서 PC-OFF 프로그램에 넣을 6자리 연결코드를 받습니다(회사 계정에는 이 칸이 없습니다)",
     ],
+    guide: G.etcAccount,
   },
 
   // ── 보안·기기 ──────────────────────────────────────────────────────────
@@ -399,7 +425,7 @@ export const HELP: Partial<Record<HelpKey, HelpEntry>> = {
       "직원이 동의를 철회하면 얼굴 정보를 삭제합니다",
       "얼굴인증은 직원에게 강제할 수 없습니다 — 위치(GPS) 방식을 함께 제공합니다",
     ],
-    guide: G.etc,
+    guide: G.etcBio,
   },
 
   // ── 내 근태(관리자도 씀) · 직원 메뉴 ────────────────────────────────────

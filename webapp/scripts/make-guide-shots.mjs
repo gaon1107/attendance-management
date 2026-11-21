@@ -119,7 +119,9 @@ async function hideDevBadge(page) {
   await page
     .addStyleTag({
       content:
-        "nextjs-portal,[data-nextjs-toast],[data-nextjs-dev-tools-button],#__next-build-watcher{display:none !important;}",
+        "nextjs-portal,[data-nextjs-toast],[data-nextjs-dev-tools-button],#__next-build-watcher{display:none !important;}" +
+        // 떠 있는 [도움말] 버튼 — 안내서 그림에서는 설명하려는 버튼을 가린다([PC관리]의 [연결코드 발급]).
+        'button[aria-label$="도움말 열기"]{display:none !important;}',
     })
     .catch(() => {});
 }
@@ -144,9 +146,6 @@ async function maskLocalhost(page) {
       while (walker.nextNode()) nodes.push(walker.currentNode);
       for (const n of nodes) {
         if (n.nodeValue && n.nodeValue.includes("localhost:3000")) n.nodeValue = fix(n.nodeValue);
-      }
-      for (const a of document.querySelectorAll('a[href*="localhost:3000"]')) {
-        a.setAttribute("href", fix(a.getAttribute("href")));
       }
     })
     .catch(() => {});
@@ -521,9 +520,16 @@ try {
         }
       };
       // Ctrl+C·창 닫기로 멈출 때도 되돌린다. Node 는 SIGINT 에서 finally 를 실행하지 않는다.
-      const onSignal = async () => { await restore("강제 종료"); await prisma.$disconnect().catch(() => {}); process.exit(130); };
-      process.once("SIGINT", onSignal);
-      process.once("SIGTERM", onSignal);
+      // 🔴 Windows 는 창을 X 로 닫거나 Ctrl+Break 를 누르면 SIGBREAK 만 온다(SIGINT·SIGTERM 아님).
+      //    그 경우 finally 도 돌지 않아 데모 회사가 바뀐 채로 남는다 — 비개발자는 되돌릴 수 없다.
+      const SIGNALS = ["SIGINT", "SIGTERM", "SIGBREAK", "SIGHUP"];
+      const onSignal = async () => {
+        await restore("강제 종료");
+        await browser.close().catch(() => {}); // 먼저 닫지 않으면 크로미움이 남는다(검수 경미 15)
+        await prisma.$disconnect().catch(() => {});
+        process.exit(130);
+      };
+      for (const sig of SIGNALS) process.once(sig, onSignal);
 
       try {
         await prisma.user.update({
@@ -539,8 +545,7 @@ try {
         await ctx.close();
       } finally {
         await restore();
-        process.off("SIGINT", onSignal);
-        process.off("SIGTERM", onSignal);
+        for (const sig of SIGNALS) process.off(sig, onSignal);
       }
     }
   }
@@ -584,9 +589,12 @@ try {
         if (restored) return;
         restored = true;
         try {
-          if (madeStepIds.length) await prisma.approvalStep.deleteMany({ where: { id: { in: madeStepIds } } });
-          await prisma.shift.deleteMany({ where: { companyId: demoCompany.id } });
+          // 🔴 **회사 설정을 먼저** 되돌린다. SQLite 잠금 등으로 중간에 실패하더라도
+          //    메뉴·판정을 좌우하는 설정만큼은 원래대로 남게 — 조·결재단계가 남는 것은 그보다 덜 위험하다.
           await prisma.company.update({ where: { id: demoCompany.id }, data: RESTORE });
+          if (madeStepIds.length) await prisma.approvalStep.deleteMany({ where: { id: { in: madeStepIds } } });
+          await prisma.shiftPattern.deleteMany({ where: { companyId: demoCompany.id } });
+          await prisma.shift.deleteMany({ where: { companyId: demoCompany.id } });
           console.log(`  · 데모 회사 설정을 원래대로 되돌렸습니다${label ? ` [${label}]` : ""}.`);
         } catch (e) {
           console.error("  ✖✖ 되돌리기에 실패했습니다. 아래대로 직접 고쳐 주세요.");
@@ -596,9 +604,16 @@ try {
           process.exitCode = 1;
         }
       };
-      const onSignal = async () => { await restore("강제 종료"); await prisma.$disconnect().catch(() => {}); process.exit(130); };
-      process.once("SIGINT", onSignal);
-      process.once("SIGTERM", onSignal);
+      // 🔴 Windows 는 창을 X 로 닫거나 Ctrl+Break 를 누르면 SIGBREAK 만 온다(SIGINT·SIGTERM 아님).
+      //    그 경우 finally 도 돌지 않아 데모 회사가 바뀐 채로 남는다 — 비개발자는 되돌릴 수 없다.
+      const SIGNALS = ["SIGINT", "SIGTERM", "SIGBREAK", "SIGHUP"];
+      const onSignal = async () => {
+        await restore("강제 종료");
+        await browser.close().catch(() => {}); // 먼저 닫지 않으면 크로미움이 남는다(검수 경미 15)
+        await prisma.$disconnect().catch(() => {});
+        process.exit(130);
+      };
+      for (const sig of SIGNALS) process.once(sig, onSignal);
 
       try {
         // (1) 교대근무 2교대 + 조 정의 — 근무표 화면이 직원 10명 × 요일 표로 나오게.
@@ -608,6 +623,26 @@ try {
         });
         await prisma.shift.create({ data: { companyId: demoCompany.id, order: 1, name: "주간조", startTime: "06:00", endTime: "14:00" } });
         await prisma.shift.create({ data: { companyId: demoCompany.id, order: 2, name: "야간조", startTime: "14:00", endTime: "22:00" } });
+
+        // 배정이 하나도 없으면 근무표가 **전부 '휴무'인 빈 표**로 찍혀, 무엇을 하는 화면인지 보이지 않는다.
+        // 앞 네 사람만 월~금 주간/야간으로 채운다(원복 때 이 회사의 ShiftPattern 을 전부 지운다).
+        {
+          const [s1, s2] = await prisma.shift.findMany({ where: { companyId: demoCompany.id }, orderBy: { order: "asc" }, select: { id: true } });
+          const who = await prisma.user.findMany({
+            where: { companyId: demoCompany.id, isOwner: false, deactivatedAt: null },
+            orderBy: { createdAt: "asc" }, take: 4, select: { id: true },
+          });
+          const rows = [];
+          for (let i = 0; i < who.length; i++) {
+            for (const dow of [1, 2, 3, 4, 5]) {
+              rows.push({ companyId: demoCompany.id, userId: who[i].id, dayOfWeek: dow, shiftId: i % 2 === 0 ? s1.id : s2.id });
+            }
+          }
+          if (rows.length) {
+            await prisma.shiftPattern.createMany({ data: rows });
+            console.log(`  · 근무표 그림이 빈 표로 찍히지 않게 ${who.length}명의 월~금 조를 임시로 배정했습니다.`);
+          }
+        }
 
         // (2) 결재함에 보여줄 "내 차례" 만들기.
         //  결재선을 켜기 전에 올라온 신청에는 결재단계가 없어 결재함이 **빈 화면**으로 찍힌다
@@ -645,8 +680,7 @@ try {
         await ctx.close();
       } finally {
         await restore();
-        process.off("SIGINT", onSignal);
-        process.off("SIGTERM", onSignal);
+        for (const sig of SIGNALS) process.off(sig, onSignal);
       }
     }
   }

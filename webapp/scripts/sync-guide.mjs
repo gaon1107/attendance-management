@@ -79,6 +79,13 @@ try {
     // 🔴 하나도 못 찾으면 **조용히 넘어가지 않는다.** 안내서 굽는 방식이 바뀌어 장 표시가 달라지면
     //    화면별 도움말의 [그림까지 자세히 보기]가 전부 맨 위로 가는데, 그걸 알아챌 길이 없다(검수 경미 10).
     //    ※ 직원 안내서는 원래 장 구분이 없다 — 그쪽은 정상이다.
+    // 🔴 표식 수집을 화면 단위(s7-…)까지 넓히면서 이 검사가 약해졌다 —
+    //    장 id 가 s0 → sec0 처럼 바뀌어도 figure 표식 13개가 잡혀 "0개"가 아니게 되기 때문이다.
+    //    그래서 **장 표식(s + 숫자)이 있는지 따로** 본다. 없으면 모든 [그림까지 자세히 보기]가 맨 위로만 열린다.
+    const chapters = anchors.filter((a) => a.startsWith("s") && Number.isInteger(Number(a.slice(1))));
+    if (chapters.length === 0 && name.includes("사용안내서")) {
+      console.warn(`[sync-guide] ⚠️ ${name} 에서 **장**(id="sN")을 하나도 찾지 못했습니다 — 화면별 도움말 링크가 모두 맨 위로 열립니다.`);
+    }
     if (anchors.length === 0 && name.includes("사용안내서")) {
       console.warn(`[sync-guide] ⚠️ ${name} 에서 장(id="sN")을 하나도 찾지 못했습니다 — 화면별 도움말 링크가 모두 맨 위로 열립니다.`);
     }
