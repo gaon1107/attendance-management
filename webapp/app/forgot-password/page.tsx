@@ -4,11 +4,16 @@
 //
 // ⚠️ 이 파일이 서버 컴포넌트인 이유: 문자 발송 설정 여부(.env)는 서버에서만 읽을 수 있다.
 //    설정이 안 됐는데 [A]를 보여주면 "인증번호를 보냈다"고 해놓고 영영 오지 않는 화면이 된다.
+import { connection } from "next/server";
 import { smsConfigured } from "@/lib/sms";
 import { ForgotPasswordForm } from "./ForgotPasswordForm";
 import { OWNER_RECOVERY_ENABLED } from "@/lib/owner-recovery";
 
-export default function ForgotPasswordPage() {
+export default async function ForgotPasswordPage() {
+  // 🔴 [2026-11-21 검수 치명 1] 요청마다 새로 그리게 한다. 이 줄이 없으면 Next가 이 화면을 **빌드할 때 한 번**
+  //    만들어 고정한다. 운영 빌드(Docker)에는 .env가 없으므로 "문자 꺼짐"으로 굳어, 운영에 문자 계정을 넣어도
+  //    문자 인증이 영영 나타나지 않는다(개발 서버는 늘 새로 그려서 시험으로는 안 잡힌다).
+  await connection();
   const smsEnabled = smsConfigured();
 
   return (

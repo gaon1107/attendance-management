@@ -3,6 +3,7 @@
 //  · 링크 복사는 무료(관리자가 직접 전달). "문자로 보내기"는 유료 발송 — 번호 입력 후 버튼, 초대 1건당 1회.
 import { useEffect, useRef, useState, useTransition } from "react";
 import { sendInviteSms } from "@/app/actions/sms";
+import { COMPANY_SMS_READY } from "@/lib/company-sms";
 
 export function InviteLink({ path, inviteId, smsSent }: { path: string; inviteId: string; smsSent?: boolean }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -66,8 +67,9 @@ export function InviteLink({ path, inviteId, smsSent }: { path: string; inviteId
         </button>
       </div>
 
-      {/* 문자 발송(선택) — 초대 1건당 1회 */}
-      {sent ? (
+      {/* 문자 발송(선택) — 초대 1건당 1회.
+          🔴 회사 문자 계정 기능이 생기기 전에는 입력칸·버튼을 그리지 않는다(lib/company-sms.ts) — 예전에 보낸 기록만 보인다. */}
+      {!COMPANY_SMS_READY && !sent ? null : sent ? (
         <div style={{ fontSize: 12, color: "#15803D", fontWeight: 700 }}>문자 발송됨 ✓ (초대당 1회)</div>
       ) : (
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

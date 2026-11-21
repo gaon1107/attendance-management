@@ -24,6 +24,8 @@ WORKDIR /app
 # 1) 부품 설치 — 목록 파일만 먼저 복사해, 코드만 바뀐 배포에서는 이 단계를 재사용(빌드 시간 단축)
 #    --include=dev: 빌드에 TypeScript·Tailwind가 필요하다. 선택 의존성(sharp 리눅스 바이너리)을 빼면 판독이 전부 실패하므로 omit 금지.
 COPY package.json package-lock.json ./
+# 학원관리와 같이 쓰는 문자 모듈(@newgaon/moashot) 묶음 — package.json이 file:vendor/…로 가리키므로 npm ci 전에 있어야 한다(2026-11-21)
+COPY vendor ./vendor
 COPY prisma ./prisma
 RUN npm ci --include=dev --no-audit --no-fund && npx prisma generate
 

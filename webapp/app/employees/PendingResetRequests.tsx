@@ -1,10 +1,11 @@
 "use client";
 // 비밀번호 재설정 요청 대기열(관리자) — 직원이 접수한 요청을 보고 "임시 비밀번호 발급"을 누른다.
 // 발급하면 임시 비밀번호가 화면에 표시되고, 관리자가 그 값을 직원에게 전달한다.
-// (자동 메일 발송·문자 인증은 2차. 지금은 관리자가 직접 전달.)
+// (직원 스스로 문자로 되찾는 길은 [비밀번호 찾기]에 따로 있다. 여기 문자 보내기는 회사 문자 계정 연결 뒤 — lib/company-sms.ts)
 import { useState, useTransition } from "react";
 import { issueTempPassword } from "@/app/actions/password-reset";
 import { sendTempPasswordSms } from "@/app/actions/sms";
+import { COMPANY_SMS_READY } from "@/lib/company-sms";
 import { Icon } from "@/app/components/Icon";
 
 type Req = { id: string; name: string; email: string; createdAtLabel: string };
@@ -123,7 +124,8 @@ export function PendingResetRequests({ requests }: { requests: Req[] }) {
                       <span style={{ height: 36, display: "inline-flex", alignItems: "center", padding: "0 14px", border: "1px solid #BBF7D0", borderRadius: 8, background: "#F0FDF4", color: "#15803D", fontSize: 13, fontWeight: 700 }}>
                         문자 발송됨 ✓
                       </span>
-                    ) : (
+                    ) : !COMPANY_SMS_READY ? null : (
+                      // 🔴 회사 문자 계정 기능이 생기기 전에는 버튼을 그리지 않는다(lib/company-sms.ts).
                       <button
                         type="button"
                         onClick={() => handleSendSms(r.id, tempPw)}
@@ -145,7 +147,12 @@ export function PendingResetRequests({ requests }: { requests: Req[] }) {
                     <div style={{ fontSize: 12, color: "var(--danger)", fontWeight: 700, marginTop: 8 }}>{smsErr[r.id]}</div>
                   )}
                   <div style={{ fontSize: 12, color: "#166534", marginTop: 8, lineHeight: 1.6 }}>
-                    직원의 기존 로그인은 해제되었습니다. 임시 비밀번호로 로그인하면 새 비밀번호를 정하는 화면으로 이동합니다. <b>문자로 보내기</b>는 직원 전화번호가 등록돼 있어야 하며 1회만 보낼 수 있습니다.
+                    직원의 기존 로그인은 해제되었습니다. 임시 비밀번호로 로그인하면 새 비밀번호를 정하는 화면으로 이동합니다.
+                    {COMPANY_SMS_READY ? (
+                      <> <b>문자로 보내기</b>는 직원 전화번호가 등록돼 있어야 하며 1회만 보낼 수 있습니다.</>
+                    ) : (
+                      " 임시 비밀번호를 복사해 직원에게 직접 전달해 주세요."
+                    )}
                   </div>
                 </div>
               )}

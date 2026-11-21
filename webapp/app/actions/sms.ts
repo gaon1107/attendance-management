@@ -1,5 +1,9 @@
 "use server";
-// 문자(아이원24) 발송 액션 — 초대·임시비밀번호(A-2). 관리자 전용·회사격리.
+// 문자 발송 액션 — 초대·임시비밀번호(A-2). 관리자 전용·회사격리.
+//  🔴 2026-11-21: **지금은 두 액션 모두 거부한다**(lib/company-sms.ts COMPANY_SMS_READY=false).
+//     이 문자들은 각 회사의 모아샷 계정으로 보내기로 했는데(사장님 결정) 그 기능이 아직 없다.
+//     .env 계정은 가온이 요금을 내는 인증 문자 전용이다. 화면 버튼도 숨겼지만 서버 액션은 화면과 무관하게
+//     호출될 수 있으므로 여기서도 막는다.
 //  · 버튼 수동 발송 + 1회 제한(같은 초대/요청 중복발송 차단). 1회 제한은 SmsLog 유니크로 원자 보장.
 //  · 문자는 부가기능 — 실패해도 초대 생성·임시비번 발급 본기능에는 영향 없음(별도 액션).
 import { prisma } from "@/lib/db";
@@ -8,6 +12,10 @@ import { getCurrentUser } from "@/lib/session";
 import { sendSms, normalizePhone } from "@/lib/sms";
 import { verifyPassword } from "@/lib/password";
 import { revalidatePath } from "next/cache";
+import { COMPANY_SMS_READY } from "@/lib/company-sms";
+
+/** 회사 문자 계정이 없을 때의 거부 문구. */
+const COMPANY_SMS_OFF = "문자 보내기는 회사 문자 계정을 연결한 뒤에 쓸 수 있습니다. 지금은 링크·비밀번호를 복사해 직접 전달해 주세요.";
 
 type ActionResult = { error?: string; ok?: boolean };
 
@@ -29,7 +37,7 @@ async function claimSendFinalize(input: {
   // 🔴 [검수 M-8] "보내는 중(pending)"으로 영구히 잠기는 것을 푼다.
   //    발송 도중 서버가 재시작되면 pending 기록이 남고, 유니크 제약 때문에 그 초대·임시비번은
   //    영원히 "이미 보내는 중입니다"만 반복했다(다시 보낼 방법이 없었다).
-  //    아이원24 호출은 10초 제한이므로, STALE_PENDING_MS(5분)이 지난 pending은 정상 진행 중일 수 없다.
+  //    문자 발송 호출은 10초 제한이므로, STALE_PENDING_MS(5분)이 지난 pending은 정상 진행 중일 수 없다.
   //
   //  ⚠️ 두 가지를 지킨다(검수 중간 5):
   //   ① **"실패"라고 단정하지 않는다** — 문자가 실제로 나가고 과금까지 된 뒤에 서버가 죽었을 수 있다.
@@ -100,6 +108,7 @@ async function claimSendFinalize(input: {
 export async function sendInviteSms(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const me = await getCurrentUser();
   if (!me || me.role !== "admin") return { error: "권한이 없습니다." };
+  if (!COMPANY_SMS_READY) return { error: COMPANY_SMS_OFF };
 
   const inviteId = String(formData.get("inviteId") ?? "");
   const url = String(formData.get("url") ?? "").trim();
@@ -127,6 +136,7 @@ export async function sendInviteSms(_prev: ActionResult, formData: FormData): Pr
 export async function sendTempPasswordSms(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const me = await getCurrentUser();
   if (!me || me.role !== "admin") return { error: "권한이 없습니다." };
+  if (!COMPANY_SMS_READY) return { error: COMPANY_SMS_OFF };
 
   const requestId = String(formData.get("requestId") ?? "");
   const temp = String(formData.get("temp") ?? "");

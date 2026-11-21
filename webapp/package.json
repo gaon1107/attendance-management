@@ -12,6 +12,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@newgaon/moashot": "file:vendor/newgaon-moashot-0.3.2.tgz",
     "@prisma/client": "^6.19.3",
     "exceljs": "^4.4.0",
     "iconv-lite": "^0.7.3",

@@ -77,7 +77,8 @@ export async function issuePhoneVerifyCode(user: Owner, now: Date = new Date()):
   const minutes = Math.round(CODE_TTL_MS / 60000);
   // ⚠️ 회사명을 넣지 않는다 — 관리자가 바꿀 수 있는 임의 문구라 우리 발신번호 문자 앞부분을 남이 쓰게 된다
   //    (actions/account.ts 통지 문자와 같은 규칙).
-  const text = `[근태관리] 복구용 연락처 확인 인증번호 ${code} (${minutes}분 이내 입력). 요청한 적 없으면 무시하세요.`;
+  // 끝 마침표가 없다 — 있으면 91바이트로 단문 한도(90)를 넘어 매번 비싼 장문으로 나간다(검수 경미 8).
+  const text = `[근태관리] 복구용 연락처 확인 인증번호 ${code} (${minutes}분 이내 입력). 요청한 적 없으면 무시하세요`;
 
   // 발송 기록 — 전체 발송 상한(lib/sms.ts M7)이 이 행을 센다. 셀 수 없는 문자는 보내지 않는다.
   let logId: string;

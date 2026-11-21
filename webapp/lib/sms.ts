@@ -1,16 +1,14 @@
-// 아이원24(iOne24) 문자 발송 — 초대·임시비밀번호 발송용(부가 수단).
-// 원본: newgaon-LMS/SMS_연동_이식_가이드.md (Java/GFKids)의 API 규격을 TypeScript로 재구현.
-// 규격: POST form-urlencoded(본문 EUC-KR) / 응답 body 비어있으면 성공 / 90byte 이하=SMS·초과=LMS.
-// ※ 계정(발신ID·비번·발신번호)은 .env에서만 읽는다(하드코딩 금지). 미설정이면 안전하게 실패 반환.
-import iconv from "iconv-lite";
+// 문자 발송 — 비즈모아샷(㈜신안정보통신). **학원관리와 같은 공용 모듈(@newgaon/moashot)**로 보낸다.
+//  · 모듈 원본: newgaon-LMS/backend/lib/moashot (유일한 원본). 근태는 vendor/newgaon-moashot-<버전>.tgz로 설치한다.
+//    학원관리 운영에서 실발송이 검증된 코드다(2026-10-02 "패스워드 오류" 수정, 10-30 연결 재시도 보완).
+//  · 2026-11-21 사장님 결정: **인증 문자는 가온 계정 하나로** 보낸다(이 파일의 .env 계정).
+//    회사 공지·초대·임시비번·카카오톡은 **각 회사가 모아샷에 가입한 계정**으로 보낼 예정이다(아직 없음 —
+//    그래서 지금 일반 문자(purpose "general")는 actions/sms.ts에서 막혀 있다. lib/company-sms.ts 참고).
+//  · 예전에 쓰던 아이원24 연동은 근태 운영에서 한 번도 켠 적이 없어 걷어냈다.
+//  ※ 계정(아이디·비번·발신번호·발송주소)은 .env에서만 읽는다(하드코딩 금지). 하나라도 없으면 보내지 않는다.
+import { sendSms as moashotSendSms } from "@newgaon/moashot";
 import { normalizePhone } from "@/lib/phone";
 import { prisma } from "@/lib/db";
-
-// 발송 주소는 **보낼 때마다** 읽는다(예전엔 파일을 처음 불러올 때 한 번 읽어 고정했다).
-//  · 운영 동작은 같다. 시험할 때 가짜 수신처로 돌려도 서버를 재시작하지 않아도 되게 하려는 것이다.
-function sendUrl(): string {
-  return process.env.IONE_SMS_SEND_URL || "http://smsmsgr.ione24.com/slma_action_gaon.ashx";
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔴 [보안검수 M7] 문자 발송 상한 — 요금 폭탄 방지 + **한 회사가 다른 회사의 문자를 막지 못하게**.
@@ -133,43 +131,10 @@ export async function smsQuotaAllows(companyId: string, purpose: SmsPurpose, now
   return (await quotaBlock(companyId, purpose, now, false)) === null;
 }
 
-// EUC-KR 기준 바이트 길이(한글 2·ASCII 1). SMS/LMS 구분에 사용.
-export function smsByteLength(text: string): number {
-  return iconv.encode(text ?? "", "euc-kr").length;
-}
-
-// 90바이트 이하면 SMS(pslma=0), 초과면 LMS(pslma=1).
-export function isSmsType(text: string): boolean {
-  return smsByteLength(text) <= 90;
-}
-
-// 전화번호에서 숫자만 남긴다 — **원본은 lib/phone.ts에 있다**(이 파일은 iconv-lite를 쓰는 서버 전용이라,
-// 화면 코드가 전화번호 도우미 때문에 이 파일을 부르지 않게 하려고 옮겼다). 기존 import 경로는 유지된다.
+// 전화번호에서 숫자만 남긴다 — **원본은 lib/phone.ts에 있다.** 기존 import 경로를 위해 다시 내보낸다.
 export { normalizePhone } from "@/lib/phone";
 
-// EUC-KR form-urlencoded 값 인코딩: 값을 EUC-KR 바이트로 만든 뒤 퍼센트 인코딩(영숫자만 그대로, 공백은 +).
-function percentEncodeEucKr(value: string): string {
-  const bytes = iconv.encode(value ?? "", "euc-kr");
-  let out = "";
-  for (const b of bytes) {
-    if ((b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5a) || (b >= 0x61 && b <= 0x7a)) {
-      out += String.fromCharCode(b); // 0-9 A-Z a-z
-    } else if (b === 0x20) {
-      out += "+"; // 공백
-    } else {
-      out += "%" + b.toString(16).toUpperCase().padStart(2, "0");
-    }
-  }
-  return out;
-}
-
-function eucKrFormBody(params: Record<string, string>): string {
-  return Object.entries(params)
-    .map(([k, v]) => `${k}=${percentEncodeEucKr(v ?? "")}`)
-    .join("&");
-}
-
-// 문자 발송이 쓸 수 있는 상태인가(.env 계정 3개가 모두 있는가).
+// 가온 인증 문자 계정이 쓸 수 있는 상태인가(.env 4개가 모두 있는가).
 //  · [비밀번호 찾기]가 이 값으로 화면을 가른다: 미설정이면 문자 인증코드 방식을 아예 보여주지 않고
 //    기존 "관리자 승인" 방식으로 안내한다. 안 그러면 "코드를 보냈다"고 해놓고 영영 안 오는 화면이 된다.
 //  · 계정 값 자체는 절대 밖으로 내보내지 않는다 — 있고 없음만 알린다.
@@ -178,26 +143,53 @@ export function smsConfigured(): boolean {
 }
 
 // .env 계정. 하나라도 없으면 null(→ 발송 안 함, 안전 실패).
-function account(): { id: string; pw: string; sender: string } | null {
-  const id = process.env.IONE_SMS_ID;
-  const pw = process.env.IONE_SMS_PW;
-  const sender = process.env.IONE_SMS_SENDER;
-  if (!id || !pw || !sender) return null;
-  return { id, pw, sender: normalizePhone(sender) };
+//  · 발송 주소도 필수다 — 모듈이 주소가 없으면 보내지 않는다(실서버 오발송 방지 설계). 운영 값은
+//    https://biz.moashot.com/EXT/URLASP/mssendUTF.asp (= 모듈의 DEFAULT_SEND_URL).
+//  · 주소는 **보낼 때마다** 읽는다 — 시험 때 가짜 수신처로 돌려도 서버를 재시작하지 않아도 된다.
+//  · 🔴 [검수 중간 4] 값이 "있기만" 하면 켜진 것으로 보면 안 된다. 발송 주소가 http이거나 발신번호 모양이
+//    틀리면 모듈이 보내기를 거부하는데, 화면은 문자 인증을 보여 주고 비밀번호 찾기는 일부러 아무 말도 안 하므로
+//    직원은 영영 안 오는 문자를 기다린다. → 모듈이 거부할 값이면 **처음부터 꺼진 것으로** 본다.
+function account(): { id: string; password: string; sender: string; sendUrl: string } | null {
+  const id = process.env.MOASHOT_ID;
+  const password = process.env.MOASHOT_PW;
+  const sender = normalizePhone(process.env.MOASHOT_SENDER ?? "");
+  const sendUrl = (process.env.MOASHOT_SEND_URL ?? "").trim();
+  if (!id || !password || !sender || !sendUrl) return null;
+  if (!/^[0-9]{8,12}$/.test(sender) || !isAllowedSendUrl(sendUrl)) {
+    warnBadConfigOnce();
+    return null;
+  }
+  return { id, password, sender, sendUrl };
 }
 
-// 아이원24 응답 해석(순수함수, 테스트용). 응답 body가 비어있으면 성공.
-export function interpretSmsResponse(httpOk: boolean, status: number, respText: string): SmsResult {
-  if (!httpOk) return { ok: false, detail: `발송 서버 오류(HTTP ${status})` };
-  const t = (respText ?? "").trim();
-  if (t === "") return { ok: true, detail: "발송 성공" };
-  return { ok: false, detail: t };
+/** 모듈(sms.js isSecureSendUrl)과 같은 규칙 — https만, 시험용 내 컴퓨터 주소만 http 허용. */
+function isAllowedSendUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol === "https:") return true;
+    return u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]", "::1"].includes(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+let badConfigWarned = false;
+function warnBadConfigOnce(): void {
+  if (badConfigWarned) return;
+  badConfigWarned = true;
+  // 값 자체는 남기지 않는다(비밀번호가 섞일 수 있다). 어느 칸을 볼지만 알린다.
+  console.error("[sms] 🔴 문자 설정값이 잘못돼 문자를 끈 상태로 둔다 — MOASHOT_SEND_URL은 https, MOASHOT_SENDER는 숫자 8~12자리여야 한다.");
 }
 
 export type SmsResult = { ok: boolean; detail: string };
 
-// 문자 1건 발송. text 길이에 따라 SMS/LMS 자동 구분. 예외·미설정은 던지지 않고 결과로 반환한다.
+/** 발송 응답이 늦을 때 기다리는 최대 시간. 서버 동작이 매달리지 않게 한다. */
+const SEND_TIMEOUT_MS = 10_000;
+
+// 문자 1건 발송. 단문/장문은 모듈이 자동으로 가른다(EUC-KR 90바이트). 예외·미설정은 던지지 않고 결과로 반환한다.
 //  · companyId·purpose는 **필수**다 — 빠뜨리면 회사별 상한·보안 문자 몫이 조용히 무력화된다(검수 C-1).
+//  · ⚠️ ok는 비즈모아샷이 **접수**했다는 뜻이다(실제 도착 결과는 콜백으로 오는데, 근태는 아직 콜백을 받지 않는다).
+//    화면 문구가 "보냈습니다/요청했습니다"까지만 말하는 이유다(도착을 보장하지 않는다).
 export async function sendSms(opts: { to: string; text: string; subject?: string; companyId: string; purpose: SmsPurpose }): Promise<SmsResult> {
   const acc = account();
   if (!acc) return { ok: false, detail: "문자 발송계정이 설정되지 않았습니다(.env)." };
@@ -214,34 +206,28 @@ export async function sendSms(opts: { to: string; text: string; subject?: string
     if (blocked) return { ok: false, detail: blocked };
   }
 
-  const sms = isSmsType(text);
-  const params: Record<string, string> = {
-    pslma: sms ? "0" : "1",
-    pid: acc.id,
-    ppwd: acc.pw,
-    pdestphone: to,
-    psendphone: acc.sender,
-    psubject: sms ? "" : (opts.subject ?? "근태관리 알림"), // 제목은 LMS만 의미 있음
-    pmsg: text,
-    purl: "",
-    pyellowkey: "",
-    ptemplatecode: "",
-    presend: "",
-    pfilename: "",
-    pfilebyte: "",
-  };
-
   try {
-    const res = await fetch(sendUrl(), {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded; charset=euc-kr" },
-      body: eucKrFormBody(params), // 이미 %인코딩된 ASCII 문자열
-      signal: AbortSignal.timeout(10000), // 아이원24 무응답 시 서버액션이 매달리지 않게 10초 제한
-    });
-    const buf = Buffer.from(await res.arrayBuffer());
-    const respText = iconv.decode(buf, "euc-kr");
-    return interpretSmsResponse(res.ok, res.status, respText);
+    const r = await moashotSendSms(
+      {
+        account: { id: acc.id, password: acc.password, sender: acc.sender },
+        to,
+        text,
+        title: opts.subject ?? "근태관리 알림", // 장문일 때만 제목으로 붙는다
+      },
+      { sendUrl: acc.sendUrl, timeoutMs: SEND_TIMEOUT_MS }
+    );
+    if (r.ok) return { ok: true, detail: "접수 성공" };
+    // 🔴 [검수 중간 3] 문자 회사가 답을 줬는데 실패면 모듈의 error에 **응답 원문**이 그대로 들어 있다
+    //    (오류 HTML 페이지 등). 그대로 돌려주면 발송기록·화면에 원문이 쌓이므로 정해진 문구로 바꾸고,
+    //    원문은 태그를 걷어 짧게 줄여 서버 로그에만 남긴다. 응답이 없는 실패(연결 오류·설정 거부)는
+    //    모듈이 만든 한글 사유라 그대로 쓴다.
+    if (r.raw) {
+      console.error("[sms] 문자 회사가 접수를 거절:", r.raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120));
+      return { ok: false, detail: "문자 회사가 접수를 거절했습니다." };
+    }
+    return { ok: false, detail: r.error ?? "문자 접수 실패" };
   } catch (e) {
+    // 모듈은 예외를 결과로 바꿔 주지만, 혹시 모를 예외도 이 함수 밖으로 던지지 않는다(호출부 약속).
     return { ok: false, detail: e instanceof Error ? e.message : "문자 발송 중 오류가 발생했습니다." };
   }
 }

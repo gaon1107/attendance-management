@@ -12,3 +12,5 @@ deploy/server/nginx/*.conf text eol=lf
 # (core.autocrlf)에 따라 LF 그대로 펼쳐지는데, 그러면 cmd가 줄을 잘못 읽어 메뉴가 아예
 # 뜨지 않는다(2026-11-20 실제 실행으로 확인). 저장소 안 .bat 5개 전부에 적용된다.
 *.bat text eol=crlf
+# 학원관리 공용 문자 모듈 묶음(webapp/vendor/*.tgz, 2026-11-21) — 줄바꿈 변환으로 바뀌면 lockfile 검증값과 어긋나 npm ci가 실패한다.
+*.tgz binary
