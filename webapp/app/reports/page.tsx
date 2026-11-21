@@ -13,7 +13,7 @@ import { loadOffDays } from "@/lib/holiday-server";
 import { leaveDateSet } from "@/lib/leave";
 import { loadShiftContext } from "@/lib/shift-server";
 import { loadAwayDays, awayOf } from "@/lib/away-server";
-import { absentCount } from "@/lib/report-days";
+import { dayBreakdown } from "@/lib/report-days";
 
 export default async function ReportsPage({
   searchParams,
@@ -157,7 +157,9 @@ export default async function ReportsPage({
   //  ⚠️ 승인된 출장·재택일은 결근에서 뺀다(2026-11-21). 엑셀·근로기록부와 **같은 함수**를 쓰므로
   //     이 화면의 결근 숫자도 자동으로 같아진다 — 여기서 따로 계산하지 말 것.
   const awayAll = await loadAwayDays(me.companyId, start, end);
-  function absentCountFor(
+  //  ⚠️ 결근과 **출장·재택(미기록)**을 한 번에 센다. 결근만 보여 주면 승인받고 안 누른 사람이
+  //     "근무일수 0 · 결근 0"으로 보여 아무 일 없는 것처럼 읽힌다(검수 치명 3).
+  function countsFor(
     userId: string,
     userWorkDays: string | null,
     shiftGroupId: string | null,
@@ -165,14 +167,15 @@ export default async function ReportsPage({
     leaveDays: Set<string>,
     hireDate: Date | null,
     deactivatedAt: Date | null
-  ): number {
-    return absentCount({
+  ): { absent: number; away: number } {
+    const r = dayBreakdown({
       start, absLimit,
       workDays: effectiveWorkDays(userWorkDays, company?.workDays),
       offDays, shiftCtx, userId, shiftGroupId, attended, leaveDays,
       awayDays: awayOf(awayAll, userId),
       hireDate, deactivatedAt,
     });
+    return { absent: r.absent.length, away: r.away.length };
   }
 
   // 클라이언트로 넘길 직원별 요약(직렬화 가능한 순수 객체). 검색은 이름 기준.
@@ -188,7 +191,10 @@ export default async function ReportsPage({
       days: u.days.size,
       minutes: u.minutes,
       overtime: overtimeMinutesOf(u.dayMinutes),
-      absent: absentCountFor(u.id, u.workDays, u.shiftGroupId, u.days, leaveByUser.get(u.id) ?? new Set(), u.hireDate, u.deactivatedAt),
+      ...(() => {
+        const c = countsFor(u.id, u.workDays, u.shiftGroupId, u.days, leaveByUser.get(u.id) ?? new Set(), u.hireDate, u.deactivatedAt);
+        return { absent: c.absent, away: c.away };
+      })(),
       breaks: u.breaks,
       // ⚠️ 검색 대상에 "퇴사/재직"을 넣지 않는다(잠깐 넣었다가 되돌림 — 검수 4차).
       //    ① 화면 검색어 q는 그대로 엑셀·PDF로 넘어가는데 서버는 이 두 낱말을 모르니 **빈 법정문서**가 만들어졌다.

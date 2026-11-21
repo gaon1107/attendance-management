@@ -26,6 +26,9 @@ export type ReportRow = {
   minutes: number; // 실근무 합계(분)
   overtime: number; // 초과근무(분)
   absent: number; // 결근(일)
+  // 승인된 출장·재택인데 출퇴근 기록이 없는 날(일). 결근에서 빠진 날이므로 **반드시 함께 보여 준다** —
+  //  없으면 승인받고 한 달 내내 안 누른 사람이 "근무일수 0 · 결근 0"으로 보인다(검수 치명 3).
+  away: number;
   breaks: number; // 외출(회)
   search: string; // 검색용(이름 등)을 소문자로 합친 문자열
 };
@@ -129,13 +132,14 @@ export function ReportsClient({
                 <th style={{ ...th, textAlign: "right" }}>실근무 합계</th>
                 <th style={{ ...th, textAlign: "right" }}>초과근무</th>
                 <th style={{ ...th, textAlign: "right" }}>결근</th>
+                <th style={{ ...th, textAlign: "right", whiteSpace: "nowrap" }}>출장·재택</th>
                 <th style={{ ...th, textAlign: "right" }}>외출</th>
               </tr>
             </thead>
             <tbody>
               {pg.view.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={8} style={{ padding: "28px 20px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {q.trim() ? "검색 결과가 없습니다." : "이 기간에 출퇴근 기록이 없습니다."}
                   </td>
                 </tr>
@@ -159,6 +163,8 @@ export function ReportsClient({
                     <td style={{ ...td, textAlign: "right", fontWeight: 700, color: "var(--primary)", fontVariantNumeric: "tabular-nums" }}>{formatMinutes(s.minutes)}</td>
                     <td style={{ ...td, textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: s.overtime > 0 ? "var(--warning)" : "var(--text-sub)" }}>{s.overtime > 0 ? formatMinutes(s.overtime) : "—"}</td>
                     <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: s.absent > 0 ? "var(--danger)" : "var(--text-sub)" }}>{s.absent}일</td>
+                    {/* 승인된 출장·재택(출퇴근 미기록) — 결근에서 빠진 날. 0이면 눈에 띄지 않게 연한 색. */}
+                    <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", color: s.away > 0 ? "#0F766E" : "var(--text-sub)" }}>{s.away}일</td>
                     <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{s.breaks}회</td>
                   </tr>
                 ))

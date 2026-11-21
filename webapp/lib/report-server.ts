@@ -49,6 +49,11 @@ export type ReportPerson = {
   overtime: number; // 초과근무 합(분)
   absentDays: number;
   leaveDays: number;
+  /** 승인된 출장·재택인데 출퇴근 기록이 없는 날 수(2026-11-21).
+   *  🔴 **반드시 요약에 함께 보여 준다.** 이 숫자가 없으면 승인받고 한 달 내내 안 누른 사람이
+   *     "근무일수 0 · 실근무 0 · 결근 0"으로 보여 급여 담당자가 아무 일 없는 줄로 읽는다(검수 치명 3).
+   *     전에는 "결근 20일"이 빨갛게 떠서 바로 걸리던 자리다. */
+  awayDays: number;
 };
 
 // 반차 종류(하루의 절반). 휴가 일수를 셀 때 0.5로 센다 — 연차 차감(lib/leave.ts computeLeaveDays)과 같은 무게.
@@ -300,6 +305,7 @@ export async function buildReportBlocks(opts: {
       totalBreaks: u.totalBreaks,
       overtime,
       absentDays: absent.length,
+      awayDays: away.length,
       leaveDays: leaveDaysCount,
     });
   }

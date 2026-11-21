@@ -132,10 +132,13 @@ export async function GET(request: Request): Promise<Response> {
     { header: "초과근무(분)", key: "overtime", width: 13 },
     { header: "휴가(일)", key: "leave", width: 10 },
     { header: "결근(일)", key: "absent", width: 10 },
+    // 승인된 출장·재택(출퇴근 미기록) — 결근에서 빠진 날. 이 칸이 없으면 승인받고 안 누른 사람이
+    //  "근무일수 0 · 결근 0"으로 보여 아무 일 없는 것처럼 읽힌다(검수 치명 3).
+    { header: "출장·재택(일)", key: "away", width: 14 },
     { header: "외출(회)", key: "breaks", width: 10 },
   ];
   styleHeader(ws2);
-  ws2.autoFilter = { from: "A1", to: "K1" };
+  ws2.autoFilter = { from: "A1", to: "L1" };
   for (const p of people) {
     ws2.addRow({
       name: p.name,
@@ -148,10 +151,11 @@ export async function GET(request: Request): Promise<Response> {
       overtime: p.overtime,
       leave: p.leaveDays,
       absent: p.absentDays,
+      away: p.awayDays,
       breaks: p.totalBreaks,
     });
   }
-  for (const key of ["days", "worked", "overtime", "leave", "absent", "breaks"]) {
+  for (const key of ["days", "worked", "overtime", "leave", "absent", "away", "breaks"]) {
     ws2.getColumn(key).alignment = { horizontal: "right" };
   }
 

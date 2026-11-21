@@ -186,6 +186,9 @@ export default async function ReportPrintPage({
               <span>초과근무 합계 <b style={{ color: "#b45309" }}>{formatMinutes(b.overtime)}</b></span>
               <span>휴가 <b style={{ color: "#1d4ed8" }}>{b.leaveDays}</b>일</span>
               <span>결근 <b style={{ color: b.absentDays > 0 ? "#b91c1c" : "#111" }}>{b.absentDays}</b>일</span>
+              {/* 승인된 출장·재택(출퇴근 미기록) — 결근에서 빠진 날이므로 소계에도 남긴다.
+                  없으면 승인받고 안 누른 사람이 "근무일수 0 · 결근 0"으로 보인다(검수 치명 3). */}
+              <span>출장·재택 <b style={{ color: b.awayDays > 0 ? "#0F766E" : "#111" }}>{b.awayDays}</b>일</span>
               <span>외출 합계 <b>{b.totalBreaks}</b>회</span>
             </div>
           </div>
