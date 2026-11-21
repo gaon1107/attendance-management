@@ -9,6 +9,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { countMyPendingApprovals, isApprovalLineMember } from "@/lib/approval-server";
+import { SidebarScrollKeeper } from "./SidebarScrollKeeper";
 
 type NavUser = {
   id?: string;
@@ -430,6 +431,8 @@ export async function Sidebar({ user, active }: { user: NavUser; active: NavKey 
           );
         })}
       </nav>
+      {/* 화면을 옮겨도 메뉴바 스크롤 위치를 유지한다(2026-11-21 사장님 요청). 아무것도 그리지 않는다. */}
+      <SidebarScrollKeeper />
 
       {/* ── 하단 고정: 프로필(클릭 시 계정 설정) ──
           ※ 로그아웃 버튼은 상단바(AppShell)에 있다. 여기로 옮기면 AppShell을 고쳐야 해 이번 범위 밖이라
