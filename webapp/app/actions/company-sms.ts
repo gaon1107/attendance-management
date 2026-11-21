@@ -36,7 +36,7 @@ const TEST_MAX_PER_DAY = 5;
 const TEST_MAX_ATTEMPTS_PER_DAY = 10;
 /** 계정 저장 — 하루(24시간) 최대 횟수. 비밀번호를 바꿔 가며 맞춰 보는 것을 같이 묶는다(검수 M-2). */
 const SAVE_MAX_PER_DAY = 20;
-/** ⚠️ lib/sms.ts COMPANY_ACCOUNT_SMS_KINDS에 들어 있어야 한다 — 그래야 가온 전체 상한에서 빠진다(검수 M-3). */
+/** 발송기록 종류. 회사 계정 발송이라 기록에 viaCompany: true를 남긴다 — 그래야 가온 전체 상한에서 빠진다(lib/sms.ts). */
 const TEST_KIND = "sms_test";
 const DAY_MS = 24 * 60 * 60 * 1000;
 /**
@@ -103,8 +103,11 @@ export async function saveCompanySmsAccount(_prev: CompanySmsFormState, formData
     passwordEnc = encryptSmsPassword(password);
   }
 
-  await prisma.company.update({
-    where: { id: me.companyId },
+  // 🔒 조건부 갱신(1단계 검수 경미 2): 읽은 뒤 다른 관리자가 아이디를 바꿨으면 저장하지 않는다.
+  //    안 막으면 "A가 새 아이디+새 비밀번호 저장" 사이에 "B가 옛 아이디+비밀번호 유지로 저장"이 끼어들어
+  //    **옛 아이디 + 새 아이디의 비밀번호**라는 쓸 수 없는 조합이 남는다.
+  const saved = await prisma.company.updateMany({
+    where: { id: me.companyId, smsId: current?.smsId ?? null },
     data: {
       smsId,
       smsSender: sender,
@@ -112,6 +115,9 @@ export async function saveCompanySmsAccount(_prev: CompanySmsFormState, formData
       smsAccountUpdatedAt: new Date(),
     },
   });
+  if (saved.count === 0) {
+    return { error: "방금 다른 관리자가 문자 계정을 바꿨습니다. 화면을 새로 고친 뒤 다시 저장해 주세요." };
+  }
 
   const { ip, userAgent } = readClientMeta(await headers());
   await recordAccess({
@@ -182,7 +188,7 @@ export async function sendCompanySmsTest(_prev: CompanySmsFormState, formData: F
     const log = await prisma.smsLog.create({
       data: {
         companyId: me.companyId, userId: me.id, kind: TEST_KIND,
-        refId: `m${Math.floor(now.getTime() / 60000)}`, toNumber: to, result: "pending",
+        refId: `m${Math.floor(now.getTime() / 60000)}`, toNumber: to, result: "pending", viaCompany: true,
       },
       select: { id: true },
     });

@@ -91,7 +91,10 @@ export async function getCurrentUser(opts?: { allowMustChange?: boolean }) {
 
   const session = await prisma.session.findUnique({
     where: { token },
-    include: { user: { include: { company: true } } },
+    // 🔒 회사 문자 계정 비밀번호(암호문)는 로그인 정보에 싣지 않는다(2026-11-21, 메시지 관리 1단계 검수 경미 3).
+    //    모든 요청의 me.company에 실려 있으면, 누가 me를 화면 쪽으로 통째로 넘기는 순간 암호문이 브라우저로 샌다.
+    //    필요한 곳(발송)은 lib/company-sms-account.ts가 따로 읽는다.
+    include: { user: { include: { company: { omit: { smsPasswordEnc: true } } } } },
   });
   if (!session) return null;
   const now = new Date();

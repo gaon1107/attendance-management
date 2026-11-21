@@ -906,6 +906,13 @@ model SmsLog {
   result    String
   detail    String?  // 실패 사유 등 (비밀 본문 저장 금지)
   createdAt DateTime @default(now())
+  // 🔑 **회사의 비즈모아샷 계정으로 보냈는가**(2026-11-21, 메시지 관리 2단계). false = 가온 계정(.env).
+  //  · 가온 요금·가온 보안 문자 몫을 지키는 **전체 상한(lib/sms.ts GLOBAL_*)은 false인 것만** 센다.
+  //    회사 돈으로 나간 문자까지 세면 가입 회사 몇 곳이 문자를 보내는 것만으로 회사 계정 복구 문자가 막힌다.
+  //  · 회사별 상한(COMPANY_*)은 둘 다 센다.
+  //  · 같은 kind라도 갈린다: reset_code는 회사 계정(isOwner)이면 false, 직원이면 true.
+  //  · ⚠️ 칸을 맨 뒤에 둔다 — 중간에 넣으면 Prisma가 표 전체를 새로 만드는 마이그레이션을 만든다(운영 데이터 복사).
+  viaCompany Boolean @default(false)
 
   // 1회 제한을 DB에서 원자적으로 보장(동시 클릭 이중발송·이중과금 차단).
   //  ⚠️ recovery_notice는 refId를 **항상 null**로 넣어 이 제약을 피해 간다(같은 회사에서 여러 건 필요).

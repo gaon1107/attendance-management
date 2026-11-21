@@ -43,6 +43,15 @@ export async function getCompanySmsAccountStatus(companyId: string): Promise<Com
   };
 }
 
+/**
+ * 이 회사가 **지금 회사 계정으로 문자를 보낼 수 있는가** — 직원 비밀번호 찾기·초대·임시비번 문자를 켤지 정하는 판정.
+ *  · 세 칸이 모두 있고 저장된 비밀번호를 풀 수 있어야 true. 잔액·발신번호 사전등록 여부는 알 수 없다(보내 봐야 안다).
+ *  · 🔒 화면에 "켜져 있다"를 보여 주는 곳과 서버에서 막는 곳이 **같은 판정**을 써야 한다(어긋나면 버튼은 있는데 거부).
+ */
+export async function companySmsReady(companyId: string): Promise<boolean> {
+  return (await loadCompanySmsAccount(companyId)) !== null;
+}
+
 /** 발송용 계정을 꺼낸다. 연결 안 됨·비밀번호를 풀 수 없음이면 null(= 보내지 않는다). */
 export async function loadCompanySmsAccount(companyId: string): Promise<CompanySmsAccount | null> {
   const c = await prisma.company.findUnique({ where: { id: companyId }, select: ACCOUNT_SELECT });

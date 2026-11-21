@@ -77,18 +77,17 @@ const DAY_MS = 24 * HOUR_MS;
 
 /** 지난 windowMs 동안 실제로 나갔거나 나가는 중인 문자 건수. companyId를 주면 그 회사만. */
 /**
- * 회사 계정(그 회사 요금)으로 나가는 발송기록 종류. **전체 상한(GLOBAL_*)에서는 세지 않는다**(회사별 상한에는 센다).
+ * 지난 windowMs 동안의 발송 건수. companyId를 주면 그 회사의 **모든** 발송(가온·회사 계정 모두),
+ * 안 주면(전체 상한) **가온 계정 발송만**(SmsLog.viaCompany=false) 센다.
  *  · 전체 상한은 가온 요금과 가온 보안 문자 몫을 지키는 장치다. 회사 돈으로 나간 문자까지 세면, 가입 회사 몇 곳이
- *    시험 문자만 보내도 가온 보안 문자(회사 계정 복구) 여유가 줄어든다(2026-11-21 검수 M-3).
- *  · 기존 종류(가온 계정 발송)는 하나도 빠지지 않는다 — 이 목록에 새로 생긴 종류만 넣는다.
- *  · ⏳ 2단계에서 직원 비밀번호 찾기·초대·임시비번을 회사 계정으로 옮기면, 그 기록도 "회사 계정"으로 나눠 세야 한다.
+ *    문자를 보내는 것만으로 회사 계정 복구 문자가 막힌다(2026-11-21 검수 M-3 → 2단계에서 표시 칸으로 바꿈).
+ *  · ⚠️ 회사 계정으로 보내는 곳은 발송기록을 만들 때 **반드시 viaCompany: true**로 남겨야 한다
+ *    (빠뜨리면 회사 문자가 가온 전체 상한을 갉아먹는다). 현재: 시험 문자·직원 비밀번호 찾기·초대·임시비번.
  */
-export const COMPANY_ACCOUNT_SMS_KINDS = ["sms_test"];
-
 async function countRecentSends(now: Date, windowMs: number, companyId?: string): Promise<number> {
   return prisma.smsLog.count({
     where: {
-      ...(companyId ? { companyId } : { kind: { notIn: COMPANY_ACCOUNT_SMS_KINDS } }),
+      ...(companyId ? { companyId } : { viaCompany: false }),
       createdAt: { gte: new Date(now.getTime() - windowMs) },
       OR: [
         { result: { in: ["success", "unknown"] } },
@@ -252,7 +251,7 @@ export async function sendSms(opts: { to: string; text: string; subject?: string
 //    (개발 PC에서 실수로 실제 문자가 나가지 않게 하는 안전장치. 모듈 규칙과 같다).
 //  · 🔒 회사 격리: 계정은 opts.companyId의 것만 꺼낸다(loadCompanySmsAccount). 다른 회사 계정으로 보낼 길이 없다.
 //  · 상한(quotaBlock)은 가온 계정과 똑같이 적용한다 — 기록(SmsLog)을 **먼저** 만들고 부를 것(위 "어떻게 세나").
-//    회사 계정 발송기록은 전체 상한(GLOBAL_*)에서 뺀다 — 위 COMPANY_ACCOUNT_SMS_KINDS(검수 M-3).
+//    회사 계정 발송기록은 전체 상한(GLOBAL_*)에서 뺀다 — 기록에 viaCompany: true를 남길 것(위 countRecentSends).
 //  · 결과가 불확실한 실패(시간 초과·응답 도중 끊김)는 uncertain=true — 실제로 접수·과금됐을 수 있어
 //    부르는 쪽이 "결과 미확인(unknown)"으로 기록하게 한다(실패로 두면 요금 상한에서 빠진다).
 // ═══════════════════════════════════════════════════════════════════════════
@@ -268,9 +267,19 @@ function isUncertainFailure(detail: string | null | undefined): boolean {
   return /시간 초과|연결이 끊겼|연결이 닫혔/.test(detail ?? "");
 }
 
+/**
+ * 회사 계정 발송에 쓸 발송 주소가 서버에 설정돼 있는가(.env MOASHOT_SEND_URL, https).
+ *  · 가온 계정(smsConfigured)과 달리 아이디·비밀번호는 회사가 넣으므로 **주소만** 본다.
+ *  · 개발 PC처럼 주소가 없으면 회사 문자는 하나도 나가지 않는다(실수 발송 방지).
+ */
+export function companySmsSendAvailable(): boolean {
+  const sendUrl = (process.env.MOASHOT_SEND_URL ?? "").trim();
+  return !!sendUrl && isAllowedSendUrl(sendUrl);
+}
+
 export async function sendCompanySms(opts: { to: string; text: string; subject?: string; companyId: string; purpose: SmsPurpose }): Promise<CompanySmsResult> {
   const sendUrl = (process.env.MOASHOT_SEND_URL ?? "").trim();
-  if (!sendUrl || !isAllowedSendUrl(sendUrl)) {
+  if (!companySmsSendAvailable()) {
     return { ok: false, detail: "서버에 문자 발송 주소가 설정되지 않아 보내지 않았습니다. 가온 고객지원에 문의해 주세요." };
   }
 
