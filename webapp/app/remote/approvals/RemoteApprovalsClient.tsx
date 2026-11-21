@@ -21,6 +21,8 @@ export type RemoteRow = {
   status: string;
   statusLabel: string;
   progress?: string;
+  /** 승인하면 결근에서 사라질 날 수(지난 날짜가 걸린 신청만). 승인 확인 창의 경고에 쓴다. */
+  pastAbsentDays?: number;
   attachments: AttachmentInfo[];
   search: string;
 };
@@ -109,7 +111,7 @@ export function RemoteApprovalsClient({
                     </td>
                     <td style={{ ...td, textAlign: "right" }}>
                       <div style={{ display: "inline-flex", gap: 8 }}>
-                        <ConfirmApproveButton action={approveRemote} requestId={r.id} progress={r.progress} compact />
+                        <ConfirmApproveButton action={approveRemote} requestId={r.id} progress={r.progress} pastAbsentDays={r.pastAbsentDays} compact />
                         <RejectButton action={rejectRemote} requestId={r.id} compact />
                       </div>
                     </td>

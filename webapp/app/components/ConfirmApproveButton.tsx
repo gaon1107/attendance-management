@@ -13,15 +13,23 @@ export function ConfirmApproveButton({
   action,
   requestId,
   progress,
+  pastAbsentDays,
   compact = false,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   requestId: string;
   progress?: string; // 결재선 진행상황(있으면 건너뜀 경고 표시)
+  /** 승인하면 **결근에서 사라질 날 수**(출장·재택 승인 화면만 넘긴다. 사장님 지시 2026-11-21).
+   *  🔴 2026-11-21부터 승인된 출장·재택일은 결근이 아니다 → **지난 날짜**를 승인하면 법정
+   *     근로기록부에서 결근이 사라진다. 출장은 366일까지 신청할 수 있어 한 번에 1년치가 없어질 수 있다.
+   *     막지는 않고 **알리기만** 한다(lib/retroactive.ts 의 다른 소급 경고와 같은 원칙).
+   *  ⚠️ 안 넘기면(휴가·정정·외출·초과근무 승인 화면) 기존 그대로 — 경고가 뜨지 않는다. */
+  pastAbsentDays?: number;
   compact?: boolean; // 표 안에서 쓰는 작은 버튼
 }) {
   const [open, setOpen] = useState(false);
   const hasLine = !!(progress && progress.trim()); // 남은 결재선이 있는가
+  const past = pastAbsentDays ?? 0;
 
   const btnStyle: React.CSSProperties = {
     height: compact ? 34 : 38,
@@ -57,6 +65,18 @@ export function ConfirmApproveButton({
           <p style={{ fontSize: 14, color: "var(--text-sub)", lineHeight: 1.6, marginBottom: 12, wordBreak: "keep-all" }}>
             이 신청을 승인할까요?
           </p>
+        )}
+
+        {/* 지난 날짜가 걸린 출장·재택 승인 — 결재선 경고와 **함께** 뜰 수 있다(둘은 다른 이야기다). */}
+        {past > 0 && (
+          <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 8, padding: "12px 14px", marginBottom: 12 }}>
+            <p style={{ fontSize: 13, color: "#9A3412", fontWeight: 700, lineHeight: 1.6, margin: 0, wordBreak: "keep-all" }}>
+              {`⚠️ 지난 날짜가 포함돼 있습니다. 승인하면 그날 결근 ${past}일이 기록에서 사라집니다.`}
+            </p>
+            <p style={{ fontSize: 13, color: "var(--text-sub)", lineHeight: 1.6, margin: "6px 0 0", wordBreak: "keep-all" }}>
+              이미 뽑아 둔 리포트·근로기록부의 숫자와 달라집니다.
+            </p>
+          </div>
         )}
 
         <form action={action} onSubmit={() => setOpen(false)}>

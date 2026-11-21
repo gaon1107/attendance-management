@@ -445,3 +445,74 @@ export function holidayAuditText(mode: "add" | "delete", dateISO: string, im: Ho
   if (im.deductingLeaves > 0) impact.push(`차감휴가${im.deductingLeaves}건`);
   return `company_holiday_${mode === "add" ? "add" : "del"}(${dateISO}${im.isPast ? ", 소급" : ""}${impact.length ? ", " + impact.join("·") : ""})`;
 }
+
+// ── 지난 날짜 출장·재택 승인의 소급 영향 (사장님 지시 2026-11-21) ──────────────
+//
+// 왜 필요한가
+//  · 2026-11-21부터 **승인된 출장·재택일은 결근이 아니다.** 그래서 **지난 날짜**가 들어간 신청을
+//    승인하면 그날 결근이 **법정 근로기록부에서 사라진다.** 출장은 최대 366일까지 신청할 수 있어,
+//    승인 버튼 한 번으로 1년치 결근이 없어질 수 있다.
+//  · 승인 화면에는 그 사실을 알리는 장치가 없었다(승인은 원래 "허가 기록"일 뿐이었다).
+//  · 🔴 관리자가 1명뿐인 회사에서는 **본인이 본인 결근을 지울 수 있다**(자기승인 차단은 다른 관리자가
+//    있을 때만 작동한다). 최소한 **모르고 지나치는 일**은 없게 한다.
+//
+// 설계 원칙은 이 파일의 다른 계산과 같다: **세어서 알리기만 한다.** 막지 않는다.
+// 🔴 숫자는 리포트와 **같은 계산기**(dayBreakdown)로 센다 — 따로 세면 "경고는 3일인데 실제로는
+//    5일이 사라지는" 어긋남이 생긴다.
+
+/** 이 신청을 승인하면 **결근에서 사라질 날 수**. 0이면 경고할 것이 없다(앞날만 걸친 평범한 신청). */
+export async function countAbsentToDisappear(
+  companyId: string,
+  userId: string,
+  startDate: Date,
+  endDate: Date,
+  now: Date = new Date(),
+): Promise<number> {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const from = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  // 오늘·앞날은 아직 결근이 아니다 → 셀 것이 없다(리포트의 absLimit 과 같은 기준).
+  if (from >= today) return 0;
+  const lastDay = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+  const to = lastDay < today ? new Date(lastDay.getTime() + 86400000) : today; // 미포함 상한
+
+  const [user, company] = await Promise.all([
+    prisma.user.findFirst({
+      where: { id: userId, companyId },
+      select: { id: true, workDays: true, shiftGroupId: true, hireDate: true, deactivatedAt: true },
+    }),
+    prisma.company.findUnique({ where: { id: companyId }, select: { workDays: true, holidayAutoOn: true, shiftMode: true } }),
+  ]);
+  if (!user || !company) return 0;
+  // 교대근무 회사는 이 파일의 다른 계산과 같은 이유로 세지 않는다(조 배정까지 봐야 해 비용이 크고,
+  //  교대 회사에서 지난 날짜 출장 승인은 드물다). 0을 돌려주면 경고가 뜨지 않을 뿐 승인은 정상 동작한다.
+  if (company.shiftMode) return 0;
+
+  const [attended, leaves, offDays] = await Promise.all([
+    prisma.attendance.findMany({
+      where: { companyId, userId, clockIn: { gte: from, lt: to } },
+      select: { clockIn: true },
+    }),
+    prisma.leaveRequest.findMany({
+      where: { companyId, userId, status: "approved", startDate: { lt: to }, endDate: { gte: from } },
+      select: { type: true, startDate: true, endDate: true },
+    }),
+    loadOffDays(companyId, company.holidayAutoOn ?? true, from, to),
+  ]);
+
+  const { absent } = dayBreakdown({
+    start: from,
+    absLimit: to,
+    workDays: effectiveWorkDays(user.workDays, company.workDays),
+    offDays,
+    shiftCtx: null,
+    userId: user.id,
+    shiftGroupId: user.shiftGroupId,
+    attended: new Set(attended.map((a) => toISODate(a.clockIn))),
+    leaveDays: leaveDateSet(leaves),
+    // 아직 승인 전이므로 이 신청은 넣지 않는다 — **지금 결근으로 잡혀 있는 날**을 세는 것이 목적이다.
+    awayDays: new Map(),
+    hireDate: user.hireDate,
+    deactivatedAt: user.deactivatedAt,
+  });
+  return absent.length;
+}

@@ -7,6 +7,7 @@ import { TripApprovalsClient, type TripRow } from "./TripApprovalsClient";
 import { tripStatusLabel, tripRangeLabel } from "@/lib/trip";
 import { parseAnchor, toISODate } from "@/lib/period";
 import { getApprovalProgressMap, approvalProgressLabel, selfApprovalNotice, isSelfApprovalBlocked } from "@/lib/approval-server";
+import { countAbsentToDisappear } from "@/lib/retroactive";
 import { getAttachmentsMap } from "@/lib/request-attachment-server";
 
 export default async function TripApprovalsPage({
@@ -73,6 +74,17 @@ export default async function TripApprovalsPage({
 
   const attMap = await getAttachmentsMap(me.companyId, "trip", pendingReqs.map((r) => r.id));
 
+
+  // 🔴 승인하면 **결근에서 사라질 날 수**(대기 건만). 2026-11-21부터 승인된 출장·재택일은 결근이
+  //    아니므로, 지난 날짜가 걸린 신청을 승인하면 법정 근로기록부에서 결근이 없어진다.
+  //    앞날만 걸친 평범한 신청은 계산 전에 0으로 끝나므로 비용이 거의 없다(lib/retroactive.ts).
+  const pastAbsentMap = new Map<string, number>();
+  await Promise.all(
+    pendingReqs.map(async (r) => {
+      const n = await countAbsentToDisappear(me.companyId, r.userId, r.startDate, r.endDate);
+      if (n > 0) pastAbsentMap.set(r.id, n);
+    }),
+  );
   const toRow = (r: (typeof pendingReqs)[number]): TripRow => {
     const rl = tripRangeLabel(r.startDate, r.endDate);
     const statusLabel = tripStatusLabel(r.status);
@@ -88,6 +100,7 @@ export default async function TripApprovalsPage({
       status: r.status,
       statusLabel,
       progress: progressLabel(r.id, r.userId === me.id),
+      pastAbsentDays: pastAbsentMap.get(r.id),
       attachments: attMap.get(r.id) ?? [],
       search: [r.user.name, r.user.employeeNo ?? "", rl, r.destination, reason, statusLabel].join(" ").toLowerCase(),
     };
