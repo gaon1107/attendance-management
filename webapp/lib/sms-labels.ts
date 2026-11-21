@@ -18,6 +18,9 @@ export function smsKindLabel(kind: string): string {
       return "복구 번호 확인";
     case "sms_test":
       return "연결 시험 문자";
+    case "direct":
+      // [메시지 발송]에서 관리자가 직접 보낸 문자(2026-11-22, 메시지 관리 3-2b).
+      return "직접 보낸 문자";
     default:
       return kind;
   }

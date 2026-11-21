@@ -31,6 +31,12 @@ export const DEFAULT_TEMPLATES: { id: string; name: string; body: string }[] = [
 
 /** 한 회사가 만들 수 있는 템플릿 수 — 목록이 끝없이 길어지는 것을 막는 안전장치. */
 export const TEMPLATE_MAX_PER_COMPANY = 50;
+/**
+ * [메시지 발송]에서 **한 번에** 보낼 수 있는 최대 인원(2026-11-22, 3-2b).
+ *  · 실수로 전체에게 두 번 보내는 사고를 작게 만든다. 더 보내야 하면 나눠서 보낸다.
+ *  · ⚠️ 여기 두는 이유: 서버 액션 파일("use server")은 **함수 말고는 내보낼 수 없어** 화면이 읽지 못한다.
+ */
+export const SEND_MAX_RECIPIENTS = 30;
 /** 템플릿 이름 길이 상한(글자 수). 본문의 진짜 한계는 아래 바이트 기준이다. */
 export const TEMPLATE_NAME_MAX = 30;
 

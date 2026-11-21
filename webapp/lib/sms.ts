@@ -50,12 +50,22 @@ export const SMS_GLOBAL_MAX_PER_DAY = 500;
 /** 초대·임시비번 같은 일반 문자는 전체 발송량이 여기에 닿으면 멈춘다(나머지는 보안 문자 몫). */
 export const SMS_GENERAL_MAX_PER_HOUR = 70;
 export const SMS_GENERAL_MAX_PER_DAY = 350;
-/** 회사 하나가 1시간·24시간에 보낼 수 있는 최대 건수(모든 종류 합산). */
-export const SMS_COMPANY_MAX_PER_HOUR = 30;
-export const SMS_COMPANY_MAX_PER_DAY = 100;
-/** 회사 하나의 일반 문자(초대·임시비번)는 그 회사 발송량이 여기에 닿으면 멈춘다(나머지는 그 회사의 보안 문자 몫). */
-export const SMS_COMPANY_GENERAL_MAX_PER_HOUR = 20;
-export const SMS_COMPANY_GENERAL_MAX_PER_DAY = 70;
+/**
+ * 회사 하나가 1시간·24시간에 보낼 수 있는 최대 건수(모든 종류 합산).
+ *  📈 2026-11-22 상향(30·100 → 130·400, 사장님 보고 후 진행): [메시지 발송]으로 **직원 전체에게 공지**를
+ *     보낼 수 있게 되면서 한 번에 수십 통이 나간다. 직원 30명 회사가 공지 한 번 보내면 30통이라 예전 값으로는
+ *     금방 막혔다. 요금은 어차피 그 회사 계정에서 나가므로, 이 상한의 목적은 요금이 아니라
+ *     **가입만 하고 남에게 문자를 쏘는 악용을 막는 것**이다 — 그 효과는 유지된다.
+ */
+export const SMS_COMPANY_MAX_PER_HOUR = 130;
+export const SMS_COMPANY_MAX_PER_DAY = 400;
+/**
+ * 회사 하나의 일반 문자(초대·임시비번·직접 보내는 문자)는 그 회사 발송량이 여기에 닿으면 멈춘다.
+ *  · 나머지(130-100, 400-300)는 **그 회사의 보안 문자 몫**이다 — 공지를 몰아 보내도 그 회사 직원의
+ *    비밀번호 찾기 인증번호가 막히지 않게 남겨 둔다(이 구조를 깨지 말 것).
+ */
+export const SMS_COMPANY_GENERAL_MAX_PER_HOUR = 100;
+export const SMS_COMPANY_GENERAL_MAX_PER_DAY = 300;
 /** 이보다 오래된 "보내는 중"은 서버가 멈춘 흔적으로 보고 세지 않는다(발송 API는 10초 제한). */
 const GLOBAL_PENDING_GRACE_MS = 10 * 60 * 1000;
 /** 전체 상한에 걸렸을 때 문구. 회사·계정 정보가 없는 서버 전체 상태라 누구에게나 같다. */

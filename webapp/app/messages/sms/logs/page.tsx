@@ -44,6 +44,24 @@ export default async function SmsMessagesPage({
   //  화면 응답을 보낸 뒤(after) 실행되므로 조회 속도에 영향이 없다(접속기록 파기와 같은 방식).
   after(() => purgeExpiredSmsLogs());
 
+  // 🟡 [2026-11-22 검수 중간 9] 직접 보낸 문자가 발송 도중 서버 재시작 등으로 멈추면 "보내는 중"이 그대로 남아
+  //    요금 숫자에 섞인다. 10분 지난 것은 "결과 미확인"으로 바꾼다(발송 호출은 10초 제한이라 정상 진행일 수 없다).
+  //    refId는 **풀지 않는다** — 나갔을 수 있으므로 같은 묶음으로 다시 눌러도 그 사람에게는 다시 가지 않게 둔다.
+  //  ⚠️ 발송이 한창일 때 DB가 잠겨 있으면 이 쓰기가 실패할 수 있다 — 실패해도 화면은 떠야 한다(재검수 M-5).
+  try {
+    await prisma.smsLog.updateMany({
+      where: {
+        companyId: me.companyId,
+        kind: "direct",
+        result: "pending",
+        createdAt: { lt: new Date(new Date().getTime() - 10 * 60 * 1000) },
+      },
+      data: { result: "unknown", detail: "발송 결과 미확인(서버 중단 추정)" },
+    });
+  } catch (e) {
+    console.error("[sms-logs] 멈춘 '보내는 중' 정리 실패(다음에 다시 시도):", e);
+  }
+
   const sp = await searchParams;
   const todayISO = toISODate(new Date());
   const now = new Date();
