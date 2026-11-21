@@ -48,7 +48,8 @@ export function RecoveryPhoneCard({
   const unusable = !!maskedPhone && !usable;
   const unverified = !missing && !unusable && recoveryReason === "not_verified";
   const needsFix = missing || unusable || unverified;
-  const [open, setOpen] = useState(needsFix);
+  // 번호 변경 칸은 "번호가 없거나 못 쓰는 번호"일 때만 펼친다. 확인만 필요하면 접어 둔다(확인 칸과 헷갈리지 않게).
+  const [open, setOpen] = useState(missing || unusable);
 
   // 🔴 입력칸은 **React 상태로 관리한다(제어 컴포넌트).** 비제어로 두면 안 되는 이유:
   //    React 19는 폼 액션이 끝나면 **입력칸을 자동으로 비운다.** 그래서 1단계(확인) 응답이 오는

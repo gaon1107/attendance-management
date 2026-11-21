@@ -501,7 +501,7 @@ export async function confirmRecoveryPhone(_prev: VerifyState, formData: FormDat
   if (!me) return { error: "로그인이 필요합니다." };
   if (!me.isOwner) return { error: "이 기능은 회사 계정에서만 사용할 수 있습니다." };
   const code = String(formData.get("code") ?? "").trim();
-  if (!/^d{6}$/.test(code)) return { sent: true, error: "문자로 받은 6자리 숫자를 입력해 주세요." };
+  if (!/^\d{6}$/.test(code)) return { sent: true, error: "문자로 받은 6자리 숫자를 입력해 주세요." };
   let r: { ok: true } | { ok: false; error: string };
   try {
     r = await confirmPhoneVerifyCode({ id: me.id, companyId: me.companyId, phone: me.phone }, code);
