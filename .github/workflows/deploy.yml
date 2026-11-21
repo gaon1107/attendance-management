@@ -11,9 +11,13 @@
 #
 # 접속 정보는 코드에 두지 않고 깃허브 저장소 Secrets 에서 읽는다:
 #   SERVER_HOST / SERVER_PORT / SERVER_USER / SERVER_SSH_KEY
+#   ⚠️ 학원관리와 이름이 같지만 열쇠는 근태 전용(attendance-actions-deploy)이다. 학원관리 열쇠를 넣으면 학원관리가 배포된다.
 #
-# 실패해도: 빌드가 실패하면 deploy.sh 가 교체 전에 멈춰 기존 상자가 그대로 돈다.
-#           자동 배포가 고장 나도 서버에서 `bash /opt/attendance/deploy/server/deploy.sh` 수동 반영은 그대로 된다.
+# 실패하면:
+#   · 빌드 실패 → deploy.sh 가 상자 교체 전에 멈춰 기존 상자가 그대로 돈다.
+#   · 새 상자가 정상(healthy)이 안 됨 → 이미 교체된 뒤라 운영이 고장 난 상태다 → README "되돌리기". 그래서 푸시는 근무시간 밖에.
+#   · 자동 배포가 고장 나도 서버에서 `bash /opt/attendance/deploy/server/deploy.sh` 수동 반영은 그대로 된다.
+# 접속이 끊기거나 이 화면에서 Cancel 해도 서버의 배포는 끝까지 간다(서버 기록 /var/log/attendance-deploy.log).
 # 다시 돌리기: 깃허브 Actions 화면 → 이 워크플로 → "Run workflow" 버튼(푸시 없이 같은 배포를 한 번 더).
 
 name: Deploy attendance to gaon-main
@@ -29,30 +33,31 @@ concurrency:
   group: attendance-production-deploy
   cancel-in-progress: false
 
-permissions:
-  contents: read
+# 코드를 받지 않으므로 저장소 권한은 하나도 주지 않는다
+permissions: {}
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: 운영 서버(gaon-main)에 SSH 접속하여 배포 실행
-        uses: appleboy/ssh-action@v1.2.0
+        # 외부 부품은 버전 이름(v1.2.0) 대신 고유번호로 고정한다(이름은 바꿔치기될 수 있다). = v1.2.0
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17
         with:
           host: ${{ secrets.SERVER_HOST }}
           port: ${{ secrets.SERVER_PORT }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          # 빌드(약 1~5분) + 앞선 배포 기다림(deploy.sh 잠금 최대 15분)을 감안해 넉넉히 둔다
-          command_timeout: 25m
+          # 앞선 배포 기다림(최대 15분) + 백업 + 빌드(1~5분) + 정상 확인(최대 3분). 넘겨도 서버 배포는 끝까지 간다.
+          command_timeout: 30m
           # 서버 열쇠의 강제명령(deploy.sh) 때문에 이 내용은 무시된다(형식상 필요)
           script: echo "배포 요청 — 실제 배포는 서버의 deploy.sh가 수행"
 
       - name: 바깥에서 로그인 화면 확인(200)
         run: |
           for i in 1 2 3 4 5 6; do
-            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 https://attend.newgaon.com/login || echo 000)
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 https://attend.newgaon.com/login || true)
             echo "시도 $i: 로그인 화면 응답 $CODE"
             if [ "$CODE" = "200" ]; then exit 0; fi
             sleep 10

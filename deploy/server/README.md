@@ -116,16 +116,22 @@ printf '%s\0%s\0%s\0' "--reset" "이메일" "$P" | docker exec -i -e APP_BASE_UR
 **2026-11-21부터 자동이다: 깃허브 `main`에 푸시하면 곧바로 운영에 반영된다.** (학원관리와 같은 방식)
 - 흐름: 푸시 → 깃허브 Actions(`.github/workflows/deploy.yml`) → 배포 전용 열쇠로 서버 E 접속 → 서버가 `deploy.sh` 실행 → 바깥에서 로그인 화면 200 확인.
 - 결과 보기: 깃허브 저장소 → **Actions** 탭(초록 ✔ = 성공, 빨간 ✖ = 실패. 눌러 보면 deploy.sh 기록이 그대로 나온다).
+  서버에도 같은 기록이 남는다: `tail -50 /var/log/attendance-deploy.log`.
 - 푸시 없이 한 번 더: Actions → "Deploy attendance to gaon-main" → **Run workflow**.
+- 접속이 끊기거나 Actions에서 Cancel 해도 **서버의 배포는 끝까지 간다**(자동 배포 때는 서버가 접속과 떼어 돌린다). 결과는 위 서버 기록으로 본다.
 - ⚠️ 푸시 = 운영 반영이므로 **푸시는 근무시간 밖에** 한다(열린 화면의 버튼이 잠깐 오류 난다).
+- ⚠️ **새벽 3~4시에는 푸시하지 않는다** — 03:30 정기 백업과 반영 전 백업이 겹치면 둘 중 하나가 "다른 백업 실행 중"으로 실패한다.
 
 수동 반영(자동이 고장 났을 때도 그대로 된다):
 ```bash
 bash /opt/attendance/deploy/server/deploy.sh
 ```
-- 스크립트가 **반영 전에 백업을 뜨고**, 직전 이미지를 `attendance-app:previous`로 남긴 뒤 새 상자로 바꾼다.
+- 새 이미지를 **먼저** 만든다. 빌드가 실패하면 교체 전에 멈추므로 기존 상자가 그대로 돈다.
+- 앱 내용이 바뀌었으면 **반영 전에 백업을 뜨고**, 지금 돌던 이미지를 `attendance-app:previous`로 남긴 뒤 새 상자로 바꾼다.
+- 앱 내용이 같으면(문서만 바뀐 푸시·다시 돌리기) 백업·보관을 건너뛰고 상자도 그대로 둔다 → 진짜 직전 버전이 `previous`에 그대로 남는다.
+  `.env.production`만 고친 경우에도 이 스크립트를 돌리면 상자를 새로 만들어 새 값이 적용된다.
+- 🔴 새 상자로 바뀐 뒤 3분 안에 정상(healthy)이 안 되면 **운영이 고장 난 채로** 끝난다(DB 구조 변경도 이미 적용됐을 수 있다) → 아래 "되돌리기".
 - 배포 두 개가 겹치면 뒤의 것이 앞의 것이 끝날 때까지 기다린다(잠금 `/run/attendance-deploy.lock`, 최대 15분).
-- 빌드가 실패하면 교체 전에 멈추므로 기존 상자가 그대로 돈다.
 
 ### 배포 전용 열쇠 (자동 배포용)
 
@@ -138,9 +144,19 @@ bash /opt/attendance/deploy/server/deploy.sh
 열쇠 바꾸기(새 PC에서 `ssh-keygen -t ed25519 -N '' -C attendance-actions-deploy -f 새열쇠`로 만든 뒤):
 1. 서버: `authorized_keys`에서 `attendance-actions-deploy` 줄을 지우고 새 공개키를 같은 앞머리(`restrict,command=...`)로 넣는다(먼저 `cp`로 백업).
 2. 깃허브: `SERVER_SSH_KEY`를 새 열쇠 내용으로 바꾼다. → Run workflow 로 확인 → PC의 열쇠 파일 삭제.
-자동 배포를 잠시 끄려면: 서버에서 그 줄 맨 앞에 `#`을 붙인다(깃허브 Actions는 실패로 표시되고, 운영은 그대로).
+- ⚠️ 학원관리 저장소도 같은 이름(`SERVER_*`)을 쓰지만 **열쇠는 따로**다. 학원관리 열쇠를 여기 넣으면 근태 푸시가 학원관리를 배포한다.
+
+**자동 배포 잠시 끄기 / 다시 켜기** (그 줄 맨 앞에 `#`을 붙이면 꺼진다 — 깃허브 Actions는 실패로 표시되고 운영은 그대로)
+```bash
+sed -i 's|^restrict,command="/bin/bash /opt/attendance/|#&|' /root/.ssh/authorized_keys      # 끄기
+sed -i 's|^#\(restrict,command="/bin/bash /opt/attendance/\)|\1|' /root/.ssh/authorized_keys  # 다시 켜기
+grep -n attendance-actions-deploy /root/.ssh/authorized_keys | cut -c1-40                       # 확인(# 있으면 꺼짐)
+```
 
 ## 되돌리기 — 직전 이미지로
+
+🔴 **먼저 자동 배포를 끈다**(바로 위 "끄기" 명령). 서버 코드는 여전히 고장 난 main 최신이라, 끄지 않으면 문서 하나만 푸시해도 고장 난 버전이 다시 올라간다.
+고친 버전을 main에 올린다(꺼져 있으니 반영 안 됨) → 자동 배포를 다시 켠다 → Actions에서 **Run workflow**(또는 서버에서 `deploy.sh`)로 반영한다.
 
 ```bash
 cd /opt/attendance
