@@ -67,8 +67,24 @@ const noticeStyle: React.CSSProperties = {
 };
 const errStyle: React.CSSProperties = { fontSize: 13, color: "var(--danger)", fontWeight: 700 };
 
-/** 회사 계정은 이 경로로 되찾을 수 없다는 안내(두 방식 모두에 해당) — 검수 2차 치명 1. */
-function OwnerNotice() {
+/**
+ * 회사 계정 안내 — 검수 2차 치명 1.
+ *  · 🔴 문구가 **회사 계정 복구 스위치(lib/owner-recovery.ts)와 함께** 움직여야 한다. 예전엔 고정 문구라
+ *    스위치를 켜면 "되찾을 수 없습니다"가 거짓이 됐다(2026-11-21 연동).
+ *  · 관리자 승인 방식은 스위치와 무관하게 회사 계정을 **영구히** 막는다(actions/password-reset.ts) → 그 화면에서는
+ *    "이 방법으로는 안 된다"가 항상 참이다.
+ *  · 어느 경우든 "이 이메일이 회사 계정인지"는 알려주지 않는다 — 모두에게 같은 고정 문구다.
+ *
+ * @param panel 어느 화면에 놓이는가 — "code"(문자 인증) | "admin"(관리자 요청)
+ * @param ownerSms 문자 인증으로 회사 계정을 되찾을 수 있는가(스위치 켜짐 ∧ 문자 발송 설정됨)
+ */
+function OwnerNotice({ panel, ownerSms }: { panel: "code" | "admin"; ownerSms: boolean }) {
+  const fallback = (
+    <>
+      회사에 <b>관리자로 지정된 직원</b>이 있으면 그분이 계속 관리할 수 있고, 회사 계정 자체를 되찾으셔야 하면{" "}
+      <b>고객지원으로 사업자등록증을 확인한 뒤</b> 처리해 드립니다.
+    </>
+  );
   return (
     <div
       style={{
@@ -83,9 +99,22 @@ function OwnerNotice() {
         wordBreak: "keep-all",
       }}
     >
-      <b>회사 계정(가입할 때 만든 계정)</b>은 보안상 이 방법으로 되찾을 수 없습니다. 회사에{" "}
-      <b>관리자로 지정된 직원</b>이 있으면 그분이 계속 관리할 수 있고, 회사 계정 자체를 되찾으셔야 하면{" "}
-      <b>고객지원으로 사업자등록증을 확인한 뒤</b> 처리해 드립니다.
+      {panel === "code" && ownerSms ? (
+        <>
+          <b>회사 계정(가입할 때 만든 계정)</b>도 이 방법으로 되찾을 수 있습니다. 단, 미리{" "}
+          <b>[계정 설정]에서 복구용 휴대폰 번호를 확인</b>해 두었어야 하고, 번호를 바꾼 뒤 72시간 동안은 쓸 수
+          없습니다. 그렇지 않다면 {fallback}
+        </>
+      ) : panel === "admin" && ownerSms ? (
+        <>
+          <b>회사 계정(가입할 때 만든 계정)</b>은 보안상 관리자 요청으로는 되찾을 수 없습니다. 복구용 번호를 확인해
+          두었다면 앞 화면의 <b>문자 인증</b>으로 되찾을 수 있습니다. 그렇지 않다면 {fallback}
+        </>
+      ) : (
+        <>
+          <b>회사 계정(가입할 때 만든 계정)</b>은 보안상 이 방법으로 되찾을 수 없습니다. {fallback}
+        </>
+      )}
     </div>
   );
 }
@@ -100,18 +129,20 @@ function BackToLogin() {
   );
 }
 
-export function ForgotPasswordForm({ smsEnabled }: { smsEnabled: boolean }) {
+export function ForgotPasswordForm({ smsEnabled, ownerRecoveryEnabled }: { smsEnabled: boolean; ownerRecoveryEnabled: boolean }) {
+  // 문자가 꺼져 있으면 회사 계정도 문자로 못 되찾는다 — 둘 다 켜져 있어야 "된다"고 말한다.
+  const ownerSms = smsEnabled && ownerRecoveryEnabled;
   // 문자 발송이 꺼져 있으면 선택지가 없다 — 처음부터 관리자 승인 방식만 보여준다.
   const [mode, setMode] = useState<"code" | "admin">(smsEnabled ? "code" : "admin");
 
   if (mode === "admin") {
-    return <AdminRequestPanel canSwitchBack={smsEnabled} onSwitchBack={() => setMode("code")} />;
+    return <AdminRequestPanel canSwitchBack={smsEnabled} onSwitchBack={() => setMode("code")} ownerSms={ownerSms} />;
   }
-  return <CodePanel onSwitchToAdmin={() => setMode("admin")} />;
+  return <CodePanel onSwitchToAdmin={() => setMode("admin")} ownerSms={ownerSms} />;
 }
 
 // ── [A] 문자 인증코드 방식 ────────────────────────────────────────────────
-function CodePanel({ onSwitchToAdmin }: { onSwitchToAdmin: () => void }) {
+function CodePanel({ onSwitchToAdmin, ownerSms }: { onSwitchToAdmin: () => void; ownerSms: boolean }) {
   const [email, setEmail] = useState("");
   const [phoneTail, setPhoneTail] = useState("");
   const [code, setCode] = useState("");
@@ -199,7 +230,7 @@ function CodePanel({ onSwitchToAdmin }: { onSwitchToAdmin: () => void }) {
 
       {step === 1 && (
         <>
-          <OwnerNotice />
+          <OwnerNotice panel="code" ownerSms={ownerSms} />
           <form action={sendAction} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             <div>
               <label style={labelStyle}>이메일</label>
@@ -378,7 +409,15 @@ function CodePanel({ onSwitchToAdmin }: { onSwitchToAdmin: () => void }) {
 }
 
 // ── [B] 관리자 승인 방식(기존) ────────────────────────────────────────────
-function AdminRequestPanel({ canSwitchBack, onSwitchBack }: { canSwitchBack: boolean; onSwitchBack: () => void }) {
+function AdminRequestPanel({
+  canSwitchBack,
+  onSwitchBack,
+  ownerSms,
+}: {
+  canSwitchBack: boolean;
+  onSwitchBack: () => void;
+  ownerSms: boolean;
+}) {
   const [state, formAction, pending] = useActionState(requestPasswordReset, {});
 
   return (
@@ -388,7 +427,7 @@ function AdminRequestPanel({ canSwitchBack, onSwitchBack }: { canSwitchBack: boo
         가입한 이메일을 입력하면 재설정 요청이 접수됩니다. 관리자가 확인 후 임시 비밀번호를 전달해 드립니다.
       </div>
 
-      <OwnerNotice />
+      <OwnerNotice panel="admin" ownerSms={ownerSms} />
 
       {state?.ok ? (
         <div>

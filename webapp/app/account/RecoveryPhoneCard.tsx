@@ -123,10 +123,16 @@ export function RecoveryPhoneCard({
               </div>
             ) : (
               <>
-                {recoveryReason === "ready" && recoveryEnabled && (
+                {recoveryReason === "ready" && recoveryEnabled && smsReady && (
                   <div style={{ fontSize: 13, color: "#15803D", fontWeight: 700, marginTop: 8 }}>
                     ✓ 확인된 번호입니다. 비밀번호를 잊으면 로그인 화면의 [비밀번호를 잊으셨나요?]에서 이 번호로
                     인증번호를 받아 직접 바꿀 수 있습니다.
+                  </div>
+                )}
+                {recoveryReason === "ready" && recoveryEnabled && !smsReady && (
+                  // 확인은 끝났지만 문자가 꺼져 있으면 인증번호가 나가지 않는다 — "된다"고 하면 거짓이다.
+                  <div style={{ fontSize: 13, color: "#92400E", fontWeight: 700, marginTop: 8 }}>
+                    확인된 번호입니다. 다만 지금은 문자 발송이 멈춰 있어 문자로 되찾을 수 없습니다.
                   </div>
                 )}
                 {recoveryReason === "locked" && (

@@ -6,6 +6,7 @@
 //    설정이 안 됐는데 [A]를 보여주면 "인증번호를 보냈다"고 해놓고 영영 오지 않는 화면이 된다.
 import { smsConfigured } from "@/lib/sms";
 import { ForgotPasswordForm } from "./ForgotPasswordForm";
+import { OWNER_RECOVERY_ENABLED } from "@/lib/owner-recovery";
 
 export default function ForgotPasswordPage() {
   const smsEnabled = smsConfigured();
@@ -42,7 +43,7 @@ export default function ForgotPasswordPage() {
         <span style={{ fontSize: 18, fontWeight: 700 }}>근태관리</span>
       </div>
 
-      <ForgotPasswordForm smsEnabled={smsEnabled} />
+      <ForgotPasswordForm smsEnabled={smsEnabled} ownerRecoveryEnabled={OWNER_RECOVERY_ENABLED} />
     </div>
   );
 }

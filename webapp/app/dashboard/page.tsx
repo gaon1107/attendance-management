@@ -18,6 +18,7 @@ import { purgeWorkRecordsDaily } from "@/lib/work-record-retention";
 import { trialStatus, trialLastDay, formatKoreanDate } from "@/lib/trial";
 import { loadAwayDays } from "@/lib/away-server";
 import { ownerRecoveryState } from "@/lib/owner-recovery";
+import { smsConfigured } from "@/lib/sms";
 import { DashboardCalendar } from "./DashboardCalendar";
 import { LatestNoticeModal } from "./LatestNoticeModal";
 import type { DayData } from "@/app/schedule/ScheduleCalendar";
@@ -355,7 +356,8 @@ export default async function DashboardPage() {
   //  · 왜 여기에: 회사 계정은 평소 잘 안 쓰는 계정이라 [계정 설정]에만 두면 아무도 번호를 확인하지 않는다.
   //    그러면 복구 기능이 있어도 정작 필요한 날 쓸 수 없다(lib/owner-recovery.ts 머리말의 점검 항목).
   //  · 관리자 모두에게 보인다 — 회사 계정이 아닌 관리자는 직접 고칠 수 없으니 "회사 계정으로 확인하라"고만 안내한다.
-  //  · 기능이 꺼져 있거나(disabled) 72시간 대기(locked) 중이면 띄우지 않는다 — 할 수 있는 일이 없다.
+  //  · 기능이 꺼져 있거나(disabled) 72시간 대기(locked) 중이거나 **문자 발송이 연결되지 않았으면** 띄우지 않는다
+  //    — 확인 문자를 보낼 수 없으니 할 수 있는 일이 없다(시범 기간 운영 서버는 문자가 꺼져 있다).
   //  · 부가기능이라 실패해도 대시보드는 그대로 뜬다.
   let ownerRecoveryTodo = false;
   try {
@@ -363,7 +365,7 @@ export default async function DashboardPage() {
       where: { companyId: me.companyId, isOwner: true, deactivatedAt: null },
       select: { phone: true, phoneChangedAt: true, phoneVerifiedAt: true, phoneVerifiedNumber: true },
     });
-    if (owner) {
+    if (owner && smsConfigured()) {
       const st = ownerRecoveryState(owner);
       ownerRecoveryTodo = !st.ready && (st.reason === "no_phone" || st.reason === "not_mobile" || st.reason === "not_verified");
     }
