@@ -23,6 +23,9 @@ function sendUrl(): string {
 //    무료 가입한 회사 하나가 초대 문자를 1시간에 101번 보내면 **모든 고객사의 비밀번호 찾기 문자가 멈춘다.**
 //    요금은 묶이지만 "다른 회사가 로그인할 수 있는가"를 공격자가 정하게 된다(근태 제품에서 로그인 불가 = 기록 누락).
 //    ① 회사별 상한(COMPANY_*) — 한 회사가 쓸 수 있는 양. 모든 종류 합산.
+//       회사 안에서도 일반 문자는 COMPANY_GENERAL_*까지만 — 초대 문자를 몰아 보내도 **그 회사 직원의 인증번호·
+//       회사 계정 번호 변경이 막히지 않게** 보안 문자 몫을 남긴다(재검수 N-1: 회사 단위 몫이 없어 가입 첫날
+//       초대 30통만으로 그 회사 비밀번호 찾기가 1시간 멈췄다).
 //    ② 일반 문자 몫(GENERAL_*) — 초대·임시비번은 전체의 70%까지만. 나머지는 **보안 문자 몫으로 늘 남는다.**
 //    ③ 전체 상한(GLOBAL_*) — 마지막 방어선. 보안 문자(인증번호·번호 확인·변경 통지)만 여기까지 쓸 수 있다.
 //    ⚠️ 남는 위험: 가입 회사 여러 개를 만들어 가짜 직원으로 보안 문자를 쓰면 ③까지 닿을 수 있다.
@@ -48,12 +51,15 @@ export const SMS_GENERAL_MAX_PER_DAY = 350;
 /** 회사 하나가 1시간·24시간에 보낼 수 있는 최대 건수(모든 종류 합산). */
 export const SMS_COMPANY_MAX_PER_HOUR = 30;
 export const SMS_COMPANY_MAX_PER_DAY = 100;
+/** 회사 하나의 일반 문자(초대·임시비번)는 그 회사 발송량이 여기에 닿으면 멈춘다(나머지는 그 회사의 보안 문자 몫). */
+export const SMS_COMPANY_GENERAL_MAX_PER_HOUR = 20;
+export const SMS_COMPANY_GENERAL_MAX_PER_DAY = 70;
 /** 이보다 오래된 "보내는 중"은 서버가 멈춘 흔적으로 보고 세지 않는다(발송 API는 10초 제한). */
 const GLOBAL_PENDING_GRACE_MS = 10 * 60 * 1000;
 /** 전체 상한에 걸렸을 때 문구. 회사·계정 정보가 없는 서버 전체 상태라 누구에게나 같다. */
 export const SMS_GLOBAL_LIMIT_DETAIL = "문자 발송량이 일시적으로 많아 잠시 멈췄습니다. 잠시 후 다시 시도해주세요.";
-/** 회사별 상한에 걸렸을 때 문구. */
-export const SMS_COMPANY_LIMIT_DETAIL = "우리 회사의 문자 발송량이 많아 잠시 멈췄습니다(1시간 30건·하루 100건). 잠시 후 다시 시도해주세요.";
+/** 회사별 상한에 걸렸을 때 문구. ⚠️ 숫자를 적지 않는다 — 용도마다 한도가 달라 적힌 숫자가 거짓이 된다. */
+export const SMS_COMPANY_LIMIT_DETAIL = "우리 회사의 문자 발송량이 많아 잠시 멈췄습니다. 잠시 후(최대 하루 뒤) 다시 시도해주세요.";
 
 /** 상한 때문에 못 보낸 결과인가(화면에 그대로 보여줘도 되는 문구). */
 export function isSmsLimitDetail(detail: string): boolean {
@@ -98,8 +104,10 @@ async function quotaBlock(companyId: string, purpose: SmsPurpose, now: Date, inc
       countRecentSends(now, HOUR_MS),
       countRecentSends(now, DAY_MS),
     ]);
-    if (cHour + extra > SMS_COMPANY_MAX_PER_HOUR || cDay + extra > SMS_COMPANY_MAX_PER_DAY) {
-      console.error(`[sms] 회사별 발송 상한 도달 — 회사 ${companyId}: 1시간 ${cHour}, 24시간 ${cDay}. 이 회사 발송을 멈춘다.`);
+    const cMaxHour = purpose === "security" ? SMS_COMPANY_MAX_PER_HOUR : SMS_COMPANY_GENERAL_MAX_PER_HOUR;
+    const cMaxDay = purpose === "security" ? SMS_COMPANY_MAX_PER_DAY : SMS_COMPANY_GENERAL_MAX_PER_DAY;
+    if (cHour + extra > cMaxHour || cDay + extra > cMaxDay) {
+      console.error(`[sms] 회사별 발송 상한 도달(${purpose}) — 회사 ${companyId}: 1시간 ${cHour}/${cMaxHour}, 24시간 ${cDay}/${cMaxDay}. 이 회사 발송을 멈춘다.`);
       return SMS_COMPANY_LIMIT_DETAIL;
     }
     const maxHour = purpose === "security" ? SMS_GLOBAL_MAX_PER_HOUR : SMS_GENERAL_MAX_PER_HOUR;

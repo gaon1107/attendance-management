@@ -153,7 +153,7 @@ export function RecoveryPhoneCard({
                 )}
                 {verifiedLabel && (
                   <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 6 }}>
-                    {verifiedLabel}에 문자로 확인한 번호입니다. 이 번호를 가진 사람은 회사 계정 비밀번호를 되찾을 수 있습니다.
+                    {verifiedLabel}에 문자로 확인한 번호입니다. 담당자가 바뀌었다면 새 담당자 번호로 바꿔 주세요.
                   </div>
                 )}
                 {unverified && (
