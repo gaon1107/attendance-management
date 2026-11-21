@@ -122,7 +122,7 @@ async function issueResetCodeInner(
 
   const user = await prisma.user.findUnique({
     where: { email },
-    select: { id: true, companyId: true, name: true, phone: true, deactivatedAt: true, isOwner: true, ...OWNER_FIELDS, company: { select: { name: true } } },
+    select: { id: true, companyId: true, name: true, phone: true, deactivatedAt: true, isOwner: true, ...OWNER_FIELDS },
   });
 
   // 아래는 전부 조용히 종료한다 — 사유를 하나라도 알려주면 계정·전화번호 확인 창구가 된다.
@@ -169,7 +169,10 @@ async function issueResetCodeInner(
 
   const to = normalizePhone(user.phone ?? "");
   const minutes = Math.round(CODE_TTL_MS / 60000);
-  const text = `[${user.company.name}] 비밀번호 찾기 인증번호 ${code} (${minutes}분 이내 입력). 요청한 적 없으면 무시하세요.`;
+  // 🔴 머리말은 **[근태관리] 고정**이다(2026-11-21 사장님 결정, 검수 중간 5). 회사명은 그 회사 관리자가 100자까지
+  //    마음대로 정하는 값이라, 넣으면 가입만 해서 회사명을 "OO은행 보안팀 http://…"로 바꾼 뒤 가짜 직원에 피해자 번호를
+  //    넣고 비밀번호 찾기를 누르는 것만으로 **가온 발신번호로 피싱 문자**를 보낼 수 있다(다른 인증 문자 2종과 같은 규칙).
+  const text = `[근태관리] 비밀번호 찾기 인증번호 ${code} (${minutes}분 이내 입력). 요청한 적 없으면 무시하세요.`;
 
   // 발송 기록(SmsLog) — 문자는 건당 비용이라 "언제 몇 건 나갔는지"를 남긴다.
   //  · refId는 이 코드의 id라 매번 달라진다 → 초대·임시비번의 1회 제한 유니크와 절대 충돌하지 않는다.
