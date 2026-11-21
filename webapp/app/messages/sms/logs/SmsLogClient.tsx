@@ -34,12 +34,15 @@ export function SmsLogClient({
   to,
   todayISO,
   capped,
+  retentionDays,
 }: {
   rows: SmsRow[];
   from: string;
   to: string;
   todayISO: string;
   capped: boolean;
+  /** 문자 기록 보관 기간(일). 숫자를 화면에 직접 적지 않고 서버 상수를 받아 쓴다. */
+  retentionDays: number;
 }) {
   const [q, setQ] = useState("");
 
@@ -76,7 +79,7 @@ export function SmsLogClient({
     <div>
       {/* 상단: 기간 달력 + 검색(왼쪽 정렬 — 디자인 규칙 §5.6③) */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-        <RangeCalendarNav from={from} to={to} todayISO={todayISO} basePath="/messages/sms" />
+        <RangeCalendarNav from={from} to={to} todayISO={todayISO} basePath="/messages/sms/logs" />
         <div style={{ minWidth: 220, flex: "0 1 320px" }}>
           <SearchBox value={q} onChange={setQ} placeholder="이름·번호·종류·결과 검색" />
         </div>
@@ -99,7 +102,9 @@ export function SmsLogClient({
       <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6, wordBreak: "keep-all" }}>
         우리 회사에서 나간 문자 기록입니다. <b>요금</b> 칸이 &quot;우리 회사&quot;인 것만 회사가 연결한 비즈모아샷 계정에서 요금이 나갑니다
         (&quot;가온&quot;은 회사 계정 본인 확인 문자라 가온이 부담합니다). <b>결과 미확인</b>은 실패가 아니라 보냈는지 확인되지 않은 상태로,
-        요금이 나갔을 수도 있습니다. <b>실패</b>한 문자는 나가지 않았으므로 요금도 들지 않습니다.
+        요금이 나갔을 수도 있습니다. <b>실패</b>한 문자는 나가지 않았으므로 요금도 들지 않습니다. 기록은{" "}
+        <b>{retentionDays === 365 ? "1년" : `${retentionDays}일`}</b>간
+        보관한 뒤 자동으로 지워집니다.
         {capped && (
           <>
             {" "}

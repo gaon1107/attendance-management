@@ -37,4 +37,17 @@ declare module "@newgaon/moashot" {
   export const VERSION: string;
   export const DEFAULT_SEND_URL: string;
   export function sendSms(input: MoashotSmsInput, options: MoashotSmsOptions): Promise<MoashotSmsResult>;
+
+  // ── 글자 처리(메시지 관리 3단계에서 사용) ────────────────────────────────
+  //  비즈모아샷은 EUC-KR 기반이라 **바이트 수**로 단문/장문을 나누고, EUC-KR이 모르는 글자(이모지 등)는 깨진다.
+  /** 단문(SMS) 최대 바이트. 넘으면 장문(LMS). */
+  export const MAX_SHORT_BYTES: number;
+  /** 장문(LMS) 최대 바이트. 넘으면 접수 자체가 거부된다. */
+  export const MAX_LONG_BYTES: number;
+  /** EUC-KR로 바꿨을 때의 바이트 수(한글 2, 영문·숫자 1). */
+  export function getEuckrByteLength(text: string | null | undefined): number;
+  /** 단문으로 나가는 길이인가. */
+  export function isShortMessage(text: string | null | undefined): boolean;
+  /** EUC-KR로 표현할 수 없어 깨지는 글자 목록(중복 제거). 없으면 빈 배열. */
+  export function findUnsupportedChars(text: string | null | undefined): string[];
 }

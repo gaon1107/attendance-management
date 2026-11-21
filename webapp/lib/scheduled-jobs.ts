@@ -9,6 +9,7 @@
 //   · 화면 열림 때 도는 기존 호출은 그대로 둔다(겹쳐 돌아도 이미 지운 사진은 다시 집지 않아 무해 — 지운 표시 fileDeletedAt).
 //   · 타이머는 프로세스 종료를 붙잡지 않는다(unref) — 배포 때 상자를 끄는 것이 늦어지지 않게.
 import { purgeExpiredPhotos } from "@/lib/clock-photo";
+import { purgeExpiredSmsLogs } from "@/lib/sms-retention";
 
 const FIRST_RUN_DELAY_MS = 5 * 60 * 1000;
 const TICK_MS = 60 * 60 * 1000;
@@ -26,5 +27,17 @@ export function startScheduledJobs(): void {
   };
   setTimeout(runPhotoPurge, FIRST_RUN_DELAY_MS).unref();
   setInterval(runPhotoPurge, TICK_MS).unref();
-  console.log("[scheduled-jobs] 출퇴근 사진 90일 자동 삭제 예약 시작(1시간마다 확인, 실제 삭제는 하루 1회)");
+
+  // 문자 발송 기록 1년 자동 파기(2026-11-22, 메시지 관리 3-2a).
+  //  · 🔴 [검수 중간 3] 처음엔 [문자 관리] 화면이 열릴 때만 돌게 했는데, 그러면 관리자가 몇 달 안 들어오는
+  //    회사의 기록이 1년을 넘겨 남는다 — 화면이 "1년간 보관한 뒤 자동으로 지워집니다"라고 해 놓고 어기게 된다.
+  //    **출퇴근 사진 90일에서 이미 겪은 실수**라 같은 처방을 쓴다(이 파일 머리말 참고).
+  //  · "하루 1회만 실제로 지움"·"많으면 나눠서"·"실패하면 뒤로 물림"은 그 함수가 스스로 관리한다.
+  const runSmsLogPurge = () => {
+    purgeExpiredSmsLogs().catch((e) => console.error("[scheduled-jobs] 문자 기록 자동 파기 실패:", e));
+  };
+  setTimeout(runSmsLogPurge, FIRST_RUN_DELAY_MS).unref();
+  setInterval(runSmsLogPurge, TICK_MS).unref();
+
+  console.log("[scheduled-jobs] 출퇴근 사진 90일·문자 기록 1년 자동 삭제 예약 시작(1시간마다 확인, 실제 삭제는 하루 1회)");
 }

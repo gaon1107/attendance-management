@@ -922,6 +922,10 @@ model SmsLog {
   //  · 발송 실패 시엔 액션이 refId를 null로 바꿔 슬롯을 풀어 재시도를 허용한다(실패=과금 없음).
   @@unique([companyId, kind, refId])
   @@index([companyId, createdAt]) // 회사별 발송량/기간 조회
+  // 보관기간(1년) 자동 파기 전용 색인 — 조건이 `createdAt < 기준일` 하나뿐이라 위 색인(선행 칸 companyId)을
+  // 쓸 수 없다. 없으면 **지울 게 없는 평소에도 매일 표 전체를 훑는다**(2026-11-22 검수 중간 4).
+  // AccessEvent가 같은 이유로 createdAt 단독 색인을 두고 있다 — 같은 처방이다.
+  @@index([createdAt])
 }
 
 // ── 교대근무(시프트) — 상세는 docs/04_architecture/교대근무_설계.md ──
@@ -1177,4 +1181,27 @@ model OperatorSession {
   @@index([operatorId])
   // 만료된 세션 청소용. 없으면 청소할 때마다 표를 통째로 훑는다(AccessEvent가 createdAt 단독 색인을 둔 것과 같은 처방).
   @@index([expiresAt])
+}
+
+// 문자 템플릿 — 회사가 자주 쓰는 문구를 저장해 두고 [메시지 발송]에서 골라 쓴다(메시지 관리 3단계, 2026-11-22).
+//  · 🔑 **기본 템플릿(가온이 주는 6개)은 여기 들어오지 않는다** — `lib/sms-templates.ts`의 상수다.
+//    회사마다 복사해 두면 ①문구를 고칠 때 모든 회사의 행을 손봐야 하고 ②회사가 가입할 때마다 심어야 한다.
+//    회사가 기본 템플릿을 고쳐 쓰면 **그때 복사본이 이 표에 생긴다**(원본은 그대로 남아 되돌릴 수 있다).
+//  · 회사 격리: 조회·수정·삭제 모두 companyId로 묶는다. 다른 회사의 문구가 보이면 안 된다.
+//  · SmsLog와 같은 방식으로 **관계(relation) 없이 companyId만** 둔다(이 저장소의 기존 스타일).
+model SmsTemplate {
+  id        String   @id @default(cuid())
+  companyId String
+  /** 목록에서 고를 때 보이는 이름(예: "공지 안내"). 회사 안에서 중복되지 않게 액션이 막는다. */
+  name      String
+  /** 문자 본문. `[직원명]`처럼 대괄호로 감싼 자리는 보낼 때 실제 값으로 바뀐다(lib/sms-templates.ts). */
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 🔴 같은 회사 안에서 이름이 겹치지 않게 **DB가 보장한다**(2026-11-22 검수 중간 5).
+  //    액션의 "읽어 보고 → 만든다" 검사만으로는 두 관리자가 같은 순간 저장할 때 2개가 생긴다
+  //    (목록에서 어느 것인지 구분이 안 되고, 3-2b에서 이름으로 고를 때 혼란). 위반하면 P2002로 돌아온다.
+  @@unique([companyId, name])
+  @@index([companyId, createdAt])
 }
