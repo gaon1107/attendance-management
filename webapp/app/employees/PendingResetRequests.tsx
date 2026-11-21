@@ -1,17 +1,23 @@
 "use client";
 // 비밀번호 재설정 요청 대기열(관리자) — 직원이 접수한 요청을 보고 "임시 비밀번호 발급"을 누른다.
 // 발급하면 임시 비밀번호가 화면에 표시되고, 관리자가 그 값을 직원에게 전달한다.
-// (직원 스스로 문자로 되찾는 길은 그 회사의 문자 계정이 연결돼야 열린다 — 지금은 꺼져 있어 이 대기열이 직원의 유일한 길이다.
-//  여기 문자 보내기도 회사 문자 계정 연결 뒤 — lib/company-sms.ts)
+// (직원 스스로 문자로 되찾는 길·여기의 [문자로 보내기]는 **그 회사가 비즈모아샷 계정을 연결했을 때만** 열린다 —
+//  요금은 그 회사 계정에서 나간다. 연결 전에는 이 대기열이 직원의 유일한 길이고, 임시비번은 복사해 전달한다.)
 import { useState, useTransition } from "react";
 import { issueTempPassword } from "@/app/actions/password-reset";
 import { sendTempPasswordSms } from "@/app/actions/sms";
-import { COMPANY_SMS_READY } from "@/lib/company-sms";
 import { Icon } from "@/app/components/Icon";
 
 type Req = { id: string; name: string; email: string; createdAtLabel: string };
 
-export function PendingResetRequests({ requests }: { requests: Req[] }) {
+export function PendingResetRequests({
+  requests,
+  smsReady,
+}: {
+  requests: Req[];
+  /** 이 회사가 비즈모아샷 계정을 연결했는가(서버 판정 companySmsReady) — 아니면 [문자로 보내기]를 그리지 않는다. */
+  smsReady: boolean;
+}) {
   // 화면에 표시할 목록(로컬 상태). 발급 후에도 임시비번을 계속 보여주려고 로컬에서 관리한다.
   const [list, setList] = useState(requests);
   // 발급 완료된 요청의 임시 비밀번호 { [reqId]: tempPassword }
@@ -125,8 +131,8 @@ export function PendingResetRequests({ requests }: { requests: Req[] }) {
                       <span style={{ height: 36, display: "inline-flex", alignItems: "center", padding: "0 14px", border: "1px solid #BBF7D0", borderRadius: 8, background: "#F0FDF4", color: "#15803D", fontSize: 13, fontWeight: 700 }}>
                         문자 발송됨 ✓
                       </span>
-                    ) : !COMPANY_SMS_READY ? null : (
-                      // 🔴 회사 문자 계정 기능이 생기기 전에는 버튼을 그리지 않는다(lib/company-sms.ts).
+                    ) : !smsReady ? null : (
+                      // 🔴 회사가 비즈모아샷 계정을 연결하지 않았으면 버튼을 그리지 않는다(요금은 회사 계정).
                       <button
                         type="button"
                         onClick={() => handleSendSms(r.id, tempPw)}
@@ -149,7 +155,7 @@ export function PendingResetRequests({ requests }: { requests: Req[] }) {
                   )}
                   <div style={{ fontSize: 12, color: "#166534", marginTop: 8, lineHeight: 1.6 }}>
                     직원의 기존 로그인은 해제되었습니다. 임시 비밀번호로 로그인하면 새 비밀번호를 정하는 화면으로 이동합니다.
-                    {COMPANY_SMS_READY ? (
+                    {smsReady ? (
                       <> <b>문자로 보내기</b>는 직원 전화번호가 등록돼 있어야 하며 1회만 보낼 수 있습니다.</>
                     ) : (
                       " 임시 비밀번호를 복사해 직원에게 직접 전달해 주세요."

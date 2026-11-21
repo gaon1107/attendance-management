@@ -40,7 +40,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **판정 게이트 규칙**: "근무예정일" = 근무요일(`workDays`) ∧ 쉬는날(`offDays`=공휴일+회사휴무일) 아님 ∧ (교대제면 그날 조 배정≠휴무). 이 게이트가 결근/지각 판정의 핵심.
 - **날짜·TZ**: **서버 TZ=Asia/Seoul 전제**. 날짜키는 `"YYYY-MM-DD"`(로컬, `lib/period.toISODate`). 순환 단위 계산만 UTC 기반(`shift.ts` `elapsedUnits`). 자정 경계 계산이 많아 TZ 가정이 깨지면 하루 어긋난다.
 - **생체정보(법적 가드레일)**: 얼굴=민감정보. 얼굴 등록/검출/인식·라이브니스는 `lib/face.ts`·`lib/liveness.ts`(+onnxruntime·sharp). 사진 90일 자동 파기(`lib/clock-photo.ts`). 얼굴인증은 강제 금지 — GPS(`lib/geocode.ts`·leaflet) 등 대체수단 병행. 상세는 상위 사규.
-- **외부 연동**: 문자=비즈모아샷(`lib/sms.ts` → 학원관리 공용 모듈 `@newgaon/moashot`, `vendor/*.tgz`로 설치. 가온 계정 .env MOASHOT_*=**회사 계정 인증 문자만**, 직원 비밀번호 찾기·초대·공지 등=회사별 계정(미구현, `lib/company-sms.ts`)·가온 대체 발송 없음), 결제=KICC(`/kicc-test`), 엑셀=exceljs(`reports/export`).
+- **외부 연동**: 문자=비즈모아샷(`lib/sms.ts` → 학원관리 공용 모듈 `@newgaon/moashot`, `vendor/*.tgz`로 설치. 가온 계정 .env MOASHOT_*=**회사 계정 인증 문자만**(`sendSms`), 직원 비밀번호 찾기·초대·임시비번=각 회사가 [설정 → 문자·알림톡]에 연결한 계정(`sendCompanySms`, 판정 `companySmsReady`, 기록 `SmsLog.viaCompany`)·가온 대체 발송 없음. 규칙 설명서 `lib/company-sms.ts`), 결제=KICC(`/kicc-test`), 엑셀=exceljs(`reports/export`).
 
 ## 관례
 

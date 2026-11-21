@@ -1,21 +1,22 @@
 "use server";
 // 문자 발송 액션 — 초대·임시비밀번호(A-2). 관리자 전용·회사격리.
-//  🔴 2026-11-21: **지금은 두 액션 모두 거부한다**(lib/company-sms.ts COMPANY_SMS_READY=false).
-//     이 문자들은 각 회사의 모아샷 계정으로 보내기로 했는데(사장님 결정) 그 기능이 아직 없다.
-//     .env 계정은 가온이 요금을 내는 인증 문자 전용이다. 화면 버튼도 숨겼지만 서버 액션은 화면과 무관하게
-//     호출될 수 있으므로 여기서도 막는다.
+//  💰 2026-11-21 메시지 관리 2단계: **그 회사가 연결한 비즈모아샷 계정**으로 보낸다(요금은 회사 부담).
+//     연결 안 한 회사는 거부한다 — 가온 계정(.env)은 회사 계정 인증 문자 전용이라 대신 보내지 않는다.
+//     화면 버튼도 연결한 회사에만 보이지만(app/employees) 서버 액션은 화면과 무관하게 호출될 수 있으므로
+//     여기서도 같은 판정(companySmsReady)으로 막는다.
 //  · 버튼 수동 발송 + 1회 제한(같은 초대/요청 중복발송 차단). 1회 제한은 SmsLog 유니크로 원자 보장.
 //  · 문자는 부가기능 — 실패해도 초대 생성·임시비번 발급 본기능에는 영향 없음(별도 액션).
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { getCurrentUser } from "@/lib/session";
-import { sendSms, normalizePhone } from "@/lib/sms";
+import { sendCompanySms, normalizePhone } from "@/lib/sms";
 import { verifyPassword } from "@/lib/password";
 import { revalidatePath } from "next/cache";
-import { COMPANY_SMS_READY } from "@/lib/company-sms";
+import { companySmsReady } from "@/lib/company-sms-account";
 
 /** 회사 문자 계정이 없을 때의 거부 문구. */
-const COMPANY_SMS_OFF = "문자 보내기는 회사 문자 계정을 연결한 뒤에 쓸 수 있습니다. 지금은 링크·비밀번호를 복사해 직접 전달해 주세요.";
+const COMPANY_SMS_OFF =
+  "문자 보내기는 [설정 → 문자·알림톡]에서 회사의 비즈모아샷 계정을 연결한 뒤에 쓸 수 있습니다. 지금은 링크·비밀번호를 복사해 직접 전달해 주세요.";
 
 type ActionResult = { error?: string; ok?: boolean };
 
@@ -72,6 +73,8 @@ async function claimSendFinalize(input: {
         refId: input.refId,
         toNumber: input.to,
         result: "pending",
+        // 회사 계정 발송 → 가온 전체 상한에서 빠진다(lib/sms.ts countRecentSends).
+        viaCompany: true,
       },
       select: { id: true },
     });
@@ -83,7 +86,7 @@ async function claimSendFinalize(input: {
     throw e;
   }
 
-  const res = await sendSms({ to: input.to, text: input.text, companyId: input.companyId, purpose: "general" });
+  const res = await sendCompanySms({ to: input.to, text: input.text, companyId: input.companyId, purpose: "general" });
 
   // ⚠️ 결과 확정(update)이 실패하면 pending이 그대로 남아 위 ①②의 "결과 미확인" 경로로 빠진다.
   //    그 사실을 서버 로그에 남겨 원인을 추적할 수 있게 한다(검수 중간 5 — 예전엔 예외가 그냥 튀어나갔다).
@@ -99,6 +102,15 @@ async function claimSendFinalize(input: {
     await finalize({ result: "success", detail: null });
     return { ok: true };
   }
+  // 시간 초과·응답 도중 끊김 = 실제로 나갔을 수 있다 → "결과 미확인"으로 남기고 **슬롯을 풀지 않는다**
+  //  (풀면 다시 눌러 이중 발송·이중 과금이 된다). 관리자는 직원에게 받았는지 물어보고, 안 왔으면 복사해 전달한다.
+  if (res.uncertain) {
+    await finalize({ result: "unknown", detail: res.detail.slice(0, 200) });
+    return {
+      error:
+        "문자 회사의 응답이 늦어 결과를 확인하지 못했습니다. 실제로 나갔을 수 있으니 직원에게 받았는지 확인해 주시고, 안 왔으면 복사해서 직접 전달해 주세요.",
+    };
+  }
   // 실패: 과금 안 됨 → refId를 풀어 재시도 허용(실패 기록은 남김).
   await finalize({ result: "fail", refId: null, detail: res.detail.slice(0, 200) });
   return { error: `문자 발송 실패: ${res.detail}` };
@@ -108,7 +120,7 @@ async function claimSendFinalize(input: {
 export async function sendInviteSms(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const me = await getCurrentUser();
   if (!me || me.role !== "admin") return { error: "권한이 없습니다." };
-  if (!COMPANY_SMS_READY) return { error: COMPANY_SMS_OFF };
+  if (!(await companySmsReady(me.companyId))) return { error: COMPANY_SMS_OFF };
 
   const inviteId = String(formData.get("inviteId") ?? "");
   const url = String(formData.get("url") ?? "").trim();
@@ -136,7 +148,7 @@ export async function sendInviteSms(_prev: ActionResult, formData: FormData): Pr
 export async function sendTempPasswordSms(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const me = await getCurrentUser();
   if (!me || me.role !== "admin") return { error: "권한이 없습니다." };
-  if (!COMPANY_SMS_READY) return { error: COMPANY_SMS_OFF };
+  if (!(await companySmsReady(me.companyId))) return { error: COMPANY_SMS_OFF };
 
   const requestId = String(formData.get("requestId") ?? "");
   const temp = String(formData.get("temp") ?? "");

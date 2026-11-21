@@ -2,8 +2,8 @@
 // 비밀번호 재설정 — 경로가 **두 가지**다. 둘 다 살아 있어야 한다.
 //
 // [A] 문자 인증코드(스스로) — 관리자 없이 밤·주말에도 된다. 전화번호가 등록된 계정만 쓸 수 있다.
-//     💰 직원은 그 회사의 모아샷 계정이 있어야 한다(2026-11-21 요금 규칙). 지금은 회사별 계정 기능이 없어
-//        회사 계정만 쓸 수 있다 — 판정은 lib/reset-code.ts selfResetBlocked.
+//     💰 직원은 그 회사가 비즈모아샷 계정을 연결했을 때만 쓸 수 있고, 문자는 그 회사 계정으로 나간다
+//        (2026-11-21 요금 규칙·메시지 관리 2단계). 판정은 lib/reset-code.ts selfResetBlocked.
 //     sendResetCode → verifyResetCode → completeResetWithCode (아래 3개)
 // [B] 관리자 발급(기존) — 전화번호가 없거나 문자 발송이 꺼져 있을 때의 **유일한 길**이라 없애지 않는다.
 //     requestPasswordReset(직원 접수) → issueTempPassword(관리자 발급)

@@ -11,6 +11,7 @@ import { DepartmentManager } from "./DepartmentManager";
 import { JobGradeManager, type GradeRow } from "./JobGradeManager";
 import { EmployeeList, type EmpRow, type RetiredRow } from "./EmployeeList";
 import { createInvite, cancelInvite } from "@/app/actions/invites";
+import { companySmsReady } from "@/lib/company-sms-account";
 
 function ymd(d: Date): string {
   return d.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
@@ -77,6 +78,8 @@ export default async function EmployeesPage() {
     select: { refId: true },
   });
   const sentInviteIds = new Set(sentInviteLogs.map((s) => s.refId).filter((x): x is string => !!x));
+  // 이 회사가 비즈모아샷 계정을 연결했는가 — 초대·임시비번 [문자로 보내기]를 보여 줄지(서버 액션과 같은 판정).
+  const smsReady = await companySmsReady(me.companyId);
 
   // 비밀번호 재설정 대기 요청(직원이 접수한 것) — 관리자가 임시 비밀번호를 발급한다.
   const resetRequests = await prisma.passwordResetRequest.findMany({
@@ -138,7 +141,7 @@ export default async function EmployeesPage() {
       </div>
 
       {/* 비밀번호 재설정 대기 요청 (있을 때만 표시) */}
-      <PendingResetRequests requests={resetReqData} />
+      <PendingResetRequests requests={resetReqData} smsReady={smsReady} />
 
 
       {/* 직원 목록(재직/퇴사) + 통합검색 — 2026-08-23 디자인 검토로 **맨 위로 올렸다.**
@@ -195,7 +198,7 @@ export default async function EmployeesPage() {
                       </button>
                     </form>
                   </div>
-                  <InviteLink path={`/invite/${inv.token}`} inviteId={inv.id} smsSent={sentInviteIds.has(inv.id)} />
+                  <InviteLink path={`/invite/${inv.token}`} inviteId={inv.id} smsSent={sentInviteIds.has(inv.id)} smsReady={smsReady} />
                 </div>
               ))}
             </div>
