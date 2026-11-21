@@ -46,6 +46,7 @@ export type NavKey =
   | "approvals" // 결재함(내 차례 결재) — 부서장 결재선 켠 회사만
   | "pending-approvals" // 밀린 결재(관리자 전용) — 회사 전체 대기 중 결재를 모아 보고 대리 처리
   | "approval-history" // 결재 이력(관리자 전용) — 회사 전체 신청·승인·반려 조회
+  | "messages-sms" // 문자 관리(관리자 전용) — 회사 비즈모아샷 계정으로 나간 문자의 발송 기록·직접 발송·템플릿
   | "subscription" // 구독·요금(관리자 전용) — 지금 우리 회사 요금·구간표·무료기간 조회. 결제 기능은 아직 없다
   | "help" // 도움말 — 사용 안내서 열기·내려받기. **관리자·직원 공통**(보이는 안내서가 역할별로 다르다)
   | "account"; // 계정 설정 — 사이드바 메뉴엔 없고(프로필 아바타로 진입) 하이라이트용 키
@@ -90,6 +91,7 @@ const ICON: Record<NavKey, string> = {
   "break-time": '<path d="M4 9h13v4a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 10h2a2 2 0 0 1 0 4h-2"/><path d="M7 3v3M11 3v3"/>',
   trip: '<path d="M17.8 19.2 16 11l3.5-3.5a2.12 2.12 0 0 0-3-3L13 8 4.8 6.2a1 1 0 0 0-.9 1.7l4.6 3.1-2 3-2.5-.3-.9.9 3 1.5 1.5 3 .9-.9-.3-2.5 3-2 3.1 4.6a1 1 0 0 0 1.7-.9z"/>',
   "trip-approvals": '<path d="M2 8l12-4.5-3 4.75 3 4.75-12-4.5z"/><path d="M14 18l3 3 5.5-6.5"/>',
+  "messages-sms": '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M7 8h10M7 12h6"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 1 1 3.4 2.4c-.6.3-1 .9-1 1.6v.4"/><path d="M12 17h.01"/>',
 };
 
@@ -140,6 +142,9 @@ const LABEL: Record<NavKey, string> = {
   trip: "출장",
   "trip-approvals": "출장승인",
   help: "도움말",
+  // ⚠️ "메시지 관리"(묶음 제목)와 "문자 관리"(이 화면)는 다른 이름이다. 4단계에서 같은 묶음에
+  //    [알림톡 관리]가 들어온다 — 그때 이 이름을 "문자"로 줄이지 말 것(알림톡과 구분이 안 된다).
+  "messages-sms": "문자 관리",
 };
 
 // 화면 키 → 실제 경로(키와 경로가 다른 항목만 지정, 없으면 "/키")
@@ -151,13 +156,14 @@ const HREF: Partial<Record<NavKey, string>> = {
   "overtime-approvals": "/overtime/approvals",
   "trip-approvals": "/trip/approvals",
   security: "/security/logins", // 보안로그 진입점 = 로그인 이력 화면
+  "messages-sms": "/messages/sms",
 };
 
 // 접을 수 있는 그룹의 id — **여기가 유일한 출처**다.
 //  ⚠️ 새 그룹을 만들면 반드시 여기에 추가한다. 안 하면 tsc가 컴파일에서 막는다(검수 중간 3).
 //     예전엔 이 목록과 groupsFor()가 따로 놀아서, 빠뜨리면 "제목은 보이는데 눌러도 아무 일도 안 나는"
 //     조용한 고장이 났다(에러도 로그도 남지 않는다).
-const GROUP_IDS = ["ops", "appr", "hr", "ana", "sec", "mine", "help"] as const;
+const GROUP_IDS = ["ops", "appr", "hr", "msg", "ana", "sec", "mine", "help"] as const;
 type ToggleableGroupId = (typeof GROUP_IDS)[number];
 // "emp"(직원 한 묶음)는 제목이 없어 접기 대상이 아니다 — 접히면 링크가 0개인 화면이 된다.
 type GroupId = ToggleableGroupId | "emp";
@@ -248,6 +254,11 @@ function groupsFor(role: string, showApprovals: boolean, isOwner: boolean, useSh
         ]),
       },
       { id: "hr", caption: "인사 정보", items: toItems(["employees", "notifications", "leave-summary"]) },
+      // [메시지 관리] — 회사가 연결한 비즈모아샷 계정으로 나가는 문자·알림톡(2026-11-22, 메시지 관리 3단계).
+      //  · 자리: [인사 정보] 다음. 받는 사람이 직원이라 인사 정보와 성격이 가깝고, 가끔 여는 [분석·설정]보다 앞이다.
+      //  · 관리자 전용이다 — 아래 직원 키 목록(empKeys)에 넣지 말 것. 직원이 회사 문자 기록을 볼 이유가 없다.
+      //  · 4단계에서 같은 묶음에 [알림톡 관리]가 들어온다.
+      { id: "msg", caption: "메시지 관리", items: toItems(["messages-sms"]) },
       // [근무표]는 교대근무를 켠 회사에만 (위 "근태 운영" 주석 참고).
       // 자리는 [휴게시간] 다음 — 둘 다 "근무 규칙을 정해 두는 것"이라 성격이 같다.
       // [구독·요금]은 [회사정보] 바로 다음 — 둘 다 "회사 자체에 관한 것"이라 성격이 같다.
