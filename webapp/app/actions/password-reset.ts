@@ -12,7 +12,7 @@ import { PASSWORD_MIN_LEN } from "@/lib/password-policy";
 import { generateTempPassword, TEMP_PASSWORD_TTL_MS } from "@/lib/temp-password";
 import { getCurrentUser } from "@/lib/session";
 import { canManageAccount } from "@/lib/owner-rules";
-import { recordAccess, readClientMeta } from "@/lib/access-log";
+import { recordAccess, readClientMeta, accessEventData } from "@/lib/access-log";
 import {
   publicActionAllowedForIp, recordThrottleHit,
   RESET_MAX_PER_IP, RESET_WINDOW_MIN, RESET_CODE_MAX_PER_IP, RESET_CODE_WINDOW_MIN,
@@ -293,7 +293,7 @@ export async function completeResetWithCode(_prev: CodeState, formData: FormData
   //  · mustChangePassword/tempPasswordExpiresAt 해제 — 본인이 직접 정한 비밀번호라 강제 변경 대상이 아니다.
   //  · 실패 횟수·잠금 해제 — 비번을 잊어 여러 번 틀린 상태로 오는 게 정상 경로다. 안 풀면 되찾고도 못 들어간다.
   //  · 관리자 대기 요청 종결 — 안 하면 관리자가 임시비번을 또 발급해 방금 정한 비밀번호가 무효가 된다.
-  const user = await prisma.user.findUnique({ where: { id: r.userId }, select: { companyId: true, name: true } });
+  const user = await prisma.user.findUnique({ where: { id: r.userId }, select: { companyId: true, name: true, isOwner: true } });
   const { ip, userAgent } = readClientMeta(await headers());
 
   try {
@@ -320,6 +320,20 @@ export async function completeResetWithCode(_prev: CodeState, formData: FormData
         where: { userId: r.userId, status: "pending" },
         data: { status: "resolved", resolvedAt: new Date() },
       }),
+      // 🔴 [검수 2026-11-21 M-2] 회사 계정이면 감사기록을 **같은 묶음에** 넣는다.
+      //    이 기록이 알림센터 "회사 계정 비밀번호 변경(문자 인증)" 경고의 유일한 근거다(lib/notifications.ts).
+      //    묶음 밖(recordAccess)은 실패해도 조용히 넘어가므로, DB가 바쁜 순간 **비밀번호는 바뀌었는데 경고는
+      //    안 뜨는** 상태가 생길 수 있었다. 기록을 못 남기면 비밀번호 변경도 없던 일로 한다.
+      ...(user?.isOwner
+        ? [
+            prisma.accessEvent.create({
+              data: accessEventData({
+                companyId: user.companyId, userId: r.userId, actorName: user.name, emailTried: email,
+                kind: "config", result: "success", ip, userAgent, meta: "password_reset_by_sms_code",
+              }),
+            }),
+          ]
+        : []),
     ]);
   } catch (e) {
     // 여기까지 왔다는 건 코드가 이미 소모됐다는 뜻이다(다시 못 쓴다). 사용자는 처음부터 다시 받아야 한다.
@@ -333,7 +347,8 @@ export async function completeResetWithCode(_prev: CodeState, formData: FormData
   }
 
   // 감사기록 — 본인 것이지만 비밀번호 변경은 보안 사건이라 반드시 남긴다(값은 절대 미기록).
-  await recordAccess({
+  //  · 회사 계정은 위 묶음 안에서 이미 남겼다(두 번 남기면 경고 건수가 부풀려진다).
+  if (!user?.isOwner) await recordAccess({
     companyId: user?.companyId ?? null, userId: r.userId, actorName: user?.name ?? null, emailTried: email,
     kind: "config", result: "success", ip, userAgent, meta: "password_reset_by_sms_code",
   });

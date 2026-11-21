@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { getCurrentUser, createSession } from "@/lib/session";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
-import { sendSms, smsConfigured } from "@/lib/sms";
+import { sendSms, smsConfigured, smsQuotaAllows } from "@/lib/sms";
 import { isMobilePhone, toLocalPhone, formatPhone } from "@/lib/phone";
 import { recordFail, recordSuccess, PASSWORD_MAX_LEN, PASSWORD_INPUT_HARD_LIMIT } from "@/lib/login-policy";
 import { PASSWORD_MIN_LEN } from "@/lib/password-policy";
@@ -335,6 +335,12 @@ export async function changeRecoveryPhone(
     if (attempts >= MAX_NOTICE_ATTEMPTS_PER_DAY) {
       return { error: "안내 문자 발송이 하루 한도에 도달했습니다. 24시간 뒤에 다시 시도해주세요." };
     }
+    // 🔴 [검수 C-1 (c)] 회사별·전체 문자 상한에 막혀 통지가 못 나갈 상황이면 **변경 자체를 거부**한다.
+    //    위 번호당 상한과 같은 원칙이다 — "변경은 해주고 통지만 실패"하면, 공격자가 먼저 상한을 다 써 버린 뒤
+    //    조용히 번호를 갈아끼우는 경로가 된다. 탐지 장치가 꺼진 채 번호가 바뀌는 쪽이 훨씬 위험하다.
+    if (!(await smsQuotaAllows(me.companyId, "security", now))) {
+      return { error: "지금은 이전 번호로 안내 문자를 보낼 수 없어 연락처를 바꿀 수 없습니다. 잠시 후 다시 시도해주세요." };
+    }
   }
 
   // ③④ 번호 교체 + 진행 중인 인증번호 폐기 + 다른 기기 로그아웃을 한 묶음으로.
@@ -346,8 +352,7 @@ export async function changeRecoveryPhone(
   //       동시에 들어온 요청들은 각자 몇 ms 다른 `now`를 들고 있어서, 먼저 저장한 쪽의 시각이
   //       뒤늦게 판정하는 쪽 눈에는 "미래"로 보인다 → 밸브가 열려 최소 간격이 통째로 무력화된다.
   //       그래서 **최소 간격만큼 더 미래**일 때만 이상으로 본다(ms 단위 흔들림과 진짜 시계 되감김을 가른다).
-  //  · 인증번호 폐기: 지금은 회사 계정에 코드가 발급되지 않아 실제로는 0건이다. 로드맵 ③에서
-  //    복구가 열리면 "옛 번호로 이미 나간 코드"를 닫는 장치가 된다(미리 넣어 둔다).
+  //  · 인증번호 폐기: "옛 번호로 이미 나간 비밀번호 찾기 코드"를 닫는다(2026-11-21 회사 계정 복구 개방 후 실제로 작동).
   //  · 세션 정리: 복구 기준 변경은 비밀번호 변경에 준하는 보안 사건이다. 비밀번호 변경이 전 세션을
   //    끊는 것과 같은 이유로(검수 M-14·M-7) 다른 기기를 끊고 이 기기만 다시 로그인 상태로 만든다.
   const cutoff = new Date(now.getTime() - PHONE_CHANGE_MIN_INTERVAL_MS);
@@ -425,7 +430,7 @@ export async function changeRecoveryPhone(
       try {
         // 발송은 응답 밖으로 뺀다 — 발송사 응답이 느려도 화면이 기다리지 않게(검수 0-0-D 3번과 같은 이유).
         after(async () => {
-          const res = await sendSms({ to: before, text });
+          const res = await sendSms({ to: before, text, companyId: me.companyId, purpose: "security" });
           if (!res.ok) {
             console.error("[account] 복구용 연락처 변경 통지 실패:", res.detail);
             // 🔴 **사람이 볼 수 있는 곳에도 남긴다**(재재검수 중간 2). 발송사 장애·번호 해지로 통지가

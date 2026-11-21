@@ -13,36 +13,67 @@ function sendUrl(): string {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 🔴 [보안검수 M7] 문자 발송 **전체(모든 회사 합산) 상한** — 요금 폭탄 방지.
+// 🔴 [보안검수 M7] 문자 발송 상한 — 요금 폭탄 방지 + **한 회사가 다른 회사의 문자를 막지 못하게**.
 //
 // 왜 필요한가
 //  · 문자는 건당 요금이다. 지금까지 상한은 전부 "한 사람·한 번호" 단위였다(인증번호 1분 1건·하루 5건 등).
-//    그래서 직원 이메일·뒷번호를 많이 아는 사람이 **여러 계정을 돌아가며** 누르면, 각자의 상한 안에서
-//    전체 발송량은 끝없이 늘어난다. 사장님 결정(2026-11-18): "문자 켤 때 이것 먼저".
+//    그래서 여러 계정을 돌아가며 누르면 전체 발송량은 끝없이 늘어난다. 사장님 결정(2026-11-18): "문자 켤 때 이것 먼저".
+//
+// 🔴 세 겹이다 — 전체 상한 하나만 두면 생기는 사고(2026-11-21 검수 치명 C-1)
+//    무료 가입한 회사 하나가 초대 문자를 1시간에 101번 보내면 **모든 고객사의 비밀번호 찾기 문자가 멈춘다.**
+//    요금은 묶이지만 "다른 회사가 로그인할 수 있는가"를 공격자가 정하게 된다(근태 제품에서 로그인 불가 = 기록 누락).
+//    ① 회사별 상한(COMPANY_*) — 한 회사가 쓸 수 있는 양. 모든 종류 합산.
+//    ② 일반 문자 몫(GENERAL_*) — 초대·임시비번은 전체의 70%까지만. 나머지는 **보안 문자 몫으로 늘 남는다.**
+//    ③ 전체 상한(GLOBAL_*) — 마지막 방어선. 보안 문자(인증번호·번호 확인·변경 통지)만 여기까지 쓸 수 있다.
+//    ⚠️ 남는 위험: 가입 회사 여러 개를 만들어 가짜 직원으로 보안 문자를 쓰면 ③까지 닿을 수 있다.
+//       그래도 회사마다 ①에 묶이고 요금은 ③에 묶인다. 더 막으려면 가입 자체의 남용 방지가 필요하다.
 //
 // 어떻게 세나
-//  · 모든 발송 창구(초대·임시비번·인증번호·연락처 변경 통지)는 sendSms를 부르기 **전에** 발송기록(SmsLog)을
-//    "보내는 중"으로 먼저 만든다. 그래서 여기서 세면 **지금 보내려는 이 건까지** 포함된다 → "상한보다 많을 때"(>)만 막는다.
+//  · 모든 발송 창구는 sendSms를 부르기 **전에** 발송기록(SmsLog)을 "보내는 중"으로 먼저 만든다.
+//    그래서 발송 직전에 세면 **지금 보내려는 이 건까지** 포함된다 → "상한보다 많을 때"(>)만 막는다.
+//    (발송 전에 미리 여유를 묻는 smsQuotaAllows는 아직 기록이 없으므로 "상한에 닿았을 때"(>=) 막는다.)
 //  · **실제로 나갔거나 나가는 중인 건만** 센다(success · unknown · 10분 이내 pending).
 //    ⚠️ 실패(fail)는 세지 않는다 — 상한에 막힌 건도 fail로 기록되므로, 세면 막힌 시도가 창을 계속 밀어
 //       **공격이 끝나도 문자가 영영 안 나가는** 상태가 된다(2026-08-10에 같은 유형을 겪었다).
-//  · 동시에 몰리면 몇 건 넘칠 수 있다(세고 보내는 사이). 상한의 목적은 "수천 건 폭탄"을 막는 것이라 허용한다.
+//  · 기록을 먼저 만들고 세므로 동시에 몰려도 넘치지 않는다(오히려 상한 근처에서 조금 일찍 막힐 수 있다).
 //
-// 값을 바꾸려면 아래 두 숫자만 고치면 된다(배포 필요).
+// 값을 바꾸려면 아래 숫자만 고치면 된다(배포 필요).
 // ═══════════════════════════════════════════════════════════════════════════
-/** 모든 회사를 합쳐 1시간에 보낼 수 있는 최대 건수. */
+/** 모든 회사를 합쳐 1시간·24시간에 보낼 수 있는 최대 건수(보안 문자만 여기까지 쓸 수 있다). */
 export const SMS_GLOBAL_MAX_PER_HOUR = 100;
-/** 모든 회사를 합쳐 24시간에 보낼 수 있는 최대 건수. */
 export const SMS_GLOBAL_MAX_PER_DAY = 500;
+/** 초대·임시비번 같은 일반 문자는 전체 발송량이 여기에 닿으면 멈춘다(나머지는 보안 문자 몫). */
+export const SMS_GENERAL_MAX_PER_HOUR = 70;
+export const SMS_GENERAL_MAX_PER_DAY = 350;
+/** 회사 하나가 1시간·24시간에 보낼 수 있는 최대 건수(모든 종류 합산). */
+export const SMS_COMPANY_MAX_PER_HOUR = 30;
+export const SMS_COMPANY_MAX_PER_DAY = 100;
 /** 이보다 오래된 "보내는 중"은 서버가 멈춘 흔적으로 보고 세지 않는다(발송 API는 10초 제한). */
 const GLOBAL_PENDING_GRACE_MS = 10 * 60 * 1000;
-/** 상한에 걸렸을 때 화면에 나갈 수 있는 문구. 회사·계정 정보가 없는 서버 전체 상태라 누구에게나 같다. */
+/** 전체 상한에 걸렸을 때 문구. 회사·계정 정보가 없는 서버 전체 상태라 누구에게나 같다. */
 export const SMS_GLOBAL_LIMIT_DETAIL = "문자 발송량이 일시적으로 많아 잠시 멈췄습니다. 잠시 후 다시 시도해주세요.";
+/** 회사별 상한에 걸렸을 때 문구. */
+export const SMS_COMPANY_LIMIT_DETAIL = "우리 회사의 문자 발송량이 많아 잠시 멈췄습니다(1시간 30건·하루 100건). 잠시 후 다시 시도해주세요.";
 
-/** 지난 windowMs 동안 실제로 나갔거나 나가는 중인 문자 건수(모든 회사 합산). */
-async function countRecentSends(now: Date, windowMs: number): Promise<number> {
+/** 상한 때문에 못 보낸 결과인가(화면에 그대로 보여줘도 되는 문구). */
+export function isSmsLimitDetail(detail: string): boolean {
+  return detail === SMS_GLOBAL_LIMIT_DETAIL || detail === SMS_COMPANY_LIMIT_DETAIL;
+}
+
+/**
+ * 문자 용도. **보안 문자**(인증번호·번호 확인·연락처 변경 통지)는 전체 상한까지 쓸 수 있고,
+ * **일반 문자**(초대·임시비번)는 일반 몫(70%)까지만 쓴다.
+ */
+export type SmsPurpose = "security" | "general";
+
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+/** 지난 windowMs 동안 실제로 나갔거나 나가는 중인 문자 건수. companyId를 주면 그 회사만. */
+async function countRecentSends(now: Date, windowMs: number, companyId?: string): Promise<number> {
   return prisma.smsLog.count({
     where: {
+      ...(companyId ? { companyId } : {}),
       createdAt: { gte: new Date(now.getTime() - windowMs) },
       OR: [
         { result: { in: ["success", "unknown"] } },
@@ -53,25 +84,45 @@ async function countRecentSends(now: Date, windowMs: number): Promise<number> {
 }
 
 /**
- * 전체 상한 안인가. 넘었으면 false.
- *  · DB를 못 읽으면 **보내지 않는다**(false) — 셀 수 없는 문자는 요금 상한 밖이다.
+ * 상한 판정. 통과면 null, 막히면 화면용 문구.
+ *  · `includesThis`: 지금 보내려는 건의 발송기록이 이미 세어지는가(sendSms 안 = true, 미리 묻기 = false).
+ *  · DB를 못 읽으면 **보내지 않는다** — 셀 수 없는 문자는 요금 상한 밖이다.
  */
-async function globalLimitAllows(now: Date): Promise<boolean> {
+async function quotaBlock(companyId: string, purpose: SmsPurpose, now: Date, includesThis: boolean): Promise<string | null> {
+  // includesThis=false면 "이걸 하나 더 보내면?"으로 센다.
+  const extra = includesThis ? 0 : 1;
   try {
-    const [hour, day] = await Promise.all([
-      countRecentSends(now, 60 * 60 * 1000),
-      countRecentSends(now, 24 * 60 * 60 * 1000),
+    const [cHour, cDay, gHour, gDay] = await Promise.all([
+      countRecentSends(now, HOUR_MS, companyId),
+      countRecentSends(now, DAY_MS, companyId),
+      countRecentSends(now, HOUR_MS),
+      countRecentSends(now, DAY_MS),
     ]);
-    if (hour > SMS_GLOBAL_MAX_PER_HOUR || day > SMS_GLOBAL_MAX_PER_DAY) {
-      // 운영자가 알아챌 수 있게 남긴다(수신번호·본문은 남기지 않는다).
-      console.error(`[sms] 🔴 전체 발송 상한 도달 — 1시간 ${hour}/${SMS_GLOBAL_MAX_PER_HOUR}, 24시간 ${day}/${SMS_GLOBAL_MAX_PER_DAY}. 발송을 멈춘다.`);
-      return false;
+    if (cHour + extra > SMS_COMPANY_MAX_PER_HOUR || cDay + extra > SMS_COMPANY_MAX_PER_DAY) {
+      console.error(`[sms] 회사별 발송 상한 도달 — 회사 ${companyId}: 1시간 ${cHour}, 24시간 ${cDay}. 이 회사 발송을 멈춘다.`);
+      return SMS_COMPANY_LIMIT_DETAIL;
     }
-    return true;
+    const maxHour = purpose === "security" ? SMS_GLOBAL_MAX_PER_HOUR : SMS_GENERAL_MAX_PER_HOUR;
+    const maxDay = purpose === "security" ? SMS_GLOBAL_MAX_PER_DAY : SMS_GENERAL_MAX_PER_DAY;
+    if (gHour + extra > maxHour || gDay + extra > maxDay) {
+      // 운영자가 알아챌 수 있게 남긴다(수신번호·본문은 남기지 않는다).
+      console.error(`[sms] 🔴 전체 발송 상한 도달(${purpose}) — 1시간 ${gHour}/${maxHour}, 24시간 ${gDay}/${maxDay}. 발송을 멈춘다.`);
+      return SMS_GLOBAL_LIMIT_DETAIL;
+    }
+    return null;
   } catch (e) {
-    console.error("[sms] 전체 발송량 확인 실패 — 안전을 위해 발송하지 않는다:", e instanceof Error ? e.message : String(e));
-    return false;
+    console.error("[sms] 발송량 확인 실패 — 안전을 위해 발송하지 않는다:", e instanceof Error ? e.message : String(e));
+    return SMS_GLOBAL_LIMIT_DETAIL;
   }
+}
+
+/**
+ * **보내기 전에** 한 건 더 보낼 여유가 있는가.
+ *  · 문자를 못 보내면 안 되는 동작이 먼저 물어본다 — 예: 회사 계정 복구 번호 변경은 옛 번호로 통지가
+ *    나가야만 허용한다(탐지 장치가 꺼진 채 번호가 바뀌는 것을 막는다 — 검수 C-1 (c)).
+ */
+export async function smsQuotaAllows(companyId: string, purpose: SmsPurpose, now: Date = new Date()): Promise<boolean> {
+  return (await quotaBlock(companyId, purpose, now, false)) === null;
 }
 
 // EUC-KR 기준 바이트 길이(한글 2·ASCII 1). SMS/LMS 구분에 사용.
@@ -138,7 +189,8 @@ export function interpretSmsResponse(httpOk: boolean, status: number, respText: 
 export type SmsResult = { ok: boolean; detail: string };
 
 // 문자 1건 발송. text 길이에 따라 SMS/LMS 자동 구분. 예외·미설정은 던지지 않고 결과로 반환한다.
-export async function sendSms(opts: { to: string; text: string; subject?: string }): Promise<SmsResult> {
+//  · companyId·purpose는 **필수**다 — 빠뜨리면 회사별 상한·보안 문자 몫이 조용히 무력화된다(검수 C-1).
+export async function sendSms(opts: { to: string; text: string; subject?: string; companyId: string; purpose: SmsPurpose }): Promise<SmsResult> {
   const acc = account();
   if (!acc) return { ok: false, detail: "문자 발송계정이 설정되지 않았습니다(.env)." };
 
@@ -148,8 +200,11 @@ export async function sendSms(opts: { to: string; text: string; subject?: string
   const text = opts.text ?? "";
   if (text.trim() === "") return { ok: false, detail: "보낼 내용이 없습니다." };
 
-  // 🔴 [M7] 전체 상한 — 발송 API를 부르기 직전, 입력 검사가 끝난 뒤에 센다(형식 오류는 DB를 안 건드린다).
-  if (!(await globalLimitAllows(new Date()))) return { ok: false, detail: SMS_GLOBAL_LIMIT_DETAIL };
+  // 🔴 [M7] 회사별·전체 상한 — 발송 API를 부르기 직전, 입력 검사가 끝난 뒤에 센다(형식 오류는 DB를 안 건드린다).
+  {
+    const blocked = await quotaBlock(opts.companyId, opts.purpose, new Date(), true);
+    if (blocked) return { ok: false, detail: blocked };
+  }
 
   const sms = isSmsType(text);
   const params: Record<string, string> = {

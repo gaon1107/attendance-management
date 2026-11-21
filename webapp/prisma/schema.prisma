@@ -882,6 +882,7 @@ model SmsLog {
   userId    String?  // 임시비번=대상 직원 / 초대=null
   // "invite" | "temp_password" | "reset_code"(비밀번호 찾기 인증코드)
   //  | "recovery_notice"(회사 계정 복구용 연락처가 바뀌었다는 **옛 번호 통지**)
+  //  | "phone_verify"(회사 계정 복구용 번호 확인 인증번호 — lib/phone-verify.ts)
   //     ⚠️ recovery_notice는 단순 기록이 아니라 **하루 발송 상한을 세는 기준**이다. 이 값을 바꾸거나
   //        다른 곳에서 재사용하면 actions/account.ts의 상한이 조용히 풀린다.
   kind      String

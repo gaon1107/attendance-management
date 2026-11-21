@@ -29,29 +29,35 @@ export type AccessInput = {
   meta?: string | null;
 };
 
+/**
+ * 접속기록 한 줄의 저장값(길이 자르기·기기 라벨 포함). recordAccess와 **트랜잭션 안에서 직접 쓰는 곳**이 함께 쓴다.
+ *  · 트랜잭션에 넣는 경우: 기록이 빠지면 안 되는 사건(예: 회사 계정 비밀번호 문자 재설정 — 알림센터 경고의 근거).
+ */
+export function accessEventData(e: AccessInput) {
+  // ⚠️ 길이는 **여기 한 곳에서** 자른다(검수 중간 3) — 호출부마다 자르면 반드시 한 군데를 빠뜨린다.
+  //    자르지 않으면 로그인 창에 붙여넣은 수십 KB 문자열이 그대로 2년 보관되고,
+  //    관리자 접속기록 화면(최신 2000건을 한 번에 로드)이 무거워진다.
+  const cut = (s: string | null | undefined, n: number): string | null => (s ? s.slice(0, n) : null);
+  return {
+    companyId: e.companyId ?? null,
+    userId: e.userId ?? null,
+    actorName: cut(e.actorName, 100),
+    // ⚠️ 이 값은 lib/login-policy.ts의 EMAIL_MAX_LEN보다 **작으면 안 된다**(검수 경미 2).
+    //    작아지면 2년 보관하는 감사기록의 이메일이 조용히 잘려 사고 조사 근거가 훼손된다.
+    emailTried: cut(e.emailTried, 254),
+    kind: e.kind,
+    result: e.result,
+    ip: cut(e.ip, 64),
+    userAgent: cut(e.userAgent, 512),
+    device: e.userAgent ? deviceLabel(e.userAgent) : null,
+    meta: cut(e.meta, 300),
+  };
+}
+
 // 접속 이벤트 1건 기록. 실패해도 조용히 넘어간다(본기능 보호).
 export async function recordAccess(e: AccessInput): Promise<void> {
   try {
-    // ⚠️ 길이는 **여기 한 곳에서** 자른다(검수 중간 3) — 호출부마다 자르면 반드시 한 군데를 빠뜨린다.
-    //    자르지 않으면 로그인 창에 붙여넣은 수십 KB 문자열이 그대로 2년 보관되고,
-    //    관리자 접속기록 화면(최신 2000건을 한 번에 로드)이 무거워진다.
-    const cut = (s: string | null | undefined, n: number): string | null => (s ? s.slice(0, n) : null);
-    await prisma.accessEvent.create({
-      data: {
-        companyId: e.companyId ?? null,
-        userId: e.userId ?? null,
-        actorName: cut(e.actorName, 100),
-        // ⚠️ 이 값은 lib/login-policy.ts의 EMAIL_MAX_LEN보다 **작으면 안 된다**(검수 경미 2).
-        //    작아지면 2년 보관하는 감사기록의 이메일이 조용히 잘려 사고 조사 근거가 훼손된다.
-        emailTried: cut(e.emailTried, 254),
-        kind: e.kind,
-        result: e.result,
-        ip: cut(e.ip, 64),
-        userAgent: cut(e.userAgent, 512),
-        device: e.userAgent ? deviceLabel(e.userAgent) : null,
-        meta: cut(e.meta, 300),
-      },
-    });
+    await prisma.accessEvent.create({ data: accessEventData(e) });
   } catch (err) {
     // 기록 실패는 본기능을 막지 않는다 — 경고만 남긴다.
     console.warn("[access-log] 이벤트 기록 실패(무시):", err);

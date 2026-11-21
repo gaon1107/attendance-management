@@ -8,7 +8,7 @@ import { RecoveryPhoneCard } from "./RecoveryPhoneCard";
 import { prisma } from "@/lib/db";
 import { isDeviceOnline } from "@/lib/agent-auth";
 import { maskPhone, isMobilePhone } from "@/lib/phone";
-import { ownerRecoveryState } from "@/lib/owner-recovery";
+import { ownerRecoveryState, phoneIsVerified } from "@/lib/owner-recovery";
 import { smsConfigured } from "@/lib/sms";
 
 const MY_EVENT_LIMIT = 20; // [내 PC 기록]에 보여줄 최근 건수(본인 데이터 열람권)
@@ -49,6 +49,11 @@ export default async function AccountPage() {
   const unlockLabel =
     recovery && !recovery.ready && recovery.reason === "locked"
       ? recovery.unlockAt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })
+      : null;
+  // 확인한 날 — "누가 언제 확인해 둔 번호인가"를 보이게 한다(담당자가 바뀌었으면 다시 확인·변경하라는 신호).
+  const verifiedLabel =
+    me.isOwner && me.phoneVerifiedAt && phoneIsVerified(me)
+      ? me.phoneVerifiedAt.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric" })
       : null;
 
   const info: { label: string; value: string }[] = [
@@ -95,6 +100,7 @@ export default async function AccountPage() {
           // ⚠️ 문자 설정 여부가 아니라 **회사 계정 복구 판정**으로 표시한다(검수 치명 2).
           recoveryReason={!recovery || recovery.ready ? "ready" : recovery.reason}
           unlockLabel={unlockLabel}
+          verifiedLabel={verifiedLabel}
           // 번호 확인 문자를 보낼 수 있는가(문자 계정 설정 여부). 복구 개방 여부와는 다른 값이다.
           smsReady={smsConfigured()}
         />

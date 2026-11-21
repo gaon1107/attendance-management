@@ -84,19 +84,20 @@ export const listAdminNotifications = cache(async (companyId: string): Promise<{
   //  · 읽음 저장이 없는 실시간 집계라 **7일이 지나면 저절로 사라진다**(처리 버튼으로 지울 수 없다 — 지우면
   //    그 사람이 지울 수도 있다).
   //  · 부가기능 — 실패해도 알림센터 본체는 뜬다.
+  //  · 🔴 [검수 2026-11-21 M-1] 복구 번호가 **바뀌거나 확인된 일**도 함께 알린다. 번호 확인은 "그 폰을 가진 사람"만
+  //    증명할 뿐이라, 퇴사 예정자가 자기 폰으로 확인해 두면 그 뒤로 계속 유효하다. 비밀번호를 빼앗긴 뒤가 아니라
+  //    **번호가 심어지는 순간** 관리자들이 볼 수 있어야 한다.
   let ownerSmsReset = 0;
+  let ownerPhoneEvents = 0;
   try {
     const owners = await prisma.user.findMany({ where: { companyId, isOwner: true }, select: { id: true } });
     if (owners.length > 0) {
-      ownerSmsReset = await prisma.accessEvent.count({
-        where: {
-          companyId,
-          userId: { in: owners.map((o) => o.id) },
-          meta: "password_reset_by_sms_code",
-          result: "success",
-          createdAt: { gte: new Date(Date.now() - OWNER_RESET_ALERT_DAYS * 24 * 60 * 60 * 1000) },
-        },
-      });
+      const since = new Date(Date.now() - OWNER_RESET_ALERT_DAYS * 24 * 60 * 60 * 1000);
+      const base = { companyId, userId: { in: owners.map((o) => o.id) }, result: "success", createdAt: { gte: since } };
+      [ownerSmsReset, ownerPhoneEvents] = await Promise.all([
+        prisma.accessEvent.count({ where: { ...base, meta: "password_reset_by_sms_code" } }),
+        prisma.accessEvent.count({ where: { ...base, meta: { in: ["owner_recovery_phone_change", "owner_recovery_phone_verified"] } } }),
+      ]);
     }
   } catch (e) {
     console.warn("[notifications] 회사 계정 문자 재설정 집계 실패(알림센터는 정상 표시):", e);
@@ -110,6 +111,14 @@ export const listAdminNotifications = cache(async (companyId: string): Promise<{
       detail: `최근 ${OWNER_RESET_ALERT_DAYS}일 안에 회사 계정의 비밀번호가 문자 인증으로 바뀌었습니다. 회사에서 한 일이 아니라면 즉시 확인하세요.`,
       count: ownerSmsReset, countLabel: `${ownerSmsReset}건`,
       href: "/security/access", cta: "기록 보기", severity: "danger",
+    });
+  }
+  if (ownerPhoneEvents > 0) {
+    items.push({
+      key: "owner-phone", title: "회사 계정 복구용 연락처 변경·확인",
+      detail: `최근 ${OWNER_RESET_ALERT_DAYS}일 안에 회사 계정의 복구용 휴대폰 번호가 바뀌었거나 확인되었습니다. 이 번호를 가진 사람은 회사 계정 비밀번호를 되찾을 수 있습니다. 회사에서 한 일인지 확인하세요.`,
+      count: ownerPhoneEvents, countLabel: `${ownerPhoneEvents}건`,
+      href: "/security/access", cta: "기록 보기", severity: "warning",
     });
   }
   if (anomalyCount > 0) {

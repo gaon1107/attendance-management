@@ -126,7 +126,7 @@ async function issueResetCodeInner(
   });
 
   // 아래는 전부 조용히 종료한다 — 사유를 하나라도 알려주면 계정·전화번호 확인 창구가 된다.
-  //  · 계정 없음 / 퇴사자 / 🔒 회사 계정(스위치가 꺼져 있는 동안은 이 경로로 못 되찾는다)
+  //  · 계정 없음 / 퇴사자 / 🔒 복구 준비가 안 된 회사 계정(ownerRecoveryState — 스위치·번호 확인·72시간 대기)
   //  · 전화번호 뒷자리 불일치(전화번호 미등록이면 phoneTailMatches가 항상 false)
   if (!user || user.deactivatedAt || ownerBlocked(user, now)) return;
   if (!phoneTailMatches(user.phone, phoneTail)) return;
@@ -182,10 +182,14 @@ async function issueResetCodeInner(
     });
     logId = log.id;
   } catch (e) {
-    console.warn("[reset-code] 발송기록 생성 실패(발송은 진행):", e);
+    // 🔴 기록 없이 보내지 않는다(2026-11-21 검수 경미 3). 문자 상한(lib/sms.ts)은 이 기록을 세므로,
+    //    기록 없이 나간 문자는 회사별·전체 상한 밖이 된다. 나가지 않은 코드는 지운다(하루 상한 보호 — 치명 A).
+    console.error("[reset-code] 발송기록 생성 실패(발송하지 않음):", e);
+    await prisma.passwordResetCode.delete({ where: { id: created.id } });
+    return;
   }
 
-  const res = await sendSms({ to, text });
+  const res = await sendSms({ to, text, companyId: user.companyId, purpose: "security" });
 
   if (logId) {
     try {

@@ -75,7 +75,7 @@ async function claimSendFinalize(input: {
     throw e;
   }
 
-  const res = await sendSms({ to: input.to, text: input.text });
+  const res = await sendSms({ to: input.to, text: input.text, companyId: input.companyId, purpose: "general" });
 
   // ⚠️ 결과 확정(update)이 실패하면 pending이 그대로 남아 위 ①②의 "결과 미확인" 경로로 빠진다.
   //    그 사실을 서버 로그에 남겨 원인을 추적할 수 있게 한다(검수 중간 5 — 예전엔 예외가 그냥 튀어나갔다).

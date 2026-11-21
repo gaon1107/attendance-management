@@ -29,6 +29,7 @@ export function RecoveryPhoneCard({
   usable,
   recoveryReason,
   unlockLabel,
+  verifiedLabel,
   smsReady,
 }: {
   maskedPhone: string | null; // null = 등록된 번호 없음
@@ -38,6 +39,8 @@ export function RecoveryPhoneCard({
   recoveryReason: RecoveryReason;
   /** 72시간 대기 중이면 풀리는 시각(서버에서 만든 글자). */
   unlockLabel: string | null;
+  /** 지금 번호를 확인한 날(서버에서 만든 글자). 확인 안 됐으면 null. */
+  verifiedLabel: string | null;
   /** 확인 문자를 보낼 수 있는가(문자 계정 설정 여부). */
   smsReady: boolean;
 }) {
@@ -136,11 +139,21 @@ export function RecoveryPhoneCard({
                     확인된 번호입니다. 다만 지금은 문자 발송이 멈춰 있어 문자로 되찾을 수 없습니다.
                   </div>
                 )}
-                {recoveryReason === "locked" && (
+                {recoveryReason === "locked" && smsReady && (
                   // 🔒 번호를 바꾼 직후 72시간 — 세션을 훔친 사람이 자기 번호를 심고 바로 빼가는 것을 막는 대기.
                   <div style={{ fontSize: 13, color: "#92400E", fontWeight: 700, marginTop: 8 }}>
                     확인된 번호입니다. 다만 번호를 바꾼 지 얼마 되지 않아 <b>{unlockLabel ?? "72시간 뒤"}부터</b> 문자로
                     되찾을 수 있습니다. (몰래 번호를 바꾸고 바로 비밀번호를 가져가는 것을 막기 위한 대기입니다)
+                  </div>
+                )}
+                {recoveryReason === "locked" && !smsReady && (
+                  <div style={{ fontSize: 13, color: "#92400E", fontWeight: 700, marginTop: 8 }}>
+                    확인된 번호입니다. 다만 지금은 문자 발송이 멈춰 있어 문자로 되찾을 수 없습니다.
+                  </div>
+                )}
+                {verifiedLabel && (
+                  <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 6 }}>
+                    {verifiedLabel}에 문자로 확인한 번호입니다. 이 번호를 가진 사람은 회사 계정 비밀번호를 되찾을 수 있습니다.
                   </div>
                 )}
                 {unverified && (

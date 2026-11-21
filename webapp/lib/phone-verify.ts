@@ -18,7 +18,7 @@
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { hashPassword, verifyPassword } from "@/lib/password";
-import { sendSms, smsConfigured, SMS_GLOBAL_LIMIT_DETAIL } from "@/lib/sms";
+import { sendSms, smsConfigured, isSmsLimitDetail } from "@/lib/sms";
 import { toLocalPhone, isMobilePhone } from "@/lib/phone";
 import { generateResetCode, CODE_TTL_MS, CODE_MAX_ATTEMPTS, RESEND_COOLDOWN_MS } from "@/lib/reset-code";
 
@@ -93,7 +93,7 @@ export async function issuePhoneVerifyCode(user: Owner, now: Date = new Date()):
     return { ok: false, error: "인증번호를 보내지 못했습니다. 잠시 후 다시 시도해 주세요." };
   }
 
-  const res = await sendSms({ to: phone, text });
+  const res = await sendSms({ to: phone, text, companyId: user.companyId, purpose: "security" });
   try {
     await prisma.smsLog.update({
       where: { id: logId },
@@ -107,7 +107,7 @@ export async function issuePhoneVerifyCode(user: Owner, now: Date = new Date()):
   if (!res.ok) {
     console.error("[phone-verify] 확인 문자 발송 실패:", res.detail);
     await prisma.phoneVerifyCode.delete({ where: { id: created.id } });
-    if (res.detail === SMS_GLOBAL_LIMIT_DETAIL) return { ok: false, error: SMS_GLOBAL_LIMIT_DETAIL };
+    if (isSmsLimitDetail(res.detail)) return { ok: false, error: res.detail };
     return { ok: false, error: "인증번호 문자를 보내지 못했습니다. 잠시 후 다시 시도해 주세요." };
   }
 

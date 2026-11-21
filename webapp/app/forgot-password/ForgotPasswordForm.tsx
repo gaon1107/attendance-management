@@ -108,7 +108,8 @@ function OwnerNotice({ panel, ownerSms }: { panel: "code" | "admin"; ownerSms: b
       ) : panel === "admin" && ownerSms ? (
         <>
           <b>회사 계정(가입할 때 만든 계정)</b>은 보안상 관리자 요청으로는 되찾을 수 없습니다. 복구용 번호를 확인해
-          두었다면 앞 화면의 <b>문자 인증</b>으로 되찾을 수 있습니다. 그렇지 않다면 {fallback}
+          두었다면 앞 화면의 <b>문자 인증</b>으로 되찾을 수 있습니다(번호를 바꾼 뒤 72시간 동안은 불가). 그렇지 않다면{" "}
+          {fallback}
         </>
       ) : (
         <>
