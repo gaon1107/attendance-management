@@ -86,6 +86,11 @@ const EXPECTED = [
   "pc-20-근태현황", "pc-21-현황판", "pc-22-리포트", "pc-23-초과근무현황", "pc-24-직원근태상세",
   "pc-30-휴가승인", "pc-31-정정승인",
   "pc-40-설정", "pc-40b-설정-근무규칙", "pc-41-회사정보", "pc-42-구독요금", "pc-43-생체정보", "pc-44-일정",
+  // 2026-11-21 사장님 지시로 추가 — 안내서에 장이 없던 화면들.
+  "pc-50-공지", "pc-51-알림", "pc-52-연차정산", "pc-53-휴게시간",
+  "pc-54-PC관리", "pc-55-보안로그", "pc-56-계정",
+  // 켠 회사에만 보이는 메뉴 — 데모 설정을 잠깐 켜고 찍는다(아래 7번).
+  "pc-57-근무표", "pc-58-결재함",
   "m-01-초대가입", "m-02-로그인", "m-03-메뉴",
   "m-10-출퇴근", "m-10b-출퇴근-다른상태", "m-11-인증방식",
   "m-20-내근태", "m-21-휴가신청", "m-22-정정신청", "m-23-외출외근", "m-24-초과근무",
@@ -119,6 +124,34 @@ async function hideDevBadge(page) {
     .catch(() => {});
 }
 
+/** 🔴 화면에 박힌 개발 PC 주소(http://localhost:3000)를 **고객이 쓸 주소**로 바꾼다.
+ *  [PC관리]·[계정]의 PC-OFF 설치 안내가 그 주소를 그대로 보여 준다(화면 코드가 자기 주소를 읽어 적는다).
+ *  그대로 찍으면 고객 안내서에 **"http://localhost:3000 에서 내려받으세요"** 가 박힌다 —
+ *  고객 PC에서는 절대 열리지 않는 주소이고, 문의를 부르는 가짜 안내가 된다.
+ *  ※ 초대 링크(pc-12)와 같은 이유의 처리다. 거기는 토큰까지 가려야 해 따로 둔다.
+ *  ⚠️ **보이는 글자만** 바꾼다. 실제 이동·클릭은 하지 않으므로 화면 동작에는 영향이 없다. */
+async function maskLocalhost(page) {
+  await page
+    .evaluate(() => {
+      const fix = (t) =>
+        t.split("http://localhost:3000").join("https://attend.newgaon.com")
+         .split("localhost:3000").join("attend.newgaon.com");
+      for (const el of document.querySelectorAll("input,textarea")) {
+        if (typeof el.value === "string" && el.value.includes("localhost:3000")) el.value = fix(el.value);
+      }
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      const nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      for (const n of nodes) {
+        if (n.nodeValue && n.nodeValue.includes("localhost:3000")) n.nodeValue = fix(n.nodeValue);
+      }
+      for (const a of document.querySelectorAll('a[href*="localhost:3000"]')) {
+        a.setAttribute("href", fix(a.getAttribute("href")));
+      }
+    })
+    .catch(() => {});
+}
+
 /** 접이식(<details>) 묶음을 전부 펼친다 — 접힌 채로는 설명할 내용이 안 보인다. */
 async function openDetails(page) {
   await page.evaluate(() => {
@@ -140,6 +173,10 @@ async function scrollTo(page, text) {
 }
 
 async function shot(page, name, { full = false } = {}) {
+  // 🔴 **찍기 직전에만** 개발 PC 주소를 가린다.
+  //    settle() 에 두면 화면 값을 읽어 쓰는 코드(초대 링크 확보)보다 먼저 돌아,
+  //    가짜 주소를 읽어 그리로 이동하다 m-01-초대가입 캡처가 실패한다(실제로 그럴 뻔했다).
+  await maskLocalhost(page);
   const file = path.join(raw, `${name}.png`);
   await page.screenshot({ path: file, fullPage: full });
   const { width, height } = await sharp(file).metadata();
@@ -263,6 +300,16 @@ try {
       ["pc-42-구독요금", "/subscription", null],
       ["pc-43-생체정보", "/biometrics", null],
       ["pc-44-일정", "/schedule", null],
+      // ── 안내서에 장이 없던 화면들 (2026-11-21) ──
+      //  ⚠️ [보안로그]의 주소는 /security 가 아니라 **/security/logins** 다(사이드바 HREF 와 같은 진입점).
+      //     /security 로 가면 탭이 없는 빈 화면이 찍힌다.
+      ["pc-50-공지", "/notice", null],
+      ["pc-51-알림", "/notifications", null],
+      ["pc-52-연차정산", "/leave-summary", null],
+      ["pc-53-휴게시간", "/break-time", null],
+      ["pc-54-PC관리", "/pc-devices", null],
+      ["pc-55-보안로그", "/security/logins", null],
+      ["pc-56-계정", "/account", null],
     ];
     for (const [name, url, scroll] of pages) {
       await page.goto(`${BASE}${url}`, { waitUntil: "domcontentloaded" });
@@ -489,6 +536,112 @@ try {
         await page.goto(`${BASE}/face-enroll`, { waitUntil: "domcontentloaded" });
         await settle(page, 2600); // 카메라가 켜지고 타원 가이드가 그려질 시간
         await shot(page, "m-31b-얼굴등록-카메라", { full: true });
+        await ctx.close();
+      } finally {
+        await restore();
+        process.off("SIGINT", onSignal);
+        process.off("SIGTERM", onSignal);
+      }
+    }
+  }
+
+  // ── 7. 켠 회사에만 보이는 화면(근무표·결재함) ────────────────────
+  //  데모 회사는 평소 **교대근무도 결재선도 쓰지 않는다**(제품 기본값). 그래서 두 메뉴는 사이드바에
+  //  아예 없고, 주소로 직접 들어가도 "아직 설정되지 않았습니다" 안내문만 찍힌다.
+  //  안내서에는 **그 기능을 켠 회사가 보게 될 모습**이 필요하므로 잠깐 켜고 찍은 뒤 **반드시 되돌린다.**
+  //  🔴 되돌릴 값은 위 6번과 같은 이유로 **고정 상수**다(지난 실패가 "원래 값"으로 굳는 것을 막는다).
+  //  🔴 데모 회사 하나만 건드린다. 켜는 동안 만든 조·결재단계도 함께 지운다.
+  {
+    const RESTORE = { shiftMode: null, scheduleType: null, approvalMode: "single", approvalStepCount: 1 };
+    const before = await prisma.company.findUnique({
+      where: { id: demoCompany.id },
+      select: { shiftMode: true, scheduleType: true, approvalMode: true, approvalStepCount: true },
+    });
+    const existingShifts = await prisma.shift.count({ where: { companyId: demoCompany.id } });
+    const existingSteps = await prisma.approvalStep.count({ where: { companyId: demoCompany.id } });
+
+    const dirty =
+      !before ||
+      before.shiftMode !== null ||
+      before.scheduleType !== null ||
+      before.approvalMode !== "single" ||
+      before.approvalStepCount !== 1 ||
+      existingShifts > 0 ||
+      existingSteps > 0;
+
+    if (dirty) {
+      // 평소 상태가 아니면 건드리지 않는다 — 지난번 원복이 실패했다는 뜻이다.
+      console.error("  ✖ 데모 회사가 평소 설정이 아닙니다 — 근무표·결재함 캡처를 건너뜁니다.");
+      console.error(`    지금 값: ${JSON.stringify(before)} · 조 ${existingShifts}개 · 결재단계 ${existingSteps}개`);
+      console.error(`    손으로 되돌릴 값: ${JSON.stringify(RESTORE)} (조·결재단계는 삭제)`);
+      skip("pc-57-근무표", "데모 회사 설정이 평소 상태가 아님");
+      skip("pc-58-결재함", "데모 회사 설정이 평소 상태가 아님");
+    } else {
+      console.log(`  · 데모 회사에 교대근무·결재선을 잠시 켭니다. 원래 값: ${JSON.stringify(RESTORE)}`);
+      const madeStepIds = [];
+      let restored = false;
+      const restore = async (label) => {
+        if (restored) return;
+        restored = true;
+        try {
+          if (madeStepIds.length) await prisma.approvalStep.deleteMany({ where: { id: { in: madeStepIds } } });
+          await prisma.shift.deleteMany({ where: { companyId: demoCompany.id } });
+          await prisma.company.update({ where: { id: demoCompany.id }, data: RESTORE });
+          console.log(`  · 데모 회사 설정을 원래대로 되돌렸습니다${label ? ` [${label}]` : ""}.`);
+        } catch (e) {
+          console.error("  ✖✖ 되돌리기에 실패했습니다. 아래대로 직접 고쳐 주세요.");
+          console.error(`      회사: 주식회사 한빛솔루션 (id ${demoCompany.id})`);
+          console.error(`      값  : ${JSON.stringify(RESTORE)} · Shift 전체 삭제 · ApprovalStep ${JSON.stringify(madeStepIds)} 삭제`);
+          console.error("      원인:", e?.message);
+          process.exitCode = 1;
+        }
+      };
+      const onSignal = async () => { await restore("강제 종료"); await prisma.$disconnect().catch(() => {}); process.exit(130); };
+      process.once("SIGINT", onSignal);
+      process.once("SIGTERM", onSignal);
+
+      try {
+        // (1) 교대근무 2교대 + 조 정의 — 근무표 화면이 직원 10명 × 요일 표로 나오게.
+        await prisma.company.update({
+          where: { id: demoCompany.id },
+          data: { shiftMode: 2, scheduleType: "fixed", approvalMode: "deptline", approvalStepCount: 1 },
+        });
+        await prisma.shift.create({ data: { companyId: demoCompany.id, order: 1, name: "주간조", startTime: "06:00", endTime: "14:00" } });
+        await prisma.shift.create({ data: { companyId: demoCompany.id, order: 2, name: "야간조", startTime: "14:00", endTime: "22:00" } });
+
+        // (2) 결재함에 보여줄 "내 차례" 만들기.
+        //  결재선을 켜기 전에 올라온 신청에는 결재단계가 없어 결재함이 **빈 화면**으로 찍힌다
+        //  ("결재할 항목이 없습니다" 한 줄) — 그러면 무엇을 하는 화면인지 안내서에서 보이지 않는다.
+        //  그래서 이미 대기 중인 휴가 신청에 **관리자(김서준) 차례** 단계를 붙인다. 캡처 뒤 지운다.
+        const admin = await prisma.user.findFirst({ where: { email: ADMIN, companyId: demoCompany.id }, select: { id: true } });
+        const waiting = await prisma.leaveRequest.findMany({
+          where: { companyId: demoCompany.id, status: "pending", userId: { not: admin?.id } },
+          orderBy: { createdAt: "desc" },
+          take: 2,
+          select: { id: true },
+        });
+        if (admin && waiting.length) {
+          for (const w of waiting) {
+            const step = await prisma.approvalStep.create({
+              data: { companyId: demoCompany.id, requestType: "leave", requestId: w.id, stepOrder: 1, approverUserId: admin.id, status: "pending" },
+            });
+            madeStepIds.push(step.id);
+          }
+          console.log(`  · 결재함에 보여줄 대기 결재 ${madeStepIds.length}건을 임시로 만들었습니다.`);
+        } else {
+          console.warn("  ⚠ 대기 중인 휴가 신청이 없어 결재함이 빈 화면으로 찍힙니다.");
+        }
+
+        const ctx = await browser.newContext({ ...common, viewport: DESK });
+        const page = await ctx.newPage();
+        await login(page, ADMIN);
+        for (const [name, url] of [["pc-57-근무표", "/shifts"], ["pc-58-결재함", "/approvals"]]) {
+          await page.goto(`${BASE}${url}`, { waitUntil: "domcontentloaded" });
+          await settle(page, 1100);
+          await openDetails(page);
+          await settle(page, 250);
+          await shot(page, name);
+        }
         await ctx.close();
       } finally {
         await restore();
