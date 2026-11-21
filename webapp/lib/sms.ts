@@ -4,8 +4,75 @@
 // ※ 계정(발신ID·비번·발신번호)은 .env에서만 읽는다(하드코딩 금지). 미설정이면 안전하게 실패 반환.
 import iconv from "iconv-lite";
 import { normalizePhone } from "@/lib/phone";
+import { prisma } from "@/lib/db";
 
-const SEND_URL = process.env.IONE_SMS_SEND_URL || "http://smsmsgr.ione24.com/slma_action_gaon.ashx";
+// 발송 주소는 **보낼 때마다** 읽는다(예전엔 파일을 처음 불러올 때 한 번 읽어 고정했다).
+//  · 운영 동작은 같다. 시험할 때 가짜 수신처로 돌려도 서버를 재시작하지 않아도 되게 하려는 것이다.
+function sendUrl(): string {
+  return process.env.IONE_SMS_SEND_URL || "http://smsmsgr.ione24.com/slma_action_gaon.ashx";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🔴 [보안검수 M7] 문자 발송 **전체(모든 회사 합산) 상한** — 요금 폭탄 방지.
+//
+// 왜 필요한가
+//  · 문자는 건당 요금이다. 지금까지 상한은 전부 "한 사람·한 번호" 단위였다(인증번호 1분 1건·하루 5건 등).
+//    그래서 직원 이메일·뒷번호를 많이 아는 사람이 **여러 계정을 돌아가며** 누르면, 각자의 상한 안에서
+//    전체 발송량은 끝없이 늘어난다. 사장님 결정(2026-11-18): "문자 켤 때 이것 먼저".
+//
+// 어떻게 세나
+//  · 모든 발송 창구(초대·임시비번·인증번호·연락처 변경 통지)는 sendSms를 부르기 **전에** 발송기록(SmsLog)을
+//    "보내는 중"으로 먼저 만든다. 그래서 여기서 세면 **지금 보내려는 이 건까지** 포함된다 → "상한보다 많을 때"(>)만 막는다.
+//  · **실제로 나갔거나 나가는 중인 건만** 센다(success · unknown · 10분 이내 pending).
+//    ⚠️ 실패(fail)는 세지 않는다 — 상한에 막힌 건도 fail로 기록되므로, 세면 막힌 시도가 창을 계속 밀어
+//       **공격이 끝나도 문자가 영영 안 나가는** 상태가 된다(2026-08-10에 같은 유형을 겪었다).
+//  · 동시에 몰리면 몇 건 넘칠 수 있다(세고 보내는 사이). 상한의 목적은 "수천 건 폭탄"을 막는 것이라 허용한다.
+//
+// 값을 바꾸려면 아래 두 숫자만 고치면 된다(배포 필요).
+// ═══════════════════════════════════════════════════════════════════════════
+/** 모든 회사를 합쳐 1시간에 보낼 수 있는 최대 건수. */
+export const SMS_GLOBAL_MAX_PER_HOUR = 100;
+/** 모든 회사를 합쳐 24시간에 보낼 수 있는 최대 건수. */
+export const SMS_GLOBAL_MAX_PER_DAY = 500;
+/** 이보다 오래된 "보내는 중"은 서버가 멈춘 흔적으로 보고 세지 않는다(발송 API는 10초 제한). */
+const GLOBAL_PENDING_GRACE_MS = 10 * 60 * 1000;
+/** 상한에 걸렸을 때 화면에 나갈 수 있는 문구. 회사·계정 정보가 없는 서버 전체 상태라 누구에게나 같다. */
+export const SMS_GLOBAL_LIMIT_DETAIL = "문자 발송량이 일시적으로 많아 잠시 멈췄습니다. 잠시 후 다시 시도해주세요.";
+
+/** 지난 windowMs 동안 실제로 나갔거나 나가는 중인 문자 건수(모든 회사 합산). */
+async function countRecentSends(now: Date, windowMs: number): Promise<number> {
+  return prisma.smsLog.count({
+    where: {
+      createdAt: { gte: new Date(now.getTime() - windowMs) },
+      OR: [
+        { result: { in: ["success", "unknown"] } },
+        { result: "pending", createdAt: { gte: new Date(now.getTime() - GLOBAL_PENDING_GRACE_MS) } },
+      ],
+    },
+  });
+}
+
+/**
+ * 전체 상한 안인가. 넘었으면 false.
+ *  · DB를 못 읽으면 **보내지 않는다**(false) — 셀 수 없는 문자는 요금 상한 밖이다.
+ */
+async function globalLimitAllows(now: Date): Promise<boolean> {
+  try {
+    const [hour, day] = await Promise.all([
+      countRecentSends(now, 60 * 60 * 1000),
+      countRecentSends(now, 24 * 60 * 60 * 1000),
+    ]);
+    if (hour > SMS_GLOBAL_MAX_PER_HOUR || day > SMS_GLOBAL_MAX_PER_DAY) {
+      // 운영자가 알아챌 수 있게 남긴다(수신번호·본문은 남기지 않는다).
+      console.error(`[sms] 🔴 전체 발송 상한 도달 — 1시간 ${hour}/${SMS_GLOBAL_MAX_PER_HOUR}, 24시간 ${day}/${SMS_GLOBAL_MAX_PER_DAY}. 발송을 멈춘다.`);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error("[sms] 전체 발송량 확인 실패 — 안전을 위해 발송하지 않는다:", e instanceof Error ? e.message : String(e));
+    return false;
+  }
+}
 
 // EUC-KR 기준 바이트 길이(한글 2·ASCII 1). SMS/LMS 구분에 사용.
 export function smsByteLength(text: string): number {
@@ -81,6 +148,9 @@ export async function sendSms(opts: { to: string; text: string; subject?: string
   const text = opts.text ?? "";
   if (text.trim() === "") return { ok: false, detail: "보낼 내용이 없습니다." };
 
+  // 🔴 [M7] 전체 상한 — 발송 API를 부르기 직전, 입력 검사가 끝난 뒤에 센다(형식 오류는 DB를 안 건드린다).
+  if (!(await globalLimitAllows(new Date()))) return { ok: false, detail: SMS_GLOBAL_LIMIT_DETAIL };
+
   const sms = isSmsType(text);
   const params: Record<string, string> = {
     pslma: sms ? "0" : "1",
@@ -99,7 +169,7 @@ export async function sendSms(opts: { to: string; text: string; subject?: string
   };
 
   try {
-    const res = await fetch(SEND_URL, {
+    const res = await fetch(sendUrl(), {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded; charset=euc-kr" },
       body: eucKrFormBody(params), // 이미 %인코딩된 ASCII 문자열
