@@ -19,10 +19,10 @@
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { hashPassword, verifyPassword } from "@/lib/password";
-import { sendSms, normalizePhone, smsConfigured } from "@/lib/sms";
+import { sendSms, sendCompanySms, normalizePhone, smsConfigured, companySmsSendAvailable } from "@/lib/sms";
 import { recordAccess } from "@/lib/access-log";
 import { ownerRecoveryState, type OwnerRecoveryFields } from "@/lib/owner-recovery";
-import { COMPANY_SMS_READY } from "@/lib/company-sms";
+import { companySmsReady } from "@/lib/company-sms-account";
 import { randomInt } from "crypto";
 
 /**
@@ -48,17 +48,22 @@ function ownerBlocked(user: { isOwner: boolean } & OwnerRecoveryFields, now: Dat
  *  · **가온 계정 문자는 회사 계정(회사 관리자) 인증 문자 하나뿐**이다. 직원 비밀번호 찾기 문자는
  *    **그 회사의 모아샷 계정**으로만 나간다(요금은 회사 부담). 회사 계정이 없거나 잔액이 없으면
  *    1차(문자)는 막히고 2차(관리자 임시비번)로 간다. 가온 계정으로 대신 보내지 않는다(사장님이 거절).
- *  · 회사별 모아샷 계정 기능이 아직 없으므로 지금은 **모든 회사에서 직원 문자 찾기가 막힌다**
- *    (COMPANY_SMS_READY=false). 그 기능이 생기면 이 판정을 "그 회사 계정이 연결됐는가"로,
- *    발송도 그 회사 계정으로 바꾼다.
+ *  · 2026-11-21 메시지 관리 2단계: 직원은 **그 회사가 [설정 → 문자·알림톡]에 계정을 연결했을 때만**
+ *    열린다(companySmsReady). 발송도 그 회사 계정으로 한다(아래 issueResetCodeInner → sendCompanySms).
  *  · 🔴 화면에서 숨기는 것만으로는 안 된다 — 서버 액션은 화면과 무관하게 호출된다(머리말 ②).
  *    그래서 발급(issueResetCodeInner)과 확인(checkResetCode) **양쪽**이 이 함수를 본다.
  *    막혀 있는 동안 이미 발급된 직원 코드도 확인 단계에서 거부된다.
  *  · 막혀도 밖으로 보이는 답은 그대로 같다(머리말 ②) — "직원이라서 막혔다"가 새지 않는다.
+ *  · ⏱️ 회사 연결 여부는 **회사 계정이어도 먼저 조회**한다 — 계정 종류에 따라 DB 조회 횟수가 달라지면
+ *    응답 시간으로 "회사 계정인가/연결된 회사인가"를 가늠할 여지가 생긴다(1단계 검수 L-1·L-4).
  */
-function selfResetBlocked(user: { isOwner: boolean } & OwnerRecoveryFields, now: Date): boolean {
+async function selfResetBlocked(
+  user: { isOwner: boolean; companyId: string } & OwnerRecoveryFields,
+  now: Date
+): Promise<boolean> {
+  const companyReady = await companySmsReady(user.companyId);
   if (user.isOwner) return ownerBlocked(user, now);
-  return !COMPANY_SMS_READY;
+  return !companyReady;
 }
 
 // ── 정책 값(전부 여기 한 곳에서만 고친다) ──────────────────────────────────
@@ -137,7 +142,8 @@ async function issueResetCodeInner(
   now: Date
 ): Promise<void> {
   // 문자 계정이 없으면 아무 일도 하지 않는다. 화면을 숨기는 것과 별개로 **액션 자체를 무력화**한다.
-  if (!smsConfigured()) return;
+  //  · 회사 계정은 가온 계정(.env 4칸), 직원은 회사 계정 발송 주소가 있어야 한다 — 둘 다 없으면 아무도 못 받는다.
+  if (!smsConfigured() && !companySmsSendAvailable()) return;
 
   const user = await prisma.user.findUnique({
     where: { email },
@@ -148,7 +154,9 @@ async function issueResetCodeInner(
   //  · 계정 없음 / 퇴사자 / 🔒 복구 준비가 안 된 회사 계정(ownerRecoveryState — 스위치·번호 확인·72시간 대기)
   //  · 💰 회사 문자 계정이 없는 회사의 직원(selfResetBlocked — 가온 계정으로 직원 문자를 보내지 않는다)
   //  · 전화번호 뒷자리 불일치(전화번호 미등록이면 phoneTailMatches가 항상 false)
-  if (!user || user.deactivatedAt || selfResetBlocked(user, now)) return;
+  if (!user || user.deactivatedAt || (await selfResetBlocked(user, now))) return;
+  // 회사 계정은 가온 계정으로 보낸다 — 가온 계정이 꺼져 있으면 보내지 않는다(직원은 sendCompanySms가 주소를 본다).
+  if (user.isOwner && !smsConfigured()) return;
   if (!phoneTailMatches(user.phone, phoneTail)) return;
 
   // ── 1분 1건: DB 유니크 슬롯으로 선점한다(actions/sms.ts의 P2002 선점 패턴과 같은 방식). ──
@@ -200,7 +208,8 @@ async function issueResetCodeInner(
   let logId: string | null = null;
   try {
     const log = await prisma.smsLog.create({
-      data: { companyId: user.companyId, userId: user.id, kind: "reset_code", refId: created.id, toNumber: to, result: "pending" },
+      // viaCompany: 직원은 회사 계정 발송 → 가온 전체 상한에서 빠진다(lib/sms.ts countRecentSends).
+      data: { companyId: user.companyId, userId: user.id, kind: "reset_code", refId: created.id, toNumber: to, result: "pending", viaCompany: !user.isOwner },
       select: { id: true },
     });
     logId = log.id;
@@ -212,21 +221,32 @@ async function issueResetCodeInner(
     return;
   }
 
-  const res = await sendSms({ to, text, companyId: user.companyId, purpose: "security" });
+  // 💰 요금 규칙: 회사 계정(회사 관리자) = 가온 계정 / 직원 = 그 회사의 비즈모아샷 계정(가온 대체 발송 없음).
+  const res = user.isOwner
+    ? await sendSms({ to, text, companyId: user.companyId, purpose: "security" })
+    : await sendCompanySms({ to, text, companyId: user.companyId, purpose: "security" });
+  // 회사 계정 발송의 시간 초과·응답 도중 끊김 = 문자가 실제로 나갔을 수 있다(결과 미확인).
+  //  · 그 코드를 지우면 직원이 받은 인증번호가 "틀렸다"로 나온다 → **성공처럼 살려 두고**(하루 상한에도 센다),
+  //    기록은 unknown으로 남긴다. 안 왔으면 직원은 1분 뒤 다시 받기를 누르면 된다.
+  const uncertain = !res.ok && "uncertain" in res && res.uncertain === true;
 
   if (logId) {
     try {
       await prisma.smsLog.update({
         where: { id: logId },
         // 실패는 과금이 없으므로 refId를 풀어 둔다(actions/sms.ts와 같은 규칙).
-        data: res.ok ? { result: "success", detail: null } : { result: "fail", refId: null, detail: res.detail.slice(0, 200) },
+        data: res.ok
+          ? { result: "success", detail: null }
+          : uncertain
+            ? { result: "unknown", detail: res.detail.slice(0, 200) }
+            : { result: "fail", refId: null, detail: res.detail.slice(0, 200) },
       });
     } catch (e) {
       console.error("[reset-code] 발송결과 기록 실패(기록은 '보내는 중'으로 남는다):", { logId }, e);
     }
   }
 
-  if (!res.ok) {
+  if (!res.ok && !uncertain) {
     // 사용자에게는 알리지 않는다(위 ② 원칙). 대신 운영자가 볼 수 있게 서버 로그에 남긴다.
     console.error("[reset-code] 인증번호 문자 발송 실패:", res.detail);
     // 나가지 않은 코드는 흔적을 남기지 않고 지운다 — 남기면 하루 상한만 갉아먹는다(치명 A).
@@ -286,7 +306,7 @@ export async function checkResetCode(
   });
   // 🔒 확인 단계에서도 다시 판정한다 — 인증번호를 받은 뒤 번호가 바뀌었으면(=72시간 잠금 시작) 그 코드는 못 쓴다.
   //    직원 문자 찾기가 꺼진 동안에는 이미 발급된 직원 코드도 여기서 막힌다(selfResetBlocked).
-  if (!user || user.deactivatedAt || selfResetBlocked(user, now)) return { ok: false };
+  if (!user || user.deactivatedAt || (await selfResetBlocked(user, now))) return { ok: false };
 
   const live = await findLiveCode(user.id, now);
   if (!live) return { ok: false };

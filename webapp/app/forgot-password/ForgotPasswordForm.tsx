@@ -3,9 +3,10 @@
 //  [A] 문자 인증코드: ①이메일+전화번호 뒷4자리 → ②인증번호 → ③새 비밀번호
 //  [B] 관리자 승인(기존): 이메일만 접수 → 관리자가 임시비번 발급
 //
-// 💰 2026-11-21 요금 규칙: 직원 문자는 **그 회사의 모아샷 계정**으로만 나간다(lib/company-sms.ts).
-//    회사별 계정 기능이 없는 동안([A]가 회사 계정 전용인 동안)은 **[B]를 첫 화면**으로 보여주고,
-//    [A]는 "회사 계정이신가요?" 링크로만 연다. 안 그러면 직원이 오지 않을 문자를 기다린다.
+// 💰 2026-11-21 요금 규칙: 직원 문자는 **그 회사의 비즈모아샷 계정**으로만 나간다(lib/company-sms.ts).
+//    [A]가 되는 사람 = 회사 계정 + **[설정 → 문자·알림톡]에 계정을 연결한 회사**의 직원(메시지 관리 2단계).
+//    🔴 이 화면은 이메일을 받기 전이라 **어느 회사인지 모른다** → 첫 화면은 항상 [B](관리자 요청)이고,
+//       [A]는 링크로 연다. 아직 대부분의 회사가 연결 전이라 [A]를 먼저 보여 주면 직원이 오지 않을 문자를 기다린다.
 //    ⚠️ 실제로 막는 곳은 서버(lib/reset-code.ts selfResetBlocked)다. 이 화면은 안내만 맞춘다.
 //
 // ⚠️ 이메일·인증번호는 다음 단계로 넘길 때 화면 상태로 들고 간다(숨은 입력칸으로 함께 전송).
@@ -150,18 +151,21 @@ export function ForgotPasswordForm({
 }: {
   smsEnabled: boolean;
   ownerRecoveryEnabled: boolean;
-  /** 직원이 문자로 찾을 수 있는가 — 그 회사 모아샷 계정이 있어야 한다(lib/company-sms.ts). */
+  /** 직원 문자 찾기 기능이 서버에 켜져 있는가(회사 계정 발송 주소 설정). 켜져 있어도 **회사가 계정을 연결해야**
+   *  실제로 문자가 간다 — 이 화면은 어느 회사인지 모르므로 문구로 조건을 알린다. */
   employeeSmsEnabled: boolean;
 }) {
   // 문자가 꺼져 있으면 회사 계정도 문자로 못 되찾는다 — 둘 다 켜져 있어야 "된다"고 말한다.
   const ownerSms = smsEnabled && ownerRecoveryEnabled;
-  // 직원 문자 찾기 — 회사 계정이 아닌 모든 계정. 회사별 모아샷 계정이 있어야 한다.
-  const employeeSms = smsEnabled && employeeSmsEnabled;
+  // 직원 문자 찾기 — 회사 계정이 아닌 계정. 회사가 비즈모아샷 계정을 연결했을 때만 실제로 간다.
+  //  (가온 계정 설정과는 무관하다 — 직원 문자는 회사 계정으로 나간다)
+  const employeeSms = employeeSmsEnabled;
   // 문자 인증 화면을 열 이유가 하나라도 있는가. 없으면 관리자 승인 방식만 보여준다.
   const codeAvailable = ownerSms || employeeSms;
-  // 문자 인증이 회사 계정 전용이면 첫 화면은 관리자 요청이다 — 계정 대부분이 직원이기 때문이다.
+  // 문자 인증이 회사 계정 전용인가(직원 문자 기능이 꺼져 있음).
   const ownerOnly = !employeeSms;
-  const [mode, setMode] = useState<"code" | "admin">(employeeSms ? "code" : "admin");
+  // 첫 화면은 항상 관리자 요청(머리말 🔴). [A]는 아래 링크로 연다.
+  const [mode, setMode] = useState<"code" | "admin">("admin");
 
   if (mode === "admin" || !codeAvailable) {
     return (
@@ -254,7 +258,7 @@ function CodePanel({
         {step === 1 &&
           (ownerOnly
             ? "회사 계정의 복구용 휴대폰 번호로 인증번호를 보내 드립니다. 관리자 승인 없이 바로 새 비밀번호를 정할 수 있습니다."
-            : "등록된 전화번호로 인증번호를 보내 드립니다. 관리자 승인 없이 바로 새 비밀번호를 정할 수 있습니다.")}
+            : "회사 계정이거나, 회사가 문자 서비스(비즈모아샷)를 연결한 직원이면 등록된 휴대폰으로 인증번호를 받아 관리자 승인 없이 바로 새 비밀번호를 정할 수 있습니다.")}
         {step === 2 && "문자로 받은 6자리 인증번호를 입력해 주세요."}
         {step === 3 && "새로 사용할 비밀번호를 정해 주세요."}
       </div>
@@ -304,7 +308,7 @@ function CodePanel({
               <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 6, lineHeight: 1.6 }}>
                 {ownerOnly
                   ? "[계정 설정]에서 확인해 둔 복구용 휴대폰 번호의 마지막 4자리입니다."
-                  : "회사에 등록된 본인 전화번호의 마지막 4자리입니다. 등록된 번호가 없으면 아래 방법을 이용해 주세요."}
+                  : "직원은 회사에 등록된 본인 전화번호, 회사 계정은 [계정 설정]에서 확인해 둔 복구용 번호의 마지막 4자리입니다."}
               </div>
             </div>
 
@@ -322,12 +326,12 @@ function CodePanel({
           {/* [검수 M-2] 회사 계정 전용일 때 "일치하면 발송"만 쓰면, 링크로 들어온 직원이 문자가 간 줄 알고 기다린다.
               모두에게 같은 고정 문구라 어느 계정인지는 새지 않는다. */}
           <div style={noticeStyle}>
-            {ownerOnly ? "회사 계정의 복구용 번호로" : "등록된 전화번호로"} 인증번호를 보냈습니다. <b>5분 이내</b>에 입력해
+            {ownerOnly ? "회사 계정의 복구용 번호로" : "등록된 휴대폰으로"} 인증번호를 보냈습니다. <b>5분 이내</b>에 입력해
             주세요.
             <br />
             {ownerOnly
               ? "(복구용 번호를 확인해 둔 회사 계정이고, 입력하신 이메일과 번호가 모두 맞을 때만 발송됩니다. 직원 계정에는 문자가 가지 않습니다.)"
-              : "(입력하신 이메일과 전화번호가 모두 일치하는 계정이 있을 때만 발송됩니다.)"}
+              : "(입력하신 이메일과 번호가 모두 맞고, 회사 계정이거나 회사가 문자 서비스를 연결한 경우에만 발송됩니다. 오지 않으면 아래에서 관리자에게 요청해 주세요.)"}
           </div>
           <form action={verifyAction} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             <input type="hidden" name="email" value={email} />
@@ -453,7 +457,7 @@ function CodePanel({
             cursor: "pointer",
           }}
         >
-          {ownerOnly ? "직원 계정이신가요? 관리자에게 요청하기" : "문자를 받을 수 없나요? 관리자에게 요청하기"}
+          {ownerOnly ? "직원 계정이신가요? 관리자에게 요청하기" : "문자가 오지 않나요? 관리자에게 요청하기"}
         </button>
       </div>
 
@@ -547,9 +551,9 @@ function AdminRequestPanel({
         </form>
       )}
 
-      {/* [검수 M-1] 관리자 요청이 첫 화면일 때(회사 계정 전용), 회사 계정 사용자가 잘못 요청을 보내도
+      {/* [검수 M-1] 관리자 요청이 첫 화면이라(머리말 🔴), 회사 계정 사용자가 잘못 요청을 보내도
           문자 인증으로 갈 길이 남아 있어야 한다 — 없으면 새로고침 말고는 빠져나갈 길이 없다. */}
-      {canSwitchBack && (!state?.ok || ownerOnly) && (
+      {canSwitchBack && (
         <div style={{ borderTop: "1px solid var(--border)", marginTop: 24, paddingTop: 18, textAlign: "center" }}>
           <button
             type="button"
@@ -568,6 +572,11 @@ function AdminRequestPanel({
           >
             {ownerOnly ? "회사 계정(가입할 때 만든 계정)이신가요? 문자 인증으로 되찾기" : "문자 인증으로 바로 되찾기"}
           </button>
+          {!ownerOnly && (
+            <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 6, lineHeight: 1.6, wordBreak: "keep-all" }}>
+              회사 계정, 또는 회사가 문자 서비스를 연결한 직원만 문자로 받을 수 있습니다.
+            </div>
+          )}
         </div>
       )}
 
