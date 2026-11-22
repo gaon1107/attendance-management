@@ -103,7 +103,8 @@ export function DemoForm({ companyId, isDemo }: { companyId: string; isDemo: boo
 // ── 해지(탈퇴) 처리 / 되살리기 — 2026-11-22, 이용약관 제14조 ④·제15조 ──────────────
 //  🔴 해지하면 **그 회사 사람 전원이 즉시 로그인할 수 없다**(출퇴근도 못 찍는다). 그래서 버튼 하나로 끝내지 않고
 //     회사 이름을 그대로 다시 입력하게 한다. 서버도 같은 검사를 한다(화면 검사만으로는 방어가 아니다).
-//  🔴 **데이터는 지우지 않는다.** 30일 안에는 [되살리기]로 원래대로 돌아간다.
+//  🔴 해지 자체는 **데이터를 지우지 않는다.** 30일 안에는 [되살리기]로 원래대로 돌아간다.
+//     30일이 지나면 되살리기가 막히고 그 뒤 첫 새벽에 자동 파기된다(해지 2단계, lib/company-purge.ts).
 /**
  * 해지·되살리기 전용 메시지 — **실패했을 때만** 보여 준다.
  *  🔴 성공 메시지를 그대로 두면 화면이 다른 상태로 바뀐 뒤에도 남아 "해지했는데 '되살렸습니다'가 보이는"
@@ -120,12 +121,14 @@ function FailMsg({ s }: { s: OperatorActionResult }) {
   );
 }
 
-export function TerminateForm({ companyId, companyName, terminatedAt, terminatedBy, terminatedNote }: {
+export function TerminateForm({ companyId, companyName, terminatedAt, terminatedBy, terminatedNote, purgeDue, restoreBlocked }: {
   companyId: string;
   companyName: string;
   terminatedAt: string | null;
   terminatedBy: string | null;
   terminatedNote: string | null;
+  purgeDue: string | null; // 파기 대상이 되는 시각(해지 + 30일) — 표시용 글자
+  restoreBlocked: string | null; // 되살릴 수 없는 이유(서버가 판정). null이면 되살리기 가능
 }) {
   const [termState, termAction, termPending] = useActionState(terminateCompany, null);
   const [restState, restAction, restPending] = useActionState(restoreCompany, null);
@@ -147,17 +150,24 @@ export function TerminateForm({ companyId, companyName, terminatedAt, terminated
             {terminatedBy && <> · 처리자 <b>{terminatedBy}</b></>}
             {terminatedNote && <> · 사유 {terminatedNote}</>}
           </div>
-          <div style={{ marginTop: 6, fontSize: 13 }}>
-            데이터는 그대로 있습니다. 약관상 <b>30일</b>이 지나면 파기 대상입니다(자동 파기 기능은 아직 없어 직접 처리해야 합니다).
-          </div>
+          {restoreBlocked ? (
+            <div style={{ marginTop: 6, fontSize: 13, fontWeight: 700 }}>{restoreBlocked}</div>
+          ) : (
+            <div style={{ marginTop: 6, fontSize: 13 }}>
+              데이터는 아직 그대로 있습니다. <b>{purgeDue}</b>이 지나면 되살릴 수 없고, 그 뒤 첫 새벽(1~3시)에 <b>모든 데이터가 자동으로 파기</b>됩니다.
+              {" "}자료 전달 요청은 그 전에 처리해 주세요.
+            </div>
+          )}
         </div>
-        <form action={restAction}>
-          <input type="hidden" name="companyId" value={companyId} />
-          <button type="submit" disabled={restPending} style={{ ...btn, background: "var(--primary)", border: "1px solid var(--primary)", color: "#fff", opacity: restPending ? 0.6 : 1 }}>
-            되살리기(해지 취소)
-          </button>
-          <FailMsg s={restState} />
-        </form>
+        {!restoreBlocked && (
+          <form action={restAction}>
+            <input type="hidden" name="companyId" value={companyId} />
+            <button type="submit" disabled={restPending} style={{ ...btn, background: "var(--primary)", border: "1px solid var(--primary)", color: "#fff", opacity: restPending ? 0.6 : 1 }}>
+              되살리기(해지 취소)
+            </button>
+            <FailMsg s={restState} />
+          </form>
+        )}
       </div>
     );
   }
@@ -166,7 +176,7 @@ export function TerminateForm({ companyId, companyName, terminatedAt, terminated
     <form action={termAction}>
       <input type="hidden" name="companyId" value={companyId} />
       <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "12px 14px", fontSize: 13, color: "#92400E", lineHeight: 1.7, wordBreak: "keep-all", marginBottom: 12 }}>
-        해지하면 <b>이 회사의 모든 계정이 즉시 로그인할 수 없습니다</b>(직원 출퇴근 포함). 데이터는 지우지 않으며 30일 안에는 되살릴 수 있습니다.
+        해지하면 <b>이 회사의 모든 계정이 즉시 로그인할 수 없습니다</b>(직원 출퇴근 포함). 30일 안에는 되살릴 수 있고, <b>30일이 지나면 모든 데이터가 자동으로 파기</b>됩니다.
         {/* 근무 중 해지하면 그날 퇴근을 찍을 방법이 없어 기록이 미완결로 남는다(검수 중간 6).
                되살려도 clockOut이 빈 기록이 그대로 남으므로 **시간대를 고르는 것이 유일한 예방책**이다. */}
         <br />

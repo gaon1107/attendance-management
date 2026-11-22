@@ -12,6 +12,7 @@ import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { formatKoreanDate } from "@/lib/trial";
 import { OperatorHeader } from "../../OperatorHeader";
 import { TrialForm, DemoForm, TerminateForm } from "./CompanyControls";
+import { purgeDueAt, restoreBlockedReason } from "@/lib/company-termination";
 
 export const dynamic = "force-dynamic";
 
@@ -134,8 +135,10 @@ export default async function OperatorCompanyPage({ params }: { params: Promise<
             <DemoForm companyId={c.id} isDemo={c.isDemo} />
 
             {/* 해지(탈퇴) — 2026-11-22, 이용약관 제14조 ④·제15조.
-                  🔴 데이터를 지우지 않는다. 로그인만 막고 30일 안에는 되살릴 수 있다.
-                  30일 뒤의 실제 파기 기능은 2단계에서 따로 만든다(그 전까지는 직접 처리). */}
+                  1단계: 해지하면 로그인만 막고 30일 안에는 되살릴 수 있다.
+                  2단계: 30일이 지나면 되살리기가 막히고 그 뒤 첫 새벽에 자동 파기된다(lib/company-purge.ts).
+                  🔴 "되살릴 수 있는가"는 **서버 시계로 여기서** 판정해 넘긴다(브라우저 시계는 틀릴 수 있다).
+                     서버 액션도 같은 함수(lib/company-termination.ts)로 다시 검사한다. */}
             <h2 style={{ ...h2, marginTop: 28 }}>해지(탈퇴) 처리</h2>
             <TerminateForm
               companyId={c.id}
@@ -143,6 +146,8 @@ export default async function OperatorCompanyPage({ params }: { params: Promise<
               terminatedAt={c.terminatedAt ? fmtDateTime(c.terminatedAt) : null}
               terminatedBy={c.terminatedBy}
               terminatedNote={c.terminatedNote}
+              purgeDue={c.terminatedAt ? fmtDateTime(purgeDueAt(c.terminatedAt)) : null}
+              restoreBlocked={restoreBlockedReason(c)}
             />
           </section>
 

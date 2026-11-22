@@ -191,6 +191,41 @@ model Company {
    */
   terminatedBy  String?
   terminatedNote String?
+  /**
+   * 해지 30일 뒤 자동 파기가 **시작된 시각**(2026-11-22 해지 2단계, lib/company-purge.ts).
+   *  🔴 이 값이 찍히면 **되살리기가 거부된다** — 반쯤 지워진 회사가 되살아나는 사고를 막는 표시다.
+   *     파기는 얼굴서버 → 파일 → DB 순서로 여러 번에 나눠 진행될 수 있어(실패 시 다음 날 이어서),
+   *     "시작했다"는 사실을 회사 행에 먼저 남긴다. 파기가 끝나면 회사 행 자체가 없어진다.
+   *  add-only(nullable) — 기존 회사는 전부 null = 지금과 동일.
+   */
+  purgeStartedAt DateTime?
+}
+
+// 해지 회사 파기 대장 — "어느 회사를(id) 언제 해지했고 언제 무엇을 몇 건 지웠는지"의 증명 기록(2026-11-22 해지 2단계).
+//  · 🔴 회사 이름·사람 이름을 **남기지 않는다** — 파기 대상 정보이기 때문이다(처리방침 제2조: 회사명·대표자 = 계약 종료 후 30일).
+//    어느 회사였는지는 해지 때 남은 운영자 기록(AccessEvent meta "operator_terminate:이름 (ID 앞 8자리)", 2년 보관)으로 대조한다.
+//  · Company와 외래키로 묶지 않는다 — 회사 행이 지워진 뒤에도 남아야 하는 기록이다.
+//  · 회차마다 한 줄. 보류(held)·중단(aborted)도 남긴다 — 운영자 화면이 "왜 아직 안 지워졌는지"를 이 표로 보여 준다.
+model CompanyPurgeLog {
+  id           String   @id @default(cuid())
+  companyId    String   // 지운(또는 지우려던) 회사 id — 값만 저장
+  terminatedAt DateTime // 그 회사의 해지 시각(증빙: "30일 보관 뒤" 지웠는지 확인용)
+  ranAt        DateTime @default(now())
+  // "done"(회사 행까지 전부 삭제) | "held"(얼굴서버·파일 삭제 실패로 이번 회차는 DB를 건드리지 않음 — 다음 회차 재시도)
+  //  | "aborted"(DB 삭제 도중 오류 — 위 건수는 중단 전까지 실제로 지운 수, 다음 회차가 이어서 지운다)
+  status       String
+  faceDeleted  Int @default(0) // 얼굴서버에서 지운(또는 원래 없던) 직원 수
+  fileDeleted  Int @default(0) // 실제로 지운 디스크 파일 수(출퇴근 사진·신청 첨부·회사 문서)
+  attendanceDeleted Int @default(0) // 출퇴근 + 외출 + 사진 기록
+  requestDeleted    Int @default(0) // 휴가·정정·외출·재택·야근·출장 신청 + 결재단계·첨부 기록·결재선 서식
+  shiftDeleted      Int @default(0) // 교대(조·묶음·패턴·순환규칙·배정·변경이력)
+  agentDeleted      Int @default(0) // PC 프로그램(기기·기록·연결코드)
+  userDeleted       Int @default(0) // 계정(직원·관리자·회사 계정)
+  otherDeleted      Int @default(0) // 그 밖의 행(세션·초대·인증번호·문자 기록·공지·일정·휴무일·부서·직급·회사 문서·회사 행)
+  note         String?
+
+  @@index([companyId, ranAt])
+  @@index([ranAt])
 }
 
 // 회사 첨부문서 — 사업자등록증·통장사본 등. 종류(kind)별 최신 1건만 유지(재업로드 시 이전 파일 교체·삭제).

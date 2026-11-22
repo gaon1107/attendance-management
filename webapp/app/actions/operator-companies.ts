@@ -12,6 +12,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentOperator } from "@/lib/operator-session";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { companyNameMatches } from "@/lib/company-name";
+import { restoreBlockedReason } from "@/lib/company-termination";
 
 export type OperatorActionResult = { ok: boolean; message: string } | null;
 
@@ -127,7 +128,7 @@ export async function setCompanyDemo(_prev: OperatorActionResult, formData: Form
 // 🔴 **데이터를 지우지 않는다.** Company.terminatedAt만 찍는다. 그 순간부터 그 회사 사람 전원이
 //    로그인할 수 없고(lib/session.ts·app/actions/auth.ts) PC 프로그램도 막힌다(lib/agent-auth.ts).
 //    약관이 정한 30일 유예 동안 언제든 **되살리기**로 원래대로 돌아간다.
-//    30일이 지난 뒤의 실제 파기는 **2단계에서 따로 만든다**(그 전까지는 사람이 직접 지우고 기록한다).
+//    30일이 지나면 새벽 자동 파기가 지운다(2단계, lib/company-purge.ts). 그때부터는 되살릴 수 없다(lib/company-termination.ts).
 //
 // 🔴 오조작 방지: 해지하려면 **회사 이름을 그대로 다시 입력**해야 한다. 버튼 하나로 고객사 전원이
 //    즉시 로그인 불가가 되기 때문이다(출퇴근을 못 찍으면 그날 근로시간 기록이 빈다).
@@ -195,18 +196,31 @@ export async function restoreCompany(_prev: OperatorActionResult, formData: Form
   const companyId = String(formData.get("companyId") ?? "");
   if (!companyId) return { ok: false, message: "요청이 올바르지 않습니다." };
 
-  const company = await prisma.company.findUnique({ where: { id: companyId }, select: { id: true, name: true, terminatedAt: true } });
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { id: true, name: true, terminatedAt: true, purgeStartedAt: true },
+  });
   if (!company) return { ok: false, message: "회사를 찾을 수 없습니다." };
   if (!company.terminatedAt) {
     revalidatePath(`/operator/companies/${company.id}`); // 위와 같은 이유(검수 중간 3)
     return { ok: true, message: "해지되지 않은 회사입니다." };
   }
+  // 🔴 해지 2단계(2026-11-22): 30일 보관이 끝났거나 자동 파기가 시작된 회사는 되살리지 않는다.
+  //    판정은 화면과 같은 함수(lib/company-termination.ts) — 화면 버튼을 숨기는 것만으로는 방어가 아니다.
+  const now = new Date();
+  const blocked = restoreBlockedReason(company, now);
+  if (blocked) {
+    revalidatePath(`/operator/companies/${company.id}`);
+    return { ok: false, message: blocked };
+  }
 
   // 🔴 terminatedBy·terminatedNote는 **지우지 않는다**(검수 중간 2). 지우면 "왜·누가 해지했는지"가
   //    제품 안 어디에도 사람이 읽을 수 있는 형태로 남지 않는다. 해지 상태가 아니면 화면에 보이지 않고,
   //    다시 해지하면 새 값으로 덮인다 — 남겨 두는 쪽이 득이다.
+  // 🔴 조건에 "파기 시작 안 됨 + 읽은 해지 시각 그대로"를 함께 건다 — 위 검사와 이 갱신 사이에 파기가 시작되면
+  //    (새벽 자동 파기가 먼저 purgeStartedAt을 찍으면) 여기서 0건이 되어 되살리지 않는다.
   const changed = await prisma.company.updateMany({
-    where: { id: company.id, terminatedAt: { not: null } },
+    where: { id: company.id, terminatedAt: company.terminatedAt, purgeStartedAt: null },
     data: { terminatedAt: null },
   });
   if (changed.count === 0) {

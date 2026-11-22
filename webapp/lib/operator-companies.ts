@@ -204,6 +204,7 @@ export type CompanyDetail = {
   terminatedAt: Date | null;
   terminatedBy: string | null;
   terminatedNote: string | null;
+  purgeStartedAt: Date | null; // 해지 30일 뒤 자동 파기가 시작된 시각(해지 2단계) — 값이 있으면 되살릴 수 없다
   ownerEmail: string | null; // 회사 계정(마스터 열쇠) 로그인 아이디 — 앞 두 글자만 남기고 가린 값(로그인 문의 때 "어느 계정인지" 확인용, 3단계 검수 경미 6)
   employees: number;
   admins: number;
@@ -309,7 +310,7 @@ export async function getCompanyDetail(id: string, now: Date = new Date()): Prom
       bizRegNo: true, ceoName: true, managerName: true, managerTitle: true, managerPhone: true, managerEmail: true,
       companyPhone: true,
       // 해지(탈퇴) 표시 — 2026-11-22. 값이 있으면 그 회사는 로그인이 막힌 상태다(lib/session.ts).
-      terminatedAt: true, terminatedBy: true, terminatedNote: true,
+      terminatedAt: true, terminatedBy: true, terminatedNote: true, purgeStartedAt: true,
     },
   });
   if (!c) return null;
