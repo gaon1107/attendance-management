@@ -141,6 +141,10 @@ export async function terminateCompany(_prev: OperatorActionResult, formData: Fo
   const companyId = String(formData.get("companyId") ?? "");
   const confirmName = String(formData.get("confirmName") ?? "").trim();
   const note = String(formData.get("note") ?? "").trim().slice(0, 200);
+  // 🔴 자료 전달 확인(2026-11-22 사장님 결정) — 화면 체크박스만 믿지 않는다(화면 검사는 방어가 아니다).
+  //    해지하면 고객사는 로그인할 수 없어 **스스로 근태 자료를 받을 수 없다**. 약관 제14조 ③④가
+    //  "해지 전에 받거나 고객지원이 전달한다"로 되어 있으므로, 그 절차를 마쳤다는 확인 없이는 해지하지 않는다.
+  const handover = String(formData.get("handover") ?? "") === "on";
   if (!companyId) return { ok: false, message: "요청이 올바르지 않습니다." };
 
   const company = await prisma.company.findUnique({ where: { id: companyId }, select: { id: true, name: true, terminatedAt: true } });
@@ -156,6 +160,9 @@ export async function terminateCompany(_prev: OperatorActionResult, formData: Fo
   //     또는 그 반대가 된다(2026-11-22 재검수 중간 A).
   //  ⚠️ 이 검사를 직접 쓰지 말 것 — 예전에 여기 정규식을 손으로 쓰다 `\s`를 `s`로 잘못 적어 **공백 대신
   //     영문자 s를 지우는** 코드가 됐다(재검수 치명 1). tsc도 eslint도 잡지 못한다.
+  if (!handover) {
+    return { ok: false, message: "자료 전달 확인에 체크해 주세요. 해지하면 고객사는 스스로 근태 자료를 받을 수 없습니다." };
+  }
   if (!companyNameMatches(confirmName, company.name)) {
     return { ok: false, message: "회사 이름이 일치하지 않습니다. 화면에 보이는 이름을 그대로 입력해 주세요." };
   }

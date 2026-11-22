@@ -130,8 +130,11 @@ export function TerminateForm({ companyId, companyName, terminatedAt, terminated
   const [termState, termAction, termPending] = useActionState(terminateCompany, null);
   const [restState, restAction, restPending] = useActionState(restoreCompany, null);
   const [confirmName, setConfirmName] = useState("");
+  // 🔴 자료 전달 확인(2026-11-22 사장님 결정). 해지하면 고객사가 로그인할 수 없어 **스스로 자료를 받을 수 없다**
+  //    → 약관 제14조 ③④대로 "해지 전에 전달"하는 절차를 화면이 강제한다. 서버도 같은 검사를 한다.
+  const [handover, setHandover] = useState(false);
   // 🔴 서버와 **같은 함수**로 판정한다 — 기준이 어긋나면 버튼과 서버가 따로 논다(재검수 중간 A).
-  const nameOk = companyNameMatches(confirmName, companyName);
+  const nameOk = companyNameMatches(confirmName, companyName) && handover;
 
   // 이미 해지된 회사 — 되살리기만 보여 준다.
   if (terminatedAt) {
@@ -171,6 +174,16 @@ export function TerminateForm({ companyId, companyName, terminatedAt, terminated
         <br />
         확인을 위해 회사 이름 <b>{companyName}</b>을(를) 그대로 입력해 주세요.
       </div>
+      {/* 🔴 자료 전달 확인 — 해지하면 고객사는 스스로 자료를 받을 수 없다(로그인 차단).
+             약관 제14조 ③④가 "해지 전에 받거나 고객지원이 전달한다"이므로, 이 절차를 빠뜨리지 않게 막는다. */}
+      <label style={{ display: "flex", gap: 9, alignItems: "flex-start", marginBottom: 12, fontSize: 13, lineHeight: 1.7, cursor: "pointer", wordBreak: "keep-all" }}>
+        <input type="checkbox" name="handover" checked={handover} onChange={(e) => setHandover(e.target.checked)} style={{ width: 17, height: 17, flexShrink: 0, marginTop: 2 }} />
+        <span>
+          <b>[필수]</b> 이 회사에 필요한 <b>근태 자료(엑셀·PDF) 전달을 마쳤거나, 고객사가 직접 내려받았음</b>을 확인했습니다.
+          <br />
+          <span style={{ color: "var(--text-sub)" }}>해지하면 고객사는 로그인할 수 없어 스스로 받을 수 없습니다. 해지 후 30일 안에는 요청을 받아 전달할 수 있습니다.</span>
+        </span>
+      </label>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-start" }}>
         <input
           name="confirmName"
