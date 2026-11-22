@@ -114,13 +114,17 @@ export async function getCurrentUser(opts?: { allowMustChange?: boolean }) {
   //  · 직원은 대상이 아니다(위 정책 주석 참고).
   //  · ⚠️ lastSeenAt이 없는 세션(이 기능 도입 전에 로그인한 사람)은 **유휴로 끊지 않고 아래에서 채운다.**
   //    없다고 만료로 보면 기능을 켜는 순간 로그인해 둔 사람이 전부 튕긴다.
-  //  · 🔴 로그인 후 7일(createdAt 기준)도 여기서 다시 본다(2026-11-23). 회사 계정을 조이기 **전에** 로그인한 세션은
-  //    DB 만료가 "30일 뒤"로 밀려 있고 쿠키도 1년짜리다 — 이 검사가 없으면 그 세션은 조이기와 무관하게 30일까지 산다.
-  //    (실무 관리자로 승격된 사람은 owner.ts가 만료를 7일로 당겨 두지만, 이 검사가 그 일도 겸한다.)
+  //  · 🔴 **회사 계정만** 로그인 후 7일(createdAt 기준)을 여기서 다시 본다(2026-11-23). 조이기 **전에** 로그인한 회사 계정
+  //    세션은 DB 만료가 "30일 뒤"로 밀려 있고 쿠키도 1년짜리다 — 이 검사가 없으면 그 세션은 30일까지 산다.
+  //    ⚠️ 실무 관리자에게는 걸지 않는다(검수 중간 1). 직원 세션은 쓰는 동안 1년까지 연장되므로 createdAt이 오래된 것이
+  //       보통인데, 직원을 관리자로 지정하면 이 검사에 걸려 **지정 즉시 로그아웃**된다(owner.ts의 "승격해도 튕기지 않게"
+  //       약속 파손 — 몇 달 자동 로그인만 쓴 직원은 비밀번호를 기억 못 해 그날 출근을 못 찍는다).
+  //       실무 관리자의 7일은 expiresAt이 지킨다: 로그인 때 createSession이 7일로, 승격 때 owner.ts가 "지금부터 7일"로 당긴다.
+  //       회사 계정은 승격이라는 경로가 없어(가입 때부터 회사 계정) createdAt으로 봐도 이 문제가 없다.
   if (isTightPolicy(session.user)) {
     const last = session.lastSeenAt;
     const idle = !!last && now.getTime() - last.getTime() > ADMIN_IDLE_MS;
-    const tooOld = now.getTime() - session.createdAt.getTime() > ADMIN_MAX_MS;
+    const tooOld = session.user.isOwner && now.getTime() - session.createdAt.getTime() > ADMIN_MAX_MS;
     if (idle || tooOld) {
       await prisma.session.deleteMany({ where: { token } });
       return null;

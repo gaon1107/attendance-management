@@ -156,7 +156,9 @@ export async function acceptInvite(
     return { error: "가입 처리 중 문제가 생겼습니다. 잠시 후 다시 시도해주세요." };
   }
 
-  await createSession(user.id);
+  // 초대 가입은 언제나 직원이다(위 create의 role: "employee"). 역할을 넘겨 다시 조회하지 않게 한다 —
+  //  조회가 실패하면 createSession이 짧은 정책(세션 쿠키)으로 떨어져, 폰 앱을 닫을 때마다 로그아웃된다(2026-11-23 검수 경미 3).
+  await createSession(user.id, { role: "employee", isOwner: false });
   // 접속기록: 초대 가입 직후 자동 로그인 1건(성공).
   {
     const { ip, userAgent } = readClientMeta(await headers());
