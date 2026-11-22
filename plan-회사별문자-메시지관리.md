@@ -70,6 +70,14 @@
   - **발송 기록**: 언제·누구에게·결과(접수/전송 완료/실패·사유).
   - **템플릿 관리**: 기본 템플릿 + 회사가 만든 것, `[직원명]` 같은 바꿔 넣을 글자.
 - **발송결과 회신**: `/api/sms/callback/[token]` + 발송 기록 칸 추가(접수ID·채널·결과코드·결과시각). 운영 `.env`에 `MOASHOT_CALLBACK_TOKEN` 필요.
+
+**✅ 3-3 결과 (2026-11-22, 커밋 `0d7bd52` — 운영 미반영)**: `app/api/sms/callback/[token]` + `lib/sms-callback.ts` +
+SmsLog add-only 칸 5개(indexCode·deliveredAt·deliveryOk·deliveryCode·deliveryNote) + [발송 기록] 도착 열.
+운영 `.env`는 `MOASHOT_CALLBACK_TOKEN`과 **`MOASHOT_CALLBACK_BASE`(회신 받을 주소) 2개**가 필요하다 — 주소를 Host 헤더로
+만들면 공격자가 토큰을 가져갈 수 있어 .env에 고정한다. nginx도 전용 구역·로그 분리가 필요(자동 배포로 안 바뀜).
+🔴 `SmsLog.result`·`refId`는 무변경 — 발송 상한이 result로 세기 때문. 검수 치명 0, 중간 6건 반영.
+남긴 것: 가온 계정은 실패 때 접수번호 미저장 / 접수번호를 발송 전 생성하면 재시도 자체가 불필요(별건) / 회신 상한 분당 200.
+
 - DB: `SmsTemplate` 표 신설, `SmsLog` 칸 추가.
 - **3단계 전에 정할 것**: 기본 템플릿 목록(예: 공지 안내, 출근 미체크 안내, 회의 안내 …).
 
