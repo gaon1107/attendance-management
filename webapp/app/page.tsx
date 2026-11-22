@@ -1150,11 +1150,18 @@ export default async function Home() {
                    (푸터 로고가 헤더보다 크면 시선이 아래로 쏠린다). 주의사항은 헤더 쪽 주석 참고. */}
             {/* eslint-disable-next-line @next/next/no-img-element -- 크기가 고정된 로고. 최적화 대상 아님 */}
             <img src="/logo.webp" alt="가온" width={144} height={120} style={{ height: 34, width: "auto", display: "block", flexShrink: 0 }} />
-            {/* ⚠️ 이용약관·개인정보처리방침은 아직 페이지가 없다. 눌러도 아무 데도 안 가는 링크는 만들지 않는다.
-                   페이지가 생기면 여기 글자를 <Link>로 바꾸면 된다.
-                ⚠️ 개인정보처리방침은 **개인정보보호법상 의무**다(얼굴=민감정보를 다루므로 더더욱).
-                   페이지가 없는 지금 상태를 오래 두면 안 된다 — 사장님께 보고함. */}
-            <div style={{ fontSize: 13, color: "var(--text-sub)" }}>이용약관 · 개인정보처리방침</div>
+            {/* 2026-11-22: 두 페이지를 만들어 링크를 연결했다(app/terms, app/privacy).
+                   개인정보처리방침은 **개인정보보호법 제30조상 공개 의무**다(얼굴=민감정보를 다루므로 더더욱).
+                   ⚠️ 내용의 원본은 `docs/13_legal/약관_개인정보처리방침_초안.md`다 — 문구를 고칠 때는 그 문서와 함께 고친다. */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0 8px", fontSize: 13, color: "var(--text-sub)" }}>
+              <Link href="/terms" style={{ color: "inherit" }}>
+                이용약관
+              </Link>
+              <span aria-hidden>·</span>
+              <Link href="/privacy" style={{ color: "inherit", fontWeight: 700 }}>
+                개인정보처리방침
+              </Link>
+            </div>
             {/* ⚠️ 여기 있던 [맨 위로] 동그란 버튼은 2026-08-17에 **화면에 떠서 따라다니는 버튼**으로 옮겼다
                    (`<LandingScrollTop />`, 이 파일 맨 아래에 있다). 푸터에 박혀 있으면 맨 아래까지
                    내려가야 보였기 때문이다 — 사장님 지시.

@@ -235,13 +235,21 @@ export default function SignupPage() {
             <label style={checkRowStyle}>
               <input name="agreeTerms" type="checkbox" style={{ width: 18, height: 18, flexShrink: 0 }} checked={agreeTerms} onChange={(e) => setAgreeTerms(e.target.checked)} />
               <span>
-                <b>[필수]</b> 이용약관에 동의합니다.
+                <b>[필수]</b> 이용약관에 동의합니다.{" "}
+                {/* 2026-11-22: 내용을 볼 수 없는 동의는 법적으로 의미가 약하다 → 새 탭으로 전문을 연다.
+                       ⚠️ 같은 탭으로 열면 입력하던 가입 폼이 날아간다(target="_blank" 유지할 것). */}
+                <Link href="/terms" target="_blank" rel="noreferrer" style={{ color: "var(--primary)", fontWeight: 700 }} onClick={(e) => e.stopPropagation()}>
+                  [보기]
+                </Link>
               </span>
             </label>
             <label style={checkRowStyle}>
               <input name="agreePrivacy" type="checkbox" style={{ width: 18, height: 18, flexShrink: 0 }} checked={agreePrivacy} onChange={(e) => setAgreePrivacy(e.target.checked)} />
               <span>
-                <b>[필수]</b> 개인정보 수집·이용에 동의합니다.
+                <b>[필수]</b> 개인정보 수집·이용에 동의합니다.{" "}
+                <Link href="/privacy" target="_blank" rel="noreferrer" style={{ color: "var(--primary)", fontWeight: 700 }} onClick={(e) => e.stopPropagation()}>
+                  [보기]
+                </Link>
               </span>
             </label>
           </div>
