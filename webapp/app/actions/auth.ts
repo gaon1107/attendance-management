@@ -120,7 +120,7 @@ export async function signup(
     select: { id: true },
   });
   if (dupCompany) {
-    return { error: "이미 가입된 사업자등록번호입니다. 회사 관리자에게 문의해주세요." };
+    return { error: "이미 가입된 사업자등록번호입니다. 회사 관리자에게 문의하시거나, 예전에 해지하신 경우 가온 고객지원(031-281-3980)으로 문의해 주세요." };
   }
 
   const existing = await prisma.user.findUnique({ where: { email } });
@@ -257,7 +257,9 @@ export async function login(
   // 접속기록용 IP·기기(이메일이 입력된 이후부터 남긴다).
   const { ip, userAgent } = readClientMeta(await headers());
 
-  const user = await prisma.user.findUnique({ where: { email } });
+  //  · company.terminatedAt을 **함께** 읽는다 — 해지 회사 차단에 쓴다(아래). 따로 조회하면 로그인마다
+  //    DB 왕복이 한 번 더 생긴다(재검수 경미 3). 로그인은 이 제품에서 가장 자주 불리는 경로다.
+  const user = await prisma.user.findUnique({ where: { email }, include: { company: { select: { terminatedAt: true } } } });
 
   // [차단 IP] 관리자가 명단에 올린 IP는 로그인을 거부한다(접속/보안 5단계).
   //  · 회사별 정책이라 **사용자를 찾은 뒤**(=회사를 안 뒤)에야 검사할 수 있다.
@@ -321,6 +323,17 @@ export async function login(
   if (user.deactivatedAt) {
     await recordAccess({ companyId: user.companyId, userId: user.id, actorName: user.name, emailTried: email, kind: "login_fail", result: "fail", ip, userAgent, meta: "deactivated" });
     return { error: "이 계정은 비활성화되었습니다. 관리자에게 문의하세요." };
+  }
+
+  // 🔴 해지(탈퇴)된 회사는 **그 회사 사람 전원** 로그인 불가(2026-11-22, 이용약관 제15조 ①).
+  //  · getCurrentUser도 같은 검사를 한다(lib/session.ts) — 그쪽은 이미 로그인한 사람을 막고, 여기는 새 로그인을 막는다.
+  //    여기서만 막으면 해지 전에 로그인해 둔 사람이 계속 쓰고, 저쪽에서만 막으면 로그인은 되는데 화면이 빈
+  //    이상한 상태가 된다. **둘 다 필요하다.**
+  //  · 비밀번호가 맞은 사람에게만 진짜 이유를 알려 주는 이 자리의 규칙을 그대로 따른다(검수 M-17).
+  //  · 회사 이름은 알려주지 않는다 — 어느 회사가 해지됐는지는 그 회사 사람만 알면 된다.
+  if (user.company.terminatedAt) {
+    await recordAccess({ companyId: user.companyId, userId: user.id, actorName: user.name, emailTried: email, kind: "login_fail", result: "fail", ip, userAgent, meta: "company_terminated" });
+    return { error: "서비스 이용이 종료된 회사입니다. 가온 고객지원(031-281-3980)으로 문의해 주세요." };
   }
 
   // 🔴 [검수 H-1] **연속 실패로 인한 잠금은 더 이상 로그인을 막지 않는다.** 지우지 말 것 — 이유가 길다.

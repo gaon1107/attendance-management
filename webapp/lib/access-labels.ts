@@ -69,6 +69,8 @@ function baseMetaLabel(meta: string): string {
     deactivated: "비활성(퇴사) 계정",
     locked: "잠금 상태",
     bad_credentials: "비밀번호 불일치",
+    // 회사 해지(2026-11-22) — 비밀번호는 맞았지만 회사가 해지되어 막힌 경우(app/actions/auth.ts).
+    company_terminated: "해지된 회사",
     // 출퇴근 근무형태(actions/attendance.ts가 meta에 넣는 값)
     office: "사무실",
     home: "재택",
@@ -173,6 +175,10 @@ function baseMetaLabel(meta: string): string {
     operator_trial_set: "무료 이용 기간 변경",
     operator_demo_on: "시험용 회사로 표시",
     operator_demo_off: "시험용 표시 해제",
+    // 🔴 해지(2026-11-22) — 고객사 전원을 멈추는 사건이라 되살리기와 **기록에서 반드시 구별**되어야 한다.
+    //    라벨이 없으면 둘 다 "대상: ○○회사"로만 찍혀 무슨 일이 있었는지 알 수 없다(검수 중간 2).
+    operator_terminate: "회원사 해지(탈퇴) 처리",
+    operator_restore: "회원사 해지 되살리기",
   };
   return Object.hasOwn(map, meta) ? map[meta] : "";
 }

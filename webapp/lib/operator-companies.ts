@@ -84,6 +84,8 @@ export type CompanyRow = {
   name: string;
   createdAt: Date;
   isDemo: boolean;
+  /** 해지(탈퇴)된 회사인가 — 목록에 배지로 보인다(2026-11-22). */
+  terminated: boolean;
   trialCustom: boolean; // 운영자가 마지막 날을 정했는가
   trialLast: Date; // 무료 마지막 날(표시용)
   daysLeft: number;
@@ -121,6 +123,9 @@ export async function listCompanies(opts: { q: string; filter: TrialFilter; page
     select: {
       id: true, name: true, createdAt: true, isDemo: true, trialLastDate: true,
       managerName: true, managerPhone: true,
+      // 해지 표시(2026-11-22 검수 중간 4) — 없으면 상세 화면을 열어야만 알 수 있어, 해지한 회사에
+      // "무료 이용 중"으로 연락·청구하는 사고가 난다.
+      terminatedAt: true,
     },
   });
   const ids = companies.map((c) => c.id);
@@ -154,7 +159,7 @@ export async function listCompanies(opts: { q: string; filter: TrialFilter; page
   const rows: CompanyRow[] = companies.map((c) => {
     const t = trialStatus(c.createdAt, now, c.trialLastDate);
     return {
-      id: c.id, name: c.name, createdAt: c.createdAt, isDemo: c.isDemo,
+      id: c.id, name: c.name, createdAt: c.createdAt, isDemo: c.isDemo, terminated: c.terminatedAt !== null,
       trialCustom: c.trialLastDate !== null,
       trialLast: trialLastDay(t.endsAt), daysLeft: t.daysLeft, expired: t.expired,
       managerName: c.managerName, managerPhone: c.managerPhone,
@@ -165,7 +170,9 @@ export async function listCompanies(opts: { q: string; filter: TrialFilter; page
   });
 
   // 상단 합계(시험용 회사는 고객 수에서 뺀다) — 4번
-  const notDemo = { isDemo: false };
+  // 해지한 회사는 **고객이 아니다** — 고객 수·무료 이용 중·만료 집계에서 모두 뺀다(검수 중간 4).
+  //  시험용 회사 수(demo)는 지금까지와 같게 둔다(해지한 시험용 회사까지 빼면 숫자가 더 헷갈린다).
+  const notDemo = { isDemo: false, terminatedAt: null };
   const [customers, active, soon, expired, demo] = await Promise.all([
     prisma.company.count({ where: notDemo }),
     prisma.company.count({ where: { AND: [notDemo, trialWhere("active", now)] } }),
@@ -193,6 +200,10 @@ export type CompanyDetail = {
   managerPhone: string | null;
   managerEmail: string | null;
   companyPhone: string | null;
+  // 해지(탈퇴) — 값이 있으면 로그인이 막힌 상태다(2026-11-22).
+  terminatedAt: Date | null;
+  terminatedBy: string | null;
+  terminatedNote: string | null;
   ownerEmail: string | null; // 회사 계정(마스터 열쇠) 로그인 아이디 — 앞 두 글자만 남기고 가린 값(로그인 문의 때 "어느 계정인지" 확인용, 3단계 검수 경미 6)
   employees: number;
   admins: number;
@@ -297,6 +308,8 @@ export async function getCompanyDetail(id: string, now: Date = new Date()): Prom
       id: true, name: true, createdAt: true, isDemo: true, trialLastDate: true,
       bizRegNo: true, ceoName: true, managerName: true, managerTitle: true, managerPhone: true, managerEmail: true,
       companyPhone: true,
+      // 해지(탈퇴) 표시 — 2026-11-22. 값이 있으면 그 회사는 로그인이 막힌 상태다(lib/session.ts).
+      terminatedAt: true, terminatedBy: true, terminatedNote: true,
     },
   });
   if (!c) return null;

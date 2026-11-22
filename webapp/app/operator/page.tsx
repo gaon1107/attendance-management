@@ -164,6 +164,11 @@ export default async function OperatorHomePage({ searchParams }: { searchParams:
                       {r.isDemo && (
                         <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: "var(--text-sub)", background: "#F3F4F6", borderRadius: 4, padding: "2px 6px" }}>시험용</span>
                       )}
+                      {/* 해지 배지(2026-11-22 검수 중간 4) — 목록만 보고도 알아야 한다.
+                             없으면 해지한 회사에 "무료 이용 중"으로 연락·청구하는 사고가 난다. */}
+                      {r.terminated && (
+                        <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: "var(--danger)", background: "#FEE2E2", borderRadius: 4, padding: "2px 6px" }}>해지</span>
+                      )}
                     </td>
                     <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{ymd(r.createdAt)}</td>
                     <td style={td}><TrialBadge r={r} /></td>

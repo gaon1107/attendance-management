@@ -118,6 +118,12 @@ export async function getCurrentUser(opts?: { allowMustChange?: boolean }) {
 
   // 퇴사(비활성화)된 계정이면 로그인 상태로 보지 않는다(방어).
   if (session.user.deactivatedAt) return null;
+  // 🔴 해지(탈퇴)된 회사면 **그 회사 사람 전원**이 로그인 상태가 아니다(2026-11-22, 이용약관 제15조 ①).
+  //    · 이 한 줄이 화면·서버액션 전부를 막는다 — 모든 경로가 이 함수를 지나기 때문이다(93개 파일).
+  //      개별 화면에 검사를 흩뿌리면 새 화면을 만들 때마다 빠뜨린다.
+  //    · 데이터는 그대로 둔다. 되살리면(terminatedAt=null) 즉시 예전처럼 쓸 수 있다.
+  //    · 세션 자체는 지우지 않는다 — 되살렸을 때 다시 로그인하지 않아도 되고, 해지가 실수였을 때 흔적이 남는다.
+  if (session.user.company.terminatedAt) return null;
   // 임시 비밀번호 상태 차단(위 주석). 화면 경로는 각 페이지의 !me → redirect("/login")를 타고,
   // 로그인 폼에서 다시 로그인하면 auth.ts가 /change-password로 보낸다.
   if (session.user.mustChangePassword && !opts?.allowMustChange) return null;

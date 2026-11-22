@@ -70,7 +70,9 @@ export async function getLandingStats(): Promise<LandingStats> {
     // 실고객 회사만. 여기서 좁힌 ids를 아래 모든 집계가 그대로 쓴다(불변식 ②).
     // ⚠️ Attendance에는 Company 관계가 없고 companyId 값만 있어서 `company: { isDemo: false }`로
     //    거를 수 없다. 그래서 id 목록을 먼저 뽑아 `companyId: { in: ids }`로 좁힌다.
-    const real = await prisma.company.findMany({ where: { isDemo: false }, select: { id: true, createdAt: true } });
+    //  🔴 해지(탈퇴)한 회사도 뺀다(2026-11-22 검수 중간 4) — 홈페이지의 "고객사 N개사"에 계속 세면
+    //     대외 수치가 실제보다 많아진다(5분 캐시라 눈치채기도 어렵다).
+    const real = await prisma.company.findMany({ where: { isDemo: false, terminatedAt: null }, select: { id: true, createdAt: true } });
     const ids = real.map((c) => c.id);
     // ⚠️ 실고객이 0개사여도 여기서 멈추지 않는다("처음부터 보여준다" — 2026-08-09).
     //    `companyId: { in: [] }`는 아무것도 못 맞히므로 아래 집계가 전부 0으로 나오고, 화면은 0을 그대로 보여준다.

@@ -11,12 +11,17 @@ import { getCompanyDetail, getCompanyAccessSummary, TRIAL_SOON_DAYS, LAST_USE_WI
 import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { formatKoreanDate } from "@/lib/trial";
 import { OperatorHeader } from "../../OperatorHeader";
-import { TrialForm, DemoForm } from "./CompanyControls";
+import { TrialForm, DemoForm, TerminateForm } from "./CompanyControls";
 
 export const dynamic = "force-dynamic";
 
 function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** 해지 시각 표시용 — "2026-11-22 20:31". 분까지만 보이면 충분하다. */
+function fmtDateTime(d: Date): string {
+  return `${ymd(d)} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 const card: React.CSSProperties = { background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 24px" };
@@ -127,6 +132,18 @@ export default async function OperatorCompanyPage({ params }: { params: Promise<
               <b style={{ color: "var(--danger)" }}>실제 고객 회사에는 켜지 마세요.</b> 시험용 회사는 데모 정리 작업에서 지워질 수 있습니다.
             </p>
             <DemoForm companyId={c.id} isDemo={c.isDemo} />
+
+            {/* 해지(탈퇴) — 2026-11-22, 이용약관 제14조 ④·제15조.
+                  🔴 데이터를 지우지 않는다. 로그인만 막고 30일 안에는 되살릴 수 있다.
+                  30일 뒤의 실제 파기 기능은 2단계에서 따로 만든다(그 전까지는 직접 처리). */}
+            <h2 style={{ ...h2, marginTop: 28 }}>해지(탈퇴) 처리</h2>
+            <TerminateForm
+              companyId={c.id}
+              companyName={c.name}
+              terminatedAt={c.terminatedAt ? fmtDateTime(c.terminatedAt) : null}
+              terminatedBy={c.terminatedBy}
+              terminatedNote={c.terminatedNote}
+            />
           </section>
 
           <section style={card}>

@@ -54,10 +54,17 @@ export async function POST(req: Request) {
 
   const user = await prisma.user.findUnique({
     where: { id: claimed.userId },
-    select: { id: true, name: true, companyId: true, deactivatedAt: true, company: { select: { name: true } } },
+    select: { id: true, name: true, companyId: true, deactivatedAt: true, company: { select: { name: true, terminatedAt: true } } },
   });
   if (!user || user.deactivatedAt) {
     return NextResponse.json({ error: "사용할 수 없는 계정입니다." }, { status: 403 });
+  }
+  // 🔴 해지(탈퇴)된 회사의 새 연결은 받지 않는다(2026-11-22 재검수 중간 C).
+  //  · 이 경로는 **로그인 없이** 닿는다 — 연결코드(5분)만 있으면 들어온다. 해지 직전에 받은 코드는 해지 뒤에도 유효하다.
+  //  · 막지 않으면 서비스가 중지된 회사에 기기가 새로 등록되고 연결 기록이 남으며, **응답으로 회사 이름까지 나간다.**
+  //  · 이후 모든 에이전트 API는 authenticateAgent가 막지만(lib/agent-auth.ts), 입구를 열어 두면 "서비스 중지"가 반쪽이 된다.
+  if (user.company.terminatedAt) {
+    return NextResponse.json({ error: "서비스 이용이 종료된 회사입니다. 가온 고객지원으로 문의해 주세요." }, { status: 403 });
   }
 
   const token = generateDeviceToken();

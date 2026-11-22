@@ -84,6 +84,15 @@ export async function acceptInvite(
     return { error: "유효하지 않거나 만료된 초대입니다. 관리자에게 새 링크를 요청해주세요." };
   }
 
+  // 🔴 해지(탈퇴)된 회사의 초대는 받지 않는다(2026-11-22 검수 중간 1).
+  //  · 이 화면은 **로그인 없이** 들어온다 — 로그인 차단(lib/session.ts)으로는 막히지 않는다.
+  //  · 초대는 7일 유효라 **해지 직전에 뿌린 링크가 해지 뒤에도 살아 있다.** 막지 않으면 서비스가 중지된
+  //    회사에 계정이 새로 만들어지고(세션까지 발급) 첫 화면에서 튕겨 "가입은 됐다는데 로그인이 안 된다"가 된다.
+  const inviteCompany = await prisma.company.findUnique({ where: { id: invite.companyId }, select: { terminatedAt: true } });
+  if (inviteCompany?.terminatedAt) {
+    return { error: "이 회사는 서비스 이용이 종료되어 가입할 수 없습니다. 회사 관리자에게 문의해주세요." };
+  }
+
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) return { error: "이미 가입된 이메일입니다. 다른 이메일을 쓰거나 로그인해주세요." };
 

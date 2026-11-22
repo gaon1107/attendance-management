@@ -125,12 +125,25 @@ export async function authenticateAgent(req: Request): Promise<AgentAuthResult> 
     where: { tokenHash: hashToken(token) },
     select: {
       id: true, deviceName: true, agentVersion: true, revokedAt: true,
-      user: { select: { id: true, name: true, companyId: true, departmentId: true, pcOffExempt: true, deactivatedAt: true, isOwner: true } },
+      user: {
+        select: {
+          id: true, name: true, companyId: true, departmentId: true, pcOffExempt: true, deactivatedAt: true, isOwner: true,
+          // 해지된 회사의 PC 프로그램도 막는다(아래) — 웹 로그인만 막으면 PC가 계속 기록을 보낸다.
+          company: { select: { terminatedAt: true } },
+        },
+      },
     },
   });
   if (!device) return { ok: false, status: 401, error: "인증이 필요합니다." };
   if (device.revokedAt) return { ok: false, status: 401, error: "연결이 해제된 기기입니다. 다시 연결해주세요." };
   if (device.user.deactivatedAt) return { ok: false, status: 401, error: "사용할 수 없는 계정입니다." };
+  // 🔴 해지(탈퇴)된 회사 (2026-11-22, 이용약관 제15조 ①).
+  //  · 웹은 lib/session.ts가 막지만 PC 프로그램은 그 경로를 타지 않는다 — **여기서 따로 막아야** 한다.
+  //    안 막으면 해지한 회사의 PC가 계속 잠금·해제 기록을 보내 "서비스 중지"가 반쪽이 된다.
+  //  · 이 함수는 모든 에이전트 API가 지나가는 단 하나의 관문이라 한 번에 막힌다.
+  if (device.user.company.terminatedAt) {
+    return { ok: false, status: 401, error: "서비스 이용이 종료된 회사입니다. 가온 고객지원으로 문의해 주세요." };
+  }
   // 🔒 회사 계정(isOwner)은 근로자가 아니다 — 근태 기록도 신청도 가질 수 없다(검수 M-13).
   //    ⚠️ 여기서 막는 이유: /api/agent/overtime은 requestOvertime을 부르지 않고 규칙을 따로 조립하므로,
   //       서버액션에만 차단을 넣으면 **에이전트 경로로 유령 신청이 그대로 들어온다**(검수 치명 1).

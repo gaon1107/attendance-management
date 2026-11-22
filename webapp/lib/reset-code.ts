@@ -149,14 +149,22 @@ async function issueResetCodeInner(
 
   const user = await prisma.user.findUnique({
     where: { email },
-    select: { id: true, companyId: true, name: true, phone: true, deactivatedAt: true, isOwner: true, ...OWNER_FIELDS },
+    select: {
+      id: true, companyId: true, name: true, phone: true, deactivatedAt: true, isOwner: true, ...OWNER_FIELDS,
+      // 🔴 해지(탈퇴)된 회사인지 — 아래 거부 조건에 쓴다(2026-11-22 검수 치명 2).
+      company: { select: { terminatedAt: true } },
+    },
   });
 
   // 아래는 전부 조용히 종료한다 — 사유를 하나라도 알려주면 계정·전화번호 확인 창구가 된다.
   //  · 계정 없음 / 퇴사자 / 🔒 복구 준비가 안 된 회사 계정(ownerRecoveryState — 스위치·번호 확인·72시간 대기)
   //  · 💰 회사 문자 계정이 없는 회사의 직원(selfResetBlocked — 가온 계정으로 직원 문자를 보내지 않는다)
   //  · 전화번호 뒷자리 불일치(전화번호 미등록이면 phoneTailMatches가 항상 false)
-  if (!user || user.deactivatedAt || (await selfResetBlocked(user, now))) return;
+  //  · 🔴 **해지(탈퇴)된 회사**(2026-11-22 검수 치명 2) — 이 경로는 로그인 없이 닿는다.
+  //    막지 않으면 해지한 회사의 직원이 [비밀번호 찾기]를 누를 때마다 ① 그 회사 비즈모아샷 계정에서
+  //    **요금이 계속 나가고**(서비스 중지 약속 위반) ② 회사 계정 복구 문자는 **가온 요금**으로 나가며
+  //    ③ 비밀번호가 실제로 바뀌는데 로그인은 막혀 있어 고객은 영문을 모른다.
+  if (!user || user.deactivatedAt || user.company.terminatedAt || (await selfResetBlocked(user, now))) return;
   // 회사 계정은 가온 계정으로 보낸다 — 가온 계정이 꺼져 있으면 보내지 않는다(직원은 sendCompanySms가 주소를 본다).
   if (user.isOwner && !smsConfigured()) return;
   if (!phoneTailMatches(user.phone, phoneTail)) return;
@@ -305,11 +313,16 @@ export async function checkResetCode(
 ): Promise<{ ok: true; userId: string } | { ok: false }> {
   const user = await prisma.user.findUnique({
     where: { email },
-    select: { id: true, companyId: true, name: true, deactivatedAt: true, isOwner: true, phone: true, ...OWNER_FIELDS },
+    select: {
+      id: true, companyId: true, name: true, deactivatedAt: true, isOwner: true, phone: true, ...OWNER_FIELDS,
+      company: { select: { terminatedAt: true } },
+    },
   });
   // 🔒 확인 단계에서도 다시 판정한다 — 인증번호를 받은 뒤 번호가 바뀌었으면(=72시간 잠금 시작) 그 코드는 못 쓴다.
   //    직원 문자 찾기가 꺼진 동안에는 이미 발급된 직원 코드도 여기서 막힌다(selfResetBlocked).
-  if (!user || user.deactivatedAt || (await selfResetBlocked(user, now))) return { ok: false };
+  //  🔴 해지(탈퇴)된 회사도 여기서 막는다(검수 치명 2) — 발송만 막으면 **해지 직전에 받은 코드로
+  //     비밀번호를 바꿀 수 있다.** 발급·확인 두 곳을 모두 막아야 완결된다.
+  if (!user || user.deactivatedAt || user.company.terminatedAt || (await selfResetBlocked(user, now))) return { ok: false };
 
   const live = await findLiveCode(user.id, now);
   if (!live) return { ok: false };

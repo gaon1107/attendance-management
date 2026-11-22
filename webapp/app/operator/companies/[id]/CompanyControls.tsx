@@ -3,7 +3,8 @@
 //  · 실제 검증·기록은 서버 액션(app/actions/operator-companies.ts)이 한다. 여기는 입력만.
 import { useActionState, useState } from "react";
 import { DatePicker } from "@/app/components/DatePicker";
-import { setCompanyTrial, setCompanyDemo, type OperatorActionResult } from "@/app/actions/operator-companies";
+import { setCompanyTrial, setCompanyDemo, terminateCompany, restoreCompany, type OperatorActionResult } from "@/app/actions/operator-companies";
+import { companyNameMatches } from "@/lib/company-name";
 
 function todayPlus(days: number): string {
   const d = new Date();
@@ -95,6 +96,105 @@ export function DemoForm({ companyId, isDemo }: { companyId: string; isDemo: boo
         {isDemo ? "시험용 표시 해제" : "시험용 회사로 표시"}
       </button>
       <Msg s={state} />
+    </form>
+  );
+}
+
+// ── 해지(탈퇴) 처리 / 되살리기 — 2026-11-22, 이용약관 제14조 ④·제15조 ──────────────
+//  🔴 해지하면 **그 회사 사람 전원이 즉시 로그인할 수 없다**(출퇴근도 못 찍는다). 그래서 버튼 하나로 끝내지 않고
+//     회사 이름을 그대로 다시 입력하게 한다. 서버도 같은 검사를 한다(화면 검사만으로는 방어가 아니다).
+//  🔴 **데이터는 지우지 않는다.** 30일 안에는 [되살리기]로 원래대로 돌아간다.
+/**
+ * 해지·되살리기 전용 메시지 — **실패했을 때만** 보여 준다.
+ *  🔴 성공 메시지를 그대로 두면 화면이 다른 상태로 바뀐 뒤에도 남아 "해지했는데 '되살렸습니다'가 보이는"
+ *     모순이 생긴다(2026-11-22 화면 확인에서 발견). 성공은 화면 자체가 바뀌어 이미 말해 준다
+ *     — 해지되면 빨간 안내와 [되살리기] 버튼이, 되살리면 입력칸과 [해지 처리]가 나온다.
+ */
+function FailMsg({ s }: { s: OperatorActionResult }) {
+  if (!s || s.ok) return null;
+  // 실패 안내라 role="alert" — 화면을 읽어 주는 기능이 즉시 읽는다(재검수 경미 4).
+  return (
+    <div role="alert" style={{ marginTop: 10, fontSize: 14, fontWeight: 700, color: "var(--danger)", wordBreak: "keep-all" }}>
+      {s.message}
+    </div>
+  );
+}
+
+export function TerminateForm({ companyId, companyName, terminatedAt, terminatedBy, terminatedNote }: {
+  companyId: string;
+  companyName: string;
+  terminatedAt: string | null;
+  terminatedBy: string | null;
+  terminatedNote: string | null;
+}) {
+  const [termState, termAction, termPending] = useActionState(terminateCompany, null);
+  const [restState, restAction, restPending] = useActionState(restoreCompany, null);
+  const [confirmName, setConfirmName] = useState("");
+  // 🔴 서버와 **같은 함수**로 판정한다 — 기준이 어긋나면 버튼과 서버가 따로 논다(재검수 중간 A).
+  const nameOk = companyNameMatches(confirmName, companyName);
+
+  // 이미 해지된 회사 — 되살리기만 보여 준다.
+  if (terminatedAt) {
+    return (
+      <div>
+        <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "12px 14px", fontSize: 14, color: "#991B1B", lineHeight: 1.7, wordBreak: "keep-all", marginBottom: 12 }}>
+          <b>해지된 회사입니다.</b> 이 회사의 모든 계정이 로그인할 수 없고 PC 프로그램도 멈춥니다.
+          <div style={{ marginTop: 6, fontSize: 13 }}>
+            해지 시각 <b>{terminatedAt}</b>
+            {terminatedBy && <> · 처리자 <b>{terminatedBy}</b></>}
+            {terminatedNote && <> · 사유 {terminatedNote}</>}
+          </div>
+          <div style={{ marginTop: 6, fontSize: 13 }}>
+            데이터는 그대로 있습니다. 약관상 <b>30일</b>이 지나면 파기 대상입니다(자동 파기 기능은 아직 없어 직접 처리해야 합니다).
+          </div>
+        </div>
+        <form action={restAction}>
+          <input type="hidden" name="companyId" value={companyId} />
+          <button type="submit" disabled={restPending} style={{ ...btn, background: "var(--primary)", border: "1px solid var(--primary)", color: "#fff", opacity: restPending ? 0.6 : 1 }}>
+            되살리기(해지 취소)
+          </button>
+          <FailMsg s={restState} />
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <form action={termAction}>
+      <input type="hidden" name="companyId" value={companyId} />
+      <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "12px 14px", fontSize: 13, color: "#92400E", lineHeight: 1.7, wordBreak: "keep-all", marginBottom: 12 }}>
+        해지하면 <b>이 회사의 모든 계정이 즉시 로그인할 수 없습니다</b>(직원 출퇴근 포함). 데이터는 지우지 않으며 30일 안에는 되살릴 수 있습니다.
+        {/* 근무 중 해지하면 그날 퇴근을 찍을 방법이 없어 기록이 미완결로 남는다(검수 중간 6).
+               되살려도 clockOut이 빈 기록이 그대로 남으므로 **시간대를 고르는 것이 유일한 예방책**이다. */}
+        <br />
+        <b>업무 시간이 끝난 뒤에 처리하세요.</b> 출근 중인 직원이 있으면 그날 퇴근 기록이 비어 버립니다(되살려도 그대로 남습니다).
+        <br />
+        확인을 위해 회사 이름 <b>{companyName}</b>을(를) 그대로 입력해 주세요.
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-start" }}>
+        <input
+          name="confirmName"
+          value={confirmName}
+          onChange={(e) => setConfirmName(e.target.value)}
+          placeholder={companyName}
+          autoComplete="off"
+          style={{ height: 40, padding: "0 12px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 14, fontFamily: "inherit", minWidth: 180, flex: "1 1 180px" }}
+        />
+        <input
+          name="note"
+          placeholder="사유(선택)"
+          autoComplete="off"
+          style={{ height: 40, padding: "0 12px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 14, fontFamily: "inherit", minWidth: 150, flex: "1 1 150px" }}
+        />
+        <button
+          type="submit"
+          disabled={termPending || !nameOk}
+          style={{ ...btn, background: nameOk ? "var(--danger)" : "#fff", border: `1px solid ${nameOk ? "var(--danger)" : "var(--border)"}`, color: nameOk ? "#fff" : "var(--text-sub)", opacity: termPending ? 0.6 : 1, cursor: nameOk ? "pointer" : "not-allowed" }}
+        >
+          해지 처리
+        </button>
+      </div>
+      <FailMsg s={termState} />
     </form>
   );
 }

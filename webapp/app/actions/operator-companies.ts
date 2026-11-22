@@ -11,6 +11,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { getCurrentOperator } from "@/lib/operator-session";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
+import { companyNameMatches } from "@/lib/company-name";
 
 export type OperatorActionResult = { ok: boolean; message: string } | null;
 
@@ -118,4 +119,97 @@ export async function setCompanyDemo(_prev: OperatorActionResult, formData: Form
   revalidatePath("/operator");
   revalidatePath(`/operator/companies/${company.id}`);
   return { ok: true, message: next ? "시험용 회사로 표시했습니다." : "시험용 표시를 해제했습니다." };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 해지(탈퇴) 처리 — 2026-11-22, 이용약관 제14조 ④·제15조
+//
+// 🔴 **데이터를 지우지 않는다.** Company.terminatedAt만 찍는다. 그 순간부터 그 회사 사람 전원이
+//    로그인할 수 없고(lib/session.ts·app/actions/auth.ts) PC 프로그램도 막힌다(lib/agent-auth.ts).
+//    약관이 정한 30일 유예 동안 언제든 **되살리기**로 원래대로 돌아간다.
+//    30일이 지난 뒤의 실제 파기는 **2단계에서 따로 만든다**(그 전까지는 사람이 직접 지우고 기록한다).
+//
+// 🔴 오조작 방지: 해지하려면 **회사 이름을 그대로 다시 입력**해야 한다. 버튼 하나로 고객사 전원이
+//    즉시 로그인 불가가 되기 때문이다(출퇴근을 못 찍으면 그날 근로시간 기록이 빈다).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 해지 처리 — 확인 문구(회사 이름)가 정확히 일치할 때만 실행한다. */
+export async function terminateCompany(_prev: OperatorActionResult, formData: FormData): Promise<OperatorActionResult> {
+  const me = await getCurrentOperator();
+  if (!me) return { ok: false, message: "로그인이 풀렸습니다. 다시 로그인해 주세요." };
+
+  const companyId = String(formData.get("companyId") ?? "");
+  const confirmName = String(formData.get("confirmName") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim().slice(0, 200);
+  if (!companyId) return { ok: false, message: "요청이 올바르지 않습니다." };
+
+  const company = await prisma.company.findUnique({ where: { id: companyId }, select: { id: true, name: true, terminatedAt: true } });
+  if (!company) return { ok: false, message: "회사를 찾을 수 없습니다." };
+  if (company.terminatedAt) {
+    // 다른 창에서 이미 해지된 경우 — 화면을 실제 상태로 다시 그린다(검수 중간 3).
+    //  성공 메시지는 화면에 보이지 않으므로(FailMsg), 갱신이 없으면 눌러도 아무 일도 없는 것처럼 보인다.
+    revalidatePath(`/operator/companies/${company.id}`);
+    return { ok: true, message: "이미 해지된 회사입니다." };
+  }
+  // 이름 확인 — 사람이 보기에 같은 글자면 통과시킨다. 판정 규칙은 lib/company-name.ts 한 곳에만 둔다.
+  //  🔴 **화면도 같은 함수를 쓴다**(CompanyControls.tsx) — 기준이 어긋나면 "버튼은 켜지는데 서버가 거부"
+  //     또는 그 반대가 된다(2026-11-22 재검수 중간 A).
+  //  ⚠️ 이 검사를 직접 쓰지 말 것 — 예전에 여기 정규식을 손으로 쓰다 `\s`를 `s`로 잘못 적어 **공백 대신
+  //     영문자 s를 지우는** 코드가 됐다(재검수 치명 1). tsc도 eslint도 잡지 못한다.
+  if (!companyNameMatches(confirmName, company.name)) {
+    return { ok: false, message: "회사 이름이 일치하지 않습니다. 화면에 보이는 이름을 그대로 입력해 주세요." };
+  }
+
+  // 조건부 갱신 — 그사이 다른 운영자가 이미 해지했으면 덮어쓰지 않는다.
+  const changed = await prisma.company.updateMany({
+    where: { id: company.id, terminatedAt: null },
+    data: { terminatedAt: new Date(), terminatedBy: me.name, terminatedNote: note || null },
+  });
+  if (changed.count === 0) {
+    revalidatePath(`/operator/companies/${company.id}`); // 어긋난 화면을 실제 상태로 되돌린다(검수 중간 3)
+    return { ok: false, message: "그사이 다른 사람이 처리했습니다. 다시 확인해 주세요." };
+  }
+
+  await logOperatorChange(me, `operator_terminate:${company.name} (ID ${company.id.slice(0, 8)})`);
+
+  revalidatePath("/operator");
+  revalidatePath(`/operator/companies/${company.id}`);
+  return {
+    ok: true,
+    message: "해지 처리했습니다. 이 회사의 모든 계정이 로그인할 수 없습니다. 데이터는 그대로 있으며 30일 안에는 되살릴 수 있습니다.",
+  };
+}
+
+/** 되살리기 — terminatedAt을 지우는 것뿐이다(다른 칸은 건드리지 않는다). */
+export async function restoreCompany(_prev: OperatorActionResult, formData: FormData): Promise<OperatorActionResult> {
+  const me = await getCurrentOperator();
+  if (!me) return { ok: false, message: "로그인이 풀렸습니다. 다시 로그인해 주세요." };
+
+  const companyId = String(formData.get("companyId") ?? "");
+  if (!companyId) return { ok: false, message: "요청이 올바르지 않습니다." };
+
+  const company = await prisma.company.findUnique({ where: { id: companyId }, select: { id: true, name: true, terminatedAt: true } });
+  if (!company) return { ok: false, message: "회사를 찾을 수 없습니다." };
+  if (!company.terminatedAt) {
+    revalidatePath(`/operator/companies/${company.id}`); // 위와 같은 이유(검수 중간 3)
+    return { ok: true, message: "해지되지 않은 회사입니다." };
+  }
+
+  // 🔴 terminatedBy·terminatedNote는 **지우지 않는다**(검수 중간 2). 지우면 "왜·누가 해지했는지"가
+  //    제품 안 어디에도 사람이 읽을 수 있는 형태로 남지 않는다. 해지 상태가 아니면 화면에 보이지 않고,
+  //    다시 해지하면 새 값으로 덮인다 — 남겨 두는 쪽이 득이다.
+  const changed = await prisma.company.updateMany({
+    where: { id: company.id, terminatedAt: { not: null } },
+    data: { terminatedAt: null },
+  });
+  if (changed.count === 0) {
+    revalidatePath(`/operator/companies/${company.id}`); // 어긋난 화면을 실제 상태로 되돌린다(검수 중간 3)
+    return { ok: false, message: "그사이 다른 사람이 처리했습니다. 다시 확인해 주세요." };
+  }
+
+  await logOperatorChange(me, `operator_restore:${company.name} (ID ${company.id.slice(0, 8)})`);
+
+  revalidatePath("/operator");
+  revalidatePath(`/operator/companies/${company.id}`);
+  return { ok: true, message: "되살렸습니다. 이 회사의 계정이 다시 로그인할 수 있습니다." };
 }
