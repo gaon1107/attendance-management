@@ -244,7 +244,8 @@ export default async function OperatorHomePage({ searchParams }: { searchParams:
             <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 6px" }}>해지 회사 파기 현황</h2>
             <p style={{ fontSize: 13, color: "var(--text-sub)", margin: "0 0 14px", lineHeight: 1.7, wordBreak: "keep-all" }}>
               해지 후 30일이 지나면 매일 새벽 {PURGE_HOUR_FROM}~{PURGE_HOUR_TO}시에 모든 데이터(직원·근태·파일·얼굴 정보)가 자동으로 파기됩니다.
-              접속 기록만 2년 보관 뒤 따로 지워집니다.
+              접속 기록만 2년 보관 뒤 따로 지워집니다. 하루에 최대 3곳까지 처리하고, 실패한 회사는 다음 날 다시 시도합니다.
+              {/* "마지막 회차" — 대장은 회차마다 한 줄이라, 중단 뒤 이어서 끝난 회사는 마지막 날 지운 건수만 보인다(검수 경미 6). */}
             </p>
             {purge.uncovered.length > 0 && (
               <div role="alert" style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#991B1B", fontWeight: 700, marginBottom: 14, lineHeight: 1.7, wordBreak: "keep-all" }}>
@@ -290,9 +291,9 @@ export default async function OperatorHomePage({ searchParams }: { searchParams:
                         <th style={th}>회사 ID(앞 8자리)</th>
                         <th style={th}>해지 시각</th>
                         <th style={th}>파기 시각</th>
-                        <th style={{ ...th, textAlign: "right" }}>지운 기록</th>
-                        <th style={{ ...th, textAlign: "right" }}>지운 파일</th>
-                        <th style={{ ...th, textAlign: "right" }}>얼굴 정보</th>
+                        <th style={{ ...th, textAlign: "right" }}>지운 기록(마지막 회차)</th>
+                        <th style={{ ...th, textAlign: "right" }}>지운 파일(마지막 회차)</th>
+                        <th style={{ ...th, textAlign: "right" }}>얼굴 삭제 요청</th>
                       </tr>
                     </thead>
                     <tbody>
