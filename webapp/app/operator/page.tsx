@@ -14,6 +14,7 @@ import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { listCompanies, parseTrialFilter, TRIAL_FILTERS, TRIAL_SOON_DAYS, OPERATOR_PAGE_SIZE, LAST_USE_WINDOW_DAYS, type CompanyRow, type TrialFilter } from "@/lib/operator-companies";
 import { formatKoreanDate } from "@/lib/trial";
 import { OperatorHeader } from "./OperatorHeader";
+import { getPurgeOverview, PURGE_HOUR_FROM, PURGE_HOUR_TO, type PurgePending } from "@/lib/company-purge";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,24 @@ function TrialBadge({ r }: { r: CompanyRow }) {
   );
 }
 
+/** 날짜·시각 — "2026-12-22 20:31" */
+function ymdhm(d: Date): string {
+  return `${ymd(d)} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/** 해지 회사 파기 상태 배지 — 보관 중(되살리기 가능) / 파기 대기 / 보류 */
+function PurgeBadge({ s }: { s: PurgePending["state"] }) {
+  const tone =
+    s === "keeping" ? { bg: "#DBEAFE", fg: "#1E40AF", text: "보관 중(되살리기 가능)" }
+    : s === "waiting" ? { bg: "#FFEDD5", fg: "#9A3412", text: "파기 대기" }
+    : { bg: "#FEE2E2", fg: "#991B1B", text: "보류" };
+  return (
+    <span style={{ display: "inline-block", fontSize: 12, fontWeight: 700, color: tone.fg, background: tone.bg, borderRadius: 4, padding: "2px 7px", whiteSpace: "nowrap" }}>
+      {tone.text}
+    </span>
+  );
+}
+
 function query(q: string, f: TrialFilter, p?: number): string {
   const s = new URLSearchParams();
   if (q) s.set("q", q);
@@ -55,6 +74,9 @@ export default async function OperatorHomePage({ searchParams }: { searchParams:
   const filter = parseTrialFilter(sp.f);
   const pageReq = Number(sp.p) || 1;
   const { rows, total, page, pages, summary } = await listCompanies({ q, filter, page: pageReq });
+  // 해지 회사 파기 현황(2026-11-22 해지 2단계) — 해지한 회사가 하나도 없고 경고도 없으면 칸 자체를 숨긴다.
+  const purge = await getPurgeOverview();
+  const showPurge = purge.pending.length > 0 || purge.done.length > 0 || purge.uncovered.length > 0;
 
   // 목록에도 고객사 담당자 이름·연락처가 나오므로 상세 화면과 똑같이 열람 기록을 남긴다(3단계 검수 중간 2 —
   // 상세만 기록하면 검색으로 특정 회사 연락처를 봐도 흔적이 없다). 무엇을 찾았는지(검색어·필터·쪽)도 함께.
@@ -212,6 +234,85 @@ export default async function OperatorHomePage({ searchParams }: { searchParams:
             </div>
           )}
         </div>
+
+        {/* 해지 회사 파기 현황 — 2026-11-22 해지 2단계(lib/company-purge.ts).
+              약관 제14조 ④ "30일 보관 뒤 파기"가 실제로 지켜지는지 운영자가 한눈에 보는 자리.
+              🔴 "보류"가 오래 남아 있으면 약속(30일) 위반이 이어지는 중이다 — 사유(얼굴서버·파일)를 보고 조치한다.
+              파기된 회사는 이름이 남지 않는다(파기 대상 정보). ID 앞 8자리로 해지 때의 운영자 기록과 대조한다. */}
+        {showPurge && (
+          <section style={{ marginTop: 28, background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 24px" }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 6px" }}>해지 회사 파기 현황</h2>
+            <p style={{ fontSize: 13, color: "var(--text-sub)", margin: "0 0 14px", lineHeight: 1.7, wordBreak: "keep-all" }}>
+              해지 후 30일이 지나면 매일 새벽 {PURGE_HOUR_FROM}~{PURGE_HOUR_TO}시에 모든 데이터(직원·근태·파일·얼굴 정보)가 자동으로 파기됩니다.
+              접속 기록만 2년 보관 뒤 따로 지워집니다.
+            </p>
+            {purge.uncovered.length > 0 && (
+              <div role="alert" style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#991B1B", fontWeight: 700, marginBottom: 14, lineHeight: 1.7, wordBreak: "keep-all" }}>
+                자동 파기가 멈춰 있습니다. 파기 목록에 없는 데이터 표가 있습니다({purge.uncovered.join(", ")}). 개발 담당에게 알려 주세요.
+              </div>
+            )}
+            {purge.pending.length > 0 && (
+              <div style={{ overflowX: "auto", marginBottom: purge.done.length > 0 ? 18 : 0 }}>
+                <table style={{ width: "100%", minWidth: 720, borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
+                      <th style={th}>회사명</th>
+                      <th style={th}>해지 시각</th>
+                      <th style={th}>파기 예정</th>
+                      <th style={th}>상태</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {purge.pending.map((r) => (
+                      <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
+                        <td style={td}>
+                          <Link href={`/operator/companies/${r.id}`} style={{ fontWeight: 700, color: "var(--primary)", textDecoration: "none" }}>{r.name}</Link>
+                        </td>
+                        <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{ymdhm(r.terminatedAt)}</td>
+                        <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{ymdhm(r.dueAt)} 이후 첫 새벽</td>
+                        <td style={{ ...td, whiteSpace: "normal" }}>
+                          <PurgeBadge s={r.state} />
+                          {r.note && <div style={{ marginTop: 4, fontSize: 12, color: "#991B1B", wordBreak: "keep-all" }}>{r.note}</div>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {purge.done.length > 0 && (
+              <>
+                <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 8px" }}>최근 파기 완료(최대 10건)</h3>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", minWidth: 720, borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
+                        <th style={th}>회사 ID(앞 8자리)</th>
+                        <th style={th}>해지 시각</th>
+                        <th style={th}>파기 시각</th>
+                        <th style={{ ...th, textAlign: "right" }}>지운 기록</th>
+                        <th style={{ ...th, textAlign: "right" }}>지운 파일</th>
+                        <th style={{ ...th, textAlign: "right" }}>얼굴 정보</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {purge.done.map((d) => (
+                        <tr key={`${d.companyId}-${d.ranAt.getTime()}`} style={{ borderBottom: "1px solid #F3F4F6" }}>
+                          <td style={{ ...td, fontFamily: "monospace" }}>{d.companyId.slice(0, 8)}</td>
+                          <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{ymdhm(d.terminatedAt)}</td>
+                          <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{ymdhm(d.ranAt)}</td>
+                          <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{d.total.toLocaleString()}건</td>
+                          <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{d.file}개</td>
+                          <td style={{ ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{d.face}명</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </section>
+        )}
       </main>
     </div>
   );

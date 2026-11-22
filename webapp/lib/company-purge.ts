@@ -35,7 +35,7 @@ import { unenrollFaceOutcome } from "@/lib/face-purge";
 import { deleteClockPhotoFiles } from "@/lib/clock-photo";
 import { deleteCompanyAttachmentDir } from "@/lib/request-attachment";
 import { deleteCompanyDocDir } from "@/lib/company-doc";
-import { isRetentionOver, TERMINATION_RETENTION_DAYS } from "@/lib/company-termination";
+import { isRetentionOver, purgeDueAt, TERMINATION_RETENTION_DAYS } from "@/lib/company-termination";
 
 /** 한 번 실행에서 손대는 최대 회사 수(보류·중단 포함). */
 export const MAX_COMPANIES_PER_RUN = 3;
@@ -434,4 +434,94 @@ export async function purgeDueCompanies(deps: Deps = {}): Promise<{ results: Com
     if (r.status === "aborted") break; // DB 오류(잠금 등) 중에 다음 회사로 넘어가 부하를 키우지 않는다
   }
   return { results };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  자동 실행(lib/scheduled-jobs.ts가 1시간마다 부른다) — 새벽 1시~3시(한국시간)에만 실제로 돈다.
+//   · 왜 새벽인가: 파기는 DB 쓰기를 많이 한다. 근무시간에 돌면 다른 회사 출퇴근 저장이 잠깐씩 밀린다.
+//     03:30 정기 백업(deploy/server/backup-attendance.sh)과도 겹치지 않게 3시 전에 끝낸다.
+//   · 서버 TZ=Asia/Seoul 전제(Dockerfile·docker-compose.prod.yml에 지정). getHours()가 한국 시각이다.
+//   · 1시간 간격이라 그 2시간 안에 1~2번 돈다. 두 번째는 대개 할 일이 없다(끝난 회사는 사라졌고, 보류 회사는 20시간 대기).
+// ════════════════════════════════════════════════════════════════════════════
+export const PURGE_HOUR_FROM = 1; // 이 시각(포함)부터
+export const PURGE_HOUR_TO = 3;   // 이 시각(미포함)까지
+
+let purgeRunning = false; // 한 서버 안에서 겹쳐 돌지 않게(앞 회차가 오래 걸려도 다음 회차가 끼어들지 않는다)
+
+export async function runCompanyPurgeIfDue(): Promise<void> {
+  const h = new Date().getHours();
+  if (h < PURGE_HOUR_FROM || h >= PURGE_HOUR_TO) return;
+  if (purgeRunning) return;
+  purgeRunning = true;
+  try {
+    const r = await purgeDueCompanies();
+    if (r.blocked) return; // 이미 console.error로 남겼다. 운영자 화면에도 빨갛게 뜬다(getPurgeOverview).
+    for (const x of r.results) {
+      if (x.status !== "done") console.warn(`[company-purge] 회사 ${x.companyId.slice(0, 8)} ${x.status} — ${x.note ?? ""}`);
+    }
+  } catch (e) {
+    // 파기 실패가 서버를 멈추면 안 된다. 다음 회차(1시간 뒤, 시간대 안이면)나 다음 날 다시 돈다.
+    console.error("[company-purge] 자동 파기 실행 오류:", e);
+  } finally {
+    purgeRunning = false;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  운영자 화면용 현황 — "해지한 회사가 언제 지워지는지 / 왜 아직 안 지워졌는지 / 무엇을 지웠는지"
+//   · 회사 이름은 아직 지워지지 않은 회사(해지 후 보관 중)에만 있다. 파기된 회사는 대장에 id만 남는다.
+// ════════════════════════════════════════════════════════════════════════════
+export type PurgePending = {
+  id: string;
+  name: string;
+  terminatedAt: Date;
+  dueAt: Date;
+  state: "keeping" | "waiting" | "held"; // 보관 중 / 파기 대기(다음 새벽) / 보류·중단(마지막 시도 실패)
+  note: string | null; // held일 때 마지막 시도의 사유
+};
+export type PurgeDone = { companyId: string; terminatedAt: Date; ranAt: Date; total: number; face: number; file: number };
+
+export async function getPurgeOverview(now: Date = new Date()): Promise<{ uncovered: string[]; pending: PurgePending[]; done: PurgeDone[] }> {
+  const companies = await prisma.company.findMany({
+    where: { terminatedAt: { not: null } },
+    select: { id: true, name: true, terminatedAt: true, purgeStartedAt: true },
+    orderBy: { terminatedAt: "asc" },
+    take: 100,
+  });
+  // 회사마다 마지막 시도 1건 — 보관 중인 회사 수는 많지 않아 한 번에 읽고 코드에서 고른다.
+  const logs = companies.length
+    ? await prisma.companyPurgeLog.findMany({
+        where: { companyId: { in: companies.map((c) => c.id) } },
+        select: { companyId: true, status: true, note: true, ranAt: true },
+        orderBy: { ranAt: "desc" },
+      })
+    : [];
+  const lastLog = new Map<string, { status: string; note: string | null }>();
+  for (const l of logs) if (!lastLog.has(l.companyId)) lastLog.set(l.companyId, l);
+
+  const pending: PurgePending[] = [];
+  for (const c of companies) {
+    if (!c.terminatedAt) continue;
+    const last = lastLog.get(c.id);
+    const over = isRetentionOver(c.terminatedAt, now);
+    const held = over && !!last && last.status !== "done";
+    pending.push({
+      id: c.id, name: c.name, terminatedAt: c.terminatedAt,
+      dueAt: purgeDueAt(c.terminatedAt),
+      state: !over ? "keeping" : held ? "held" : "waiting",
+      note: held ? last?.note ?? null : null,
+    });
+  }
+
+  const doneRows = await prisma.companyPurgeLog.findMany({
+    where: { status: "done" },
+    orderBy: { ranAt: "desc" },
+    take: 10,
+  });
+  const done = doneRows.map((d) => ({
+    companyId: d.companyId, terminatedAt: d.terminatedAt, ranAt: d.ranAt, face: d.faceDeleted, file: d.fileDeleted,
+    total: d.attendanceDeleted + d.requestDeleted + d.shiftDeleted + d.agentDeleted + d.userDeleted + d.otherDeleted,
+  }));
+
+  return { uncovered: uncoveredModels(), pending, done };
 }

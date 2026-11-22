@@ -10,6 +10,7 @@
 //   · 타이머는 프로세스 종료를 붙잡지 않는다(unref) — 배포 때 상자를 끄는 것이 늦어지지 않게.
 import { purgeExpiredPhotos } from "@/lib/clock-photo";
 import { purgeExpiredSmsLogs } from "@/lib/sms-retention";
+import { runCompanyPurgeIfDue } from "@/lib/company-purge";
 
 const FIRST_RUN_DELAY_MS = 5 * 60 * 1000;
 const TICK_MS = 60 * 60 * 1000;
@@ -39,5 +40,14 @@ export function startScheduledJobs(): void {
   setTimeout(runSmsLogPurge, FIRST_RUN_DELAY_MS).unref();
   setInterval(runSmsLogPurge, TICK_MS).unref();
 
-  console.log("[scheduled-jobs] 출퇴근 사진 90일·문자 기록 1년 자동 삭제 예약 시작(1시간마다 확인, 실제 삭제는 하루 1회)");
+  // 해지 회사 30일 뒤 자동 파기(2026-11-22 해지 2단계, 이용약관 제14조 ④).
+  //  · 1시간마다 부르기만 한다. "새벽 1~3시에만 실제로 지움"·"한 번에 3곳"·"보류 회사 20시간 대기"는
+  //    그 함수(lib/company-purge.ts)가 스스로 판단한다.
+  const runCompanyPurge = () => {
+    runCompanyPurgeIfDue().catch((e) => console.error("[scheduled-jobs] 해지 회사 자동 파기 실패:", e));
+  };
+  setTimeout(runCompanyPurge, FIRST_RUN_DELAY_MS).unref();
+  setInterval(runCompanyPurge, TICK_MS).unref();
+
+  console.log("[scheduled-jobs] 출퇴근 사진 90일·문자 기록 1년 자동 삭제 + 해지 회사 30일 뒤 파기(새벽 1~3시) 예약 시작(1시간마다 확인)");
 }
