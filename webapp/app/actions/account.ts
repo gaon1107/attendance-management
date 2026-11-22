@@ -449,7 +449,10 @@ export async function changeRecoveryPhone(
           try {
             await prisma.smsLog.update({
               where: { id: sendId },
-              data: res.ok ? { result: "success", detail: null } : { result: "fail", detail: res.detail.slice(0, 200) },
+              // indexCode = 도착 결과 회신이 이 기록을 찾는 열쇠(3-3). 접수 실패엔 회신이 오지 않으므로 넣지 않는다.
+              data: res.ok
+                ? { result: "success", detail: null, indexCode: res.indexCode ?? null }
+                : { result: "fail", detail: res.detail.slice(0, 200) },
             });
           } catch (e) {
             console.error("[account] 통지 결과 기록 실패:", e instanceof Error ? e.message : String(e));

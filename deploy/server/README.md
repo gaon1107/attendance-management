@@ -51,6 +51,7 @@ echo '30 3 * * * root bash /opt/attendance/deploy/server/backup-attendance.sh >>
 | 설정 파일(원본) | 저장소 `deploy/server/nginx/attend.newgaon.com.conf` → 서버 `/etc/nginx/sites-available/attend.newgaon.com`(+ `sites-enabled` 링크) |
 | 인증서 | certbot webroot(`/var/www/certbot`), 2027-02-16 만료, 자동 갱신 뒤 `systemctl reload nginx`(renew_hook) |
 | 근태 전용 기록 | `/var/log/nginx/attend.access.log`, `/var/log/nginx/attend.error.log`(요청 수 제한에 걸린 줄 = `limiting requests`) |
+| 문자 회신 기록 | `/var/log/nginx/attend.smscb.access.log`(주소의 토큰은 `***`로 가림), `attend.smscb.error.log`(crit만 — 토큰이 찍히지 않게 문턱을 올려 둠). 2026-11-22 메시지 관리 3-3 |
 | 요청 수 제한 | 쓰기(POST 등) IP당 분당 60·순간 120 / PC 프로그램 4개 주소 분당 600 / 업로드 2곳 분당 30 / 화면 보기 IP당 초당 50·순간 500 / 운영자 화면 IP당 분당 300·전체 초당 30 |
 | 운영자 화면 문 비밀번호 | `/etc/nginx/attendance-operator.htpasswd`(root:www-data 640, SHA-512) — 아이디 `owner`(사장님)·`spare`(예비) |
 

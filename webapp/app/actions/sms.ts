@@ -102,7 +102,8 @@ async function claimSendFinalize(input: {
 
   // ⚠️ 결과 확정(update)이 실패하면 pending이 그대로 남아 위 ①②의 "결과 미확인" 경로로 빠진다.
   //    그 사실을 서버 로그에 남겨 원인을 추적할 수 있게 한다(검수 중간 5 — 예전엔 예외가 그냥 튀어나갔다).
-  const finalize = async (data: { result: string; refId?: null; detail: string | null }) => {
+  // indexCode(접수번호) = 도착 결과 회신이 이 기록을 찾는 열쇠다(3-3).
+  const finalize = async (data: { result: string; refId?: null; detail: string | null; indexCode?: string | null }) => {
     try {
       await prisma.smsLog.update({ where: { id: logId }, data });
     } catch (e) {
@@ -111,13 +112,13 @@ async function claimSendFinalize(input: {
   };
 
   if (res.ok) {
-    await finalize({ result: "success", detail: null });
+    await finalize({ result: "success", detail: null, indexCode: res.indexCode ?? null });
     return { ok: true };
   }
   // 시간 초과·응답 도중 끊김 = 실제로 나갔을 수 있다 → "결과 미확인"으로 남기고 **슬롯을 풀지 않는다**
   //  (풀면 다시 눌러 이중 발송·이중 과금이 된다). 관리자는 직원에게 받았는지 물어보고, 안 왔으면 복사해 전달한다.
   if (res.uncertain) {
-    await finalize({ result: "unknown", detail: res.detail.slice(0, 200) });
+    await finalize({ result: "unknown", detail: res.detail.slice(0, 200), indexCode: res.indexCode ?? null });
     return { error: UNKNOWN_DETAIL, unknown: true };
   }
   // 실패: 과금 안 됨 → refId를 풀어 재시도 허용(실패 기록은 남김).

@@ -207,9 +207,12 @@ export async function sendCompanySmsTest(_prev: CompanySmsFormState, formData: F
     await prisma.smsLog.update({
       where: { id: logId },
       // 시간 초과·응답 도중 끊김은 실제로 접수·과금됐을 수 있다 → "결과 미확인(unknown)". 요금 상한에 계속 센다.
+      // indexCode = 도착 결과 회신이 이 기록을 찾는 열쇠(3-3). "결과 미확인"에도 남긴다 — 회신이 오면 실제로 나갔는지 확정된다.
       data: res.ok
-        ? { result: "success", detail: null }
-        : { result: res.uncertain ? "unknown" : "fail", detail: res.detail.slice(0, 200) },
+        ? { result: "success", detail: null, indexCode: res.indexCode ?? null }
+        : res.uncertain
+          ? { result: "unknown", detail: res.detail.slice(0, 200), indexCode: res.indexCode ?? null }
+          : { result: "fail", detail: res.detail.slice(0, 200) },
     });
   } catch (e) {
     console.error("[company-sms] 시험 문자 결과 기록 실패(기록은 '보내는 중'으로 남는다):", { logId }, e);

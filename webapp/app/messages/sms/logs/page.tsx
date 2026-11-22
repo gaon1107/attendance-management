@@ -11,7 +11,7 @@ import { prisma } from "@/lib/db";
 import { AppShell } from "@/app/components/AppShell";
 import { toISODate } from "@/lib/period";
 import { formatPhone, maskPhone } from "@/lib/phone";
-import { smsKindLabel, smsResultLabel, smsPayerLabel } from "@/lib/sms-labels";
+import { smsKindLabel, smsResultLabel, smsPayerLabel, smsDeliveryLabel } from "@/lib/sms-labels";
 import { purgeExpiredSmsLogs, SMS_RETENTION_DAYS } from "@/lib/sms-retention";
 import { MessageTabs } from "@/app/messages/MessageTabs";
 import { SmsLogClient, type SmsRow } from "./SmsLogClient";
@@ -123,6 +123,10 @@ export default async function SmsMessagesPage({
     const kindLabel = smsKindLabel(l.kind);
     const resultLabel = smsResultLabel(l.result);
     const payerLabel = smsPayerLabel(l.viaCompany);
+    // 도착 결과(3-3) — 문자 회사가 보내 주는 회신으로 채워진다. 아직 안 왔으면 deliveredAt이 null이다.
+    const delivered = l.deliveredAt !== null;
+    const deliveryLabel = smsDeliveryLabel(delivered, l.deliveryOk, l.deliveryNote);
+    const deliveryState: "none" | "ok" | "fail" = !delivered ? "none" : l.deliveryOk ? "ok" : "fail";
     return {
       id: l.id,
       timeText: fmtDateTime(l.createdAt),
@@ -134,10 +138,12 @@ export default async function SmsMessagesPage({
       resultLabel,
       viaCompany: l.viaCompany,
       payerLabel,
+      deliveryLabel,
+      deliveryState,
       detail: l.detail ?? "",
       // 검색 대상 — 하이픈 없이 붙여 넣는 관리자를 위해 숫자 원문도 넣는다(검수 경미 9).
       //  ⚠️ 가린 번호(회사 계정)는 **원문을 넣지 않는다.** 넣으면 검색으로 뒷자리를 되짚을 수 있어 가린 의미가 없다.
-      search: [name, u?.employeeNo ?? "", phone, ownerTarget ? "" : l.toNumber, kindLabel, resultLabel, payerLabel, l.detail ?? ""]
+      search: [name, u?.employeeNo ?? "", phone, ownerTarget ? "" : l.toNumber, kindLabel, resultLabel, payerLabel, deliveryLabel, l.detail ?? ""]
         .join(" ")
         .toLowerCase(),
     };

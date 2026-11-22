@@ -237,10 +237,11 @@ async function issueResetCodeInner(
       await prisma.smsLog.update({
         where: { id: logId },
         // 실패는 과금이 없으므로 refId를 풀어 둔다(actions/sms.ts와 같은 규칙).
+        // indexCode = 도착 결과 회신이 이 기록을 찾는 열쇠(3-3). 접수 실패(fail)엔 회신이 오지 않으므로 넣지 않는다.
         data: res.ok
-          ? { result: "success", detail: null }
+          ? { result: "success", detail: null, indexCode: res.indexCode ?? null }
           : uncertain
-            ? { result: "unknown", detail: res.detail.slice(0, 200) }
+            ? { result: "unknown", detail: res.detail.slice(0, 200), indexCode: res.indexCode ?? null }
             : { result: "fail", refId: null, detail: res.detail.slice(0, 200) },
       });
     } catch (e) {

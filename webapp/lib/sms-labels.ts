@@ -52,6 +52,25 @@ export const SMS_RESULT_STYLE: Record<string, { bg: string; dot: string; color: 
 };
 
 /**
+ * 도착 결과(2026-11-22, 메시지 관리 3-3) → 한글.
+ *  · 위 smsResultLabel(result)은 **접수** 결과다("보냈다"). 이것은 **도착** 결과다("닿았다").
+ *    둘은 다르다 — 접수는 성공했는데 번호가 없어 도착은 실패하는 일이 흔하다.
+ *  · 회신이 아직 안 왔으면(delivered=false) "—". 문자 회사가 결과를 보내 줄 때까지 비어 있다.
+ */
+export function smsDeliveryLabel(delivered: boolean, ok: boolean | null, note: string | null): string {
+  if (!delivered) return "—";
+  if (ok) return "도착함";
+  const reason = (note ?? "").trim();
+  return reason === "" ? "못 감" : `못 감 — ${reason}`;
+}
+
+/** 도착 결과 배지 색. 키는 "ok" | "fail"(회신 전에는 배지를 쓰지 않는다). */
+export const SMS_DELIVERY_STYLE: Record<string, { bg: string; dot: string; color: string }> = {
+  ok: { bg: "#DCFCE7", dot: "#15803D", color: "#15803D" },
+  fail: { bg: "#FEE2E2", dot: "#B91C1C", color: "#B91C1C" },
+};
+
+/**
  * 어느 계정 요금으로 나갔는가(SmsLog.viaCompany).
  *  · true  = 그 회사가 [설정 → 문자·알림톡]에 연결한 비즈모아샷 계정 → **회사 요금**
  *  · false = 가온 계정(.env MOASHOT_*) → 회사 계정(회사 관리자) 인증 문자 전용 → 가온 요금

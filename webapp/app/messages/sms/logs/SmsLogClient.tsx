@@ -8,7 +8,7 @@ import { SearchBox } from "@/app/components/SearchBox";
 import { TablePagination } from "@/app/components/TablePagination";
 import { usePagination } from "@/app/components/usePagination";
 import { queryTerms, matchesTerms } from "@/lib/search";
-import { SMS_RESULT_STYLE } from "@/lib/sms-labels";
+import { SMS_RESULT_STYLE, SMS_DELIVERY_STYLE } from "@/lib/sms-labels";
 
 export type SmsRow = {
   id: string;
@@ -21,6 +21,9 @@ export type SmsRow = {
   resultLabel: string;
   viaCompany: boolean;
   payerLabel: string;
+  // 도착 결과(3-3) — "결과"(접수)와 다른 값이다. 회신이 아직 없으면 deliveryState="none".
+  deliveryLabel: string;
+  deliveryState: "none" | "ok" | "fail";
   detail: string;
   search: string;
 };
@@ -102,7 +105,10 @@ export function SmsLogClient({
       <div style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6, wordBreak: "keep-all" }}>
         우리 회사에서 나간 문자 기록입니다. <b>요금</b> 칸이 &quot;우리 회사&quot;인 것만 회사가 연결한 비즈모아샷 계정에서 요금이 나갑니다
         (&quot;가온&quot;은 회사 계정 본인 확인 문자라 가온이 부담합니다). <b>결과 미확인</b>은 실패가 아니라 보냈는지 확인되지 않은 상태로,
-        요금이 나갔을 수도 있습니다. <b>실패</b>한 문자는 나가지 않았으므로 요금도 들지 않습니다. 기록은{" "}
+        요금이 나갔을 수도 있습니다. <b>실패</b>한 문자는 나가지 않았으므로 요금도 들지 않습니다.
+        {/* 도착 열 설명(2026-11-22, 3-3) — 접수와 도착은 다르다. 사장님이 두 칸을 혼동하지 않도록 여기서 한 번 못박는다. */}
+        {" "}<b>결과</b>는 &quot;보냈다&quot;까지, <b>도착</b>은 문자 회사가 알려 준 <b>실제로 닿았는지</b>입니다
+        (접수는 됐는데 번호가 없어 못 가는 일이 있어 따로 보여 줍니다). 도착 결과가 아직 안 왔으면 &quot;—&quot;로 비어 있습니다. 기록은{" "}
         <b>{retentionDays === 365 ? "1년" : `${retentionDays}일`}</b>간
         보관한 뒤 자동으로 지워집니다.
         {capped && (
@@ -117,7 +123,7 @@ export function SmsLogClient({
       {/* 표 */}
       <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 920 }}>
             <thead>
               <tr style={{ background: "var(--bg)", borderBottom: "1px solid var(--border)" }}>
                 <th style={th}>보낸 시각</th>
@@ -125,6 +131,8 @@ export function SmsLogClient({
                 <th style={th}>번호</th>
                 <th style={th}>종류</th>
                 <th style={th}>결과</th>
+                {/* 접수("결과")와 도착은 다르다 — 접수는 됐는데 번호가 없어 못 가는 일이 흔하다. */}
+                <th style={th} title="문자 회사가 알려 준 실제 도착 결과입니다. 결과가 오기 전에는 비어 있습니다.">도착</th>
                 <th style={th}>요금</th>
                 <th style={th}>비고</th>
               </tr>
@@ -132,7 +140,7 @@ export function SmsLogClient({
             <tbody>
               {pg.view.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: "28px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
+                  <td colSpan={8} style={{ padding: "28px 16px", fontSize: 14, color: "var(--text-sub)", textAlign: "center" }}>
                     {rows.length === 0 ? "이 기간에 보낸 문자가 없습니다." : "검색 결과가 없습니다."}
                   </td>
                 </tr>
@@ -153,6 +161,22 @@ export function SmsLogClient({
                           <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.dot }} />
                           <span style={{ fontSize: 13, fontWeight: 700, color: s.color }}>{r.resultLabel}</span>
                         </span>
+                      </td>
+                      {/* 도착 결과(3-3). 회신이 오기 전에는 "—"만 둔다(배지 없음) — 아직 모르는 것이지 실패가 아니다. */}
+                      <td style={{ ...td, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }} title={r.deliveryState === "none" ? "아직 결과가 오지 않았습니다." : r.deliveryLabel}>
+                        {r.deliveryState === "none" ? (
+                          <span style={{ color: "var(--text-sub)" }}>—</span>
+                        ) : (
+                          (() => {
+                            const d = SMS_DELIVERY_STYLE[r.deliveryState];
+                            return (
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: "100%", height: 24, padding: "0 9px", borderRadius: 6, background: d.bg }}>
+                                <span style={{ width: 6, height: 6, borderRadius: "50%", background: d.dot, flex: "0 0 auto" }} />
+                                <span style={{ fontSize: 13, fontWeight: 700, color: d.color, overflow: "hidden", textOverflow: "ellipsis" }}>{r.deliveryLabel}</span>
+                              </span>
+                            );
+                          })()
+                        )}
                       </td>
                       {/* 실패한 문자는 나가지 않아 요금이 없다 — 어느 계정이었는지보다 "요금 없음"이 중요하다(검수 중간 2). */}
                       <td style={{ ...td, color: r.result === "fail" ? "var(--text-sub)" : r.viaCompany ? "var(--text)" : "var(--text-sub)", fontWeight: r.result !== "fail" && r.viaCompany ? 700 : 400 }}>

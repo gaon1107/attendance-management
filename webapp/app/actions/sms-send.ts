@@ -232,7 +232,8 @@ export async function sendDirectSms(_prev: SendFormState, formData: FormData): P
 
     const res = await sendCompanySms({ to: t.to, text, companyId: me.companyId, purpose: "general" });
 
-    const finalize = async (data: { result: string; refId?: null; detail: string | null }) => {
+    // indexCode(접수번호) = 도착 결과 회신이 이 기록을 찾는 열쇠다(3-3). 저장하지 않으면 그 건은 결과를 못 받는다.
+    const finalize = async (data: { result: string; refId?: null; detail: string | null; indexCode?: string | null }) => {
       try {
         await prisma.smsLog.update({ where: { id: logId }, data });
       } catch (e) {
@@ -242,14 +243,14 @@ export async function sendDirectSms(_prev: SendFormState, formData: FormData): P
     };
 
     if (res.ok) {
-      await finalize({ result: "success", detail: null });
+      await finalize({ result: "success", detail: null, indexCode: res.indexCode ?? null });
       sent += 1;
       consecutiveUnknown = 0;
       continue;
     }
     if (res.uncertain) {
       // 시간 초과 등 — 나갔을 수 있다. 자리를 풀지 않는다(다시 눌러도 이 분에게는 다시 가지 않게).
-      await finalize({ result: "unknown", detail: res.detail.slice(0, 200) });
+      await finalize({ result: "unknown", detail: res.detail.slice(0, 200), indexCode: res.indexCode ?? null });
       unknownCount += 1;
       consecutiveUnknown += 1;
       if (consecutiveUnknown >= MAX_CONSECUTIVE_UNKNOWN) {

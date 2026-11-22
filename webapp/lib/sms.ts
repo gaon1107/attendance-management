@@ -204,15 +204,77 @@ function warnBadConfigOnce(): void {
   console.error("[sms] 🔴 문자 설정값이 잘못돼 문자를 끈 상태로 둔다 — MOASHOT_SEND_URL은 https, MOASHOT_SENDER는 숫자 8~12자리여야 한다.");
 }
 
-export type SmsResult = { ok: boolean; detail: string };
+/**
+ * 발송 결과.
+ *  · `ok` = 비즈모아샷이 **접수**했다는 뜻이다(도착이 아니다).
+ *  · `indexCode` = 접수번호. 2026-11-22(3-3)부터 부르는 쪽이 발송기록(SmsLog.indexCode)에 저장한다 —
+ *    나중에 도착 결과 회신이 **이 값으로 그 기록을 찾는다.** 저장하지 않으면 그 건은 결과를 받을 수 없다.
+ */
+export type SmsResult = { ok: boolean; detail: string; indexCode?: string | null };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 발송결과 회신 주소 (2026-11-22, 메시지 관리 3-3)
+//  비즈모아샷은 접수만 응답으로 알려 주고, 실제 도착 결과는 **우리 서버 주소로 되돌려 보낸다**(returnUrl).
+//  그 주소를 발송할 때마다 함께 넘긴다. 받는 쪽은 app/api/sms/callback/[token]/route.ts.
+//
+//  🔴 주소를 요청 헤더(Host)에서 만들지 않는다 — Host는 보내는 쪽이 마음대로 적을 수 있어, 공격자가
+//     회신 주소를 자기 서버로 돌려 **주소에 실린 토큰을 가져갈 수 있다.** 그래서 운영 .env에 고정한다.
+//  🔴 https만 받는다 — 주소에 토큰(비밀값)이 실려 나가기 때문이다.
+//  · 설정이 없거나 모양이 틀리면 **회신 없이 지금까지처럼 보낸다**(nType=4). 새 기능이 꺼질 뿐,
+//    문자 발송 자체는 멈추지 않는다(이 파일을 지나는 모든 문자가 영향을 받으므로 안전 쪽으로 둔다).
+// ═══════════════════════════════════════════════════════════════════════════
+/** 토큰 허용 형식 — 회신을 받는 주소(route.ts)의 검사와 **같은 규칙**이어야 한다. */
+const CALLBACK_TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
+/** 사이트 주소 허용 형식 — https + 도메인(+포트)까지만. 경로·물음표가 붙은 값은 받지 않는다. */
+const CALLBACK_BASE_PATTERN = /^https:[/][/][A-Za-z0-9.-]+(:[0-9]{2,5})?$/;
+
+let callbackWarned = false;
+/** 결과 회신을 받을 주소. 설정이 없거나 모양이 틀리면 undefined(= 회신 안 받음). */
+export function smsCallbackUrl(): string | undefined {
+  const base = (process.env.MOASHOT_CALLBACK_BASE ?? "").trim().replace(/[/]+$/, "");
+  const token = (process.env.MOASHOT_CALLBACK_TOKEN ?? "").trim();
+  // 둘 중 하나라도 비었으면 아직 켜지 않은 것이다 — 조용히 꺼 둔다(경고도 남기지 않는다).
+  if (!base || !token) return undefined;
+  if (!CALLBACK_BASE_PATTERN.test(base) || !CALLBACK_TOKEN_PATTERN.test(token)) {
+    if (!callbackWarned) {
+      callbackWarned = true;
+      // 값 자체는 남기지 않는다(토큰이 비밀값이다). 어느 칸을 볼지만 알린다.
+      console.error("[sms] 🔴 발송결과 회신 설정이 잘못돼 회신을 끈 상태로 둔다 — MOASHOT_CALLBACK_BASE는 https://도메인 형태, MOASHOT_CALLBACK_TOKEN은 영문·숫자·-·_ 16~128자여야 한다.");
+    }
+    return undefined;
+  }
+  return `${base}/api/sms/callback/${token}`;
+}
+
+let indexEchoWarned = false;
+/**
+ * 문자 회사가 돌려준 접수번호가 우리가 보낸 것과 같은지 살핀다(서버 기록에 한 번만 남긴다).
+ *  🔴 [2026-11-22 검수 중간 5] 공용 모듈은 응답에 적힌 번호를 **버리고 우리가 만든 번호**를 돌려주고,
+ *     우리는 그 값을 발송기록에 저장한다(lib/sms-callback.ts가 이 값으로 회신을 찾는다).
+ *     문자 회사가 자기 번호를 매기는 설정이면 **모든 회신이 "모르는 접수번호"가 되어 도착 칸이 영영 빈다.**
+ *     그런데 화면 증상이 "빈칸"뿐이라 몇 주 뒤에야 알아차린다 → 다르면 즉시 기록에 남긴다.
+ *  · 접수번호는 비밀값이 아니므로 값을 남겨도 된다(전화번호·본문은 여기 없다).
+ */
+function warnIfIndexEchoDiffers(raw: string | null | undefined, sent: string | null): void {
+  if (indexEchoWarned || !sent) return;
+  const m = /SUCCESS\s*:\s*([A-Za-z0-9_-]+)/i.exec(raw ?? "");
+  if (!m || m[1] === sent) return;
+  indexEchoWarned = true;
+  console.error(
+    `[sms] 🔴 문자 회사가 돌려준 접수번호가 우리가 보낸 것과 다르다(보냄 ${sent} / 받음 ${m[1]}). ` +
+      `이대로면 발송결과 회신이 기록을 찾지 못해 [발송 기록]의 "도착" 칸이 계속 빈다 — lib/sms-callback.ts 참고.`
+  );
+}
 
 /** 발송 응답이 늦을 때 기다리는 최대 시간. 서버 동작이 매달리지 않게 한다. */
 const SEND_TIMEOUT_MS = 10_000;
 
 // 문자 1건 발송. 단문/장문은 모듈이 자동으로 가른다(EUC-KR 90바이트). 예외·미설정은 던지지 않고 결과로 반환한다.
 //  · companyId·purpose는 **필수**다 — 빠뜨리면 회사별 상한·보안 문자 몫이 조용히 무력화된다(검수 C-1).
-//  · ⚠️ ok는 비즈모아샷이 **접수**했다는 뜻이다(실제 도착 결과는 콜백으로 오는데, 근태는 아직 콜백을 받지 않는다).
+//  · ⚠️ ok는 비즈모아샷이 **접수**했다는 뜻이다(도착이 아니다).
 //    화면 문구가 "보냈습니다/요청했습니다"까지만 말하는 이유다(도착을 보장하지 않는다).
+//    도착 결과는 나중에 회신으로 와서 발송기록의 도착 칸을 채운다(3-3) — 부르는 쪽이 결과의 indexCode를
+//    SmsLog.indexCode에 저장해야 그 건의 회신을 찾을 수 있다.
 export async function sendSms(opts: { to: string; text: string; subject?: string; companyId: string; purpose: SmsPurpose }): Promise<SmsResult> {
   const acc = account();
   if (!acc) return { ok: false, detail: "문자 발송계정이 설정되지 않았습니다(.env)." };
@@ -236,10 +298,14 @@ export async function sendSms(opts: { to: string; text: string; subject?: string
         to,
         text,
         title: opts.subject ?? "근태관리 알림", // 장문일 때만 제목으로 붙는다
+        returnUrl: smsCallbackUrl(), // 없으면 모듈이 회신 없이 보낸다(nType=4)
       },
       { sendUrl: acc.sendUrl, timeoutMs: SEND_TIMEOUT_MS }
     );
-    if (r.ok) return { ok: true, detail: "접수 성공" };
+    if (r.ok) {
+      warnIfIndexEchoDiffers(r.raw, r.indexCode);
+      return { ok: true, detail: "접수 성공", indexCode: r.indexCode };
+    }
     // 🔴 [검수 중간 3] 문자 회사가 답을 줬는데 실패면 모듈의 error에 **응답 원문**이 그대로 들어 있다
     //    (오류 HTML 페이지 등). 그대로 돌려주면 발송기록·화면에 원문이 쌓이므로 정해진 문구로 바꾸고,
     //    원문은 태그를 걷어 짧게 줄여 서버 로그에만 남긴다. 응답이 없는 실패(연결 오류·설정 거부)는
@@ -311,16 +377,22 @@ export async function sendCompanySms(opts: { to: string; text: string; subject?:
         to,
         text,
         title: opts.subject ?? "근태관리 알림",
+        returnUrl: smsCallbackUrl(), // 없으면 모듈이 회신 없이 보낸다(nType=4)
       },
       { sendUrl, timeoutMs: SEND_TIMEOUT_MS }
     );
-    if (r.ok) return { ok: true, detail: "접수 성공" };
+    if (r.ok) {
+      warnIfIndexEchoDiffers(r.raw, r.indexCode);
+      return { ok: true, detail: "접수 성공", indexCode: r.indexCode };
+    }
     if (r.raw) {
       // 응답 원문은 화면·기록에 쌓지 않는다(위 sendSms와 같은 규칙). 서버 로그에만 짧게.
       console.error("[sms] 회사 계정 발송을 문자 회사가 거절:", { companyId: opts.companyId }, r.raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120));
       return { ok: false, detail: COMPANY_SMS_REJECTED_DETAIL };
     }
-    return { ok: false, detail: friendlyCompanyError(r.error), uncertain: isUncertainFailure(r.error) };
+    // 시간 초과 등 "결과 미확인"도 접수번호를 함께 돌려준다 — 부르는 쪽이 저장해 두면 나중에 회신이 와서
+    // **실제로 나갔는지**가 확정된다(3-3). 모듈은 실패해도 접수번호를 돌려준다(sms.js의 base).
+    return { ok: false, detail: friendlyCompanyError(r.error), uncertain: isUncertainFailure(r.error), indexCode: r.indexCode };
   } catch (e) {
     const msg = e instanceof Error ? e.message : null;
     return { ok: false, detail: friendlyCompanyError(msg), uncertain: isUncertainFailure(msg) };

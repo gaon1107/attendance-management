@@ -99,7 +99,10 @@ export async function issuePhoneVerifyCode(user: Owner, now: Date = new Date()):
     await prisma.smsLog.update({
       where: { id: logId },
       // 실패는 과금이 없으므로 refId를 풀어 둔다(다른 발송 창구와 같은 규칙).
-      data: res.ok ? { result: "success", detail: null } : { result: "fail", refId: null, detail: res.detail.slice(0, 200) },
+      // indexCode = 도착 결과 회신이 이 기록을 찾는 열쇠(3-3). 접수 실패엔 회신이 오지 않으므로 넣지 않는다.
+      data: res.ok
+        ? { result: "success", detail: null, indexCode: res.indexCode ?? null }
+        : { result: "fail", refId: null, detail: res.detail.slice(0, 200) },
     });
   } catch (e) {
     console.error("[phone-verify] 발송결과 기록 실패:", { logId }, e instanceof Error ? e.message : String(e));

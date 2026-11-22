@@ -50,4 +50,35 @@ declare module "@newgaon/moashot" {
   export function isShortMessage(text: string | null | undefined): boolean;
   /** EUC-KR로 표현할 수 없어 깨지는 글자 목록(중복 제거). 없으면 빈 배열. */
   export function findUnsupportedChars(text: string | null | undefined): string[];
+
+  // ── 발송결과 회신 해석(메시지 관리 3-3에서 사용) ──────────────────────────
+  //  비즈모아샷이 우리 서버로 보내는 결과 본문을 푼다. 매뉴얼의 함정 두 가지(여러 건이 "접수ID,코드,…"로
+  //  이어붙음 / 항목 이름 대소문자 뒤섞임)를 모듈이 흡수한다 — 원본 주석: node_modules/@newgaon/moashot/callback.js
+  export interface MoashotCallbackResult {
+    /** 접수번호(발송 때 받은 indexCode와 같은 값). */
+    indexCode: string;
+    /** 결과코드 원문(예 "1" 전송성공, "46" 잔액 부족). */
+    code: string;
+    /** 전송 성공 여부. */
+    ok: boolean;
+    /** 결과 사유(한글). 모르는 코드면 "알 수 없는 결과코드(..)". */
+    reason: string;
+  }
+  export interface MoashotParsedCallback {
+    /** nType — 1 접수 / 2 전송결과 / 3 둘 다. 없으면 null. */
+    type: number | null;
+    /** 접수 정보(nType 1·3). errMsg가 비어 있지 않으면 접수 자체가 거부된 것이다. */
+    accepted: { indexCodes: string[]; title: string; toNumber: string; errMsg: string } | null;
+    /** 전송 결과(nType 2·3). 없으면 빈 배열. */
+    results: MoashotCallbackResult[];
+    sendStart: string;
+    sendEnd: string;
+    /** 알림톡이 실패해 문자로 대체 발송된 결과인가. */
+    reSend: boolean;
+  }
+  /** 결과 본문(양식 형식을 푼 객체)을 해석한다. 예외를 던지지 않는다. */
+  export function parseCallback(
+    body: Record<string, unknown>,
+    options?: { channel?: "sms" | "kakao" }
+  ): MoashotParsedCallback;
 }
