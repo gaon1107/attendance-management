@@ -5,6 +5,7 @@
 import path from "path";
 import fs from "fs/promises";
 import crypto from "crypto";
+import { purgeDirFiles, type DirPurgeResult } from "@/lib/storage-dir-purge";
 
 // 허용 파일 형식: PDF · JPG · PNG
 export const ALLOWED = {
@@ -74,6 +75,12 @@ export async function saveCompanyDoc(companyId: string, buffer: Buffer, mime: Al
 export async function readCompanyDoc(companyId: string, storedName: string): Promise<Buffer> {
   assertStoredName(storedName);
   return fs.readFile(path.join(companyDir(companyId), storedName));
+}
+
+// [해지 회사 파기 전용] 그 회사의 문서 폴더(사업자등록증·로고 등)를 통째로 비우고 지운다(2026-11-22 해지 2단계).
+//  · 기존 함수는 건드리지 않은 순수 추가다. 회사 id가 이상하면 companyDir(safeId)이 예외를 던진다 → 호출부는 실패로 본다.
+export async function deleteCompanyDocDir(companyId: string): Promise<DirPurgeResult> {
+  return purgeDirFiles(companyDir(companyId));
 }
 
 // 저장 파일을 삭제한다(문서 삭제·교체 시). 파일이 이미 없어도 조용히 넘어간다.

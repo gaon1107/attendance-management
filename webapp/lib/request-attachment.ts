@@ -7,6 +7,7 @@ import path from "path";
 import fs from "fs/promises";
 import crypto from "crypto";
 import { ALLOWED, type AllowedMime } from "@/lib/company-doc";
+import { purgeDirFiles, type DirPurgeResult } from "@/lib/storage-dir-purge";
 
 // 첨부 가능한 신청 유형(사장님 결정: 이번에 만든 4종만).
 export const ATTACHABLE_TYPES = ["outing", "remote", "overtime", "trip"] as const;
@@ -65,6 +66,12 @@ export type FileDeleteOutcome =
   | "deleted"  // 이번에 실제로 지움
   | "absent"   // 이미 없음(정상) 또는 이름이 우리 규칙과 달라 애초에 찾을 수 없음
   | "failed";  // 지우려 했으나 실패 — 재시도 가치가 있다
+// [해지 회사 파기 전용] 그 회사의 첨부 폴더를 통째로 비우고 지운다(2026-11-22 해지 2단계, lib/company-purge.ts).
+//  · 기존 함수는 건드리지 않은 순수 추가다. 회사 id가 이상하면 companyDir(safeId)이 예외를 던진다 → 호출부는 실패로 본다.
+export async function deleteCompanyAttachmentDir(companyId: string): Promise<DirPurgeResult> {
+  return purgeDirFiles(companyDir(companyId));
+}
+
 export async function deleteAttachmentFile(companyId: string, storedName: string): Promise<FileDeleteOutcome> {
   let dir: string;
   try {
