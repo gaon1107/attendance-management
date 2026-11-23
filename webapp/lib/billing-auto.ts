@@ -183,10 +183,20 @@ export async function autoPayOverview(companyId: string, now: Date = new Date())
 /** 등록 결과 화면 — 자기 회사 카드만. */
 export async function cardForCompany(companyId: string, regNo: string) {
   if (!REG_NO_RE.test(regNo)) return null;
-  return prisma.pgBillingKey.findFirst({
+  const k = await prisma.pgBillingKey.findFirst({
     where: { regNo, companyId },
-    select: { regNo: true, status: true, cardName: true, cardNoMasked: true, nextChargeDate: true, lastFailReason: true, consentTotal: true },
+    select: { id: true, regNo: true, status: true, cardName: true, cardNoMasked: true, nextChargeDate: true, lastFailReason: true, consentTotal: true },
   });
+  if (!k) return null;
+  // 등록 직후 바로 한 첫 결제(결제일이 이미 지난 경우) — 결과 화면에 함께 보인다. 없으면 null.
+  const firstCharge = await prisma.pgOrder.findFirst({
+    where: { companyId, billingKeyId: k.id, orderType: "billing_auto" },
+    orderBy: { createdAt: "asc" },
+    select: { status: true, totalAmount: true, periodStart: true, periodEnd: true },
+  });
+  const { id: _id, ...view } = k;
+  void _id;
+  return { ...view, firstCharge };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

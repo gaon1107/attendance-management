@@ -264,7 +264,7 @@ export default async function SubscriptionPage() {
             <p style={{ ...noteText, margin: 0 }}>
               지금 구간({q.label})에서는 직원이 늘어도 요금이 <strong>{formatWon(q.monthly)}</strong> 그대로입니다.
               <strong> {q.next.addMore}명</strong>을 더 등록하면 {q.next.label} 구간이 되어 월{" "}
-              <strong>{formatWon(q.next.monthly)}</strong>(카드 {formatWon(withVat(q.next.monthly).total)})이 됩니다.
+              <strong>{formatWon(q.next.monthly)}</strong>(카드 {formatWon(withVat(q.next.monthly).total)})이 됩니다.{" "}
               {autoOn
                 ? "자동결제는 새 금액에 따로 동의하시기 전까지 동의하신 금액으로 결제됩니다(아래 [자동결제]에서 동의)."
                 : "직접 결제하시면 새 금액은 다음 결제 때 적용됩니다."}

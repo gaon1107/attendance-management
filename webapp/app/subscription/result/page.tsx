@@ -111,11 +111,29 @@ async function CardResult({ me, regNo }: { me: Me; regNo: string }) {
               {k.cardNoMasked ? <span style={{ color: "var(--text-sub)" }}> {k.cardNoMasked}</span> : null}
             </div>
           ) : null}
+          {k?.firstCharge ? (
+            <p style={{ margin: "4px 0 0" }}>
+              첫 결제:{" "}
+              {k.firstCharge.status === "paid" ? (
+                <>
+                  <strong style={{ color: "var(--success, #15803D)" }}>결제 완료</strong> {formatWon(k.firstCharge.totalAmount)}(부가세 포함)
+                  {k.firstCharge.periodStart && k.firstCharge.periodEnd
+                    ? ` · 이용 기간 ${formatKoreanDate(k.firstCharge.periodStart)} ~ ${formatKoreanDate(trialLastDay(k.firstCharge.periodEnd))}`
+                    : ""}
+                </>
+              ) : k.firstCharge.status === "failed" ? (
+                <strong style={{ color: "var(--danger)" }}>승인되지 않음 — 내일 같은 시각에 다시 시도합니다</strong>
+              ) : k.firstCharge.status === "cancelled" ? (
+                <strong>자동 취소됨 — [구독·요금]에서 확인해 주세요</strong>
+              ) : (
+                <strong style={{ color: "var(--warning)" }}>카드사 응답 확인 중 — 잠시 뒤 [구독·요금]의 결제 내역에 결과가 나옵니다</strong>
+              )}
+            </p>
+          ) : null}
           {k?.status === "active" && k.nextChargeDate ? (
             <p style={{ margin: "4px 0 0" }}>
               다음 자동 결제일은 <strong>{formatKoreanDate(k.nextChargeDate)}</strong>(오전 10시 이후)입니다.
-              {k.consentTotal ? <> 금액은 그날 인원으로 정하되, 동의하신 월 <strong>{formatWon(k.consentTotal)}</strong>(부가세 포함)을 넘지 않습니다.</> : null}{" "}
-              결제일이 오늘이면 잠시 뒤 [구독·요금]의 결제 내역에 결과가 나옵니다.
+              {k.consentTotal ? <> 금액은 그날 인원으로 정하되, 동의하신 월 <strong>{formatWon(k.consentTotal)}</strong>(부가세 포함)을 넘지 않습니다.</> : null}
             </p>
           ) : null}
           {k?.status === "reg_check" || k?.status === "registering" ? (
@@ -123,9 +141,15 @@ async function CardResult({ me, regNo }: { me: Me; regNo: string }) {
               카드사 응답을 확인하는 중입니다. 보통 10분 안에, 길게는 1시간쯤 뒤 [구독·요금]에 결과가 나옵니다. 그동안 다시 신청하지 마세요.
             </p>
           ) : null}
-          {k && (k.status === "failed" || k.status === "deleting" || k.status === "deleted") ? (
+          {k?.status === "failed" ? (
             <p style={{ color: "var(--text-sub)", margin: "4px 0 0" }}>
-              카드에서 돈이 빠져나가지 않았습니다.{k.lastFailReason ? ` (${k.lastFailReason})` : ""} 다시 신청해 주세요.
+              카드 등록이 끝나지 않아 카드에서 돈이 빠져나가지 않았습니다.{k.lastFailReason ? ` (${k.lastFailReason})` : ""} 다시 신청해 주세요.
+            </p>
+          ) : null}
+          {k && (k.status === "deleting" || k.status === "deleted") ? (
+            // 지운 카드 — 이미 낸 결제가 있을 수 있으므로 "돈이 빠지지 않았다"고 쓰지 않는다(첫 결제 줄이 따로 보인다).
+            <p style={{ color: "var(--text-sub)", margin: "4px 0 0" }}>
+              이 카드는 자동결제에서 지웠습니다{k.lastFailReason ? `(${k.lastFailReason})` : ""}. 앞으로 이 카드로는 결제되지 않습니다.
             </p>
           ) : null}
           {!k ? (

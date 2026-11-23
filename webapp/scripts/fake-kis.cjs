@@ -79,6 +79,7 @@ document.getElementById("no").onclick=()=>parent.postMessage(${JSON.stringify(JS
     return json(res, { resultCd: "0000", resultMsg: "삭제 성공" });
   }
   if (url.pathname === "/__bids") return json(res, { count: bids.size });
+  if (url.pathname === "/__addbid") { bids.add(url.searchParams.get("bid") || ""); return json(res, { ok: true }); } // 시험 라우트가 알려진 빌키를 심을 때
   if (url.pathname === "/v2/payment") {
     const t = tx.get(b.tid) || { ordNo: "", amt: b.goodsAmt };
     log.push(`approve ${b.tid} ${b.goodsAmt} mode=${mode.approve} encOk=${b.encData === enc(b.mid, b.ediDate, b.goodsAmt)}`);
