@@ -16,6 +16,7 @@ import { toISODate } from "@/lib/period";
 import { countUncheckedAnomalies } from "@/lib/anomaly";
 import { purgeWorkRecordsDaily } from "@/lib/work-record-retention";
 import { trialStatus, trialLastDay, formatKoreanDate } from "@/lib/trial";
+import { getServiceAccess, GRACE_DAYS } from "@/lib/service-access";
 import { loadAwayDays } from "@/lib/away-server";
 import { ownerRecoveryState } from "@/lib/owner-recovery";
 import { smsConfigured } from "@/lib/sms";
@@ -343,14 +344,51 @@ export default async function DashboardPage() {
   //    막으면 고객이 돈을 낼 방법도 없이 회사 근태가 멈춘다. 차단은 결제 화면과 한 세트로 만든다(lib/trial.ts).
   //  · company가 없으면(있을 수 없지만 select 결과가 null일 수 있는 타입) 띠를 그리지 않는다.
   //  · 운영자가 회사별 마지막 날(trialLastDate)을 정했으면 그 날짜 기준(2026-11-18, 문구도 기간 길이와 무관하게 바꿈 — 사장님 확정).
+  //  · 2026-11-23 결제 5단계: 무료 기간만이 아니라 **이용 상태**(무료·결제 기간, 곧 끝남, 유예, 막힘)로 띄운다(lib/service-access.ts).
+  //    결제한 회사에 "무료 기간이 끝났습니다"가 뜨던 것(2단계 뒤)도 함께 고쳤다. 결제 기간이 넉넉하면 띠를 띄우지 않는다.
   const trial = company ? trialStatus(company.createdAt, new Date(), company.trialLastDate) : null;
-  const trialTone = !trial
-    ? null
-    : trial.expired
-      ? { bg: "#FEF2F2", border: "#FECACA", fg: "#991B1B" }   // 끝남
-      : trial.daysLeft <= 7
-        ? { bg: "#FFF7ED", border: "#FED7AA", fg: "#9A3412" } // 얼마 안 남음
-        : { bg: "#EFF6FF", border: "#BFDBFE", fg: "#1E40AF" }; // 넉넉함
+  let access: Awaited<ReturnType<typeof getServiceAccess>> = null;
+  try {
+    access = await getServiceAccess(me.companyId);
+  } catch (e) {
+    console.warn("[dashboard] 이용 상태 확인 실패(띠 생략):", e instanceof Error ? e.name : "unknown");
+  }
+  const inTrial = !!trial && !trial.expired && (!access || access.kind === "demo" || access.usableUntil.getTime() <= trial.endsAt.getTime());
+  const band: { tone: { bg: string; border: string; fg: string }; body: React.ReactNode; pay: boolean } | null = (() => {
+    const red = { bg: "#FEF2F2", border: "#FECACA", fg: "#991B1B" };
+    const orange = { bg: "#FFF7ED", border: "#FED7AA", fg: "#9A3412" };
+    const blue = { bg: "#EFF6FF", border: "#BFDBFE", fg: "#1E40AF" };
+    if (!access || access.kind === "demo") return null;
+    const lastDay = formatKoreanDate(trialLastDay(access.usableUntil));
+    const what = inTrial ? "무료 이용 기간" : "이용 기간";
+    if (access.kind === "blocked") {
+      return {
+        tone: red, pay: true,
+        body: <><strong>이용 기간이 {lastDay}에 끝나 직원의 새 출근·외출 기록이 멈췄습니다.</strong>{" 결제하시면 바로 풀립니다. 관리자 기능과 근로기록 조회·엑셀은 그대로 쓰실 수 있습니다. "}</>,
+      };
+    }
+    if (access.kind === "grace") {
+      return access.blockAt
+        ? {
+            tone: red, pay: true,
+            body: <><strong>{what}이 {lastDay}에 끝났습니다.</strong>{` ${formatKoreanDate(access.blockAt)}부터 직원의 새 출근·외출 기록이 멈춥니다(퇴근·관리자 기능·기록 조회는 그대로). `}</>,
+          }
+        : {
+            // 결제 개시 전(BILLING_ENFORCE_FROM 없음) — 아무것도 막지 않는다. 예전 문구 그대로.
+            tone: red, pay: false,
+            body: <><strong>{what}이 끝났습니다.</strong>{" 결제 안내를 준비 중이며, 그때까지는 그대로 사용하실 수 있습니다."}</>,
+          };
+    }
+    if (access.kind === "ending") {
+      return {
+        tone: orange, pay: !inTrial || access.enforced,
+        body: <><strong>{`${what}: ${lastDay}까지`}</strong>{` (${access.daysLeft}일 남음)${access.enforced ? ` — 끝나고 ${GRACE_DAYS}일 뒤부터 직원의 새 출근이 멈춥니다. 결제나 자동결제를 미리 해 두세요. ` : ""}`}</>,
+      };
+    }
+    // 넉넉함 — 무료 기간 중일 때만 알린다(결제 기간이 넉넉하면 띠를 띄우지 않는다).
+    if (!inTrial || !trial) return null;
+    return { tone: blue, pay: false, body: <><strong>{`무료 이용 기간: ${lastDay}까지`}</strong>{` (${trial.daysLeft}일 남음)`}</> };
+  })();
 
   // ── 회사 계정 복구 준비 안내 (2026-11-21) ─────────────────────────────────
   //  · 왜 여기에: 회사 계정은 평소 잘 안 쓰는 계정이라 [계정 설정]에만 두면 아무도 번호를 확인하지 않는다.
@@ -375,26 +413,21 @@ export default async function DashboardPage() {
 
   return (
     <AppShell user={me} active="dashboard" title="대시보드" subtitle={me.company.name} right={datePill}>
-      {trial && trialTone && (
+      {band && (
         <div
           role="status"
           style={{
             marginBottom: 16, padding: "12px 16px", borderRadius: 10,
-            background: trialTone.bg, border: `1px solid ${trialTone.border}`, color: trialTone.fg,
+            background: band.tone.bg, border: `1px solid ${band.tone.border}`, color: band.tone.fg,
             fontSize: 14, lineHeight: 1.6, wordBreak: "keep-all", overflowWrap: "break-word",
           }}
         >
-          {trial.expired ? (
-            <>
-              <strong>무료 이용 기간이 끝났습니다.</strong>
-              {" 결제 안내를 준비 중이며, 그때까지는 그대로 사용하실 수 있습니다."}
-            </>
-          ) : (
-            <>
-              <strong>{`무료 이용 기간: ${formatKoreanDate(trialLastDay(trial.endsAt))}까지`}</strong>
-              {` (${trial.daysLeft}일 남음)`}
-            </>
-          )}
+          {band.body}
+          {band.pay ? (
+            <Link href="/subscription" style={{ color: band.tone.fg, fontWeight: 700, textDecoration: "underline" }}>
+              구독·요금에서 결제하기
+            </Link>
+          ) : null}
         </div>
       )}
       {ownerRecoveryTodo && (

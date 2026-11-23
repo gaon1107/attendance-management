@@ -11,6 +11,7 @@ import { PHOTO_CONSENT_SINCE } from "@/lib/clock-photo";
 import { isFaceConfigured } from "@/lib/face";
 import { parseOutingReasons } from "@/lib/outing-reasons";
 import { ClockInPanel } from "./ClockInPanel";
+import { getServiceAccess, CLOCK_BLOCKED_MESSAGE } from "@/lib/service-access";
 import { FaceClockPanel } from "./FaceClockPanel";
 import { OnboardingTour } from "./OnboardingTour";
 import { AddToHomeHint } from "./AddToHomeHint";
@@ -92,6 +93,14 @@ export default async function AttendancePage() {
   const faceMinPercent = faceUser ? company?.faceMinPercent ?? 30 : 30;
   // 외출 사유 드롭다운 — 회사가 [설정]에서 편집. 미설정이면 기본 4종(lib/outing-reasons.ts).
   const reasons = parseOutingReasons(company?.outingReasons);
+  // 미납 차단(2026-11-23 결제 5단계, lib/service-access.ts) — 막히면 새 출근·외출 시작 버튼을 그리지 않는다(서버도 막는다).
+  //  퇴근·외출 복귀는 그대로 둔다(사장님 결정 11-23). 판단이 실패하면 막지 않는다(서버와 같은 규칙).
+  let clockBlocked = false;
+  try {
+    clockBlocked = (await getServiceAccess(me.companyId))?.kind === "blocked";
+  } catch (e) {
+    console.warn("[attendance] 이용 상태 확인 실패(막지 않고 표시):", e instanceof Error ? e.name : "unknown");
+  }
 
   // 출근/퇴근 요약(가장 최근 기록 기준) — 실제 데이터만
   const latest = open ?? (todays.length > 0 ? todays[todays.length - 1] : null);
@@ -216,7 +225,14 @@ export default async function AttendancePage() {
             지금은 얼굴인증을 쓸 수 없어 일반 방식으로 출퇴근합니다.
           </div>
         )}
-        {!working && (faceUser ? <FaceClockPanel action="in" minPercent={faceMinPercent} /> : <ClockInPanel />)}
+        {!working && clockBlocked ? (
+          <div role="alert" style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 12, padding: "14px 16px", fontSize: 14, color: "#991B1B", lineHeight: 1.7, wordBreak: "keep-all" }}>
+            <b>지금은 출근을 기록할 수 없습니다.</b>
+            <br />
+            {CLOCK_BLOCKED_MESSAGE}
+          </div>
+        ) : null}
+        {!working && !clockBlocked && (faceUser ? <FaceClockPanel action="in" minPercent={faceMinPercent} /> : <ClockInPanel />)}
 
         {working && !onBreak && (
           <>
@@ -233,6 +249,11 @@ export default async function AttendancePage() {
             {/* ⚠️ minWidth: 0 — 없으면 드롭다운이 "가장 긴 사유 글자폭" 아래로 줄어들지 않는다(flex 기본값 함정).
                 사유는 회사가 직접 편집하고 한 개당 20자까지 허용되므로(lib/outing-reasons.ts MAX_REASON_LEN),
                 긴 사유를 등록한 회사에서는 폰 화면에서 [외출] 버튼(110px 고정)을 밀어내 잘렸다. */}
+            {clockBlocked ? (
+              <div style={{ fontSize: 13, color: "var(--text-sub)", lineHeight: 1.6, wordBreak: "keep-all" }}>
+                회사의 서비스 이용 기간이 끝나 외출은 기록할 수 없습니다. 퇴근은 그대로 하실 수 있습니다.
+              </div>
+            ) : (
             <form action={startBreak} style={{ display: "flex", gap: 8 }}>
               <select name="reason" defaultValue={reasons[0]} style={{ flex: 1, minWidth: 0, height: 48, padding: "0 12px", border: "1px solid #D1D5DB", borderRadius: 10, fontFamily: "inherit", fontSize: 15, background: "#fff" }}>
                 {reasons.map((r) => (
@@ -243,6 +264,7 @@ export default async function AttendancePage() {
                 외출
               </button>
             </form>
+            )}
           </>
         )}
 

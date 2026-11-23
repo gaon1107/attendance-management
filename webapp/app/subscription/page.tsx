@@ -4,7 +4,7 @@
 // 2026-11-23 결제 3단계: **자동결제** 칸(신청·카드 바꾸기·해지·새 금액 동의)을 붙였다(lib/billing-auto.ts, AutoPayBox.tsx).
 //    🔴 "자동으로 결제되지 않습니다"는 이제 **자동결제를 신청하지 않은 회사에만** 참이다 → 문구를 신청 여부로 나눈다.
 //    KIS 상점 설정이 없으면 버튼 대신 "준비 중"이 보인다(lib/kispg-config.ts). 계획서 plan-근태결제-개발.md.
-//    ⚠️ 아직 아무것도 막지 않는다(미납 차단은 5단계) — 화면 문구도 그 사실에 맞춘다.
+//    미납 차단(5단계, lib/service-access.ts)은 결제 개시일(BILLING_ENFORCE_FROM)이 정해져야 작동한다 — 문구도 그 상태대로 나눈다.
 //
 // 📌 **금액 표기 판단**(2026-11-20 사장님 결정 ③과의 관계):
 //    공개 요금표(홈화면)는 "(부가세 별도)" 안내만 하기로 확정됐다. 이 화면은 공개 광고가 아니라
@@ -22,6 +22,7 @@ import { payOverview, listPayments } from "@/lib/billing-pay";
 import { autoPayOverview, autoChargeAmount } from "@/lib/billing-auto";
 import { PayButton } from "./PayButton";
 import { AutoPayBox, type AutoPayView } from "./AutoPayBox";
+import { getServiceAccess } from "@/lib/service-access";
 
 const card = {
   background: "#fff",
@@ -79,6 +80,13 @@ export default async function SubscriptionPage() {
   // 자동결제를 쓰고 있는가(사용 중 카드) — 아래 "자동으로 결제되지 않습니다" 문구들을 이것으로 나눈다.
   const autoOn = auto?.card?.status === "active";
   const autoView = buildAutoView(auto, q, now);
+  // 미납 차단 상태(결제 5단계) — 무료 기간 칸 문구에 쓴다. 실패하면 문구만 일반 안내로.
+  let access: Awaited<ReturnType<typeof getServiceAccess>> = null;
+  try {
+    access = await getServiceAccess(me.companyId, now);
+  } catch {
+    access = null;
+  }
 
   return (
     <AppShell user={me} active="subscription" title="구독·요금" subtitle={`${me.company.name} · 관리자 ${me.name}`}>
@@ -231,8 +239,14 @@ export default async function SubscriptionPage() {
                 <> 지금은 유료 이용 기간입니다(위 [결제] 참고).</>
               ) : (
                 <>
-                  {" "}지금도 모든 기능을 그대로 쓰실 수 있습니다 — 아직 아무것도 막지 않습니다.
-                  계속 이용하시려면 위 [결제]에서 카드로 결제해 주세요.
+                  {access?.kind === "blocked" ? (
+                    <> <strong>지금 직원의 새 출근·외출 기록이 멈춰 있습니다.</strong> 결제하시면 바로 풀립니다.</>
+                  ) : access?.kind === "grace" && access.blockAt ? (
+                    <> <strong>{formatKoreanDate(access.blockAt)}</strong>부터 직원의 새 출근·외출 기록이 멈춥니다.</>
+                  ) : (
+                    <> 지금은 모든 기능을 그대로 쓰실 수 있습니다(결제 개시 전).</>
+                  )}{" "}
+                  관리자 기능과 근로기록 조회·엑셀은 결제 여부와 상관없이 계속 쓰실 수 있습니다. 계속 이용하시려면 위 [결제]에서 카드로 결제해 주세요.
                 </>
               )}
             </p>
