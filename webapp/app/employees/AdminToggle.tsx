@@ -3,8 +3,9 @@
 //  · 실수로 누르는 일이 없게 **누르면 한 번 물어본다**(권한 변경은 되돌릴 수 있지만 놀라는 일은 막는다).
 //  · 본인 행에는 버튼을 띄우지 않는다(서버도 본인 변경을 거부한다 — 화면과 서버가 같은 규칙).
 //  · 실패하면 **이유를 그 자리에 보여준다**(마지막 관리자 보호 등). 예전에는 아무 반응이 없었다(검수 14).
-import { useActionState } from "react";
+import { useActionState, useRef } from "react";
 import { setAdminRole, type AdminToggleState } from "@/app/actions/owner";
+import { useSeatConsent } from "./SeatConsent";
 
 export function AdminToggle({ userId, isAdmin, isMe, name }: {
   userId: string;
@@ -13,6 +14,9 @@ export function AdminToggle({ userId, isAdmin, isMe, name }: {
   name: string;
 }) {
   const [state, formAction, pending] = useActionState<AdminToggleState, FormData>(setAdminRole, {});
+  // 2026-11-23 결제 4단계: 관리자 해제로 요금 구간이 오르면 서버가 동의를 요청한다(관리자는 1명까지 요금 제외).
+  const formRef = useRef<HTMLFormElement>(null);
+  const seat = useSeatConsent(state, formRef, pending);
 
   if (isMe) {
     return <span style={{ fontSize: 12, color: "var(--text-sub)" }}>본인</span>;
@@ -23,7 +27,16 @@ export function AdminToggle({ userId, isAdmin, isMe, name }: {
     : `${name} 님을 관리자로 지정할까요?\n\n관리자는 직원 정보·근태 기록·회사 설정을 모두 볼 수 있습니다.`;
 
   return (
-    <form action={formAction} onSubmit={(e) => { if (!confirm(ask)) e.preventDefault(); }}>
+    <form
+      ref={formRef}
+      action={formAction}
+      onSubmit={(e) => {
+        if (seat.resubmitting()) return; // 요금 동의 뒤 다시 보내는 중 — 이미 물었다
+        if (!confirm(ask)) e.preventDefault();
+      }}
+    >
+      {seat.hidden}
+      {seat.dialog}
       <input type="hidden" name="userId" value={userId} />
       <input type="hidden" name="makeAdmin" value={isAdmin ? "0" : "1"} />
       <button

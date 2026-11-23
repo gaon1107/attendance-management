@@ -12,6 +12,7 @@ import { parseProfile, employeeNoTaken } from "@/lib/employee-profile";
 import { randomBytes } from "crypto";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { checkSeatConsent, type SeatPreview } from "@/lib/seat-consent";
 import { revalidatePath } from "next/cache";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -19,10 +20,17 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 // 초대 선점 경쟁에서 진 경우(다른 사람이 먼저 그 링크로 가입) — 트랜잭션을 되돌리려고 던지는 신호.
 class InviteTakenError extends Error {}
 
+export type CreateInviteState = { ok?: boolean; error?: string; seatConsent?: SeatPreview };
+
 // 관리자: 초대 링크 생성. 7일간 유효한 1회용 토큰을 만든다.
-export async function createInvite(): Promise<void> {
+//  · 2026-11-23 결제 4단계: 링크 하나 = 곧 한 사람. 요금 구간이 오르면 **만들기 전에** 새 금액 동의를 받는다(lib/seat-consent.ts).
+//    직원이 링크로 가입하는 화면에서는 묻지 않는다 — 여기서 이미 동의했다.
+export async function createInvite(_prev: CreateInviteState, formData: FormData): Promise<CreateInviteState> {
   const me = await getCurrentUser();
-  if (!me || me.role !== "admin") return;
+  if (!me || me.role !== "admin") return { error: "권한이 없습니다." };
+
+  const gate = await checkSeatConsent(me, { employees: 1, admins: 0 }, formData.get("seatConsent"));
+  if (!gate.ok) return { seatConsent: gate.preview };
 
   const token = randomBytes(24).toString("hex");
   await prisma.invite.create({
@@ -32,7 +40,9 @@ export async function createInvite(): Promise<void> {
       expiresAt: new Date(Date.now() + SEVEN_DAYS_MS),
     },
   });
+  await gate.commit();
   revalidatePath("/employees");
+  return { ok: true };
 }
 
 // 관리자: 아직 안 쓴 초대 링크 취소(삭제).

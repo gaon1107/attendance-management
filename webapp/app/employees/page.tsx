@@ -10,7 +10,8 @@ import { PendingResetRequests } from "./PendingResetRequests";
 import { DepartmentManager } from "./DepartmentManager";
 import { JobGradeManager, type GradeRow } from "./JobGradeManager";
 import { EmployeeList, type EmpRow, type RetiredRow } from "./EmployeeList";
-import { createInvite, cancelInvite } from "@/app/actions/invites";
+import { cancelInvite } from "@/app/actions/invites";
+import { InviteButton } from "./InviteButton";
 import { companySmsReady } from "@/lib/company-sms-account";
 
 function ymd(d: Date): string {
@@ -176,14 +177,8 @@ export default async function EmployeesPage() {
           <p style={{ fontSize: 13, color: "var(--text-sub)", marginBottom: 16, lineHeight: 1.6 }}>
             초대 링크를 만들어 직원에게 보내면(카톡·문자 등), 직원이 링크로 <b>직접 가입</b>합니다. 비밀번호는 직원 본인이 정합니다. (링크는 7일간, 1회만 사용 가능)
           </p>
-          <form action={createInvite}>
-            <button
-              type="submit"
-              style={{ height: 44, padding: "0 18px", border: "none", borderRadius: 8, background: "var(--primary)", color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
-            >
-              + 초대 링크 만들기
-            </button>
-          </form>
+          {/* 2026-11-23 결제 4단계: 요금 구간이 오르면 새 금액 동의 창을 띄운다(InviteButton → SeatConsent). */}
+          <InviteButton />
 
           {invites.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>

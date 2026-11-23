@@ -12,10 +12,11 @@ import { canDeactivate, canManageAccount } from "@/lib/owner-rules";
 import { logAdminAction } from "@/lib/audit";
 import { openSessionSince } from "@/lib/worktime";
 import { unenrollFaceOutcome, unenrollAuditNote } from "@/lib/face-purge";
+import { checkSeatConsent, type SeatPreview } from "@/lib/seat-consent";
 
 // 반환값에 tempPassword가 실린다 — 관리자가 직원에게 전달해야 하는 값이라 **한 번은 보여줘야** 한다.
 // (평문이 남는 곳은 이 응답뿐이다. DB에는 해시만 저장된다.)
-export type EmployeePasswordResult = { error?: string; ok?: boolean; tempPassword?: string; name?: string };
+export type EmployeePasswordResult = { error?: string; ok?: boolean; tempPassword?: string; name?: string; seatConsent?: SeatPreview };
 
 export async function addEmployee(
   _prev: EmployeePasswordResult,
@@ -53,6 +54,10 @@ export async function addEmployee(
     return { error: "이미 사용 중인 이메일입니다." };
   }
 
+  // 2026-11-23 결제 4단계: 요금 구간이 오르면 **추가하기 전에** 새 금액 동의(lib/seat-consent.ts). 저장은 추가 성공 뒤.
+  const gate = await checkSeatConsent(me, { employees: 1, admins: 0 }, formData.get("seatConsent"));
+  if (!gate.ok) return { seatConsent: gate.preview };
+
   await prisma.user.create({
     data: {
       companyId: me.companyId, // 관리자와 같은 회사로
@@ -76,6 +81,7 @@ export async function addEmployee(
   // 🔴 [검수 치명 3] 계정 생성도 감사 대상이다 — 누가 언제 어떤 계정을 만들었는지 남긴다.
   //    ⚠️ 이름만 남긴다. 비밀번호 값은 절대 넣지 않는다(lib/audit.ts 규약).
   await logAdminAction(me, "config", `employee_add:${name}`);
+  await gate.commit();
 
   revalidatePath("/employees");
   // 평문 임시 비번은 여기서만 나간다 — 관리자가 직원에게 전달해야 하므로 한 번은 보여줘야 한다.
@@ -309,23 +315,34 @@ async function purgeBiometricOnDeactivate(
 }
 
 // 복직(재활성화) — 관리자만. 다시 로그인 가능하게 하고 로그인 잠금도 초기화한다.
-export async function reactivateEmployee(formData: FormData): Promise<void> {
+//  · 2026-11-23 결제 4단계: 복직하면 요금 대상이 1명 늘 수 있다 → 구간이 오르면 **복직 전에** 새 금액 동의. 그래서 결과를 돌려준다.
+export type ReactivateState = { error?: string; seatConsent?: SeatPreview };
+export async function reactivateEmployee(_prev: ReactivateState, formData: FormData): Promise<ReactivateState> {
   const me = await getCurrentUser();
-  if (!me || me.role !== "admin") return;
+  if (!me || me.role !== "admin") return { error: "권한이 없습니다." };
 
   const id = String(formData.get("id") ?? "");
   const target = await prisma.user.findFirst({ where: { id, companyId: me.companyId } });
-  if (!target) return;
+  if (!target) return { error: "직원을 찾을 수 없습니다." };
   // 🔒 회사 계정은 남이 손댈 수 없다(검수 치명 1 — 비밀번호 바꿔치기로 회사 열쇠를 빼앗는 경로 차단).
-  if (!canManageAccount(me, target).ok) return;
+  if (!canManageAccount(me, target).ok) return { error: "이 계정은 복직시킬 수 없습니다." };
+
+  // 이미 재직 중이면 인원이 늘지 않는다(두 번 누름) — 동의 없이 그대로 둔다.
+  const adds = target.deactivatedAt === null || target.isOwner
+    ? { employees: 0, admins: 0 }
+    : target.role === "admin" ? { employees: 0, admins: 1 } : { employees: 1, admins: 0 };
+  const gate = await checkSeatConsent(me, adds, formData.get("seatConsent"));
+  if (!gate.ok) return { seatConsent: gate.preview };
 
   await prisma.user.update({
     where: { id: target.id },
     data: { deactivatedAt: null, failedLoginCount: 0, lockedUntil: null },
   });
+  await gate.commit();
 
   revalidatePath(`/employees/${id}`);
   revalidatePath("/employees");
+  return {};
 }
 
 // 직원 비밀번호 재설정 — 관리자만. 직원이 비번을 잊었을 때 새 임시 비번을 정해준다.

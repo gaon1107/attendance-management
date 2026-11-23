@@ -11,8 +11,9 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { canChangeRole } from "@/lib/owner-rules";
 import { revalidatePath } from "next/cache";
+import { checkSeatConsent, type SeatPreview } from "@/lib/seat-consent";
 
-export type AdminToggleState = { error?: string; ok?: string };
+export type AdminToggleState = { error?: string; ok?: string; seatConsent?: SeatPreview };
 
 /**
  * 직원 ↔ 관리자 전환.
@@ -32,8 +33,23 @@ export async function setAdminRole(
   const id = String(formData.get("userId") ?? "");
   const makeAdmin = String(formData.get("makeAdmin") ?? "") === "1";
 
+  // 2026-11-23 결제 4단계: 관리자는 1명까지 요금에서 빠진다 → **해제**하면 요금 대상이 1명 늘 수 있다(관리자 1명뿐일 때).
+  //  구간이 오르면 해제 전에 새 금액 동의(lib/seat-consent.ts). 지정(올리기)은 늘지 않으니 묻지 않는다. 저장은 성공 뒤.
+  let commitConsent: () => Promise<void> = async () => {};
+  if (!makeAdmin) {
+    const t = await prisma.user.findFirst({
+      where: { id, companyId: me.companyId },
+      select: { role: true, isOwner: true, deactivatedAt: true },
+    });
+    if (t && t.role === "admin" && !t.isOwner && t.deactivatedAt === null) {
+      const gate = await checkSeatConsent(me, { employees: 1, admins: -1 }, formData.get("seatConsent"));
+      if (!gate.ok) return { seatConsent: gate.preview };
+      commitConsent = gate.commit;
+    }
+  }
+
   try {
-    return await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       // 회사 격리 — 반드시 내 회사 사람만 조회한다.
       const target = await tx.user.findFirst({
         where: { id, companyId: me.companyId },
@@ -76,6 +92,8 @@ export async function setAdminRole(
       }
       return { ok: makeAdmin ? "관리자로 지정했습니다." : "관리자 권한을 해제했습니다." };
     });
+    if (result.ok) await commitConsent();
+    return result;
   } catch (e) {
     console.warn("[owner] 관리자 권한 변경 실패:", e);
     return { error: "권한을 바꾸지 못했습니다. 잠시 후 다시 시도해주세요." };

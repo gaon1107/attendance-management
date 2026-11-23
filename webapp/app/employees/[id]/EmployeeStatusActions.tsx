@@ -1,9 +1,10 @@
 "use client";
 // 직원 퇴사(비활성화)/복직 버튼 — 관리자만. 실수 방지를 위해 확인창을 띄운다.
 // 퇴사해도 과거 근태 기록은 리포트에 그대로 남고, 언제든 복직할 수 있다.
-import { useActionState } from "react";
+import { useActionState, useRef } from "react";
+import { useSeatConsent } from "../SeatConsent";
 import Link from "next/link";
-import { deactivateEmployee, reactivateEmployee } from "@/app/actions/employees";
+import { deactivateEmployee, reactivateEmployee, type ReactivateState } from "@/app/actions/employees";
 
 export function EmployeeStatusActions({
   id,
@@ -29,6 +30,10 @@ export function EmployeeStatusActions({
   // 퇴사 처리는 실패할 수 있다(마지막 관리자·회사 계정). 그 이유를 화면에 띄운다 — 검수 2차 5.
   //  [5-2 검수 L3] 퇴사 처리에 얼굴인증 서버 삭제(최대 십수 초)가 붙어, 처리 중임을 보여 주고 두 번 누르지 못하게 한다.
   const [state, formAction, pending] = useActionState<{ error?: string; ok?: boolean }, FormData>(deactivateEmployee, {});
+  // 복직 — 2026-11-23 결제 4단계: 요금 구간이 오르면 서버가 동의를 요청한다(SeatConsent 확인 창 → 같은 폼 다시 보냄).
+  const [reState, reAction, rePending] = useActionState<ReactivateState, FormData>(reactivateEmployee, {});
+  const reFormRef = useRef<HTMLFormElement>(null);
+  const seat = useSeatConsent(reState, reFormRef, rePending);
 
   // 🔴 [검수 M-6] 퇴근을 안 찍은 기록이 있으면 **퇴사시키기 전에** 알린다.
   //    퇴사하면 본인이 로그인할 수 없어 [근태 정정]으로 그 퇴근 시각을 채울 방법이 사라진다.
@@ -104,13 +109,20 @@ export function EmployeeStatusActions({
 
   return (
     <form
-      action={reactivateEmployee}
+      ref={reFormRef}
+      action={reAction}
       onSubmit={(e) => {
+        if (seat.resubmitting()) return; // 요금 동의 뒤 다시 보내는 중 — 이미 물었다
         if (!confirm(`${name} 님을 복직시킬까요?\n다시 로그인할 수 있게 됩니다.`)) {
           e.preventDefault();
         }
       }}
     >
+      {seat.hidden}
+      {seat.dialog}
+      {reState.error ? (
+        <div role="alert" style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700, marginBottom: 8, wordBreak: "keep-all" }}>{reState.error}</div>
+      ) : null}
       {inactiveNotice}
       {faceLeft && (
         <div style={{ fontSize: 13, color: "var(--danger)", fontWeight: 700, marginBottom: 12, wordBreak: "keep-all", lineHeight: 1.6 }}>
@@ -124,7 +136,7 @@ export function EmployeeStatusActions({
         type="submit"
         style={{ height: 44, padding: "0 20px", border: "none", borderRadius: 8, background: "var(--primary)", color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
       >
-        복직시키기
+        {rePending ? "처리 중..." : "복직시키기"}
       </button>
     </form>
   );
