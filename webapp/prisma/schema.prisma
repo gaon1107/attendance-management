@@ -1371,6 +1371,14 @@ model PgOrder {
   lastCheckedAt DateTime? // 마지막 조회 시각 — 동시 조회 잠금(학원관리 120초)
   failReason   String?
   followedUpAt DateTime? // 정기 결제 후속 처리(실패 횟수 등)를 한 번만 하게
+  // 운영자 취소(환불) — 2026-11-23 결제 6단계(lib/billing-operator.ts).
+  //  · operatorCancelBy·At: 운영자가 [취소(환불)]을 누른 사람("이름 <이메일>")·시각. 값이 있으면 고객 알림센터에 "결제 취소" 안내.
+  //    "7일 넘게 안 닫힘"은 운영자 취소 건이면 결제 시각이 아니라 **이 시각부터** 센다(한 달 전 결제를 취소해도 바로 '오래됨'이 되지 않게).
+  //  · periodRevertedAt: 취소가 **확정된 뒤** 이 결제로 늘어난 이용 기간(paidUntil)을 되돌린 시각. paid였다가 cancelled가 된 주문
+  //    (paidAt 있음)인데 이 값이 비어 있으면 아직 되돌리지 못한 것 — 10분 정리가 다시 하고, 못 하면 운영자 확인 목록에 뜬다.
+  operatorCancelBy String?
+  operatorCancelAt DateTime?
+  periodRevertedAt DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -1416,6 +1424,10 @@ model PgBillingKey {
   registeredAt DateTime?
   pausedAt     DateTime?
   deletedAt    DateTime?
+  // 카드 등록 중 결제가 승인된 건(돈이 빠짐) — 우리 화면은 환불하지 않고 운영자가 KIS 상점관리자에서 취소한 뒤
+  //  [KIS에서 환불함 표시]로 끝을 기록한다(2026-11-23 결제 6단계). 값이 있으면 운영자 확인 목록에서 빠진다.
+  refundMarkedAt DateTime?
+  refundMarkedBy String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

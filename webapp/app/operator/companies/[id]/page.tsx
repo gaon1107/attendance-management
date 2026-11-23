@@ -13,6 +13,8 @@ import { formatKoreanDate } from "@/lib/trial";
 import { OperatorHeader } from "../../OperatorHeader";
 import { TrialForm, DemoForm, TerminateForm } from "./CompanyControls";
 import { purgeDueAt, restoreBlockedReason } from "@/lib/company-termination";
+import { getCompanyBilling } from "@/lib/billing-operator";
+import { CompanyBillingSection } from "./CompanyBillingSection";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +49,7 @@ export default async function OperatorCompanyPage({ params }: { params: Promise<
   if (!c) notFound();
   // 접속 현황(합계·날짜만 — 개별 로그인 기록은 보여주지 않는다. lib/operator-companies.ts 주석)
   const acc = await getCompanyAccessSummary(c.id);
+  const billing = await getCompanyBilling(c.id);
 
   const { ip, userAgent } = readClientMeta(await headers());
   await recordAccess({
@@ -112,6 +115,9 @@ export default async function OperatorCompanyPage({ params }: { params: Promise<
             직원은 한 번 로그인하면 쓰는 동안 로그인이 유지되므로 로그인 횟수가 적은 것이 정상입니다. 실제 사용 여부는 &lsquo;접속 계정&rsquo;과 &lsquo;마지막 접속일&rsquo;로 보세요.
           </div>
         </section>
+
+        {/* 결제 — 2026-11-23 결제 6단계(lib/billing-operator.ts). 이용 상태·요금 인원·자동결제 카드·결제 내역·취소(환불). */}
+        {billing && <CompanyBillingSection companyId={c.id} b={billing} />}
 
         <div className="split-2">
           <section style={card}>

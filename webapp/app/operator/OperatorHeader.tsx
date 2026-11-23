@@ -4,10 +4,12 @@
 import Link from "next/link";
 import { operatorLogout } from "@/app/actions/operator";
 
-export type OperatorMenu = "companies" | "access" | "account";
+export type OperatorMenu = "companies" | "payments" | "access" | "account";
 
 const MENU: { key: OperatorMenu; href: string; label: string }[] = [
   { key: "companies", href: "/operator", label: "회원사" },
+  // 결제(2026-11-23 결제 6단계) — 전체 회사 결제 목록·확인 필요·취소(환불). 조회는 lib/billing-operator.ts
+  { key: "payments", href: "/operator/payments", label: "결제" },
   { key: "access", href: "/operator/access", label: "운영자 접속 기록" },
   // [내 계정]은 **본인 비밀번호·이름 변경만** 하는 화면이다. 계정을 새로 만들거나 남의 계정을
   // 건드리는 기능은 화면에 두지 않는다(app/actions/operator.ts 머리말 참고).
