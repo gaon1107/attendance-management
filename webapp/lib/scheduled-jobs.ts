@@ -12,6 +12,7 @@ import { purgeExpiredPhotos } from "@/lib/clock-photo";
 import { purgeExpiredSmsLogs } from "@/lib/sms-retention";
 import { runCompanyPurgeIfDue } from "@/lib/company-purge";
 import { reconcilePayOrders } from "@/lib/billing-pay";
+import { settleBillingKeys } from "@/lib/billing-auto";
 
 const FIRST_RUN_DELAY_MS = 5 * 60 * 1000;
 const TICK_MS = 60 * 60 * 1000;
@@ -53,8 +54,13 @@ export function startScheduledJobs(): void {
   // 구독 결제 정리(2026-11-23 결제 2단계) — **10분마다**. 결과 모름(check)·취소 중(cancel_check)을 KIS 조회·취소로 닫고,
   //  결제창에서 돌아오지 않은 주문(ready)은 1시간 뒤 닫는다. 결제 설정이 없으면(KIS 상점 승인 전) 조회는 하지 않는다.
   //  · 돈이 빠졌는지 모르는 주문을 오래 두면 고객은 돈을 냈는데 기간이 안 늘어난 상태가 된다 — 그래서 1시간이 아니라 10분.
+  //  · 2026-11-23 결제 3단계: 이어서 자동결제 카드 정리(등록 결과 모름·KIS 지우기 재시도·버려진 등록 창)도 한다.
+  //    순서대로(앞이 끝난 뒤) — 같은 회사 결제를 동시에 만지는 일을 줄인다. 앞이 실패해도 뒤는 돈다.
   const runPayReconcile = () => {
-    reconcilePayOrders().catch((e) => console.error("[scheduled-jobs] 결제 정리 실패:", e));
+    reconcilePayOrders()
+      .catch((e) => console.error("[scheduled-jobs] 결제 정리 실패:", e))
+      .then(() => settleBillingKeys())
+      .catch((e) => console.error("[scheduled-jobs] 자동결제 카드 정리 실패:", e instanceof Error ? e.name : "unknown"));
   };
   setTimeout(runPayReconcile, 60 * 1000).unref();
   setInterval(runPayReconcile, 10 * 60 * 1000).unref();

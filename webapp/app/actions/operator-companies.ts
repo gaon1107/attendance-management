@@ -13,6 +13,7 @@ import { getCurrentOperator } from "@/lib/operator-session";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { companyNameMatches } from "@/lib/company-name";
 import { restoreBlockedReason } from "@/lib/company-termination";
+import { markCompanyCardsForDeletion } from "@/lib/billing-auto";
 
 export type OperatorActionResult = { ok: boolean; message: string } | null;
 
@@ -179,6 +180,16 @@ export async function terminateCompany(_prev: OperatorActionResult, formData: Fo
   }
 
   await logOperatorChange(me, `operator_terminate:${company.name} (ID ${company.id.slice(0, 8)})`);
+
+  // 자동결제 카드 내려놓기(2026-11-23 결제 3단계) — 이 순간부터 청구하지 않고, KIS 카드 지우기는 뒤에서(실패하면 10분 정리가 재시도).
+  //  · 해지 처리 자체는 이미 끝났다 → 여기서 실패해도 해지를 되돌리지 않는다. 남은 카드는 파기 엔진이 "카드 지우기 대기"로 막고,
+  //    정기 청구는 해지 회사에 결제하지 않으며(lib/billing-auto.ts), 결제가 들어와도 반영 단계가 해지 회사면 취소한다.
+  //  · ⚠️ 되살리기(restoreCompany)는 카드를 되살리지 않는다 — 고객이 [구독·요금]에서 다시 신청한다.
+  try {
+    await markCompanyCardsForDeletion(company.id, "회사 해지로 자동결제 카드 지움");
+  } catch (e) {
+    console.error(`[operator] [운영자 확인 필요] 해지 회사 자동결제 카드 내려놓기 실패(ID ${company.id.slice(0, 8)}):`, e instanceof Error ? e.name : "unknown");
+  }
 
   revalidatePath("/operator");
   revalidatePath(`/operator/companies/${company.id}`);

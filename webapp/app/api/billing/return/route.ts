@@ -6,6 +6,7 @@
 // · 이동할 주소는 **설정의 반환 주소 기준**으로 만든다 — 요청의 Host 머리말을 믿지 않는다(프록시 뒤 내부 주소·조작 방지).
 import { NextResponse } from "next/server";
 import { handlePayReturn } from "@/lib/billing-pay";
+import { handleCardReturn, REG_NO_RE } from "@/lib/billing-auto";
 import { readKispgConfig } from "@/lib/kispg-config";
 
 export const dynamic = "force-dynamic";
@@ -41,13 +42,24 @@ export async function POST(req: Request) {
   } catch {
     // form이 아니면 빈 값 — 아래에서 주문을 못 찾아 결과 화면(안내)으로 간다.
   }
+  // 결제창(HR-)과 자동결제 카드 등록 창(HRB-, 2026-11-23 결제 3단계)은 같은 반환 주소를 쓴다 → 주문번호 앞머리로 가른다.
+  const to = new URL("/subscription/result", siteOrigin(req));
+  const ordNo = typeof body.ordNo === "string" ? body.ordNo.trim() : "";
+  if (REG_NO_RE.test(ordNo)) {
+    try {
+      const r = await handleCardReturn(body);
+      if (r.regNo) to.searchParams.set("regNo", r.regNo);
+    } catch (e) {
+      console.error("[billing/return] 카드 등록 처리 오류:", e instanceof Error ? e.name : "unknown");
+    }
+    return NextResponse.redirect(to, 303);
+  }
   let orderNo: string | null = null;
   try {
     orderNo = await handlePayReturn(body);
   } catch (e) {
     console.error("[billing/return] 처리 오류:", e instanceof Error ? e.message : String(e));
   }
-  const to = new URL("/subscription/result", siteOrigin(req));
   if (orderNo) to.searchParams.set("orderNo", orderNo);
   return NextResponse.redirect(to, 303);
 }

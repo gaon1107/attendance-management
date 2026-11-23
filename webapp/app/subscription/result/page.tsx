@@ -6,18 +6,23 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/session";
 import { AppShell } from "@/app/components/AppShell";
 import { orderForCompany } from "@/lib/billing-pay";
+import { cardForCompany } from "@/lib/billing-auto";
 import { formatWon } from "@/lib/pricing";
 import { formatKoreanDate, trialLastDay } from "@/lib/trial";
 
 export const dynamic = "force-dynamic";
 
-type SP = Promise<{ orderNo?: string }>;
+type SP = Promise<{ orderNo?: string; regNo?: string }>;
 
 export default async function PayResultPage({ searchParams }: { searchParams: SP }) {
   const me = await getCurrentUser();
   if (!me) redirect("/login");
   if (me.role !== "admin") redirect("/attendance");
   const sp = await searchParams;
+  // 자동결제 카드 등록 결과(2026-11-23 결제 3단계) — 등록 창은 돈을 빼지 않는다. 바로 청구했으면 그 주문도 함께 보인다.
+  if (typeof sp.regNo === "string" && sp.regNo) {
+    return <CardResult me={me} regNo={sp.regNo.slice(0, 40)} />;
+  }
   const orderNo = typeof sp.orderNo === "string" ? sp.orderNo.slice(0, 40) : "";
   const o = orderNo ? await orderForCompany(me.companyId, orderNo) : null;
 
@@ -74,6 +79,62 @@ export default async function PayResultPage({ searchParams }: { searchParams: SP
             결제창에서 돌아온 정보로 주문을 찾지 못했습니다. [구독·요금]의 결제 내역을 확인해 주세요.
           </p>
         )}
+        <div style={{ marginTop: 18 }}>
+          <Link href="/subscription" style={{ color: "var(--primary)", fontWeight: 700 }}>
+            ← 구독·요금으로
+          </Link>
+        </div>
+      </div>
+    </AppShell>
+  );
+}
+
+type Me = NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>;
+
+/** 카드 등록 결과 — 자기 회사 카드만. 빌키·거래번호는 보이지 않는다. */
+async function CardResult({ me, regNo }: { me: Me; regNo: string }) {
+  const k = await cardForCompany(me.companyId, regNo);
+  const box = { background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "24px 24px", maxWidth: 560 };
+  const tone =
+    k?.status === "active" ? { color: "var(--success, #15803D)", title: "자동결제 카드가 등록되었습니다" }
+    : k?.status === "reg_check" || k?.status === "registering" ? { color: "var(--warning)", title: "카드 등록을 확인하고 있습니다" }
+    : k?.status === "deleting" || k?.status === "deleted" ? { color: "var(--text-sub)", title: "등록된 카드를 사용하지 않습니다" }
+    : { color: "var(--danger)", title: k ? "카드가 등록되지 않았습니다" : "카드 등록 정보를 찾을 수 없습니다" };
+  return (
+    <AppShell user={me} active="subscription" title="자동결제 신청 결과" subtitle={me.company.name}>
+      <div style={box}>
+        <div style={{ fontSize: 20, fontWeight: 700, color: tone.color, marginBottom: 14 }}>{tone.title}</div>
+        <div style={{ fontSize: 14, lineHeight: 1.9, wordBreak: "keep-all" }}>
+          {k?.cardName ? (
+            <div>
+              {k.cardName}
+              {k.cardNoMasked ? <span style={{ color: "var(--text-sub)" }}> {k.cardNoMasked}</span> : null}
+            </div>
+          ) : null}
+          {k?.status === "active" && k.nextChargeDate ? (
+            <p style={{ margin: "4px 0 0" }}>
+              다음 자동 결제일은 <strong>{formatKoreanDate(k.nextChargeDate)}</strong>(오전 10시 이후)입니다.
+              {k.consentTotal ? <> 금액은 그날 인원으로 정하되, 동의하신 월 <strong>{formatWon(k.consentTotal)}</strong>(부가세 포함)을 넘지 않습니다.</> : null}{" "}
+              결제일이 오늘이면 잠시 뒤 [구독·요금]의 결제 내역에 결과가 나옵니다.
+            </p>
+          ) : null}
+          {k?.status === "reg_check" || k?.status === "registering" ? (
+            <p style={{ color: "var(--text-sub)", margin: "4px 0 0" }}>
+              카드사 응답을 확인하는 중입니다. 보통 10분 안에, 길게는 1시간쯤 뒤 [구독·요금]에 결과가 나옵니다. 그동안 다시 신청하지 마세요.
+            </p>
+          ) : null}
+          {k && (k.status === "failed" || k.status === "deleting" || k.status === "deleted") ? (
+            <p style={{ color: "var(--text-sub)", margin: "4px 0 0" }}>
+              카드에서 돈이 빠져나가지 않았습니다.{k.lastFailReason ? ` (${k.lastFailReason})` : ""} 다시 신청해 주세요.
+            </p>
+          ) : null}
+          {!k ? (
+            <p style={{ color: "var(--text-sub)", margin: 0 }}>
+              카드 등록 창에서 돌아온 정보로 신청을 찾지 못했습니다. [구독·요금]의 자동결제 칸을 확인해 주세요.
+            </p>
+          ) : null}
+          {k ? <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 10 }}>신청번호 {k.regNo}</div> : null}
+        </div>
         <div style={{ marginTop: 18 }}>
           <Link href="/subscription" style={{ color: "var(--primary)", fontWeight: 700 }}>
             ← 구독·요금으로

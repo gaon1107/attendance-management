@@ -213,6 +213,13 @@ model Company {
    *  · 승인 처리가 끝나면 비운다. 서버가 중간에 죽어도 시각이 지나면 저절로 풀린다(영구 잠김 없음).
    */
   payClaimUntil DateTime?
+  /**
+   * 자동결제 금액으로 **동의한** 요금 구간 번호(lib/pricing.ts PRICE_TIERS) — 2026-11-23 결제 3단계(1단계 검수 M7).
+   *  · 자동결제는 min(결제일 인원의 구간, 이 구간)으로 청구한다 — 동의 없이 윗구간 금액이 빠지지 않게(홈페이지 약속).
+   *  · 카드 등록 때 본 금액의 구간으로 정하고, [구독·요금]의 "새 금액에 동의" 버튼(4단계는 초대 링크)으로만 올라간다.
+   *  · add-only(nullable) — 자동결제를 신청한 적 없는 회사는 null.
+   */
+  approvedTierIndex Int?
 }
 
 // 해지 회사 파기 대장 — "어느 회사를(id) 언제 해지했고 언제 무엇을 몇 건 지웠는지"의 증명 기록(2026-11-22 해지 2단계).
@@ -1375,7 +1382,7 @@ model PgOrder {
 // 자동결제 카드(KIS 빌키) — 회사당 사용 중인 카드는 1장.
 //  🔴 빌키(bid)는 카드 대신 쓰는 결제용 번호다. 화면·로그·응답에 절대 내보내지 않는다.
 //  🔴 회사 해지 파기 대상이지만, **KIS에 등록된 빌키를 먼저 지워야** 한다 → 파기 엔진은 bid가 남은 카드가 있으면 보류한다
-//     (lib/company-purge.ts). 해지 시 카드 삭제는 3단계에서 붙인다.
+//     (lib/company-purge.ts). 해지 시 카드 삭제 = lib/billing-auto.ts markCompanyCardsForDeletion(운영자 해지가 부른다, 3단계).
 //  상태(status): registering(등록 창 대기) → reg_check(등록 확정 중) → active(사용 중) | paused(3회 실패로 멈춤)
 //               → deleting(KIS 삭제 중) → deleted | failed(등록 실패 확정)
 model PgBillingKey {
@@ -1396,6 +1403,11 @@ model PgBillingKey {
   //     등록 중 중복은 앱(서버 액션)에서 막는다.
   liveKey      String?  @unique
   nextChargeDate DateTime? // 다음 자동 결제일(이용 만료 3일 전, 학원관리와 같은 규칙)
+  // 신청 동의 근거(2026-11-23 결제 3단계) — 관리자가 체크하고 본 구간·매달 금액(부가세 포함)·시각. 분쟁·법률 검토 근거.
+  //  consentTotal은 카드 등록 창에 보낸 금액이기도 하다(등록 결과의 금액과 대조 — 등록 자체는 돈을 빼지 않는다).
+  consentTierIndex Int?
+  consentTotal Int?
+  consentedAt  DateTime?
   failCount    Int      @default(0) // 연속 실패 — 3번째에 paused
   lastResultCode String?
   lastFailReason String?

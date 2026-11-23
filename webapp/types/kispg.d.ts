@@ -114,4 +114,103 @@ declare module "@newgaon/kispg" {
     error: string | null;
   }
   export function inquire(input: { config: KispgConfig; tid?: string; ordNo?: string; goodsAmt: number; now?: Date }): Promise<InquireResult>;
+
+  // ── 자동결제(빌링) — 원본 billing.js(0.2.0). 🔴 config는 **빌링 상점**(일반 상점과 다르다 — KIS 회신 4번). ──
+  //    결과를 모를 때의 확인은 위 inquire를 빌링 상점으로 부른다(자동결제 승인도 조회된다 — KIS 8번).
+  export interface KisCallOptions {
+    timeoutMs?: number;
+  }
+
+  /** 카드 등록 창 값(일반 결제창과 같은 방식, 결제수단은 카드로 고정). 등록은 돈을 빼지 않는다. 입력이 틀리면 한글 예외. */
+  export function buildBillingAuthRequest(input: { config: KispgConfig; order: AuthOrder; now?: Date }): {
+    action: string;
+    fields: Record<string, string>;
+  };
+
+  export interface IssueBillingKeyResult {
+    /** true일 때만 bid가 채워진다. 🔴 bid는 화면·로그·응답에 내보내지 않는다. */
+    ok: boolean;
+    uncertain: boolean;
+    /** 등록 대신 결제가 됐을 수 있다 → inquire로 확인. */
+    mayBeCharged: boolean;
+    resultCd: string;
+    resultMsg: string;
+    tid: string;
+    ordNo?: string;
+    bid: string;
+    regDtm?: string;
+    fnNm?: string;
+    cardNo?: string;
+    cardType?: string;
+    error: string | null;
+  }
+  export function issueBillingKey(
+    input: { config: KispgConfig; tid: string; goodsAmt: number; ordNo?: string; now?: Date },
+    options?: KisCallOptions
+  ): Promise<IssueBillingKeyResult>;
+
+  export interface BillingPayResult {
+    ok: boolean;
+    /** 돈이 빠졌는지 모름 → inquire. 🔴 같은 주문번호로 다시 결제하지 말 것. */
+    uncertain: boolean;
+    /** 승인은 났지만 금액이 다름 → amt로 즉시 billingCancel. */
+    amountMismatch: boolean;
+    /** false = 확정 실패(돈 안 빠짐)만. 그래도 학원관리처럼 조회로 "결제 없음"을 확인한 뒤 실패로 닫는다. */
+    mayBeCharged: boolean;
+    resultCd: string;
+    resultMsg: string;
+    payMethod?: string;
+    tid: string;
+    appNo?: string;
+    appDtm?: string;
+    ordNo?: string;
+    amt?: number | null;
+    fnNm?: string;
+    cardNo?: string;
+    cardType?: string;
+    error: string | null;
+  }
+  export function billingPay(
+    input: {
+      config: KispgConfig;
+      bid: string;
+      ordNo: string;
+      goodsNm: string;
+      goodsAmt: number;
+      ordNm: string;
+      ordTel: string;
+      quotaMon?: string;
+      ordEmail?: string;
+      goodsSplAmt?: number;
+      goodsVat?: number;
+      now?: Date;
+    },
+    options?: KisCallOptions
+  ): Promise<BillingPayResult>;
+
+  export interface BillingCancelResult {
+    ok: boolean;
+    uncertain: boolean;
+    alreadyCancelled: boolean;
+    resultCd: string;
+    resultMsg: string;
+    tid: string;
+    amt?: number | null;
+    error: string | null;
+  }
+  export function billingCancel(
+    input: { config: KispgConfig; tid: string; canAmt: number; canMsg: string; ordNo?: string; now?: Date },
+    options?: KisCallOptions
+  ): Promise<BillingCancelResult>;
+
+  export interface DeleteBillingKeyResult {
+    ok: boolean;
+    /** 지워졌는지 모름(실패 코드 포함) → 나중에 다시 지운다. 그동안 이 빌키로 결제하지 않는다. */
+    uncertain: boolean;
+    resultCd: string;
+    resultMsg: string;
+    error: string | null;
+  }
+  /** 🔴 한 번 지우면 되살릴 수 없다. */
+  export function deleteBillingKey(input: { config: KispgConfig; bid: string; now?: Date }, options?: KisCallOptions): Promise<DeleteBillingKeyResult>;
 }

@@ -56,3 +56,60 @@ export async function moveOrder(
   });
   return r.count === 1;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 자동결제 카드(PgBillingKey) 상태 — 2026-11-23 결제 3단계. 주문과 같은 이유로 **이 파일 한 곳에서만** 바꾼다.
+//  · 회사당 사용 중 카드 1장 열쇠(liveKey = companyId)는 active·paused일 때만 값, 그 밖은 null(1단계 검수 M1).
+//    → 상태를 옮길 때 이 함수가 열쇠를 함께 맞춘다(부르는 쪽이 잊어 카드 변경이 막히는 일이 없게).
+//  · active·paused·deleting이면 bid 필수, failed면 bid 없음, active면 nextChargeDate 필수 — 아래에서 검사한다.
+//  · 빌키(bid)는 이미 암호화된 값만 받는다(lib/billing-auto.ts). 빈 글자 금지.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const KEY_STATUS = ["registering", "reg_check", "active", "paused", "deleting", "deleted", "failed"] as const;
+export type KeyStatus = (typeof KEY_STATUS)[number];
+
+const KEY_ALLOWED: Record<KeyStatus, readonly KeyStatus[]> = {
+  registering: ["reg_check", "failed"],
+  reg_check: ["active", "deleting", "failed"], // deleting = 빌키는 받았는데 쓸 수 없게 된 경우(회사 해지 등)
+  active: ["paused", "deleting"],
+  paused: ["deleting"], // 멈춘 카드를 다시 쓰려면 새로 등록한다(옛 카드는 지운다)
+  deleting: ["deleted"],
+  deleted: [],
+  failed: [],
+};
+
+/**
+ * 카드 상태를 from → to로 옮긴다. 지금 상태가 from 중 하나일 때만 바뀐다.
+ * @param companyId liveKey를 채울 때 쓴다(active·paused로 갈 때 필수)
+ * @returns 실제로 바뀌었으면 true
+ */
+export async function moveKey(
+  db: Db,
+  id: string,
+  from: readonly KeyStatus[],
+  to: KeyStatus,
+  data: Prisma.PgBillingKeyUpdateManyMutationInput & { companyId?: never } = {},
+  companyId?: string
+): Promise<boolean> {
+  for (const f of from) {
+    if (!KEY_ALLOWED[f].includes(to)) throw new Error(`[pg-state] 허용되지 않은 카드 상태 이동: ${f} → ${to}`);
+  }
+  if (typeof data.bid === "string" && !data.bid.trim()) throw new Error("[pg-state] 빈 빌키는 저장하지 않는다");
+  if (typeof data.pgTid === "string" && !data.pgTid.trim()) throw new Error("[pg-state] 빈 거래번호는 저장하지 않는다");
+  const live = to === "active" || to === "paused";
+  if (live && !companyId) throw new Error("[pg-state] 사용 중 카드는 회사 id가 있어야 한다");
+  if (to === "active" && !(data.nextChargeDate instanceof Date)) {
+    // paused → active 이동은 없다. active가 되는 것은 등록 확정뿐이고, 그때 결제일을 반드시 잡는다.
+    throw new Error("[pg-state] 사용 중 카드는 다음 결제일이 있어야 한다");
+  }
+  const where: Prisma.PgBillingKeyWhereInput = { id, status: { in: [...from] } };
+  // 빌키가 있어야 하는 상태로 가는데 이번에 넣지 않으면, 이미 있는 행만 옮긴다.
+  if ((to === "active" || to === "paused" || to === "deleting") && typeof data.bid !== "string") where.bid = { not: null };
+  // 실패로 끝나는 것은 빌키가 없을 때만(빌키가 있으면 failed가 아니라 deleting → KIS에서 지운다 — 학원관리와 같은 규칙).
+  if (to === "failed") where.bid = null;
+  const r = await db.pgBillingKey.updateMany({
+    where,
+    data: { ...data, status: to, liveKey: live ? companyId : null },
+  });
+  return r.count === 1;
+}

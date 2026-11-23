@@ -343,7 +343,7 @@ async function purgeOne(companyId: string, now: Date, unenroll: typeof unenrollF
   //  · ① 파기 시작 표시 **앞에서** 본다: 아무것도 지우지 않았는데 [되살리기]가 막히면 안 된다.
   //  · 대장 상태는 "waiting" — 하루 3곳 상한에 세지 않는다(지운 게 없으므로). 그래야 카드 삭제가 늦는 회사 몇 곳이
   //    매일 몫을 차지해 다른 회사의 "30일 뒤 파기"가 밀리는 일이 없다. 20시간 재시도 대기는 똑같이 걸린다.
-  //  · 해지할 때 카드를 지우는(deleting → KIS 삭제 → bid null → deleted) 처리는 결제 3단계에서 붙인다.
+  //  · 해지할 때 카드를 지우는(deleting → KIS 삭제 → bid null → deleted) 처리 = lib/billing-auto.ts markCompanyCardsForDeletion(3단계).
   const pendingCards = await prisma.pgBillingKey.count({
     where: { companyId: cid, OR: [{ bid: { not: null } }, { status: { notIn: ["deleted", "failed"] } }] },
   });

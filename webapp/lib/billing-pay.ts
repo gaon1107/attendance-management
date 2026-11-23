@@ -91,12 +91,12 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 /** "HR-20261123103045-1a2b3c" — 한국 시각(서버 TZ). */
-function makeOrderNo(now: Date): string {
+export function makeOrderNo(now: Date): string {
   const t = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
   return `HR-${t}-${randomBytes(3).toString("hex")}`;
 }
 /** 바이트 한도에 맞게 자른다(글자 중간에서 안 자름) — KIS 구매자명 30바이트. */
-function fitBytes(s: string, max: number): string {
+export function fitBytes(s: string, max: number): string {
   let out = "";
   for (const ch of s) {
     if (Buffer.byteLength(out + ch, "utf8") > max) break;
@@ -105,7 +105,7 @@ function fitBytes(s: string, max: number): string {
   return out;
 }
 /** 결제창에 넣을 전화번호(숫자만, 0으로 시작 9~11자리). 없으면 null. */
-function phoneDigits(v: string | null | undefined): string | null {
+export function phoneDigits(v: string | null | undefined): string | null {
   const d = (v ?? "").replace(/[^0-9]/g, "");
   return /^0\d{8,10}$/.test(d) ? d : null;
 }
@@ -117,8 +117,9 @@ function ymd(d: Date): string {
 // 결제 선점(같은 회사 결제 겹침 방지)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 이 회사의 결제를 선점한다. 성공하면 선점 시각(풀 때 열쇠)을, 다른 결제가 진행 중이면 null. */
-async function claimCompany(companyId: string, now: Date): Promise<Date | null> {
+/** 이 회사의 결제를 선점한다. 성공하면 선점 시각(풀 때 열쇠)을, 다른 결제가 진행 중이면 null.
+ *  자동결제(lib/billing-auto.ts)도 **같은 선점**을 쓴다 — 직접 결제와 자동결제가 겹쳐 두 번 청구되지 않게(3단계). */
+export async function claimCompany(companyId: string, now: Date): Promise<Date | null> {
   const until = new Date(now.getTime() + CLAIM_MS);
   const r = await prisma.company.updateMany({
     where: { id: companyId, OR: [{ payClaimUntil: null }, { payClaimUntil: { lt: now } }] },
@@ -127,7 +128,7 @@ async function claimCompany(companyId: string, now: Date): Promise<Date | null> 
   return r.count === 1 ? until : null;
 }
 /** 내가 잡은 선점만 푼다(그사이 시간이 지나 다른 결제가 잡았으면 건드리지 않는다). */
-async function releaseCompany(companyId: string, token: Date): Promise<void> {
+export async function releaseCompany(companyId: string, token: Date): Promise<void> {
   try {
     await prisma.company.updateMany({ where: { id: companyId, payClaimUntil: token }, data: { payClaimUntil: null } });
   } catch (e) {
@@ -414,7 +415,7 @@ async function settleApprove(orderId: string, cfg: KisMerchant, paid: ApproveRes
   // 그 밖(unknown 등)은 check로 둔다.
 }
 
-type PaidInfo = {
+export type PaidInfo = {
   amt: number; appNo?: string; payMethod?: string; cardNo?: string; cardType?: string; cardName?: string; code?: string; msg?: string;
 };
 
@@ -422,13 +423,15 @@ type PaidInfo = {
 class ApplyBlocked extends Error {}
 
 /**
- * 승인된 결제를 반영한다(주문 paid + 회사 이용 기간 1개월 연장, 한 묶음).
- *  · 회사가 없거나 해지됐으면(확정 사유) **즉시 취소**한다.
- *  · 그 밖의 예외(SQLite 잠김·트랜잭션 시간 초과 등 일시적 오류)는 **취소하지 않고** check로 둔다 — 10분 정리가 조회(승인 확인)
- *    → 선점 → 반영을 다시 한다. 예전엔 일시 오류에도 정상 결제를 환불했다(2단계 검수 중간 1).
- *  ⚠️ 취소 전에 주문을 **다시 읽는다** — 다른 요청이 이미 paid로 반영했다면 정상 결제를 환불하는 사고가 된다.
+ * 승인된 결제를 반영한다(주문 paid + 회사 이용 기간 1개월 연장, 한 묶음) — **취소는 하지 않는다**(부르는 쪽이 결과를 보고 한다).
+ *  일반 결제(아래 applyOrCancel)와 자동결제(lib/billing-auto.ts)가 같이 쓴다(3단계에서 applyOrCancel 안쪽을 꺼냄 — 동작은 같다).
+ * @returns applied = 반영됨 / blocked = 회사 없음·해지(확정 사유, reason은 짧은 고정 문구) → 부르는 쪽이 즉시 취소
+ *          retry = 일시 오류(취소하지 말고 check로 두면 10분 정리가 다시 반영) / gone = 이미 반영·정리됨(아무것도 하지 말 것)
  */
-async function applyOrCancel(orderId: string, cfg: KisMerchant, info: PaidInfo): Promise<void> {
+export async function applyPaidOrder(
+  orderId: string,
+  info: PaidInfo
+): Promise<{ outcome: "applied" | "blocked" | "retry" | "gone"; reason: string }> {
   try {
     await prisma.$transaction(async (tx) => {
       const o = await tx.pgOrder.findUnique({ where: { id: orderId } });
@@ -451,19 +454,30 @@ async function applyOrCancel(orderId: string, cfg: KisMerchant, info: PaidInfo):
       if (!ok) throw new Error("다른 요청이 먼저 처리");
       await tx.company.update({ where: { id: o.companyId }, data: { paidUntil: end } });
     });
+    return { outcome: "applied", reason: "" };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     const now = await prisma.pgOrder.findUnique({ where: { id: orderId }, select: { status: true, orderNo: true } });
-    if (!now || now.status !== "check") return; // 이미 반영(또는 정리)됨 — 취소하면 안 된다
+    if (!now || now.status !== "check") return { outcome: "gone", reason: "" }; // 이미 반영(또는 정리)됨 — 취소하면 안 된다
     if (!(e instanceof ApplyBlocked)) {
       // 일시적일 수 있는 오류 — 취소하지 않는다. 원문은 서버 기록에만(화면·KIS로 보내지 않음, 2단계 검수 경미 9).
       console.error(`[billing-pay] 이용 기간 반영 오류(10분 정리가 다시 시도) — 주문 ${now.orderNo}: ${msg}`);
       await prisma.pgOrder.updateMany({ where: { id: orderId, status: "check" }, data: { failReason: "승인됨 — 이용 기간 반영 재시도 중" } });
-      return;
+      return { outcome: "retry", reason: "" };
     }
     console.error(`[billing-pay] 반영할 수 없는 결제 → 자동 취소 — 주문 ${now.orderNo}: ${msg}`);
-    await cancelCheck(orderId, cfg, info.amt, msg); // msg는 ApplyBlocked의 짧은 고정 문구
+    return { outcome: "blocked", reason: msg }; // msg는 ApplyBlocked의 짧은 고정 문구
   }
+}
+
+/**
+ * 일반 결제: 승인된 결제를 반영하고, 반영할 수 없는 확정 사유(회사 없음·해지)면 **즉시 취소**한다.
+ *  · 일시 오류는 취소하지 않고 check로 둔다 — 10분 정리가 조회 → 선점 → 반영을 다시 한다(2단계 검수 중간 1).
+ *  ⚠️ 취소 전에 주문을 다시 읽는 것은 applyPaidOrder가 한다(이미 paid면 gone — 정상 결제를 환불하지 않는다).
+ */
+async function applyOrCancel(orderId: string, cfg: KisMerchant, info: PaidInfo): Promise<void> {
+  const r = await applyPaidOrder(orderId, info);
+  if (r.outcome === "blocked") await cancelCheck(orderId, cfg, info.amt, r.reason);
 }
 
 /**
