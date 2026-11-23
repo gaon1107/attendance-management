@@ -70,8 +70,9 @@ export function CancelPaymentForm({ companyId, target, hasLiveCard }: { companyI
       />
       {hasLiveCard && (
         <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, marginTop: 10, lineHeight: 1.5, wordBreak: "keep-all" }}>
-          {/* 자동결제로 낸 결제면 기본으로 켠다(사장님 결정) — 끄면 취소로 풀린 회차가 다음 날 다시 청구될 수 있다. */}
-          <input type="checkbox" name="stopAutoPay" value="1" defaultChecked={target.autoPayOrder} style={{ marginTop: 3 }} />
+          {/* 카드가 있으면 결제 종류와 상관없이 기본으로 켠다(사장님 결정 2026-11-23 — 직접 결제 환불 포함).
+              끄면 되돌린 이용 기간에 맞춰 곧 다시 자동 청구될 수 있다(환불 직후 재청구 민원 방지). */}
+          <input type="checkbox" name="stopAutoPay" value="1" defaultChecked style={{ marginTop: 3 }} />
           <span>
             자동결제도 함께 해지
             <span style={{ display: "block", color: "var(--text-sub)" }}>끄면 카드는 남고, 되돌린 이용 기간에 맞춰 곧 다시 자동 결제될 수 있습니다.</span>
