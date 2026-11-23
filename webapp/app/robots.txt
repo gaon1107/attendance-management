@@ -1,0 +1,13 @@
+# robots.txt - 검색 로봇 안내 (2026-11-23). 고정 파일인 이유: 다음(Daum) 웹마스터도구 확인 줄(맨 아래)을 그대로 적어야 해서.
+# 도메인을 바꾸면 아래 주소들과 lib/site.ts SITE_URL 을 함께 고칠 것. 맨 아래 DaumWebMasterTool 줄을 지우면 다음 등록이 풀린다.
+User-Agent: *
+Allow: /
+Disallow: /operator
+Disallow: /api/
+Disallow: /invite/
+Disallow: /kicc-test
+
+Host: https://attend.newgaon.com
+Sitemap: https://attend.newgaon.com/sitemap.xml
+
+#DaumWebMasterTool:03b539ffd7f85438c02779bf8f577cf9195e66b6f4674486eb628907d9239a02:upewRfgI5y6IkdBZlCoHBQ==
