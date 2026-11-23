@@ -11,6 +11,7 @@
 import { purgeExpiredPhotos } from "@/lib/clock-photo";
 import { purgeExpiredSmsLogs } from "@/lib/sms-retention";
 import { runCompanyPurgeIfDue } from "@/lib/company-purge";
+import { reconcilePayOrders } from "@/lib/billing-pay";
 
 const FIRST_RUN_DELAY_MS = 5 * 60 * 1000;
 const TICK_MS = 60 * 60 * 1000;
@@ -49,5 +50,14 @@ export function startScheduledJobs(): void {
   setTimeout(runCompanyPurge, FIRST_RUN_DELAY_MS).unref();
   setInterval(runCompanyPurge, TICK_MS).unref();
 
-  console.log("[scheduled-jobs] 출퇴근 사진 90일·문자 기록 1년 자동 삭제 + 해지 회사 30일 뒤 파기(새벽 1~3시) 예약 시작(1시간마다 확인)");
+  // 구독 결제 정리(2026-11-23 결제 2단계) — **10분마다**. 결과 모름(check)·취소 중(cancel_check)을 KIS 조회·취소로 닫고,
+  //  결제창에서 돌아오지 않은 주문(ready)은 1시간 뒤 닫는다. 결제 설정이 없으면(KIS 상점 승인 전) 조회는 하지 않는다.
+  //  · 돈이 빠졌는지 모르는 주문을 오래 두면 고객은 돈을 냈는데 기간이 안 늘어난 상태가 된다 — 그래서 1시간이 아니라 10분.
+  const runPayReconcile = () => {
+    reconcilePayOrders().catch((e) => console.error("[scheduled-jobs] 결제 정리 실패:", e));
+  };
+  setTimeout(runPayReconcile, 60 * 1000).unref();
+  setInterval(runPayReconcile, 10 * 60 * 1000).unref();
+
+  console.log("[scheduled-jobs] 출퇴근 사진 90일·문자 기록 1년 자동 삭제 + 해지 회사 30일 뒤 파기(새벽 1~3시) + 결제 정리(10분) 예약 시작");
 }

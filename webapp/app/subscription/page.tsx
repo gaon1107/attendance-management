@@ -1,8 +1,8 @@
 // [구독·요금] (관리자 전용) — "우리 회사는 지금 얼마인가"를 보여주는 화면.
 //
-// ⚠️ **결제 기능은 아직 없다.** 이 화면은 조회 전용이고, 결제 버튼·결제 수단·결제 내역을 두지 않는다.
-//    (디자인 규칙 0번: DB에 없는 값을 화면에 지어내지 않는다 — 구독·주문·결제내역 표가 아직 없다.
-//     결제는 KIS 이식 단계에서 붙인다. plan-구독결제-요금제.md 6장)
+// 2026-11-23 결제 2단계: **카드 1개월 결제**(직접 결제만 — 자동결제는 3단계)와 결제 내역을 붙였다(lib/billing-pay.ts).
+//    KIS 상점 설정이 없으면 버튼 대신 "준비 중"이 보인다(lib/kispg-config.ts). 계획서 plan-근태결제-개발.md.
+//    ⚠️ 아직 아무것도 막지 않는다(미납 차단은 5단계) — 화면 문구도 그 사실에 맞춘다.
 //
 // 📌 **금액 표기 판단**(2026-11-20 사장님 결정 ③과의 관계):
 //    공개 요금표(홈화면)는 "(부가세 별도)" 안내만 하기로 확정됐다. 이 화면은 공개 광고가 아니라
@@ -16,6 +16,8 @@ import { AppShell } from "@/app/components/AppShell";
 import { quoteForCompany } from "@/lib/pricing-server";
 import { PRICE_TIERS, QUOTE_OVER, formatWon, tierLabel, withVat } from "@/lib/pricing";
 import { trialStatus, trialLastDay, formatKoreanDate, TRIAL_DAYS } from "@/lib/trial";
+import { payOverview, listPayments } from "@/lib/billing-pay";
+import { PayButton } from "./PayButton";
 
 const card = {
   background: "#fff",
@@ -62,7 +64,12 @@ export default async function SubscriptionPage() {
   //  ⚠️ 인원을 따로 세지 말 것. 화면에 보이는 숫자와 나중에 청구하는 숫자가 **같은 함수**여야 한다.
   const q = await quoteForCompany(me.companyId);
   const employees = q.employees;
-  const trial = trialStatus(me.company.createdAt, new Date(), me.company.trialLastDate);
+  const now = new Date();
+  const trial = trialStatus(me.company.createdAt, now, me.company.trialLastDate);
+  const [pay, payments] = await Promise.all([payOverview(me.companyId, now), listPayments(me.companyId)]);
+  // 이용 기간 끝(자정 기준 표시용) — 유료 기간이 있으면 그 끝, 없으면 무료 기간 끝.
+  const paidActive = !!pay?.paidUntil && pay.paidUntil > now;
+  const canPayNow = !!pay && pay.canPayFrom <= now;
 
   return (
     <AppShell user={me} active="subscription" title="구독·요금" subtitle={`${me.company.name} · 관리자 ${me.name}`}>
@@ -83,7 +90,7 @@ export default async function SubscriptionPage() {
           sub={q.kind === "tier" ? "부가세 별도" : undefined}
         />
         {/* 체험 중에는 "카드 청구액"을 그냥 크게 보여주면 "이미 빠져나갔나?"로 읽힌다(검수 중간 1).
-            카드가 등록돼 있지도 않다 — 결제 기능 자체가 없다. */}
+            결제는 관리자가 아래 [카드로 1개월 결제하기]를 누를 때만 된다(자동결제 없음 — 3단계 전). */}
         <Kpi
           label="카드 청구액"
           value={q.kind === "tier" ? formatWon(q.total) : "—"}
@@ -92,7 +99,8 @@ export default async function SubscriptionPage() {
               ? // 괄호 앞에 띄어쓰기를 둔다 — `keep-all`에서 "부가세 포함(공급가"가 끊길 자리 없는
                 // 한 덩어리가 되면 폰 2열(약 110px)에서 넘친다(검수 경미 2).
                 `부가세 포함 (공급가 ${formatWon(q.monthly)} + 부가세 ${formatWon(q.vat)})${
-                  trial.expired ? "" : " · 체험 중 — 아직 청구 없음"
+                  // 체험 중에 미리 결제한 회사에는 "아직 청구 없음"이 거짓이다(결제 2단계에서 발견) — 결제 기록이 없을 때만.
+                  trial.expired || paidActive ? "" : " · 체험 중 — 아직 청구 없음"
                 }`
               : undefined
           }
@@ -121,6 +129,74 @@ export default async function SubscriptionPage() {
         </div>
       ) : null}
 
+      {/* ── 1-2. 결제 (2026-11-23 결제 2단계) ───────────────────────────── */}
+      <div style={{ ...cardPad, marginBottom: 16 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>결제</div>
+        {pay ? (
+          <p style={{ ...noteText, margin: "0 0 12px" }}>
+            {paidActive && pay.paidUntil ? (
+              <>유료 이용 기간: <strong>{formatKoreanDate(trialLastDay(pay.paidUntil))}</strong>까지입니다.</>
+            ) : trial.expired ? (
+              <>무료 기간이 끝났습니다. 결제하시면 오늘부터 1개월 이용 기간이 시작됩니다.</>
+            ) : (
+              <>
+                지금 결제하셔도 남은 무료 기간은 그대로이고, 유료 1개월은 무료 기간이 끝난 다음 날(
+                {formatKoreanDate(trial.endsAt)})부터 시작됩니다.
+              </>
+            )}{" "}
+            결제는 1개월 단위이며 카드로만 받습니다. 결제하실 때만 청구되고 자동으로 다시 결제되지 않습니다.
+          </p>
+        ) : null}
+        {q.kind !== "tier" ? (
+          <p style={{ ...noteText, margin: 0 }}>지금은 결제할 금액이 없습니다.</p>
+        ) : pay && !canPayNow && pay.ready ? (
+          <p style={{ ...noteText, margin: 0 }}>
+            이용 기간이 넉넉히 남아 있습니다. <strong>{formatKoreanDate(pay.canPayFrom)}</strong>부터 다음 달 이용료를 결제하실 수 있습니다.
+          </p>
+        ) : (
+          <PayButton ready={!!pay?.ready} totalText={formatWon(q.total)} />
+        )}
+
+        {payments.length > 0 ? (
+          <div style={{ marginTop: 16, borderTop: "1px solid var(--border)", paddingTop: 12, overflowX: "auto" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>결제 내역(최근 12건)</div>
+            <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ color: "var(--text-sub)", textAlign: "left" }}>
+                  <th style={{ padding: "6px 8px", fontWeight: 700 }}>결제일</th>
+                  <th style={{ padding: "6px 8px", fontWeight: 700 }}>내용</th>
+                  <th style={{ padding: "6px 8px", fontWeight: 700 }}>이용 기간</th>
+                  <th style={{ padding: "6px 8px", fontWeight: 700, textAlign: "right" }}>금액</th>
+                  <th style={{ padding: "6px 8px", fontWeight: 700 }}>상태</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((p) => (
+                  <tr key={p.orderNo} style={{ borderTop: "1px solid #F3F4F6" }}>
+                    <td style={{ padding: "8px", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                      {formatKoreanDate(p.paidAt ?? p.createdAt)}
+                    </td>
+                    <td style={{ padding: "8px", wordBreak: "keep-all" }}>
+                      {p.productName}
+                      {p.cardName ? <span style={{ color: "var(--text-sub)" }}> · {p.cardName}{p.cardNoMasked ? ` ${p.cardNoMasked}` : ""}</span> : null}
+                    </td>
+                    <td style={{ padding: "8px", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                      {p.periodStart && p.periodEnd ? `${formatKoreanDate(p.periodStart)} ~ ${formatKoreanDate(trialLastDay(p.periodEnd))}` : "—"}
+                    </td>
+                    <td style={{ padding: "8px", textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                      {formatWon(p.totalAmount)}
+                    </td>
+                    <td style={{ padding: "8px", whiteSpace: "nowrap", fontWeight: 700, color: p.status === "paid" ? "var(--success, #15803D)" : p.status === "cancelled" ? "var(--text-sub)" : "var(--warning)" }}>
+                      {p.status === "paid" ? "결제 완료" : p.status === "cancelled" ? "취소" : "확인 중"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </div>
+
       {/* ── 2. 무료 기간 · 다음 구간 ────────────────────────────────── */}
       <div className="split-2" style={{ marginBottom: 16 }}>
         <div style={cardPad}>
@@ -129,7 +205,7 @@ export default async function SubscriptionPage() {
             <p style={{ ...noteText, margin: 0 }}>
               무료 기간이 <strong>{formatKoreanDate(trialLastDay(trial.endsAt))}</strong>에 끝났습니다.
               지금도 모든 기능을 그대로 쓰실 수 있습니다 — 아직 아무것도 막지 않습니다.
-              계속 이용하시려면 유료 신청이 필요합니다.
+              계속 이용하시려면 위 [결제]에서 카드로 결제해 주세요.
             </p>
           ) : (
             <>
@@ -139,7 +215,7 @@ export default async function SubscriptionPage() {
               </div>
               <p style={{ ...noteText, margin: 0 }}>
                 <strong>{formatKoreanDate(trialLastDay(trial.endsAt))}</strong>까지 무료입니다(가입일부터 {TRIAL_DAYS}일
-                기준, 회사별로 따로 정한 경우는 그 날짜까지). 무료 기간이 끝나도 자동으로 결제되지 않습니다.
+                기준, 회사별로 따로 정한 경우는 그 날짜까지). 무료 기간이 끝나도 자동으로 결제되지 않습니다(결제는 직접 하실 때만).
               </p>
             </>
           )}
@@ -157,7 +233,7 @@ export default async function SubscriptionPage() {
               지금 구간({q.label})에서는 직원이 늘어도 요금이 <strong>{formatWon(q.monthly)}</strong> 그대로입니다.
               <strong> {q.next.addMore}명</strong>을 더 등록하면 {q.next.label} 구간이 되어 월{" "}
               <strong>{formatWon(q.next.monthly)}</strong>(카드 {formatWon(withVat(q.next.monthly).total)})이 됩니다.
-              결제 기능이 준비되기 전까지는 직원이 늘어도 아무것도 자동으로 결제되지 않습니다.
+              직원이 늘어도 자동으로 결제되지 않습니다 — 새 금액은 다음에 직접 결제하실 때 적용됩니다.
             </p>
           ) : q.kind === "tier" ? (
             <p style={{ ...noteText, margin: 0 }}>
@@ -166,7 +242,7 @@ export default async function SubscriptionPage() {
           ) : (
             <p style={{ ...noteText, margin: 0 }}>
               요금은 구간제입니다. 구간 안에서는 직원이 늘어도 요금이 같고, 구간을 넘을 때만 오릅니다.
-              결제 기능이 준비되기 전까지는 아무것도 자동으로 결제되지 않습니다.
+              자동으로 결제되는 것은 없습니다 — 결제는 직접 하실 때만 됩니다.
             </p>
           )}
         </div>
