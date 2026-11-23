@@ -6,7 +6,7 @@
 // 🔴 **왜 기존 집계 함수를 쓰지 않는가** (2026-11-20 확인):
 //   `lib/operator-companies.ts`는 회사별 인원을 `isOwner: false, deactivatedAt: null`로 센다.
 //   그건 **관리자까지 포함한 "사람 수"**다(운영자 화면에 보여주는 숫자). 과금 기준은 다르다 —
-//   **재직 중인 '직원'만** 세고 관리자·회사 계정·퇴사자는 빼는 것이 2026-08-09 확정 원칙이다.
+//   재직 직원 + **관리자는 1명까지 빼고**(2026-11-23 변경, 그 전엔 관리자 전부 제외) · 회사 계정·퇴사자 제외.
 //   두 숫자를 같은 것으로 착각하면 "화면에는 10명인데 11명 요금이 청구됨" 같은 분쟁이 된다.
 //   그래서 과금용 조건을 여기 한 곳에 박아 두고, 화면·결제·동의 흐름이 모두 이것만 쓰게 한다.
 //
@@ -24,8 +24,12 @@
 import { prisma } from "@/lib/db";
 import { quoteFor, type Quote } from "@/lib/pricing";
 
-/** 과금 대상 직원을 고르는 조건. 다른 곳에서 직접 조건을 쓰지 말고 이것을 가져다 쓴다. */
-export const BILLABLE_EMPLOYEE_WHERE = {
+/**
+ * 과금 인원 중 "재직 직원" 부분만 고르는 조건 — **이 파일 안에서만** 쓴다(2026-11-23 검수 경미 3).
+ *  ⚠️ 예전엔 이것 하나가 과금 조건 전부라 밖으로 내보냈다. 지금은 관리자 몫(2명째부터)이 빠진 반쪽이라,
+ *     밖에서 이것만 쓰면 요금 인원을 적게 센다 → 밖에서는 반드시 countBillableEmployees를 쓴다.
+ */
+const EMPLOYEE_PART_WHERE = {
   role: "employee",
   isOwner: false,
   deactivatedAt: null,
@@ -42,11 +46,20 @@ const HUMAN_ADMIN_WHERE = { role: "admin", isOwner: false, deactivatedAt: null }
  *  · 함수 이름은 예전 그대로 둔다(호출처·문서가 이 이름으로 가리킨다). 뜻은 "요금을 매기는 사람 수"다.
  */
 export async function countBillableEmployees(companyId: string): Promise<number> {
-  const [employees, admins] = await Promise.all([
-    prisma.user.count({ where: { companyId, ...BILLABLE_EMPLOYEE_WHERE } }),
+  const { employees, admins } = await countHeads(companyId);
+  return billableCount(employees, admins);
+}
+
+/**
+ * 재직 직원 수·재직 사람 관리자 수를 **한 묶음(트랜잭션)으로** 센다 — 두 번 따로 세는 사이에 역할이 바뀌어 1명 어긋나지 않게(검수 경미 4).
+ *  결제 주문서(PgOrder.headEmployees·headAdmins)에 내역 근거로 남길 때도 이것을 쓴다.
+ */
+export async function countHeads(companyId: string): Promise<{ employees: number; admins: number }> {
+  const [employees, admins] = await prisma.$transaction([
+    prisma.user.count({ where: { companyId, ...EMPLOYEE_PART_WHERE } }),
     prisma.user.count({ where: { companyId, ...HUMAN_ADMIN_WHERE } }),
   ]);
-  return billableCount(employees, admins);
+  return { employees, admins };
 }
 
 /** 순수 계산(검증용으로 따로 둔다). 음수·소수 입력은 0으로 본다. */

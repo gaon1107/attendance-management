@@ -45,4 +45,29 @@
 - 회사 이용 만료일 `Company.paidUntil`(이 시각 전까지 유료 이용). 실제 이용 가능 = max(무료 체험 끝, paidUntil) + 유예 3일(5단계).
 - ⏳ 운영 반영(결제 개시) 전 필수: 처리방침 위탁 표에 **KIS정보통신(결제대행)** 추가, 결제 화면에 부가세 포함 총액 고지(요금제 계획서 7장 표).
 
+## 🔍 1단계 검수(code-reviewer, 11-23) — 치명 0 · 중간 8 · 경미 8
+**1단계에서 반영**: 카드 열쇠(liveKey)는 active·paused일 때만(M1) · 첫 결제 중복 방지 firstLiveKey·회차 날짜 billingCycleDate·
+취소도 회차 열쇠 비움(M2 a·b·c) · 파기: 등록 중·삭제 중 카드도 기다림, 파기 시작 표시 **앞에서** 판정, "waiting"은 하루 3곳에 안 셈(M3·M4) ·
+안내서 "관리자 요금 제외" 문장(M5) · 구매자 상호·사업자번호 복사본 칸(M6) · 옛 규칙 주석·직원 조건 비공개·인원 한 묶음 세기·
+pgPayMethod·cardType·설정 읽기 화면 차단·https 검사·.env 예시(경미 2~6).
+
+**2~3단계에서 반드시 지킬 것(검수에서 넘어온 것)**
+- **상태 변경 한 곳(M2-d)**: SQLite CHECK는 Prisma 표 재작성 때 말없이 사라지므로 DB에 두지 않는다. 대신 `lib/pg-state.ts`
+  한 곳에서만 상태·열쇠 값을 바꾸고, 임시 라우트 검증에 규칙을 넣는다: 상태값 목록 · total=supply+vat · total>0 ·
+  active·paused·deleting이면 bid 필수 · failed면 bid 없음 · active면 nextChargeDate 필수 · **pgTid·bid에 빈 글자('') 금지**
+  (SQLite는 ''를 null로 보지 않아 유일 조건에 걸린다 → 비면 null) · 자동결제 주문이면 billingKeyId·billingCycleDate 필수.
+- **다른 회사 카드 차단(M2-e)**: 외래키가 없으므로 주문을 만들 때 `billingKey.companyId === order.companyId`를 앱에서 확인.
+- **같은 회사 결제 겹침(M8)**: SQLite에는 행 잠금(FOR UPDATE)이 없다 → Company에 결제 선점 칸(예: payClaimUntil)을 두고
+  조건부 updateMany로 선점. 자동결제 차례 직전에 [결제하기]를 누르면 두 번 결제·2개월 연장되는 것을 막는다.
+- **동의한 요금 구간(M7)**: 자동결제는 결제일 인원으로만 계산하면 동의 없이 윗구간이 청구된다(홈페이지 약속 위반).
+  3단계 전에 `Company.approvedTierIndex`(동의한 구간)를 두고 min(현재 구간, 동의 구간)으로 청구.
+- **빌키 암호화(경미 7)**: 백업(서버 15일·외부 30일)에 평문으로 남는다 → 회사 문자 비밀번호처럼 SMS_CRED_KEY 방식 암호화 검토.
+- **회차 날짜는 한국 시간(경미 8)**: cycleKey의 YYYY-MM-DD는 lib/period.toISODate로.
+- **결과 모름 주문이 남은 회사 파기(M3 부가)**: 정리 작업은 회사 행이 없을 때 오류 없이 넘어가야 한다(paidUntil을 고칠 곳이 없음).
+- **운영자 화면(경미 1)**: 회사 상세에 "요금 인원"(countBillableEmployees)을 따로 보인다 — 지금 "재직 직원"은 관리자 포함 사람 수.
+
+**결제 개시(운영) 전 필수 — 문구**
+- 처리방침: 위탁 표에 **KIS정보통신(결제대행)** · 보유기간 표에 **대금결제 기록 5년**(상호·사업자번호·결제 내역).
+- 약관 제8조: 관리자 1명 과금 제외 규칙을 "이용 대상 직원 수" 정의에 명시(지금은 정의 없음).
+
 ## 📌 사장님 메모 공간

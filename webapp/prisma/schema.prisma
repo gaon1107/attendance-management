@@ -220,6 +220,7 @@ model CompanyPurgeLog {
   ranAt        DateTime @default(now())
   // "done"(회사 행까지 전부 삭제) | "held"(얼굴서버·파일 삭제 실패로 이번 회차는 DB를 건드리지 않음 — 다음 회차 재시도)
   //  | "aborted"(DB 삭제 도중 오류 — 위 건수는 중단 전까지 실제로 지운 수, 다음 회차가 이어서 지운다)
+  //  | "waiting"(자동결제 카드의 KIS 삭제가 안 끝나 **아무것도 지우지 않고** 기다림 — 하루 3곳 상한에 세지 않음, 2026-11-23)
   status       String
   faceDeleted  Int @default(0) // 얼굴서버에서 지운(또는 원래 없던) 직원 수
   fileDeleted  Int @default(0) // 실제로 지운 디스크 파일 수(출퇴근 사진·신청 첨부·회사 문서)
@@ -1310,11 +1311,24 @@ model PgOrder {
   orderType    String   // "normal"(일반 결제) | "billing_first"(자동결제 신청하며 첫 결제) | "billing_auto"(정기 결제 회차)
   billingKeyId String?  // 자동결제 카드(PgBillingKey.id). 일반 결제는 null
   pgMid        String   // 이 주문을 보낸 상점ID — 취소·조회는 반드시 이 상점으로(일반·빌링 상점이 다르다)
-  // 정기 결제 회차 중복 방지 열쇠 = "회사id:결제 전 만료일(YYYY-MM-DD)". 살아 있는 회차에만 값, 실패 확정되면 null로 비운다.
-  // SQLite 유일 조건은 null을 여러 개 허용하므로 "살아 있는 것끼리만 유일"이 된다(학원관리 cycle_live_key와 같은 목적).
+  // 정기 결제 회차 중복 방지 열쇠 = "회사id:결제 전 만료일(YYYY-MM-DD)". 살아 있는 회차에만 값, **실패 확정·취소(cancelled)되면 null로 비운다**
+  //  (취소 뒤 같은 회차를 다시 청구할 수 있게 — 학원관리 cycle_live_key와 같은 규칙, 검수 M2-c).
+  // SQLite 유일 조건은 null을 여러 개 허용하므로 "살아 있는 것끼리만 유일"이 된다.
+  // ⚠️ 날짜는 반드시 **한국 시간** 기준(lib/period.toISODate)으로 만든다 — UTC로 만들면 자정 근처 회차가 하루 어긋나 두 번 청구된다.
   cycleKey     String?  @unique
+  // 첫 결제(billing_first) 중복 방지 열쇠 = billingKeyId. 살아 있는 billing_first에만 값(실패·취소면 null).
+  //  카드 등록 결과가 두 번 들어와도(새로고침·KIS 재전송) 첫 결제가 두 번 되지 않게(학원관리 first_live_key, 검수 M2-a).
+  firstLiveKey String?  @unique
+  // 정기 결제 회차 날짜(결제 전 만료일). cycleKey는 실패하면 비워지므로 "어느 회차·몇 번째 실패"를 찾는 단서는 이 칸이다(검수 M2-b).
+  billingCycleDate DateTime?
   productName  String   // 결제창·영수증에 보이는 상품명(예: "가온 근태관리 1개월 (6~10명)")
   employees    Int      // 주문 시점 과금 인원(lib/pricing-server.ts) — 분쟁 근거
+  headEmployees Int     @default(0) // 그중 재직 직원 수 — 내역 근거(검수 경미 4)
+  headAdmins    Int     @default(0) // 재직 사람 관리자 수(1명까지 요금 제외) — 내역 근거
+  // 구매자(회사) 상호·사업자번호 **복사본** — 회사가 해지·파기된 뒤에도 5년 보관 기록이 "누가 냈는지"를 말할 수 있게(검수 M6).
+  //  법정 보관 목적(전자상거래법 시행령 제6조)이라 보관 근거가 있다. ⏳ 결제 개시 전 처리방침에 "대금결제 기록 5년" 항목 추가.
+  buyerName    String?
+  buyerBizRegNo String?
   tierIndex    Int      // 주문 시점 요금 구간 번호(lib/pricing.ts)
   termMonths   Int      @default(1) // 결제 단위 — 2026-11-23 사장님 결정: 1개월만
   payMethod    String   @default("CARD") // 지금은 카드만(가상계좌는 추후 협의)
@@ -1325,10 +1339,12 @@ model PgOrder {
   pgTid        String?  @unique // KIS 거래번호 — 한 거래번호는 한 주문에만(같은 인증 결과 재사용 차단)
   pgAmount     Int?     // KIS가 실제로 승인한 금액(주문 금액과 다르면 즉시 취소)
   pgAppNo      String?  // 카드 승인번호
+  pgPayMethod  String?  // KIS가 알려 준 실제 결제수단(가상계좌를 붙일 때 필요, 검수 경미 5)
   pgResultCode String?
   pgResultMsg  String?
   cardName     String?
   cardNoMasked String?  // KIS가 가린 카드번호만
+  cardType     String?  // 신용·체크 구분(KIS가 주는 값)
   paidAt       DateTime?
   cancelledAt  DateTime?
   prevPaidUntil DateTime? // 반영 직전의 Company.paidUntil — 취소 시 되돌리기 근거
@@ -1343,6 +1359,7 @@ model PgOrder {
 
   @@index([companyId, createdAt])
   @@index([status, lastCheckedAt]) // 결과 모름 정리(10분마다)가 check·cancel_check만 훑는다
+  @@index([billingKeyId, billingCycleDate]) // 정기 결제가 "이 카드의 이 회차"를 찾는다
 }
 
 // 자동결제 카드(KIS 빌키) — 회사당 사용 중인 카드는 1장.
@@ -1361,8 +1378,12 @@ model PgBillingKey {
   bid          String?  @unique // 빌키 — 지우면 null
   cardName     String?
   cardNoMasked String?
+  cardType     String?
   status       String   @default("registering")
-  // 회사당 살아 있는 카드 1장 열쇠 = companyId. registering·reg_check·active·paused·deleting일 때만 값, deleted·failed면 null.
+  // 회사당 사용 중인 카드 1장 열쇠 = companyId. **active·paused일 때만 값**, 그 밖(registering·reg_check·deleting·deleted·failed)은 null.
+  //  🔴 등록 중·삭제 중 카드까지 열쇠를 쥐게 하면 카드 변경이 막힌다(옛 카드 deleting이 열쇠를 쥔 채 새 카드가 active가 못 됨),
+  //     그리고 등록 창을 그냥 닫은 registering이 남으면 영원히 새 카드를 못 단다(검수 M1 — 학원관리 033 live_key와 같게).
+  //     등록 중 중복은 앱(서버 액션)에서 막는다.
   liveKey      String?  @unique
   nextChargeDate DateTime? // 다음 자동 결제일(이용 만료 3일 전, 학원관리와 같은 규칙)
   failCount    Int      @default(0) // 연속 실패 — 3번째에 paused

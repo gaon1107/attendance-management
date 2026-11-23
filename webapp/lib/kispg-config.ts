@@ -34,10 +34,26 @@ function merchant(midName: string, keyName: string, apiUrl: string | null): Kisp
   return { mid, merchantKey, apiUrl };
 }
 
+/** 결과를 받을 주소는 https만(내 컴퓨터 시험용 http://localhost 예외). 아니면 null — 결제하지 않는다(검수 경미 6). */
+function safeReturnUrl(raw: string | null): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol === "https:") return raw;
+    if (u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1")) return raw;
+  } catch {
+    /* 형식이 틀린 주소 — 아래에서 null */
+  }
+  console.error("[kispg-config] KISPG_RETURN_URL이 https 주소가 아니라 결제를 막습니다.");
+  return null;
+}
+
 /** 지금 서버의 결제 설정. 비어 있는 쪽은 null — 부르는 쪽은 null이면 결제하지 않는다. */
 export function readKispgConfig(): KispgConfig {
+  // 상점키가 든 객체다. 화면(브라우저) 코드에서 불리면 즉시 멈춘다 — 주석만으로는 막을 수 없다(검수 경미 6).
+  if (typeof window !== "undefined") throw new Error("[kispg-config] 서버 전용 — 화면 코드에서 부를 수 없습니다.");
   const apiUrl = env("KISPG_API_URL");
-  const returnUrl = env("KISPG_RETURN_URL");
+  const returnUrl = safeReturnUrl(env("KISPG_RETURN_URL"));
   const rawMax = env("KISPG_MAX_AMOUNT");
   const max = rawMax ? Number(rawMax) : NaN;
   return {

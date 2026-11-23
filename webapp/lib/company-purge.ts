@@ -202,8 +202,8 @@ const TABLES: Table[] = [
     count: (c) => prisma.companyHoliday.count({ where: { companyId: c } }),
     pick: (c, take) => prisma.companyHoliday.findMany({ where: { companyId: c }, select: { id: true }, take }),
     del: (ids) => prisma.companyHoliday.deleteMany({ where: { id: { in: ids } } }) },
-  // 자동결제 카드(2026-11-23 결제 1단계). ⚠️ 이 행에 닿기 전에 purgeOne이 "KIS에 빌키가 남은 카드"가 있으면 보류한다(아래 ①-2).
-  //   여기까지 왔다면 남은 행은 전부 bid가 지워진 기록(deleted·failed)뿐이다.
+  // 자동결제 카드(2026-11-23 결제 1단계). ⚠️ 이 행에 닿기 전에 purgeOne이 삭제가 안 끝난 카드가 있으면 기다린다(아래 ⓪).
+  //   여기까지 왔다면 남은 행은 전부 bid가 지워지고 상태가 deleted·failed인 기록뿐이다.
   { model: "PgBillingKey", cat: "other",
     count: (c) => prisma.pgBillingKey.count({ where: { companyId: c } }),
     pick: (c, take) => prisma.pgBillingKey.findMany({ where: { companyId: c }, select: { id: true }, take }),
@@ -278,7 +278,7 @@ const zeroCounts = (): Counts => ({ face: 0, file: 0, attendance: 0, request: 0,
 
 export type CompanyPurgeOutcome = {
   companyId: string;
-  status: "done" | "held" | "aborted" | "skipped";
+  status: "done" | "held" | "waiting" | "aborted" | "skipped";
   counts: Counts;
   note?: string;
 };
@@ -306,7 +306,7 @@ async function drain(t: Table, cid: string): Promise<number> {
   throw new Error(`${t.model} 반복 상한 초과`);
 }
 
-async function writeLog(cid: string, terminatedAt: Date, status: "done" | "held" | "aborted", c: Counts, note?: string): Promise<void> {
+async function writeLog(cid: string, terminatedAt: Date, status: "done" | "held" | "waiting" | "aborted", c: Counts, note?: string): Promise<void> {
   try {
     await prisma.companyPurgeLog.create({
       data: {
@@ -336,22 +336,29 @@ async function purgeOne(companyId: string, now: Date, unenroll: typeof unenrollF
     return { companyId: cid, status: "skipped", counts, note: `보관 기간(${TERMINATION_RETENTION_DAYS}일)이 끝나지 않음` };
   }
 
+  // ── ⓪ 자동결제 카드 — KIS에 카드가 남아 있을 수 있으면 **손대지 않고 기다린다**(2026-11-23 결제 1단계, 검수 M3·M4) ──
+  //  · 우리 DB 행만 지우면 KIS에는 카드 대신 쓰는 결제용 번호(빌키)가 영원히 남는다. 그건 파기가 아니다.
+  //  · bid가 있는 카드뿐 아니라 **등록 중(registering·reg_check)·삭제 중(deleting)** 카드도 기다린다 — 등록 응답이 끊겨
+  //    우리 쪽은 bid가 비었는데 KIS에는 빌키가 생긴 경우가 있다(학원관리는 reg_check를 조회로 정리한다).
+  //  · ① 파기 시작 표시 **앞에서** 본다: 아무것도 지우지 않았는데 [되살리기]가 막히면 안 된다.
+  //  · 대장 상태는 "waiting" — 하루 3곳 상한에 세지 않는다(지운 게 없으므로). 그래야 카드 삭제가 늦는 회사 몇 곳이
+  //    매일 몫을 차지해 다른 회사의 "30일 뒤 파기"가 밀리는 일이 없다. 20시간 재시도 대기는 똑같이 걸린다.
+  //  · 해지할 때 카드를 지우는(deleting → KIS 삭제 → bid null → deleted) 처리는 결제 3단계에서 붙인다.
+  const pendingCards = await prisma.pgBillingKey.count({
+    where: { companyId: cid, OR: [{ bid: { not: null } }, { status: { notIn: ["deleted", "failed"] } }] },
+  });
+  if (pendingCards > 0) {
+    const note = `자동결제 카드 ${pendingCards}장의 KIS 삭제가 끝나지 않아 대기 — 삭제가 끝나면 다음 회차에 다시 시도(아직 아무것도 지우지 않음)`;
+    await writeLog(cid, terminatedAt, "waiting", counts, note);
+    return { companyId: cid, status: "waiting", counts, note };
+  }
+
   // ── ① 파기 시작 표시 — 읽은 해지 시각 그대로일 때만(그사이 되살리거나 다시 해지했으면 0건 → 손대지 않음) ──
   const marked = await prisma.company.updateMany({
     where: { id: cid, terminatedAt },
     data: { purgeStartedAt: c.purgeStartedAt ?? now },
   });
   if (marked.count === 0) return { companyId: cid, status: "skipped", counts, note: "그사이 상태가 바뀜" };
-
-  // ── ①-2 자동결제 카드 — KIS에 빌키가 남아 있으면 보류(2026-11-23 결제 1단계) ──
-  //  우리 DB 행만 지우면 KIS에는 카드 대신 쓰는 결제용 번호(빌키)가 영원히 남는다. 그건 파기가 아니다.
-  //  해지할 때 카드를 지우는(deleting → KIS 삭제 → bid null) 처리는 결제 3단계에서 붙인다 — 그 전까지는 카드가 생길 수 없다.
-  const liveKeys = await prisma.pgBillingKey.count({ where: { companyId: cid, bid: { not: null } } });
-  if (liveKeys > 0) {
-    const note = `자동결제 카드 ${liveKeys}장이 KIS에 남아 있어 보류 — 카드 삭제가 끝나면 다음 회차에 다시 시도`;
-    await writeLog(cid, terminatedAt, "held", counts, note);
-    return { companyId: cid, status: "held", counts, note };
-  }
 
   // ── ② 얼굴서버 — 직원 행이 남아 있는 동안에 한다 ──
   const users = await prisma.user.findMany({
@@ -456,14 +463,17 @@ export async function purgeDueCompanies(deps: Deps = {}): Promise<{ results: Com
   //  ② 재시도 대기: 보류·중단된 회사는 20시간 안에 다시 두드리지 않는다(얼굴서버가 꺼진 동안 매시간 요청하지 않게).
   const recent = await prisma.companyPurgeLog.findMany({
     where: { ranAt: { gt: new Date(now.getTime() - RETRY_AFTER_MS) } },
-    select: { companyId: true },
+    select: { companyId: true, status: true },
   });
   const cooling = new Set(recent.map((r) => r.companyId));
-  const budget = Math.max(0, MAX_COMPANIES_PER_RUN - cooling.size);
+  // 하루 상한은 "실제로 손댄(지우기 시작한) 회사"만 센다 — waiting(카드 대기)은 아무것도 지우지 않았다(검수 M4).
+  const touched = new Set(recent.filter((r) => r.status !== "waiting").map((r) => r.companyId));
+  const budget = Math.max(0, MAX_COMPANIES_PER_RUN - touched.size);
 
   const results: CompanyPurgeOutcome[] = [];
+  let used = 0; // 이번 실행에서 실제로 손댄 회사 수(waiting 제외)
   for (const cand of candidates) {
-    if (results.length >= budget) break;
+    if (used >= budget) break;
     if (cooling.has(cand.id)) continue;
     // 3시가 넘었으면 다음 회사는 시작하지 않는다(검수 경미 9) — 03:30 백업과 겹치지 않게. 남은 회사는 다음 날.
     if (deps.stopAtHour !== undefined && new Date().getHours() >= deps.stopAtHour) break;
@@ -480,6 +490,7 @@ export async function purgeDueCompanies(deps: Deps = {}): Promise<{ results: Com
     }
     if (r.status === "skipped") continue;
     results.push(r);
+    if (r.status !== "waiting") used++;
     if (r.status === "aborted") break; // DB 오류(잠금 등) 중에 다음 회사로 넘어가 부하를 키우지 않는다
   }
   return { results };
