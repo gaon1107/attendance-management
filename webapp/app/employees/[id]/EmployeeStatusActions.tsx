@@ -69,7 +69,9 @@ export function EmployeeStatusActions({
 
   if (active) {
     return (
+      // key: 퇴사 폼과 복직 폼이 같은 자리에 그려진다 — 서로 다른 폼으로 다루게 해 입력칸이 섞이지 않게(결제 4단계).
       <form
+        key="deactivate"
         action={formAction}
         onSubmit={(e) => {
           if (!confirm(`${name} 님을 퇴사 처리할까요?\n\n로그인이 막히고 직원 목록에서 내려갑니다.\n과거 근태 기록은 리포트에 그대로 보존되며, 나중에 복직할 수 있습니다.${workingWarning}${openWarning}${biometricNotice}`)) {
@@ -109,6 +111,7 @@ export function EmployeeStatusActions({
 
   return (
     <form
+      key="reactivate"
       ref={reFormRef}
       action={reAction}
       onSubmit={(e) => {
