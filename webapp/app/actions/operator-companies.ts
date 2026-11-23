@@ -17,6 +17,7 @@ import { companyNameMatches } from "@/lib/company-name";
 import { restoreBlockedReason } from "@/lib/company-termination";
 import { markCompanyCardsForDeletion, rescheduleCompanyCards } from "@/lib/billing-auto";
 import { getServiceAccess } from "@/lib/service-access";
+import { trialStatus } from "@/lib/trial";
 
 export type OperatorActionResult = { ok: boolean; message: string } | null;
 
@@ -66,7 +67,7 @@ export async function setCompanyTrial(_prev: OperatorActionResult, formData: For
 
   const company = await prisma.company.findUnique({
     where: { id: companyId },
-    select: { id: true, name: true, createdAt: true, trialLastDate: true },
+    select: { id: true, name: true, createdAt: true, trialLastDate: true, paidUntil: true },
   });
   if (!company) return { ok: false, message: "회사를 찾을 수 없습니다." };
 
@@ -116,11 +117,26 @@ export async function setCompanyTrial(_prev: OperatorActionResult, formData: For
     warn = "";
   }
 
+  // 결제한 기간이 있는 회사(2026-11-23 결제 6단계, 2단계 검수에서 넘어온 일) — 결제 기간은 "무료 끝 뒤"에 이어 붙어 있다.
+  //  무료 기간을 결제 기간 끝까지(또는 넘어) 늘리면 고객이 낸 기간이 무료에 묻히고, 그보다 짧게 늘리면 결제 기간 끝까지는 달라지는 것이 없다.
+  //  막지는 않는다(운영자가 일부러 보상할 수도 있다) — 결과 문구로 알린다.
+  let paidWarn = "";
+  if (company.paidUntil) {
+    const newEnd = trialStatus(company.createdAt, new Date(), next).endsAt;
+    const oldEnd = trialStatus(company.createdAt, new Date(), company.trialLastDate).endsAt;
+    const paidLast = ymd(new Date(company.paidUntil.getTime() - 1));
+    if (newEnd.getTime() >= company.paidUntil.getTime()) {
+      paidWarn = ` ⚠️ 이 회사는 ${paidLast}까지 결제한 기간이 있는데, 무료 기간이 그보다 길어져 고객이 낸 기간이 무료 기간에 묻힙니다. 의도한 보상이 아니면 되돌리거나 [결제] 칸에서 결제 취소를 검토하세요.`;
+    } else if (newEnd.getTime() > oldEnd.getTime()) {
+      paidWarn = ` ⚠️ 이 회사는 ${paidLast}까지 결제한 기간이 있어, 무료 기간을 늘려도 그날까지는 이용 기간이 달라지지 않습니다.`;
+    }
+  }
+
   revalidatePath("/operator");
   revalidatePath(`/operator/companies/${company.id}`);
   return {
     ok: true,
-    message: (next ? `무료 이용 마지막 날을 ${after}로 정했습니다.` : "무료 이용 기간을 기본값(가입일부터 30일)으로 되돌렸습니다.") + warn,
+    message: (next ? `무료 이용 마지막 날을 ${after}로 정했습니다.` : "무료 이용 기간을 기본값(가입일부터 30일)으로 되돌렸습니다.") + warn + paidWarn,
   };
 }
 

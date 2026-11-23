@@ -130,6 +130,13 @@ export default async function OperatorCompanyPage({ params }: { params: Promise<
                 만료돼도 기능은 막히지 않습니다(결제 기능과 함께 적용 예정).
               </span>
             </div>
+            {/* 결제한 기간이 있으면 미리 알린다(2026-11-23 결제 6단계) — 결제 기간은 무료 끝 뒤에 이어 붙어 있어, 무료 기간을 늘리면 겹친다. */}
+            {billing?.paidUntil && (
+              <div role="note" style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#9A3412", marginBottom: 12, lineHeight: 1.6, wordBreak: "keep-all" }}>
+                이 회사는 <b>{ymd(new Date(billing.paidUntil.getTime() - 1))}까지 결제한 기간</b>이 있습니다. 무료 기간을 늘려도 그날까지는 달라지지 않고,
+                그날보다 길게 하면 고객이 낸 기간이 무료 기간에 묻힙니다.
+              </div>
+            )}
             <TrialForm companyId={c.id} current={ymd(c.trialLast)} custom={c.trialLastDate !== null} />
 
             <h2 style={{ ...h2, marginTop: 28 }}>시험용 회사 표시</h2>
