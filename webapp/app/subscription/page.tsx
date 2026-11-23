@@ -1,6 +1,8 @@
 // [구독·요금] (관리자 전용) — "우리 회사는 지금 얼마인가"를 보여주는 화면.
 //
-// 2026-11-23 결제 2단계: **카드 1개월 결제**(직접 결제만 — 자동결제는 3단계)와 결제 내역을 붙였다(lib/billing-pay.ts).
+// 2026-11-23 결제 2단계: **카드 1개월 결제**(직접 결제)와 결제 내역을 붙였다(lib/billing-pay.ts).
+// 2026-11-23 결제 3단계: **자동결제** 칸(신청·카드 바꾸기·해지·새 금액 동의)을 붙였다(lib/billing-auto.ts, AutoPayBox.tsx).
+//    🔴 "자동으로 결제되지 않습니다"는 이제 **자동결제를 신청하지 않은 회사에만** 참이다 → 문구를 신청 여부로 나눈다.
 //    KIS 상점 설정이 없으면 버튼 대신 "준비 중"이 보인다(lib/kispg-config.ts). 계획서 plan-근태결제-개발.md.
 //    ⚠️ 아직 아무것도 막지 않는다(미납 차단은 5단계) — 화면 문구도 그 사실에 맞춘다.
 //
@@ -17,7 +19,9 @@ import { quoteForCompany } from "@/lib/pricing-server";
 import { PRICE_TIERS, QUOTE_OVER, formatWon, tierLabel, withVat } from "@/lib/pricing";
 import { trialStatus, trialLastDay, formatKoreanDate, TRIAL_DAYS } from "@/lib/trial";
 import { payOverview, listPayments } from "@/lib/billing-pay";
+import { autoPayOverview, autoChargeAmount } from "@/lib/billing-auto";
 import { PayButton } from "./PayButton";
+import { AutoPayBox, type AutoPayView } from "./AutoPayBox";
 
 const card = {
   background: "#fff",
@@ -66,10 +70,15 @@ export default async function SubscriptionPage() {
   const employees = q.employees;
   const now = new Date();
   const trial = trialStatus(me.company.createdAt, now, me.company.trialLastDate);
-  const [pay, payments] = await Promise.all([payOverview(me.companyId, now), listPayments(me.companyId)]);
+  const [pay, payments, auto] = await Promise.all([
+    payOverview(me.companyId, now), listPayments(me.companyId), autoPayOverview(me.companyId, now),
+  ]);
   // 이용 기간 끝(자정 기준 표시용) — 유료 기간이 있으면 그 끝, 없으면 무료 기간 끝.
   const paidActive = !!pay?.paidUntil && pay.paidUntil > now;
   const canPayNow = !!pay && pay.canPayFrom <= now;
+  // 자동결제를 쓰고 있는가(사용 중 카드) — 아래 "자동으로 결제되지 않습니다" 문구들을 이것으로 나눈다.
+  const autoOn = auto?.card?.status === "active";
+  const autoView = buildAutoView(auto, q, now);
 
   return (
     <AppShell user={me} active="subscription" title="구독·요금" subtitle={`${me.company.name} · 관리자 ${me.name}`}>
@@ -90,7 +99,7 @@ export default async function SubscriptionPage() {
           sub={q.kind === "tier" ? "부가세 별도" : undefined}
         />
         {/* 체험 중에는 "카드 청구액"을 그냥 크게 보여주면 "이미 빠져나갔나?"로 읽힌다(검수 중간 1).
-            결제는 관리자가 아래 [카드로 1개월 결제하기]를 누를 때만 된다(자동결제 없음 — 3단계 전). */}
+            결제는 관리자가 [카드로 1개월 결제하기]를 누르거나, [자동결제]를 신청한 경우 결제일에만 된다. */}
         <Kpi
           label="카드 청구액"
           value={q.kind === "tier" ? formatWon(q.total) : "—"}
@@ -144,7 +153,10 @@ export default async function SubscriptionPage() {
                 {formatKoreanDate(trial.endsAt)})부터 시작됩니다.
               </>
             )}{" "}
-            결제는 1개월 단위이며 카드로만 받습니다. 결제하실 때만 청구되고 자동으로 다시 결제되지 않습니다.
+            결제는 1개월 단위이며 카드로만 받습니다.{" "}
+            {autoOn
+              ? "자동결제를 쓰고 계셔서 이용 기간이 끝나기 3일 전에 자동으로 결제됩니다(아래 [자동결제])."
+              : "아래 버튼은 누르실 때만 청구됩니다. 매달 자동으로 내시려면 아래 [자동결제]를 신청해 주세요."}
           </p>
         ) : null}
         {q.kind !== "tier" ? (
@@ -202,6 +214,12 @@ export default async function SubscriptionPage() {
         ) : null}
       </div>
 
+      {/* ── 1-3. 자동결제 (2026-11-23 결제 3단계) ───────────────────────── */}
+      <div style={{ ...cardPad, marginBottom: 16 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>자동결제</div>
+        {autoView ? <AutoPayBox v={autoView} /> : <p style={{ ...noteText, margin: 0 }}>회사 정보를 불러오지 못했습니다.</p>}
+      </div>
+
       {/* ── 2. 무료 기간 · 다음 구간 ────────────────────────────────── */}
       <div className="split-2" style={{ marginBottom: 16 }}>
         <div style={cardPad}>
@@ -226,7 +244,10 @@ export default async function SubscriptionPage() {
               </div>
               <p style={{ ...noteText, margin: 0 }}>
                 <strong>{formatKoreanDate(trialLastDay(trial.endsAt))}</strong>까지 무료입니다(가입일부터 {TRIAL_DAYS}일
-                기준, 회사별로 따로 정한 경우는 그 날짜까지). 무료 기간이 끝나도 자동으로 결제되지 않습니다(결제는 직접 하실 때만).
+                기준, 회사별로 따로 정한 경우는 그 날짜까지).{" "}
+                {autoOn
+                  ? "자동결제를 신청하셔서 무료 기간이 끝나기 3일 전에 첫 결제가 됩니다."
+                  : "자동결제를 신청하지 않으면 무료 기간이 끝나도 자동으로 결제되지 않습니다."}
               </p>
             </>
           )}
@@ -244,7 +265,9 @@ export default async function SubscriptionPage() {
               지금 구간({q.label})에서는 직원이 늘어도 요금이 <strong>{formatWon(q.monthly)}</strong> 그대로입니다.
               <strong> {q.next.addMore}명</strong>을 더 등록하면 {q.next.label} 구간이 되어 월{" "}
               <strong>{formatWon(q.next.monthly)}</strong>(카드 {formatWon(withVat(q.next.monthly).total)})이 됩니다.
-              직원이 늘어도 자동으로 결제되지 않습니다 — 새 금액은 다음에 직접 결제하실 때 적용됩니다.
+              {autoOn
+                ? "자동결제는 새 금액에 따로 동의하시기 전까지 동의하신 금액으로 결제됩니다(아래 [자동결제]에서 동의)."
+                : "직접 결제하시면 새 금액은 다음 결제 때 적용됩니다."}
             </p>
           ) : q.kind === "tier" ? (
             <p style={{ ...noteText, margin: 0 }}>
@@ -253,7 +276,7 @@ export default async function SubscriptionPage() {
           ) : (
             <p style={{ ...noteText, margin: 0 }}>
               요금은 구간제입니다. 구간 안에서는 직원이 늘어도 요금이 같고, 구간을 넘을 때만 오릅니다.
-              자동으로 결제되는 것은 없습니다 — 결제는 직접 하실 때만 됩니다.
+              자동결제는 신청하신 경우에만 됩니다.
             </p>
           )}
         </div>
@@ -348,9 +371,9 @@ export default async function SubscriptionPage() {
       <div style={cardPad}>
         <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>유료 신청과 결제</div>
         <p style={{ ...noteText, margin: "0 0 12px" }}>
-          화면에서 바로 결제하는 기능은 <strong>준비 중</strong>입니다. 준비되기 전에는 아무것도 자동으로
-          결제되지 않고, 결제는 직접 신청하실 때만 시작됩니다. 유료 전환이나 요금을 상의하시려면 아래로
-          연락해 주세요.
+          결제는 위 [결제](1개월씩 직접)와 [자동결제](매달 자동)에서 합니다. 카드 결제가 <strong>준비 중</strong>으로
+          보이면 결제사 심사가 끝나기 전이라 아직 아무것도 결제되지 않습니다. 자동결제는 직접 신청하신 경우에만
+          시작됩니다. 유료 전환이나 요금을 상의하시려면 아래로 연락해 주세요.
         </p>
         <Link
           href="/#contact"
@@ -386,4 +409,57 @@ export default async function SubscriptionPage() {
       </div>
     </AppShell>
   );
+}
+
+/**
+ * 자동결제 칸에 넘길 값 — 금액·날짜는 전부 서버 함수(lib/billing-auto.ts)의 결과로 만든다(화면에서 따로 계산하지 않는다).
+ *  · offer: 지금 신청하면 보게 될 금액·첫 결제일(지금 인원 구간 — 등록 때 서버가 같은 계산으로 동의 구간을 정한다).
+ *  · next: 사용 중 카드의 다음 결제 예상 = min(지금 구간, 동의 구간).
+ */
+function buildAutoView(
+  auto: Awaited<ReturnType<typeof autoPayOverview>>,
+  q: Awaited<ReturnType<typeof quoteForCompany>>,
+  now: Date
+): AutoPayView | null {
+  if (!auto) return null;
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const state: AutoPayView["state"] =
+    auto.card?.status === "active" ? "active" : auto.card?.status === "paused" ? "paused" : auto.regChecking ? "reg_checking" : "none";
+  const offer =
+    q.kind === "tier"
+      ? {
+          label: q.label, monthlyText: formatWon(q.monthly), vatText: formatWon(q.vat), totalText: formatWon(q.total),
+          firstChargeText: formatKoreanDate(auto.firstChargeDate),
+          chargeNow: auto.firstChargeDate.getTime() <= today.getTime(),
+          startText: formatKoreanDate(auto.periodStart),
+        }
+      : null;
+  const noAmountReason =
+    q.kind === "none" ? "요금 대상 인원이 없어 지금은 자동결제를 신청할 금액이 없습니다."
+    : q.kind === "quote" ? "요금표를 넘는 인원이라 별도 협의가 필요합니다. 고객센터로 연락해 주세요."
+    : null;
+  const amt = autoChargeAmount(q, auto.approvedTierIndex);
+  const next =
+    amt.kind === "charge"
+      ? {
+          totalText: formatWon(amt.total), label: amt.label, capped: amt.capped,
+          currentTotalText: q.kind === "tier" ? formatWon(q.total) : null,
+          currentLabel: q.kind === "tier" ? q.label : null,
+          currentTierIndex: q.kind === "tier" ? q.tierIndex : null,
+        }
+      : null;
+  return {
+    ready: auto.ready,
+    state,
+    deleting: auto.deleting,
+    card: auto.card
+      ? {
+          cardName: auto.card.cardName, cardNoMasked: auto.card.cardNoMasked,
+          nextChargeText: auto.card.nextChargeDate ? formatKoreanDate(auto.card.nextChargeDate) : null,
+          failCount: auto.card.failCount, lastFailReason: auto.card.lastFailReason,
+        }
+      : null,
+    offer, noAmountReason, next,
+  };
 }

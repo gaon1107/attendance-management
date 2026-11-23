@@ -973,3 +973,29 @@ export async function reconcileAutoChargeOrders(limit = 20, now: Date = new Date
     await followUpAutoChargeOrders().catch((e) => console.error(`[billing-auto] 후속 처리 실패: ${errCode(e)}`));
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⑥ 새 금액 동의(3-3) — 인원이 늘어 윗구간이 됐을 때 관리자가 [새 금액에 동의]를 눌러야 그 금액으로 청구한다(1단계 검수 M7).
+//    (초대 링크를 만들 때 받는 동의는 4단계)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 지금 구간으로 동의를 올린다. seenTierIndex = 관리자가 화면에서 **본** 구간 — 그사이 인원이 바뀌어 다른 금액이 됐으면
+ * 동의하지 않는다(보지 않은 금액에 동의시키지 않는다). 동의 근거는 사용 중 카드 행에 새로 남긴다.
+ */
+export async function approveCurrentTier(companyId: string, seenTierIndex: number): Promise<{ ok: boolean; message: string }> {
+  const card = await prisma.pgBillingKey.findFirst({ where: { companyId, status: { in: ["active", "paused"] } }, select: { id: true } });
+  if (!card) return { ok: false, message: "사용 중인 자동결제 카드가 없습니다." };
+  const heads = await countHeads(companyId);
+  const q = quoteFor(billableCount(heads.employees, heads.admins));
+  if (q.kind !== "tier") return { ok: false, message: "지금은 동의할 요금이 없습니다." };
+  if (!Number.isInteger(seenTierIndex) || q.tierIndex !== seenTierIndex) {
+    return { ok: false, message: "그사이 인원이 바뀌어 금액이 달라졌습니다. 화면을 새로 고쳐 금액을 다시 확인해 주세요." };
+  }
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.company.update({ where: { id: companyId }, data: { approvedTierIndex: q.tierIndex } }),
+    prisma.pgBillingKey.update({ where: { id: card.id }, data: { consentTierIndex: q.tierIndex, consentTotal: q.total, consentedAt: now } }),
+  ]);
+  return { ok: true, message: `동의하셨습니다. 다음 자동결제부터 월 ${q.total.toLocaleString("ko-KR")}원(부가세 포함)으로 결제됩니다.` };
+}

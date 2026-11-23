@@ -103,8 +103,39 @@ export const listAdminNotifications = cache(async (companyId: string): Promise<{
     console.warn("[notifications] 회사 계정 문자 재설정 집계 실패(알림센터는 정상 표시):", e);
   }
 
+  // 자동결제 실패·멈춤(2026-11-23 결제 3단계) — 결과 안내는 **화면으로만**(사장님 결정: 문자 없음). 그래서 관리자가 매일 보는
+  //  알림센터에 올린다. 멈춤 = 더는 자동으로 결제하지 않음(카드 다시 등록 필요) / 실패 = 내일 같은 시각 다시 시도.
+  //  · 부가기능 — 실패해도 알림센터 본체는 뜬다.
+  let autoPayPaused = false;
+  let autoPayFailing = 0;
+  try {
+    const card = await prisma.pgBillingKey.findFirst({
+      where: { companyId, status: { in: ["active", "paused"] } },
+      select: { status: true, failCount: true },
+    });
+    if (card?.status === "paused") autoPayPaused = true;
+    else if (card && card.failCount > 0) autoPayFailing = card.failCount;
+  } catch (e) {
+    console.warn("[notifications] 자동결제 상태 집계 실패(알림센터는 정상 표시):", e);
+  }
+
+  const autoPayItems: AdminNotification[] = [];
+  if (autoPayPaused) {
+    autoPayItems.push({
+      key: "autopay-paused", title: "자동결제가 멈췄습니다",
+      detail: "자동결제가 더 이상 진행되지 않습니다. [구독·요금]에서 멈춘 이유를 확인하고 카드를 다시 등록하거나 직접 결제해 주세요.",
+      count: 1, countLabel: "확인 필요", href: "/subscription", cta: "확인", severity: "danger",
+    });
+  } else if (autoPayFailing > 0) {
+    autoPayItems.push({
+      key: "autopay-failing", title: "자동결제 실패",
+      detail: "카드 결제가 승인되지 않았습니다. 내일 같은 시각에 다시 시도하며, 3번 실패하면 자동결제가 멈춥니다. 카드 한도·유효기간을 확인해 주세요.",
+      count: 1, countLabel: `${autoPayFailing}번 실패`, href: "/subscription", cta: "확인", severity: "warning",
+    });
+  }
+
   const items: AdminNotification[] = [];
-  // 보안이 가장 위(위험). 그다음 결재/요청.
+  // 보안이 가장 위(위험). 그다음 자동결제(서비스가 끊길 수 있음), 그다음 결재/요청.
   if (ownerSmsReset > 0) {
     items.push({
       key: "owner-sms-reset", title: "회사 계정 비밀번호 변경(문자 인증)",
@@ -134,6 +165,7 @@ export const listAdminNotifications = cache(async (companyId: string): Promise<{
       count: pendingReset, countLabel: `${pendingReset}건`, href: "/employees", cta: "처리", severity: "danger",
     });
   }
+  items.push(...autoPayItems);
   if (pcOffUnreported > 0) {
     items.push({
       key: "pcoff-unreported", title: "PC-OFF 미보고",

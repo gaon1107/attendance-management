@@ -5,7 +5,7 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/session";
 import { createPayOrder, type CreateOrderResult } from "@/lib/billing-pay";
-import { startCardRegistration, cancelAutoPay as cancelAutoPayLib, type StartRegResult } from "@/lib/billing-auto";
+import { startCardRegistration, cancelAutoPay as cancelAutoPayLib, approveCurrentTier as approveCurrentTierLib, type StartRegResult } from "@/lib/billing-auto";
 
 export async function startCardPayment(): Promise<CreateOrderResult> {
   const me = await getCurrentUser();
@@ -44,5 +44,20 @@ export async function cancelAutoPay(): Promise<{ ok: boolean; message: string }>
   } catch (e) {
     console.error("[billing] 자동결제 해지 실패:", e instanceof Error ? e.name : "unknown");
     return { ok: false, message: "해지하지 못했습니다. 잠시 후 다시 시도해 주세요." };
+  }
+}
+
+/** [새 금액에 동의] — 화면에서 본 구간(seenTierIndex)이 지금 구간과 같을 때만 동의한다. */
+export async function approveAutoPayTier(seenTierIndex: number): Promise<{ ok: boolean; message: string }> {
+  const me = await getCurrentUser();
+  if (!me) return { ok: false, message: "로그인이 풀렸습니다. 다시 로그인해 주세요." };
+  if (me.role !== "admin") return { ok: false, message: "관리자만 동의할 수 있습니다." };
+  try {
+    const r = await approveCurrentTierLib(me.companyId, Number(seenTierIndex));
+    revalidatePath("/subscription");
+    return r;
+  } catch (e) {
+    console.error("[billing] 새 금액 동의 실패:", e instanceof Error ? e.name : "unknown");
+    return { ok: false, message: "동의를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요." };
   }
 }
