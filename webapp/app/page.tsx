@@ -13,10 +13,32 @@ import { PRICE_TIERS, QUOTE_OVER, formatWon, tierLabel } from "@/lib/pricing";
 import { LandingHeroFigure } from "@/app/components/LandingHeroFigure";
 // [맨 위로] 떠 있는 버튼 — 스크롤 위치를 알아야 해서 클라이언트 컴포넌트다(아래 푸터 뒤에 놓았다).
 import { LandingScrollTop } from "@/app/components/LandingScrollTop";
+import type { Metadata } from "next";
+import { SITE_URL, SITE_NAME, SITE_DESCRIPTION } from "@/lib/site";
 
 // 공개 페이지라 방문자마다 DB를 때리면 안 된다 → 5분마다 한 번만 다시 계산하고 그 사이는 같은 화면을 준다.
 // ⚠️ 이 값을 0으로 바꾸면 방문자 수만큼 집계 쿼리가 돈다(14일치 근태 기록 스캔). 낮추지 말 것.
 export const revalidate = 300;
+
+// ── 검색 결과·공유 미리보기 (2026-11-23 검색 노출 기본 설정) ──
+//  · 공통 틀(app/layout.tsx)의 제목은 로그인 뒤 화면 탭 이름("근태관리")이라 그대로 두고, **홈에만** 제품 이름을 단 제목을 준다.
+//  · 미리보기 그림 public/og.png(1200×630)는 한글 글꼴이 없어 자동 생성 대신 그림 파일로 만들었다. 문구를 바꾸면 다시 만들 것.
+//  · 설명은 lib/site.ts 한 곳 — robots·sitemap·/llms.txt와 같은 값을 쓴다.
+export const metadata: Metadata = {
+  title: { absolute: `${SITE_NAME} — 중소기업 근태관리 (얼굴인증·GPS 출퇴근, 실근무시간)` },
+  description: SITE_DESCRIPTION,
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: SITE_NAME,
+    locale: "ko_KR",
+    title: `${SITE_NAME} — 정직한 실근무시간, 강제하지 않는 얼굴인증`,
+    description: SITE_DESCRIPTION,
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: SITE_NAME }],
+  },
+  twitter: { card: "summary_large_image", title: SITE_NAME, description: SITE_DESCRIPTION, images: ["/og.png"] },
+};
 
 // ── 헤더 메뉴 — 실제로 존재하는 섹션에만 연결한다(빈 링크 금지) ──
 const nav = [
@@ -357,6 +379,49 @@ const WRAP = 1080;
 const svg = (path: string, size = 22) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
 
+// ── 검색엔진·AI가 읽는 구조화 정보(JSON-LD, schema.org) — 2026-11-23 ──
+//  🔴 화면과 **같은 데이터**에서 만든다: 요금은 PRICE_TIERS, 질문·답은 위 faqs, 사업자는 BIZ.
+//     따로 적으면 화면과 어긋나 "검색에 보인 값과 화면 값이 다른" 표시광고 문제가 된다.
+//  · 요금은 부가세 별도 월 요금이다(valueAddedTaxIncluded: false).
+//  · 넣을 때 "<"를 <로 바꾼다(Next 공식 안내 — 스크립트 태그 탈출 방지). 지금은 모두 이 파일의 리터럴이다.
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#org`,
+      name: BIZ.name,
+      url: SITE_URL,
+      email: BIZ.email,
+      telephone: BIZ.tel,
+      address: { "@type": "PostalAddress", streetAddress: BIZ.address, addressCountry: "KR" },
+    },
+    {
+      "@type": "SoftwareApplication",
+      name: SITE_NAME,
+      url: SITE_URL,
+      description: SITE_DESCRIPTION,
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      inLanguage: "ko",
+      publisher: { "@id": `${SITE_URL}/#org` },
+      offers: {
+        "@type": "AggregateOffer",
+        priceCurrency: "KRW",
+        lowPrice: PRICE_TIERS[0].monthly,
+        highPrice: PRICE_TIERS[PRICE_TIERS.length - 1].monthly,
+        offerCount: PRICE_TIERS.length,
+        description: `직원 수 구간별 월 요금(부가세 별도), ${QUOTE_OVER}명 초과는 별도 협의. ${TRIAL_DAYS}일 무료 체험.`,
+        priceSpecification: { "@type": "UnitPriceSpecification", priceCurrency: "KRW", minPrice: PRICE_TIERS[0].monthly, unitText: "월", valueAddedTaxIncluded: false },
+      },
+    },
+    {
+      "@type": "FAQPage",
+      mainEntity: faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })),
+    },
+  ],
+};
+
 export default async function Home() {
   // 홈화면 미리보기에 쓸 **실제 통계**. 값이 0이어도 그대로 보여준다("처음부터 보여줘", 2026-08-09).
   // 미리보기를 감추는 경우는 **DB 조회 실패(live.ok === false)** 하나뿐이다.
@@ -400,6 +465,8 @@ export default async function Home() {
   // ⚠️ 이 페이지(홈화면) 안에만 적용된다. 로그인 후 화면에도 주고 싶으면 globals.css에서 따로 줄 것.
   return (
     <div id="top" style={{ minHeight: "100vh", background: "#FFFFFF", color: "var(--text)", wordBreak: "keep-all", overflowWrap: "break-word" }}>
+      {/* 검색엔진·AI용 구조화 정보 — 화면에는 보이지 않는다(위 jsonLd 주석) */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
       {/* 헤더 */}
       {/* ⚠️ 헤더 아래 선과 푸터 위 선은 **남긴다** — 스크롤할 때 고정된 헤더와 본문이 겹쳐 보이므로
              경계가 필요하다. 색만 회색 → 파랑으로 맞추되 **진한 쪽(-strong)**을 쓴다.

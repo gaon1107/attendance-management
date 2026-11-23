@@ -1,8 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { InputAutoFormat } from "./components/InputAutoFormat";
+import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
+  // 공유 미리보기 그림·대표 주소를 절대 주소로 만드는 기준(2026-11-23 검색 노출 기본 설정, lib/site.ts).
+  metadataBase: new URL(SITE_URL),
   title: "근태관리",
   description: "정직한 실근무시간, 강제하지 않는 얼굴인증 — 중소기업 근태관리 SaaS",
   // iOS 홈 화면 추가 시 앱처럼(주소창 없이) 열리게 한다.
