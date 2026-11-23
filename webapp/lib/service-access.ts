@@ -26,6 +26,12 @@ import { KIS_MAX_TOTAL } from "@/lib/pricing";
 
 /** 이용 기간이 끝난 뒤 직원 출퇴근을 막기까지의 유예 일수(사장님 결정 11-23). 화면 문구도 이 값을 쓴다. */
 export const GRACE_DAYS = 3;
+/**
+ * 가온 운영자가 결제를 취소(환불)한 날부터 직원 출근을 막지 않는 일수(사장님 결정 2026-11-23).
+ *  환불하면 그 결제로 늘어난 기간이 되돌아가 유예 3일도 이미 지난 상태가 되기 쉽다 — 기간 중간에 회사 잘못으로 환불한 고객이
+ *  다음 날 아침 출근부터 막히는 일을 없앤다. 막는 날 = max(원래 막는 날, 환불한 날 0시 + 이 일수). 그 안에 다시 결제하거나 정리하면 된다.
+ */
+export const REFUND_GRACE_DAYS = 7;
 /** 관리자 첫 화면에 "곧 끝남" 띠를 띄우기 시작하는 날 수. */
 export const WARN_DAYS = 7;
 /** 결제 개시일로 받는 가장 이른 날 — 이보다 이르면 오타로 보고 차단을 끈다(5단계를 만든 날). */
@@ -85,15 +91,17 @@ const bad = (d: Date | null | undefined) => d instanceof Date && Number.isNaN(d.
  * 순수 계산. 이용 가능 끝 = max(무료 기간 끝, 결제한 기간 끝). 막는 날 = max(이용 가능 끝, 결제 개시일) + 유예 3일.
  *  · 모든 경계는 0시(끝 시각은 "그 시각 **전까지** 이용"). 막는 날 0시부터 막는다.
  *  · hold: 막는 날이 지났어도 막지 않을 이유(확인 중 결제·카드 결제 불가) — 있으면 grace로 돌려준다.
+ *  · notBefore: 이 시각 전에는 막지 않는다(운영자 환불 뒤 여유 — REFUND_GRACE_DAYS). 막는 날을 이 시각까지 미룬다.
  */
 export function computeServiceAccess(
   c: { createdAt: Date; trialLastDate: Date | null; paidUntil: Date | null; isDemo: boolean },
   now: Date,
   enforceFrom: Date | null,
-  hold: Hold | null = null
+  hold: Hold | null = null,
+  notBefore: Date | null = null
 ): ServiceAccess {
   if (c.isDemo) return { kind: "demo" };
-  if (bad(c.createdAt) || bad(c.trialLastDate) || bad(c.paidUntil) || bad(enforceFrom) || bad(now)) return { kind: "unknown" };
+  if (bad(c.createdAt) || bad(c.trialLastDate) || bad(c.paidUntil) || bad(enforceFrom) || bad(now) || bad(notBefore)) return { kind: "unknown" };
   const trialEnd = trialStatus(c.createdAt, now, c.trialLastDate).endsAt;
   if (bad(trialEnd)) return { kind: "unknown" };
   const usableUntil = c.paidUntil && c.paidUntil.getTime() > trialEnd.getTime() ? c.paidUntil : trialEnd;
@@ -102,6 +110,7 @@ export function computeServiceAccess(
   if (enforceFrom) {
     blockAt = new Date(Math.max(usableUntil.getTime(), enforceFrom.getTime()));
     blockAt.setDate(blockAt.getDate() + GRACE_DAYS); // 날짜 단위로 더한다(서머타임 없는 한국 시각 — 0시 유지)
+    if (notBefore && notBefore.getTime() > blockAt.getTime()) blockAt = new Date(notBefore);
   }
   if (now.getTime() < usableUntil.getTime()) {
     const daysLeft = Math.ceil((usableUntil.getTime() - now.getTime()) / DAY_MS);
@@ -137,6 +146,40 @@ async function holdReason(companyId: string): Promise<Hold | null> {
   return null;
 }
 
+/**
+ * 최근 운영자 환불(취소) 뒤 막지 않는 끝 시각 = 환불한 날 0시 + REFUND_GRACE_DAYS. 해당 없으면 null.
+ *  · 환불한 날 = 운영자가 취소를 요청한 날과 KIS 취소가 확정된 날 중 **늦은 날**(확정이 며칠 늦어도 여유가 줄지 않게).
+ *  · 취소 중(cancel_check)인 건도 센다 — 그동안은 payment_pending으로도 막지 않지만, 화면에 막는 날을 바르게 보이려고.
+ *  · [결제 완료로 되돌리기](KIS 취소 거절)는 operatorCancelAt을 비우므로 여기서 빠진다(환불이 아니었다).
+ */
+async function refundGraceUntil(companyId: string, now: Date): Promise<Date | null> {
+  const since = new Date(now);
+  since.setHours(0, 0, 0, 0);
+  since.setDate(since.getDate() - REFUND_GRACE_DAYS);
+  const rows = await prisma.pgOrder.findMany({
+    where: {
+      companyId,
+      status: { in: ["cancel_check", "cancelled"] },
+      operatorCancelAt: { not: null },
+      OR: [{ operatorCancelAt: { gte: since } }, { cancelledAt: { gte: since } }],
+    },
+    select: { operatorCancelAt: true, cancelledAt: true },
+    orderBy: { operatorCancelAt: "desc" },
+    take: 20,
+  });
+  let latest = 0;
+  for (const r of rows) {
+    for (const d of [r.operatorCancelAt, r.cancelledAt]) {
+      if (d && !Number.isNaN(d.getTime()) && d.getTime() > latest) latest = d.getTime();
+    }
+  }
+  if (!latest) return null;
+  const until = new Date(latest);
+  until.setHours(0, 0, 0, 0);
+  until.setDate(until.getDate() + REFUND_GRACE_DAYS);
+  return until;
+}
+
 /** 이 회사의 지금 이용 상태(화면·차단 공용). 회사가 없으면 null. */
 export async function getServiceAccess(companyId: string, now: Date = new Date()): Promise<ServiceAccess | null> {
   const c = await prisma.company.findUnique({
@@ -146,8 +189,19 @@ export async function getServiceAccess(companyId: string, now: Date = new Date()
   if (!c) return null;
   const from = activeEnforceFrom();
   const first = computeServiceAccess(c, now, from);
-  if (first.kind !== "blocked") return first;
-  return computeServiceAccess(c, now, from, await holdReason(companyId));
+  // 곧 끝나거나 이미 끝난 회사만 더 본다 — 차단이 꺼져 있거나 남은 기간이 WARN_DAYS(7)보다 많으면(ok) 환불 여유가 막는 날을 바꿀 수 없다.
+  //  ending도 본다: 환불로 되돌린 기간이 며칠 남은 경우 여유를 뺀 이른 날짜를 안내하지 않게(검수 중간 1).
+  if (!from || (first.kind !== "ending" && first.kind !== "grace" && first.kind !== "blocked")) return first;
+  let notBefore: Date | null = null;
+  try {
+    notBefore = await refundGraceUntil(companyId, now);
+  } catch (e) {
+    // 조회 실패 = 여유 없음으로 본다(예전과 같은 결과). 화면 전체를 실패시키지 않는다(검수 중간 2).
+    console.error("[service-access] 환불 여유 조회 실패 — 여유 없이 판단:", e instanceof Error ? e.name : "unknown");
+  }
+  const second = notBefore ? computeServiceAccess(c, now, from, null, notBefore) : first;
+  if (second.kind !== "blocked") return second;
+  return computeServiceAccess(c, now, from, await holdReason(companyId), notBefore);
 }
 
 /** 직원 화면·서버 동작에 보일 안내(막혔을 때). */

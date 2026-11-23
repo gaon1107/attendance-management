@@ -476,7 +476,15 @@ export async function operatorCancelOrder(input: {
         const live = await prisma.pgBillingKey.findFirst({ where: { companyId: o.companyId, status: "active" }, select: { nextChargeDate: true } });
         if (live?.nextChargeDate) nextText = ` 자동결제 카드는 남아 있어 ${ymdText(live.nextChargeDate)} 오전 10시 이후 다시 자동 결제됩니다.`;
       }
-      return { ok: true, message: `${amount.toLocaleString("ko-KR")}원을 취소(환불)했습니다.${periodText}${stopText}${nextText}`, ...base };
+      // 되돌린 기간이 이미 끝났으면 언제부터 직원 출근이 막히는지 알린다(환불 뒤 REFUND_GRACE_DAYS 여유 — lib/service-access.ts).
+      let blockText = "";
+      try {
+        const a = await getServiceAccess(o.companyId);
+        if (((a?.kind === "grace" && !a.hold) || a?.kind === "ending") && a.blockAt) blockText = ` 다시 결제하지 않으면 ${ymdText(a.blockAt)}부터 직원의 새 출근이 막힙니다.`;
+      } catch {
+        blockText = "";
+      }
+      return { ok: true, message: `${amount.toLocaleString("ko-KR")}원을 취소(환불)했습니다.${periodText}${stopText}${nextText}${blockText}`, ...base };
     }
     if (after?.status === "cancel_check" && after.pgResultMsg?.startsWith(CANCEL_REJECT_PREFIX)) {
       // KIS가 확정 거절(검수 중간 2) — 돈은 돌아가지 않았다. 운영자가 알아야 한다.
