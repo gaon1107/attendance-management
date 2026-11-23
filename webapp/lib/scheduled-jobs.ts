@@ -13,6 +13,7 @@ import { purgeExpiredSmsLogs } from "@/lib/sms-retention";
 import { runCompanyPurgeIfDue } from "@/lib/company-purge";
 import { reconcilePayOrders } from "@/lib/billing-pay";
 import { settleBillingKeys, reconcileAutoChargeOrders, chargeDueBillingKeys } from "@/lib/billing-auto";
+import { settleOperatorCancels } from "@/lib/billing-operator";
 
 const FIRST_RUN_DELAY_MS = 5 * 60 * 1000;
 const TICK_MS = 60 * 60 * 1000;
@@ -64,6 +65,8 @@ export function startScheduledJobs(): void {
       .catch((e) => console.error("[scheduled-jobs] 결제 정리 실패:", e))
       .then(step("자동결제 카드 정리", () => settleBillingKeys()))
       .then(step("자동결제 결과 정리", () => reconcileAutoChargeOrders()))
+      // 운영자 취소(환불) 다시 시도·취소 확정된 결제의 이용 기간 되돌리기(2026-11-23 결제 6단계) — 청구보다 **먼저**(되돌린 기간으로 청구일을 잡게).
+      .then(step("운영자 취소 마무리", () => settleOperatorCancels()))
       .then(step("자동결제 정기 청구", () => chargeDueBillingKeys()));
   };
   setTimeout(runPayReconcile, 60 * 1000).unref();

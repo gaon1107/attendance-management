@@ -952,6 +952,20 @@ async function runBillingCancel(orderId: string, cfg: KisMerchant): Promise<void
 }
 
 /**
+ * [운영자 화면 전용] cancel_check인 **자동결제** 주문의 빌링 취소를 한 번 시도한다(2026-11-23 결제 6단계, lib/billing-operator.ts).
+ *  · 기존 runBillingCancel을 그대로 부른다(동작 같음) — 주문의 상점ID와 지금 빌링 상점 설정이 같을 때만.
+ * @returns false = 지금 설정으로는 취소 요청을 보낼 수 없다 → 운영자가 KIS 상점관리자에서 확인
+ */
+export async function runBillingCancelFor(orderId: string): Promise<boolean> {
+  const o = await prisma.pgOrder.findUnique({ where: { id: orderId }, select: { status: true, orderType: true, pgMid: true } });
+  if (!o || o.status !== "cancel_check" || o.orderType === "normal") return false;
+  const cfg = configForMid(o.pgMid);
+  if (!cfg) return false;
+  await runBillingCancel(orderId, cfg);
+  return true;
+}
+
+/**
  * 결과가 정해진 자동결제 주문마다 **한 번만** 후속 처리(followedUpAt): 정기 청구 직후와 10분 정리(늦게 정해진 결과) 모두 이것으로.
  *  paid → 실패 횟수 0, 다음 결제일 = 새 이용 기간 시작일 3일 전 / failed → 실패 +1·내일 다시, 3번째면 멈춤 / cancelled → 멈춤.
  *  카드가 사용 중이 아니면(해지·변경·멈춤) 아무것도 하지 않는다.

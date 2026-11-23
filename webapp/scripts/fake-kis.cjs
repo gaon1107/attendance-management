@@ -12,7 +12,8 @@ const http = require("http");
 const crypto = require("crypto");
 const KEY = process.env.FAKE_KEY || "fake-merchant-key";
 const enc = (mid, edi, amt) => crypto.createHash("sha256").update(mid + edi + amt + KEY).digest("hex");
-let mode = { approve: "ok", inquire: "approved", issue: "ok", bpay: "ok", bdel: "ok" };
+// 취소(일반·빌링 공통, 2026-11-23 결제 6단계 운영자 취소 시험): /__mode?cancel=ok|fail|drop (drop = 취소는 됐는데 응답이 끊김)
+let mode = { approve: "ok", inquire: "approved", issue: "ok", bpay: "ok", bdel: "ok", cancel: "ok" };
 const tx = new Map(); // tid → { ordNo, amt, status, billing }
 const bids = new Set(); // 살아 있는 가짜 빌키
 const log = [];
@@ -25,7 +26,7 @@ function json(res, obj) { res.writeHead(200, { "Content-Type": "application/json
 http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost:4599");
   if (url.pathname === "/__mode") {
-    for (const k of ["approve", "inquire", "issue", "bpay", "bdel"]) if (url.searchParams.get(k)) mode[k] = url.searchParams.get(k);
+    for (const k of ["approve", "inquire", "issue", "bpay", "bdel", "cancel"]) if (url.searchParams.get(k)) mode[k] = url.searchParams.get(k);
     return json(res, { mode, log: log.slice(-30) });
   }
   const raw = await readBody(req);
@@ -68,8 +69,10 @@ document.getElementById("no").onclick=()=>parent.postMessage(${JSON.stringify(JS
   }
   if (url.pathname === "/v2/billing/cancel") {
     const t = tx.get(b.tid);
-    log.push(`bcancel ${b.tid} ${b.canAmt}`);
+    log.push(`bcancel ${b.tid} ${b.canAmt} mode=${mode.cancel}`);
+    if (mode.cancel === "fail") return json(res, { resultCd: "9999", resultMsg: "취소 실패(가짜)", tid: b.tid });
     if (t) t.status = "cancelled";
+    if (mode.cancel === "drop") { req.socket.destroy(); return; }
     return json(res, { resultCd: "2001", resultMsg: "취소 성공", tid: b.tid, amt: b.canAmt });
   }
   if (url.pathname === "/v2/billing/delete") {
@@ -103,8 +106,10 @@ document.getElementById("no").onclick=()=>parent.postMessage(${JSON.stringify(JS
   }
   if (url.pathname === "/v2/cancel") {
     const t = tx.get(b.tid);
-    log.push(`cancel ${b.tid} ${b.canAmt}`);
+    log.push(`cancel ${b.tid} ${b.canAmt} mode=${mode.cancel}`);
+    if (mode.cancel === "fail") return json(res, { resultCd: "9999", resultMsg: "취소 실패(가짜)", tid: b.tid });
     if (t) t.status = "cancelled";
+    if (mode.cancel === "drop") { req.socket.destroy(); return; }
     return json(res, { resultCd: "2001", resultMsg: "취소 성공", tid: b.tid, amt: b.canAmt });
   }
   res.writeHead(404); res.end();

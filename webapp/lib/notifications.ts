@@ -8,6 +8,8 @@ import { listPcOffUnreported, listOfflineTempUseOveruse } from "@/lib/pcoff-aler
 
 /** 회사 계정 문자 재설정 경고를 알림센터에 남겨 두는 기간. */
 const OWNER_RESET_ALERT_DAYS = 7;
+/** 운영자가 결제를 취소(환불)한 안내를 알림센터에 남겨 두는 기간(2026-11-23 결제 6단계). */
+const REFUND_ALERT_DAYS = 7;
 
 export type AdminNotification = {
   key: string;
@@ -132,6 +134,31 @@ export const listAdminNotifications = cache(async (companyId: string): Promise<{
       detail: "카드 결제가 승인되지 않았습니다. 다음 날 오전 10시 이후에 다시 시도하며, 3번 실패하면 자동결제가 멈춥니다. 카드 한도·유효기간을 확인해 주세요.",
       count: 1, countLabel: `${autoPayFailing}번 실패`, href: "/subscription", cta: "확인", severity: "warning",
     });
+  }
+
+  // 가온(운영자)이 결제를 취소(환불)함 — 2026-11-23 결제 6단계. 안내는 **화면으로만**(사장님 결정). 최근 7일 것만.
+  //  · 부가기능 — 실패해도 알림센터 본체는 뜬다.
+  try {
+    const since = new Date(Date.now() - REFUND_ALERT_DAYS * 24 * 60 * 60 * 1000);
+    const refunds = await prisma.pgOrder.groupBy({
+      by: ["status"],
+      where: { companyId, operatorCancelAt: { gte: since }, status: { in: ["cancel_check", "cancelled"] } },
+      _count: { _all: true },
+    });
+    const done = refunds.find((r) => r.status === "cancelled")?._count._all ?? 0;
+    const going = refunds.find((r) => r.status === "cancel_check")?._count._all ?? 0;
+    if (done + going > 0) {
+      autoPayItems.push({
+        key: "payment-refunded",
+        title: going > 0 ? "결제 취소(환불) 진행 중" : "결제가 취소(환불)되었습니다",
+        detail: going > 0
+          ? "가온 고객센터에서 결제 취소를 요청했습니다. 카드사 처리가 끝나면 취소로 바뀌고, 그 결제로 늘어났던 이용 기간이 되돌아갑니다."
+          : "가온 고객센터에서 결제를 취소(환불)했습니다. 그 결제로 늘어났던 이용 기간이 되돌아갔습니다. [구독·요금]에서 이용 기간을 확인해 주세요.",
+        count: done + going, countLabel: `${done + going}건`, href: "/subscription", cta: "확인", severity: "primary",
+      });
+    }
+  } catch (e) {
+    console.warn("[notifications] 결제 취소 안내 집계 실패(알림센터는 정상 표시):", e);
   }
 
   const items: AdminNotification[] = [];

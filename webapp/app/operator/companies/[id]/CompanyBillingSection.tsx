@@ -3,6 +3,7 @@
 //  · 취소 버튼은 이 회사 이용 기간 **맨 끝에 붙은 결제 하나**에만 나온다(lib/billing-operator.ts getCompanyBilling).
 import { KEY_STATUS_LABEL, type CompanyBilling } from "@/lib/billing-operator";
 import { ymd, lastDayOf, won, th, td, StatusBadge, typeLabel, ymdhm } from "../../payments/PayParts";
+import { CancelPaymentForm, type CancelTarget } from "./CancelPaymentForm";
 
 const card: React.CSSProperties = { background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "20px 24px" };
 
@@ -40,6 +41,16 @@ function accessText(b: CompanyBilling): { text: string; danger: boolean } {
 
 export function CompanyBillingSection({ companyId, b }: { companyId: string; b: CompanyBilling }) {
   const acc = accessText(b);
+  const last = b.cancellableOrderId ? b.orders.find((o) => o.id === b.cancellableOrderId) : undefined;
+  const target: CancelTarget | null = last && b.cancelPreview
+    ? {
+        orderId: last.id,
+        label: `${ymd(last.paidAt ?? last.createdAt)} ${typeLabel(last.orderType)} ${won(b.cancelPreview.amount)}`,
+        amountText: won(b.cancelPreview.amount),
+        revertText: b.cancelPreview.revertTo ? `${lastDayOf(b.cancelPreview.revertTo)}까지` : "결제 전 상태(무료 기간만)",
+        autoPayOrder: b.cancelPreview.autoPayOrder,
+      }
+    : null;
   return (
     <section style={{ ...card, marginBottom: 16 }}>
       <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 4px" }}>결제</h2>
@@ -75,6 +86,7 @@ export function CompanyBillingSection({ companyId, b }: { companyId: string; b: 
           {b.cancelBlockedReason}
         </div>
       )}
+      <CancelPaymentForm companyId={companyId} target={target} hasLiveCard={b.hasLiveCard} />
       {b.orders.length === 0 ? (
         <div style={{ fontSize: 14, color: "var(--text-sub)", padding: "8px 0" }}>아직 결제가 없습니다.</div>
       ) : (
@@ -88,7 +100,6 @@ export function CompanyBillingSection({ companyId, b }: { companyId: string; b: 
                 <th style={th}>상태</th>
                 <th style={th}>늘어난 이용 기간</th>
                 <th style={th}>카드 · 거래번호</th>
-                <th style={th}></th>
               </tr>
             </thead>
             <tbody>
@@ -115,12 +126,9 @@ export function CompanyBillingSection({ companyId, b }: { companyId: string; b: 
                     )}
                   </td>
                   <td style={{ ...td, fontSize: 13 }}>
+                    {o.id === b.cancellableOrderId && <div style={{ fontSize: 12, fontWeight: 700, color: "var(--danger)" }}>취소 가능(맨 끝 결제)</div>}
                     {o.card ?? "—"}
                     <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{o.tidTail ?? ""}</div>
-                  </td>
-                  <td style={{ ...td, textAlign: "right" }}>
-                    {/* 6-2 취소 버튼 자리 */}
-                    {o.id === b.cancellableOrderId && <span data-company={companyId} />}
                   </td>
                 </tr>
               ))}

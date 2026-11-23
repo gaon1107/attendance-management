@@ -524,6 +524,20 @@ async function runCancel(orderId: string, cfg: KisMerchant): Promise<void> {
   }
 }
 
+/**
+ * [운영자 화면 전용] cancel_check인 **일반 결제** 주문의 KIS 취소를 한 번 시도한다(2026-11-23 결제 6단계, lib/billing-operator.ts).
+ *  · 기존 runCancel을 그대로 부른다(동작 같음) — 주문의 상점ID와 지금 일반 상점 설정이 같을 때만.
+ * @returns false = 지금 설정으로는 취소 요청을 보낼 수 없다(설정 없음·상점ID 다름) → 운영자가 KIS 상점관리자에서 확인
+ */
+export async function runNormalCancelFor(orderId: string): Promise<boolean> {
+  const o = await prisma.pgOrder.findUnique({ where: { id: orderId }, select: { status: true, orderType: true, pgMid: true } });
+  if (!o || o.status !== "cancel_check" || o.orderType !== "normal") return false;
+  const cfg = readKispgConfig().normal;
+  if (!cfg || cfg.mid !== o.pgMid) return false;
+  await runCancel(orderId, cfg);
+  return true;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ③ 10분 정리 — 결과 모름(check)·취소 중(cancel_check)·결제창에서 안 돌아온 주문(ready)
 // ─────────────────────────────────────────────────────────────────────────────
