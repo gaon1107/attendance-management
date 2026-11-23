@@ -9,6 +9,7 @@ export const metadata: Metadata = {
   // 검색엔진 사이트 소유 확인 코드(공개값 — 페이지 소스에 그대로 보이는 값이라 비밀이 아니다). 지우면 등록이 풀린다.
   verification: {
     google: "VqNtSl2j1KaKCj9FMziAfvzNUR9ePuiKeid5OeRv_BI",
+    other: { "naver-site-verification": "16aa9cde0751859bab844d4c748611dc9e92d90d" },
   },
   title: "근태관리",
   description: "정직한 실근무시간, 강제하지 않는 얼굴인증 — 중소기업 근태관리 SaaS",
