@@ -22,8 +22,10 @@ import { readKispgConfig } from "@/lib/kispg-config";
 import { hasSmsCryptoKey, encryptSmsPassword, decryptSmsPassword } from "@/lib/sms-crypto";
 import { countHeads, billableCount } from "@/lib/pricing-server";
 import { quoteFor, KIS_MAX_TOTAL, PRICE_TIERS, tierLabel, withVat, type Quote } from "@/lib/pricing";
-import { periodBase, phoneDigits, fitBytes } from "@/lib/billing-pay";
-import { moveKey, kisText } from "@/lib/pg-state";
+import { periodBase, phoneDigits, fitBytes, makeOrderNo, applyPaidOrder, claimCompany, releaseCompany } from "@/lib/billing-pay";
+import { moveKey, moveOrder, kisText } from "@/lib/pg-state";
+import { toISODate } from "@/lib/period";
+import type { BillingPayResult } from "@newgaon/kispg";
 
 /** 카드 등록 번호 — "HRB-" + 한국 시각 14자리 + 난수 6자리. 결과 받기에서 이 모양이 아니면 카드 등록으로 보지 않는다. */
 export const REG_NO_RE = /^HRB-\d{14}-[0-9a-f]{6}$/;
@@ -89,6 +91,13 @@ export function nextChargeDateFor(base: Date, now: Date): Date {
   return d.getTime() < today.getTime() ? today : d;
 }
 
+/** 자동결제 청구 금액 — kind를 좁혀야 금액을 꺼낼 수 있다(lib/pricing.ts Quote와 같은 이유: 0명·미동의 청구를 타입이 막는다). */
+export type AutoChargeAmount =
+  | { kind: "charge"; tierIndex: number; label: string; monthly: number; vat: number; total: number; capped: boolean }
+  | { kind: "none" }
+  | { kind: "quote" }
+  | { kind: "no_consent" };
+
 /**
  * 자동결제로 청구할 금액 = min(지금 인원 구간, 동의한 구간)(1단계 검수 M7).
  *  · 동의한 구간이 없으면 청구하지 않는다(null) — 동의 없이 돈을 빼지 않는다.
@@ -97,7 +106,7 @@ export function nextChargeDateFor(base: Date, now: Date): Date {
 export function autoChargeAmount(
   q: Quote,
   approvedTierIndex: number | null
-): { kind: "charge"; tierIndex: number; label: string; monthly: number; vat: number; total: number; capped: boolean } | { kind: "none" | "quote" | "no_consent" } {
+): AutoChargeAmount {
   if (q.kind !== "tier") return { kind: q.kind };
   if (approvedTierIndex === null || !Number.isInteger(approvedTierIndex) || approvedTierIndex < 0 || approvedTierIndex >= PRICE_TIERS.length) {
     return { kind: "no_consent" };
@@ -311,6 +320,15 @@ export async function handleCardReturn(body: Record<string, unknown>): Promise<{
   console.log(`[billing-auto] 카드 등록 확정 ${key.regNo}: ok=${issued.ok} 코드=${issued.resultCd || "-"} 결과모름=${issued.uncertain} 결제가능성=${issued.mayBeCharged}`);
   if (issued.ok) {
     const activated = await activateIssued(key.id, cfg, issued);
+    if (activated) {
+      // 결제일이 이미 지났으면(체험 끝남·이용 기간 끝남) **매달 청구와 같은 함수로** 바로 청구한다 — 첫 결제 경로를 따로 두지 않는다
+      //  (계획서 설계 결정 1). 결제일이 앞이면 chargeKey가 not_due로 그냥 돌아온다. 관리자가 직접 신청한 순간이라 10시 제한은 없다.
+      try {
+        await chargeKey(key.id);
+      } catch (e) {
+        console.error(`[billing-auto] 등록 직후 청구 오류(정기 작업이 다시 봄) — ${key.regNo}: ${errCode(e)}`);
+      }
+    }
     return { regNo: key.regNo, activatedKeyId: activated ? key.id : null };
   }
   if (issued.uncertain) {
@@ -564,5 +582,394 @@ export async function settleBillingKeys(limit = 20, now: Date = new Date()): Pro
     return out;
   } finally {
     settling = false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⑤ 매달 자동 청구(3-2) — 결제일이 된 사용 중 카드로 결제 → 반영 → 후속(다음 결제일·실패 횟수·멈춤)
+//   원본: 학원관리 subscriptionAutoChargeService.js. 규칙(학원관리 10-20 ⑦과 같음 · 근태 11-23 계획):
+//   만료 3일 전 오전 10시 · 실패하면 다음 날 같은 시각, 총 3번 → 멈춤(paused) · 일시불 · 결과 안내는 화면으로만(문자 없음 — 사장님 11-23).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 연속 실패 몇 번이면 멈추나(총 3번 — D-3·D-2·D-1). */
+const MAX_FAILS = 3;
+/** 정기 청구는 이 시각(한국 시각) 이후에만 — 새벽에 카드 승인 문자가 가지 않게. */
+const CHARGE_HOUR = 10;
+/** 같은 회사의 결제창이 이 시간 안에 열렸으면(ready) 이번에는 청구하지 않는다(직접 결제와 겹침 방지 — 다음 회차에 다시). */
+const RECENT_READY_MS = 15 * 60 * 1000;
+/** 조회가 "결제 없음"이어도 승인 요청 후 이만큼은 실패로 닫지 않는다(KIS 반영이 늦을 수 있다 — 60분). */
+const NOT_FOUND_GRACE_MS = 60 * 60 * 1000;
+/** 결과 모름 조회 — 동시 조회 잠금 120초, 처음 20번은 10분마다, 그 뒤 1시간마다, 7일 지나면 운영자 확인. */
+const CHECK_LOCK_MS = 120 * 1000;
+const FAST_RETRIES = 20;
+const SLOW_INTERVAL_MS = 60 * 60 * 1000;
+const GIVE_UP_MS = 7 * 24 * 60 * 60 * 1000;
+
+export type ChargeOutcome =
+  | "charged" // 결제를 보냈다(결과는 주문 상태로)
+  | "not_due" | "rescheduled" | "postponed" | "paused" | "busy" | "skip";
+
+/** 사용 중 카드를 멈춘다(빌키는 남김 — 관리자가 카드를 다시 등록하면 옛 카드는 지워진다). 이미 멈춤·해지면 false. */
+async function pauseKey(keyId: string, companyId: string, reason: string, failCount?: number): Promise<boolean> {
+  return moveKey(prisma, keyId, ["active"], "paused", {
+    pausedAt: new Date(), lastFailReason: kisText(reason), ...(failCount !== undefined ? { failCount } : {}),
+  }, companyId);
+}
+/** 다음 결제일을 내일로(같은 날 두 번 시도하지 않게). 사용 중 카드만. */
+async function postponeKey(keyId: string, now: Date, reason?: string): Promise<void> {
+  await prisma.pgBillingKey.updateMany({
+    where: { id: keyId, status: "active" },
+    data: { nextChargeDate: tomorrowStart(now), ...(reason ? { lastFailReason: kisText(reason) } : {}) },
+  });
+}
+/** 실패 1회를 센다 — 3번째면 멈춤, 아니면 내일 다시. 사용 중 카드만(해지·변경·멈춤이면 아무것도 안 함). */
+async function recordFailure(keyId: string, now: Date, reason: string, resultCode?: string | null): Promise<void> {
+  const k = await prisma.pgBillingKey.findUnique({ where: { id: keyId }, select: { status: true, failCount: true, companyId: true } });
+  if (!k || k.status !== "active") return;
+  const n = k.failCount + 1;
+  if (n >= MAX_FAILS) {
+    await pauseKey(keyId, k.companyId, `${MAX_FAILS}번 연속 결제에 실패해 자동결제를 멈췄습니다 — ${reason}`, n);
+    console.warn(`[billing-auto] 자동결제 ${MAX_FAILS}회 실패로 멈춤 — 회사 ${k.companyId.slice(0, 8)}`);
+    return;
+  }
+  await prisma.pgBillingKey.updateMany({
+    where: { id: keyId, status: "active", failCount: k.failCount },
+    data: { failCount: n, lastFailReason: kisText(reason), lastResultCode: kisText(resultCode ?? null, 20), nextChargeDate: tomorrowStart(now) },
+  });
+}
+
+let charging = false;
+
+/** 정기 청구 — 10분 정리가 부른다. 오전 10시 전에는 아무것도 하지 않는다. */
+export async function chargeDueBillingKeys(now: Date = new Date(), limit = 50): Promise<{ attempted: number }> {
+  const out = { attempted: 0 };
+  if (charging || now.getHours() < CHARGE_HOUR) return out;
+  if (!billingMerchant()) return out;
+  charging = true;
+  try {
+    const due = await prisma.pgBillingKey.findMany({
+      where: { status: "active", nextChargeDate: { lte: now } },
+      orderBy: { nextChargeDate: "asc" }, take: limit, select: { id: true, regNo: true },
+    });
+    for (const k of due) {
+      try {
+        if ((await chargeKey(k.id)) === "charged") out.attempted++;
+      } catch (e) {
+        console.error(`[billing-auto] 정기 청구 오류 — 카드 ${k.regNo}: ${errCode(e)}`);
+      }
+    }
+    return out;
+  } finally {
+    charging = false;
+  }
+}
+
+/**
+ * 카드 한 장으로 이번 회차를 청구한다. 정기 청구·카드 등록 직후(결제일이 이미 지난 경우) 공통.
+ *  🔴 회사 결제 선점(payClaimUntil)을 잡은 **뒤** 다시 확인한다 — 직접 결제와 겹쳐 두 번 청구·2개월 연장되지 않게(학원관리 4단계 검수 치명 1).
+ */
+export async function chargeKey(keyId: string): Promise<ChargeOutcome> {
+  const first = await prisma.pgBillingKey.findUnique({ where: { id: keyId }, select: { companyId: true, status: true } });
+  if (!first || first.status !== "active") return "skip";
+  const token = await claimCompany(first.companyId, new Date());
+  if (!token) return "busy"; // 같은 회사의 다른 결제가 처리 중 — 다음 회차(10분 뒤)에 다시
+  let orderId: string | null = null;
+  try {
+    const now = new Date();
+    const key = await prisma.pgBillingKey.findUnique({ where: { id: keyId } });
+    if (!key || key.status !== "active" || !key.bid) return "skip";
+    if (!key.nextChargeDate || key.nextChargeDate.getTime() > now.getTime()) return "not_due";
+    const cfg = configForMid(key.pgMid);
+    if (!cfg) {
+      console.error(`[billing-auto] [운영자 확인 필요] 카드 ${key.regNo} — 등록한 상점 설정이 지금 없어 청구하지 못함`);
+      return "skip";
+    }
+    const c = await prisma.company.findUnique({
+      where: { id: key.companyId },
+      select: {
+        name: true, bizRegNo: true, companyPhone: true, managerPhone: true,
+        createdAt: true, trialLastDate: true, paidUntil: true, terminatedAt: true, approvedTierIndex: true,
+      },
+    });
+    if (!c || c.terminatedAt) {
+      await markCompanyCardsForDeletion(key.companyId, "회사 해지로 자동결제 카드 지움");
+      return "skip";
+    }
+    // 확인 중인 결제(돈이 빠졌는지 모름)가 있으면 오늘은 청구하지 않는다.
+    const pending = await prisma.pgOrder.count({ where: { companyId: key.companyId, status: { in: ["check", "cancel_check"] } } });
+    if (pending > 0) {
+      await postponeKey(key.id, now);
+      return "postponed";
+    }
+    // 방금 결제창을 연 관리자가 있으면(직접 결제 중일 수 있다) 이번에는 건너뛴다 — 10분 뒤 다시.
+    const recentReady = await prisma.pgOrder.count({
+      where: { companyId: key.companyId, status: "ready", createdAt: { gt: new Date(now.getTime() - RECENT_READY_MS) } },
+    });
+    if (recentReady > 0) return "busy";
+    // 이용 기간이 결제일보다 많이 남았으면(직접 결제·운영자 기간 변경) 결제일만 다시 잡는다.
+    const base = periodBase(c, now);
+    const due = nextChargeDateFor(base, now);
+    if (due.getTime() > startOfDay(now).getTime()) {
+      await prisma.pgBillingKey.updateMany({ where: { id: key.id, status: "active" }, data: { nextChargeDate: due } });
+      return "rescheduled";
+    }
+
+    const heads = await countHeads(key.companyId);
+    const q = quoteFor(billableCount(heads.employees, heads.admins));
+    const amount = autoChargeAmount(q, c.approvedTierIndex ?? key.consentTierIndex);
+    if (amount.kind === "none") {
+      // 요금 대상 인원이 없으면 청구하지 않는다(실패로 세지 않음) — 내일 다시 본다.
+      await postponeKey(key.id, now, "요금 대상 인원이 없어 이번에는 청구하지 않았습니다.");
+      return "postponed";
+    }
+    if (amount.kind === "quote") {
+      await pauseKey(key.id, key.companyId, "요금표를 넘는 인원이라 자동결제를 멈췄습니다 — 고객센터로 연락해 주세요.");
+      return "paused";
+    }
+    if (amount.kind === "no_consent") {
+      await pauseKey(key.id, key.companyId, "동의하신 금액 정보가 없어 자동결제를 멈췄습니다 — 카드를 다시 등록해 주세요.");
+      return "paused";
+    }
+    const max = readKispgConfig().maxAmount ?? KIS_MAX_TOTAL;
+    if (amount.total > max) {
+      await pauseKey(key.id, key.companyId, "카드 1회 결제 한도를 넘는 금액이라 자동결제를 멈췄습니다 — 고객센터로 연락해 주세요.");
+      return "paused";
+    }
+    const tel = phoneDigits(c.managerPhone) ?? phoneDigits(c.companyPhone);
+    if (!tel) {
+      await recordFailure(key.id, now, "담당자 연락처가 없어 결제하지 못했습니다 — [회사정보]에 연락처를 입력해 주세요.");
+      return "postponed";
+    }
+    const bid = decryptSmsPassword(key.bid);
+    if (!bid) {
+      console.error(`[billing-auto] [운영자 확인 필요] 카드 ${key.regNo} — 빌키를 풀 수 없어(열쇠 확인) 청구하지 못함`);
+      await pauseKey(key.id, key.companyId, "카드 정보를 읽지 못해 자동결제를 멈췄습니다 — 카드를 다시 등록해 주세요.");
+      return "paused";
+    }
+
+    const orderNo = makeOrderNo(now);
+    const productName = `가온 근태관리 1개월 (${amount.label}) 자동결제`;
+    try {
+      const o = await prisma.pgOrder.create({
+        data: {
+          companyId: key.companyId, userId: null, orderNo, orderType: "billing_auto", billingKeyId: key.id, pgMid: key.pgMid,
+          // 회차 열쇠 = 회사:새 기간 시작일(한국 시간 — 1단계 검수 경미 8). 같은 회차에 살아 있는 주문은 DB가 1개만 허용한다.
+          cycleKey: `${key.companyId}:${toISODate(base)}`, billingCycleDate: base,
+          productName, employees: q.employees, headEmployees: heads.employees, headAdmins: heads.admins,
+          buyerName: c.name, buyerBizRegNo: c.bizRegNo, tierIndex: amount.tierIndex, termMonths: 1, payMethod: "CARD",
+          supplyAmount: amount.monthly, vatAmount: amount.vat, totalAmount: amount.total,
+          // 바로 check — 보내는 순간부터 "돈이 빠졌는지 모름"으로 다룬다(학원관리와 같음).
+          status: "check", approveRequestedAt: now, lastCheckedAt: now,
+        },
+      });
+      orderId = o.id;
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        // 이 회차의 살아 있는 주문이 이미 있다 — 그 결과가 후속 처리를 한다.
+        await postponeKey(key.id, now);
+        return "postponed";
+      }
+      throw e;
+    }
+    // 결과와 상관없이 오늘은 다시 시도하지 않는다 — 성공하면 후속 처리가 새 결제일로 고친다.
+    await prisma.pgBillingKey.updateMany({ where: { id: key.id, status: "active" }, data: { nextChargeDate: tomorrowStart(now) } });
+
+    const paid = await kispg.billingPay({
+      config: cfg, bid, ordNo: orderNo, goodsNm: productName, goodsAmt: amount.total,
+      ordNm: fitBytes(c.name.trim() || "가온 근태관리 고객", 30), ordTel: tel,
+    });
+    console.log(`[billing-auto] 정기 청구 ${orderNo}: ok=${paid.ok} 코드=${paid.resultCd || "-"} 결과모름=${paid.uncertain} 금액불일치=${paid.amountMismatch}`);
+    await settleAutoCharge(orderId, cfg, paid);
+    return "charged";
+  } finally {
+    await releaseCompany(first.companyId, token);
+    if (orderId) await followUpAutoChargeOrders().catch((e) => console.error(`[billing-auto] 후속 처리 실패: ${errCode(e)}`));
+  }
+}
+
+/** 빌키 결제 응답을 정리한다. 확정 실패여도 바로 실패로 닫지 않는다 — 60분 뒤 조회로 "결제 없음"을 확인한 뒤 닫는다(학원관리와 같음). */
+async function settleAutoCharge(orderId: string, cfg: KisMerchant, paid: BillingPayResult): Promise<void> {
+  const tid = kisText(paid.tid, 40);
+  if (tid) {
+    try {
+      await prisma.pgOrder.updateMany({ where: { id: orderId, status: "check", pgTid: null }, data: { pgTid: tid } });
+    } catch (e) {
+      console.error(`[billing-auto] [운영자 확인 필요] 자동결제 거래번호 저장 실패(${errCode(e)}) — 주문 ${orderId}`);
+    }
+  }
+  if (paid.ok) {
+    const r = await applyPaidOrder(orderId, {
+      amt: paid.amt ?? 0, appNo: paid.appNo, payMethod: paid.payMethod, cardNo: paid.cardNo, cardType: paid.cardType,
+      cardName: paid.fnNm, code: paid.resultCd, msg: paid.resultMsg,
+    });
+    if (r.outcome === "blocked") await billingCancelCheck(orderId, cfg, paid.amt ?? null, r.reason);
+    return;
+  }
+  if (paid.amountMismatch) {
+    await billingCancelCheck(orderId, cfg, paid.amt ?? null, "승인 금액이 주문 금액과 달라 자동 취소");
+    return;
+  }
+  // 결과 모름·확정 실패 — check로 두고 10분 정리가 조회로 닫는다.
+  await prisma.pgOrder.updateMany({
+    where: { id: orderId, status: "check" },
+    data: {
+      failReason: kisText(paid.uncertain ? `결과 모름 — ${paid.error ?? ""}` : (paid.error ?? "승인되지 않았습니다.")),
+      pgResultCode: kisText(paid.resultCd, 20), pgResultMsg: kisText(paid.resultMsg),
+    },
+  });
+}
+
+/** 자동결제 주문을 취소한다(cancel_check로 옮긴 뒤 빌링 취소). 결과가 애매하면 cancel_check로 두고 정리가 다시 한다. */
+async function billingCancelCheck(orderId: string, cfg: KisMerchant, amt: number | null, reason: string): Promise<void> {
+  const moved = await moveOrder(prisma, orderId, ["check"], "cancel_check", {
+    failReason: kisText(reason), ...(amt !== null ? { pgAmount: amt } : {}),
+  });
+  if (!moved) return;
+  await runBillingCancel(orderId, cfg);
+}
+
+/** cancel_check 자동결제 주문을 KIS **빌링 취소**로 취소한다(일반 결제 취소 주소와 다르다). */
+async function runBillingCancel(orderId: string, cfg: KisMerchant): Promise<void> {
+  const o = await prisma.pgOrder.findUnique({ where: { id: orderId } });
+  if (!o || o.status !== "cancel_check") return;
+  let tid = o.pgTid;
+  let canAmt = o.pgAmount;
+  if (!tid || canAmt === null) {
+    const r = await kispg.inquire({ config: cfg, tid: tid ?? undefined, ordNo: o.orderNo, goodsAmt: o.totalAmount });
+    if (r.status === "cancelled") {
+      await moveOrder(prisma, o.id, ["cancel_check"], "cancelled", { cancelledAt: new Date() });
+      return;
+    }
+    if (r.status === "not_found") {
+      if (Date.now() - (o.approveRequestedAt ?? o.createdAt).getTime() <= NOT_FOUND_GRACE_MS) return;
+      await moveOrder(prisma, o.id, ["cancel_check"], "cancelled", { cancelledAt: new Date(), failReason: kisText(`${o.failReason ?? ""} / 조회 결과 결제 없음`) });
+      return;
+    }
+    if (r.status !== "approved" || r.amt === null || !kisText(r.tid, 40)) return; // 모르면 다음 정리 때
+    tid = tid ?? kisText(r.tid, 40);
+    canAmt = canAmt ?? r.amt;
+    await prisma.pgOrder.updateMany({ where: { id: o.id, status: "cancel_check" }, data: { pgTid: tid, pgAmount: canAmt } });
+  }
+  if (!tid || canAmt === null) return;
+  const c = await kispg.billingCancel({ config: cfg, tid, canAmt, canMsg: o.failReason ?? "자동 취소", ordNo: o.orderNo });
+  if (c.ok || c.alreadyCancelled) {
+    await moveOrder(prisma, o.id, ["cancel_check"], "cancelled", { cancelledAt: new Date() });
+  } else {
+    console.warn(`[billing-auto] 자동결제 취소가 끝나지 않음(정리 작업이 다시 시도) — 주문 ${o.orderNo}: ${c.error ?? ""}`);
+  }
+}
+
+/**
+ * 결과가 정해진 자동결제 주문마다 **한 번만** 후속 처리(followedUpAt): 정기 청구 직후와 10분 정리(늦게 정해진 결과) 모두 이것으로.
+ *  paid → 실패 횟수 0, 다음 결제일 = 새 이용 기간 시작일 3일 전 / failed → 실패 +1·내일 다시, 3번째면 멈춤 / cancelled → 멈춤.
+ *  카드가 사용 중이 아니면(해지·변경·멈춤) 아무것도 하지 않는다.
+ */
+export async function followUpAutoChargeOrders(limit = 50): Promise<number> {
+  const orders = await prisma.pgOrder.findMany({
+    where: { orderType: "billing_auto", status: { in: ["paid", "failed", "cancelled"] }, followedUpAt: null },
+    orderBy: { createdAt: "asc" }, take: limit,
+    select: { id: true, status: true, billingKeyId: true, companyId: true, failReason: true, pgResultMsg: true, pgResultCode: true },
+  });
+  let n = 0;
+  for (const o of orders) {
+    const claimed = await prisma.pgOrder.updateMany({ where: { id: o.id, followedUpAt: null }, data: { followedUpAt: new Date() } });
+    if (claimed.count !== 1 || !o.billingKeyId) continue;
+    n++;
+    const now = new Date();
+    try {
+      if (o.status === "paid") {
+        const c = await prisma.company.findUnique({ where: { id: o.companyId }, select: { createdAt: true, trialLastDate: true, paidUntil: true } });
+        if (!c) continue;
+        await prisma.pgBillingKey.updateMany({
+          where: { id: o.billingKeyId, status: "active" },
+          data: { failCount: 0, lastFailReason: null, lastResultCode: kisText(o.pgResultCode, 20), nextChargeDate: nextChargeDateFor(periodBase(c, now), now) },
+        });
+      } else if (o.status === "failed") {
+        await recordFailure(o.billingKeyId, now, o.pgResultMsg || o.failReason || "카드 결제가 승인되지 않았습니다.", o.pgResultCode);
+      } else {
+        // 취소된 회차를 다음 날 또 청구하지 않게 멈춘다(관리자가 확인 후 카드를 다시 등록하거나 직접 결제).
+        await pauseKey(o.billingKeyId, o.companyId, `결제가 자동으로 취소되어 자동결제를 멈췄습니다${o.failReason ? ` — ${o.failReason}` : ""}`);
+      }
+    } catch (e) {
+      console.error(`[billing-auto] 자동결제 후속 처리 오류 — 주문 ${o.id}: ${errCode(e)}`);
+    }
+  }
+  return n;
+}
+
+let reconcilingAuto = false;
+
+/** 10분 정리 — 자동결제 주문의 결과 모름(check)·취소 중(cancel_check)을 **빌링 상점**으로 조회·취소해 닫는다. */
+export async function reconcileAutoChargeOrders(limit = 20, now: Date = new Date()): Promise<{ checked: number }> {
+  const out = { checked: 0 };
+  if (reconcilingAuto) return out;
+  reconcilingAuto = true;
+  try {
+    if (!billingMerchant()) return out;
+    const lockBefore = new Date(now.getTime() - CHECK_LOCK_MS);
+    const giveUpBefore = new Date(now.getTime() - GIVE_UP_MS);
+    const stuck = await prisma.pgOrder.count({
+      where: { status: { in: ["check", "cancel_check"] }, orderType: "billing_auto", createdAt: { lt: giveUpBefore } },
+    });
+    if (stuck > 0) console.error(`[billing-auto] [운영자 확인 필요] 7일이 넘도록 닫히지 않은 자동결제 ${stuck}건 — 자동 정리를 멈췄습니다`);
+    const pending = await prisma.pgOrder.findMany({
+      where: {
+        status: { in: ["check", "cancel_check"] }, orderType: "billing_auto", createdAt: { gte: giveUpBefore },
+        AND: [
+          { OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: lockBefore } }] },
+          { OR: [{ retryCount: { lt: FAST_RETRIES } }, { lastCheckedAt: { lt: new Date(now.getTime() - SLOW_INTERVAL_MS) } }] },
+        ],
+      },
+      orderBy: { lastCheckedAt: "asc" }, take: limit,
+    });
+    for (const o of pending) {
+      const cfg = configForMid(o.pgMid);
+      if (!cfg) {
+        console.error(`[billing-auto] [운영자 확인 필요] 자동결제 ${o.orderNo}의 상점ID가 지금 설정과 달라 조회하지 못함`);
+        continue;
+      }
+      const locked = await prisma.pgOrder.updateMany({
+        where: { id: o.id, status: o.status, lastCheckedAt: o.lastCheckedAt },
+        data: { lastCheckedAt: new Date(), retryCount: { increment: 1 } },
+      });
+      if (locked.count !== 1) continue;
+      out.checked++;
+      try {
+        if (o.status === "cancel_check") {
+          await runBillingCancel(o.id, cfg);
+          continue;
+        }
+        const sinceApprove = Date.now() - (o.approveRequestedAt ?? o.createdAt).getTime();
+        const r = await kispg.inquire({ config: cfg, tid: o.pgTid ?? undefined, ordNo: o.orderNo, goodsAmt: o.totalAmount });
+        const foundTid = kisText(r.tid, 40);
+        if (r.status === "approved" && !o.pgTid && foundTid) {
+          await prisma.pgOrder.updateMany({ where: { id: o.id, status: "check", pgTid: null }, data: { pgTid: foundTid } });
+        }
+        if (r.status === "approved" && !r.uncertain && !r.amountMismatch) {
+          const token = await claimCompany(o.companyId, new Date());
+          const companyExists = (await prisma.company.count({ where: { id: o.companyId } })) > 0;
+          if (!token && companyExists) continue; // 다른 결제가 선점 중 — 다음 회차에
+          try {
+            const a = await applyPaidOrder(o.id, { amt: r.amt ?? o.totalAmount, appNo: r.appNo, payMethod: r.payMethod, code: r.resultCd, msg: r.resultMsg });
+            if (a.outcome === "blocked") await billingCancelCheck(o.id, cfg, r.amt ?? null, a.reason);
+          } finally {
+            if (token) await releaseCompany(o.companyId, token);
+          }
+        } else if (r.status === "approved" && r.amountMismatch) {
+          await billingCancelCheck(o.id, cfg, r.amt, "승인 금액이 주문 금액과 달라 자동 취소");
+        } else if (r.status === "cancelled") {
+          await moveOrder(prisma, o.id, ["check"], "cancelled", { cancelledAt: new Date(), failReason: kisText("KIS 조회 결과 취소된 결제") });
+        } else if (r.status === "not_found" && sinceApprove > NOT_FOUND_GRACE_MS) {
+          // 확정: 돈이 빠지지 않았다 → 실패. 후속 처리가 실패 횟수를 세고 내일 다시(3번째면 멈춤).
+          await moveOrder(prisma, o.id, ["check"], "failed", { failReason: kisText(o.failReason ?? "KIS 조회 결과 결제 없음") });
+        }
+      } catch (e) {
+        console.error(`[billing-auto] 자동결제 정리 중 오류 — 주문 ${o.orderNo}: ${errCode(e)}`);
+      }
+    }
+    return out;
+  } finally {
+    reconcilingAuto = false;
+    await followUpAutoChargeOrders().catch((e) => console.error(`[billing-auto] 후속 처리 실패: ${errCode(e)}`));
   }
 }

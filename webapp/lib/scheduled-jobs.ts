@@ -12,7 +12,7 @@ import { purgeExpiredPhotos } from "@/lib/clock-photo";
 import { purgeExpiredSmsLogs } from "@/lib/sms-retention";
 import { runCompanyPurgeIfDue } from "@/lib/company-purge";
 import { reconcilePayOrders } from "@/lib/billing-pay";
-import { settleBillingKeys } from "@/lib/billing-auto";
+import { settleBillingKeys, reconcileAutoChargeOrders, chargeDueBillingKeys } from "@/lib/billing-auto";
 
 const FIRST_RUN_DELAY_MS = 5 * 60 * 1000;
 const TICK_MS = 60 * 60 * 1000;
@@ -56,14 +56,18 @@ export function startScheduledJobs(): void {
   //  · 돈이 빠졌는지 모르는 주문을 오래 두면 고객은 돈을 냈는데 기간이 안 늘어난 상태가 된다 — 그래서 1시간이 아니라 10분.
   //  · 2026-11-23 결제 3단계: 이어서 자동결제 카드 정리(등록 결과 모름·KIS 지우기 재시도·버려진 등록 창)도 한다.
   //    순서대로(앞이 끝난 뒤) — 같은 회사 결제를 동시에 만지는 일을 줄인다. 앞이 실패해도 뒤는 돈다.
+  //  · 그다음 자동결제 주문 결과 모름 정리 → **정기 청구**(오전 10시 이후, 결제일이 된 카드만 — 하루 한 번은 카드의 다음 결제일이 지킨다).
   const runPayReconcile = () => {
+    const step = (name: string, fn: () => Promise<unknown>) => () =>
+      fn().catch((e) => console.error(`[scheduled-jobs] ${name} 실패:`, e instanceof Error ? e.name : "unknown"));
     reconcilePayOrders()
       .catch((e) => console.error("[scheduled-jobs] 결제 정리 실패:", e))
-      .then(() => settleBillingKeys())
-      .catch((e) => console.error("[scheduled-jobs] 자동결제 카드 정리 실패:", e instanceof Error ? e.name : "unknown"));
+      .then(step("자동결제 카드 정리", () => settleBillingKeys()))
+      .then(step("자동결제 결과 정리", () => reconcileAutoChargeOrders()))
+      .then(step("자동결제 정기 청구", () => chargeDueBillingKeys()));
   };
   setTimeout(runPayReconcile, 60 * 1000).unref();
   setInterval(runPayReconcile, 10 * 60 * 1000).unref();
 
-  console.log("[scheduled-jobs] 출퇴근 사진 90일·문자 기록 1년 자동 삭제 + 해지 회사 30일 뒤 파기(새벽 1~3시) + 결제 정리(10분) 예약 시작");
+  console.log("[scheduled-jobs] 출퇴근 사진 90일·문자 기록 1년 자동 삭제 + 해지 회사 30일 뒤 파기(새벽 1~3시) + 결제·자동결제 정리와 정기 청구(10분, 청구는 오전 10시 이후) 예약 시작");
 }
