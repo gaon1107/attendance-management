@@ -14,8 +14,8 @@ const EFFECTIVE_DATE = "2026년 11월 22일";
 /** 결제 조항 개정(2026-11-23 사장님 결정: 공지 30일 뒤 시행 — 미납 시 이용 제한이 회원에게 불리한 변경이라 제3조 ③의 30일).
  *  🔴 **운영에 올리는(푸시하는) 날로 공지일을 고치고, 시행일 = 공지일 + 30일**로 맞출 것. 개인정보처리방침(app/privacy)의 같은 상수도 함께.
  *  🔴 실제 결제 개시(KIS 설정 넣기)는 시행일 뒤에 한다. */
-const PAY_NOTICE_DATE = "2026년 11월 24일";
-const PAY_EFFECTIVE_DATE = "2026년 12월 24일";
+const PAY_NOTICE_DATE = "2026년 11월 23일";
+const PAY_EFFECTIVE_DATE = "2026년 12월 23일";
 const PAY_TAG = ` [${PAY_EFFECTIVE_DATE} 시행]`;
 
 const ARTICLES: LegalArticle[] = [

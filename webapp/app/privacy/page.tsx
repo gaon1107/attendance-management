@@ -15,8 +15,8 @@ export const metadata: Metadata = {
 /** 시행일. 2026-11-22 사장님 확정: "화면에 올리는 날". */
 const EFFECTIVE_DATE = "2026년 11월 22일";
 /** 결제 항목 개정 — 이용약관(app/terms)의 같은 이름 상수와 **반드시 같은 날짜**로(운영에 올리는 날 공지, 30일 뒤 시행). */
-const PAY_NOTICE_DATE = "2026년 11월 24일";
-const PAY_EFFECTIVE_DATE = "2026년 12월 24일";
+const PAY_NOTICE_DATE = "2026년 11월 23일";
+const PAY_EFFECTIVE_DATE = "2026년 12월 23일";
 
 const ARTICLES: LegalArticle[] = [
   {
