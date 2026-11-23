@@ -15,6 +15,7 @@ import {
 } from "@/lib/billing-operator";
 import { OperatorHeader } from "../OperatorHeader";
 import { ymd, ymdhm, lastDayOf, won, th, td, StatusBadge, typeLabel } from "./PayParts";
+import { AttentionProvider, OrderAttentionActions, CardRefundMark } from "./AttentionActions";
 
 export const dynamic = "force-dynamic";
 
@@ -83,6 +84,7 @@ export default async function OperatorPaymentsPage({ searchParams }: { searchPar
               자동 정리(10분마다)가 끝내지 못한 결제입니다. 먼저 [KIS에 다시 조회]를 눌러 보고, 그래도 안 닫히면 KIS 상점관리자에서 거래를 직접 확인한 뒤
               확인한 대로 닫아 주세요. 거래번호 끝 6자리로 상점관리자에서 찾을 수 있습니다.
             </p>
+            <AttentionProvider>
             {attention.orders.map((o) => (
               <div key={o.id} style={{ borderTop: "1px solid #F3F4F6", padding: "12px 0", display: "flex", gap: 16, flexWrap: "wrap", justifyContent: "space-between" }}>
                 <div style={{ minWidth: 0, flex: "1 1 420px", fontSize: 14, lineHeight: 1.7, wordBreak: "keep-all" }}>
@@ -102,7 +104,7 @@ export default async function OperatorPaymentsPage({ searchParams }: { searchPar
                     {o.failReason && ` · ${o.failReason}`}
                   </div>
                 </div>
-                {/* 6-3 처리 버튼 자리 */}
+                <OrderAttentionActions orderId={o.id} status={o.status} kinds={o.kinds} />
               </div>
             ))}
             {attention.cards.map((k) => (
@@ -119,9 +121,10 @@ export default async function OperatorPaymentsPage({ searchParams }: { searchPar
                     등록 번호 {k.regNo} · {k.card ?? "카드 정보 없음"} · {ymdhm(k.createdAt)}
                   </div>
                 </div>
-                {/* 6-3 환불함 표시 자리 */}
+                <CardRefundMark keyId={k.id} />
               </div>
             ))}
+            </AttentionProvider>
           </section>
         )}
 

@@ -82,6 +82,8 @@ document.getElementById("no").onclick=()=>parent.postMessage(${JSON.stringify(JS
     return json(res, { resultCd: "0000", resultMsg: "삭제 성공" });
   }
   if (url.pathname === "/__bids") return json(res, { count: bids.size });
+  // 시험이 심은 결제(승인된 거래)를 KIS가 아는 것으로 만든다(2026-11-23 결제 6-3 '다시 조회' 시험용)
+  if (url.pathname === "/__addtx") { tx.set(url.searchParams.get("tid") || "", { ordNo: url.searchParams.get("ordNo") || "", amt: url.searchParams.get("amt") || "0", status: "approved" }); return json(res, { ok: true }); }
   if (url.pathname === "/__addbid") { bids.add(url.searchParams.get("bid") || ""); return json(res, { ok: true }); } // 시험 라우트가 알려진 빌키를 심을 때
   if (url.pathname === "/v2/payment") {
     const t = tx.get(b.tid) || { ordNo: "", amt: b.goodsAmt };

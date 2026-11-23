@@ -7,7 +7,9 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { getCurrentOperator } from "@/lib/operator-session";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
-import { operatorCancelOrder } from "@/lib/billing-operator";
+import {
+  operatorCancelOrder, operatorRecheckOrder, operatorCloseOrder, operatorAckRevert, markRegChargeRefunded, type OpResult,
+} from "@/lib/billing-operator";
 
 export type OperatorBillingResult = { ok: boolean; message: string } | null;
 
@@ -39,5 +41,37 @@ export async function cancelPaymentAction(_prev: OperatorBillingResult, formData
   );
   revalidatePath("/operator/payments");
   revalidatePath(`/operator/companies/${companyId}`);
+  return { ok: r.ok, message: r.message };
+}
+
+/**
+ * [결제] 확인 필요 칸의 처리 버튼(6-3) — op 하나로 나눈다.
+ *  recheck(KIS에 다시 조회) · close_no_payment / close_refunded(KIS 상점관리자에서 확인한 대로 닫기, 사유 필수) ·
+ *  ack_revert(직접 처리함, 사유 필수) · refund_mark(카드 등록 중 승인 건 — KIS에서 환불함 표시)
+ */
+export async function attentionAction(_prev: OperatorBillingResult, formData: FormData): Promise<OperatorBillingResult> {
+  const me = await getCurrentOperator();
+  if (!me) return { ok: false, message: "로그인이 풀렸습니다. 다시 로그인해 주세요." };
+  const op = String(formData.get("op") ?? "");
+  const id = String(formData.get("id") ?? "");
+  const reason = String(formData.get("reason") ?? "");
+  if (!ID_RE.test(id)) return { ok: false, message: "요청이 올바르지 않습니다." };
+  if (reason.length > 300) return { ok: false, message: "사유는 100자 안으로 적어 주세요." };
+
+  let r: OpResult;
+  try {
+    if (op === "recheck") r = await operatorRecheckOrder(id);
+    else if (op === "close_no_payment") r = await operatorCloseOrder(id, "no_payment", reason);
+    else if (op === "close_refunded") r = await operatorCloseOrder(id, "refunded", reason);
+    else if (op === "ack_revert") r = await operatorAckRevert(id, reason);
+    else if (op === "refund_mark") r = await markRegChargeRefunded(id, { name: me.name, email: me.email });
+    else return { ok: false, message: "요청이 올바르지 않습니다." };
+  } catch (e) {
+    // KIS 통신 오류 등 — 원문은 서버 기록에만(화면에는 짧게).
+    console.error(`[operator-billing] 확인 필요 처리 오류(${op}):`, e instanceof Error ? e.message : String(e));
+    r = { ok: false, message: "처리 중 오류가 났습니다. 잠시 뒤 다시 해 주세요.", meta: "오류" };
+  }
+  await logOperatorBilling(me, r.ok, `operator_payment_${op}:${r.meta}`);
+  revalidatePath("/operator/payments");
   return { ok: r.ok, message: r.message };
 }
