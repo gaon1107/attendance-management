@@ -375,7 +375,11 @@ export default async function DashboardPage() {
     if (access.kind === "grace") {
       if (access.hold === "payment_pending") {
         // 막는 날이 지났지만 확인 중인 결제가 있어 열어 둔다(lib/service-access ④ — 검수 치명 1).
-        return { tone: orange, pay: true, body: <><strong>{what}이 {lastDay}에 끝났습니다.</strong>{" 결제를 확인하고 있어 직원 출근은 막지 않고 있습니다. 결제 내역에서 결과를 확인해 주세요. "}</> };
+        // 확인 중에는 새 결제가 거절되므로 [결제] 대신 결제 내역으로 보낸다(재확인 경미 1).
+        return { tone: orange, pay: false, body: <><strong>{what}이 {lastDay}에 끝났습니다.</strong>{" 결제를 확인하고 있어 직원 출근은 막지 않고 있습니다. [구독·요금]의 결제 내역에서 결과를 확인해 주세요."}</> };
+      }
+      if (access.hold === "nothing_to_pay") {
+        return { tone: orange, pay: false, body: <><strong>{what}이 {lastDay}에 끝났습니다.</strong>{" 지금은 요금 대상 인원이 없어 결제할 금액이 없습니다. 직원을 등록하시면 결제하실 수 있습니다."}</> };
       }
       if (access.hold === "card_unavailable") {
         return { tone: orange, pay: false, body: <><strong>{what}이 {lastDay}에 끝났습니다.</strong>{" 카드로 결제할 수 없는 규모라 고객센터에서 따로 안내드립니다. 그동안 직원 출근은 막지 않습니다."}</> };

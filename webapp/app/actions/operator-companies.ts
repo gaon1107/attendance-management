@@ -106,7 +106,12 @@ export async function setCompanyTrial(_prev: OperatorActionResult, formData: For
   try {
     const a = await getServiceAccess(company.id);
     if (a?.kind === "blocked") warn = " ⚠️ 이 회사는 지금 직원의 새 출근이 막힌 상태가 됩니다.";
-    else if ((a?.kind === "grace" || a?.kind === "ending") && a.blockAt) warn = ` ⚠️ 결제가 없으면 ${ymd(a.blockAt)}부터 직원의 새 출근이 막힙니다.`;
+    else if (a?.kind === "grace" && a.hold) {
+      // 막는 날이 지났지만 보류 중 — 지난 날짜를 "부터 막힙니다"로 보이지 않게(재확인 경미 2)
+      warn = a.hold === "payment_pending" ? " ⚠️ 막을 날이 지났지만 확인 중인 결제가 있어 보류 중입니다."
+        : a.hold === "nothing_to_pay" ? " ⚠️ 막을 날이 지났지만 요금 대상 인원이 없어 보류 중입니다."
+        : " ⚠️ 막을 날이 지났지만 카드로 결제할 수 없는 규모라 보류 중입니다(따로 안내 필요).";
+    } else if ((a?.kind === "grace" || a?.kind === "ending") && a.blockAt) warn = ` ⚠️ 결제가 없으면 ${ymd(a.blockAt)}부터 직원의 새 출근이 막힙니다.`;
   } catch {
     warn = "";
   }

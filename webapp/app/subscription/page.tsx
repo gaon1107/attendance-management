@@ -243,6 +243,8 @@ export default async function SubscriptionPage() {
                     <> <strong>지금 직원의 새 출근·외출 기록이 멈춰 있습니다.</strong> 결제하시면 바로 풀립니다.</>
                   ) : access?.kind === "grace" && access.hold === "payment_pending" ? (
                     <> 결제를 확인하고 있어 직원 출근은 막지 않고 있습니다.</>
+                  ) : access?.kind === "grace" && access.hold === "nothing_to_pay" ? (
+                    <> 요금 대상 인원이 없어 결제할 금액이 없습니다. 그동안 직원 출근은 막지 않습니다.</>
                   ) : access?.kind === "grace" && access.hold === "card_unavailable" ? (
                     <> 카드로 결제할 수 없는 규모라 고객센터에서 따로 안내드립니다. 그동안 직원 출근은 막지 않습니다.</>
                   ) : access?.kind === "grace" && access.blockAt ? (

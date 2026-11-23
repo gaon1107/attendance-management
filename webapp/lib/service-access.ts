@@ -14,6 +14,7 @@
 //  ④ **확인 중인 결제(돈이 빠졌는지 모름 · 환불 진행 중)가 있으면 막지 않는다**(검수 치명 1) — 결제 직후 결과 모름이면 이용 기간이
 //     안 늘어난 채 다시 결제도 막혀(확인 중 결제가 있으면 새 결제 거절) 스스로 풀 방법이 없었다.
 //  ⑤ **카드로 결제할 수 없는 회사는 막지 않는다**(검수 중간 2) — 요금표를 넘는 규모(별도 협의)·카드 1회 한도 초과. 운영자가 처리한다.
+//     **요금 대상 0명 회사도 막지 않는다**(재확인 중간 1) — 낼 돈이 없어 결제가 거절되므로 스스로 풀 방법이 없다.
 //  ⑥ 판단이 실패하면(DB 오류·날짜 값 깨짐) 막지 않는다.
 //
 // 순수 계산(computeServiceAccess)과 DB 읽기를 나눈 이유: 테스트 러너가 없어 임시 라우트로 경계값을 검증한다(webapp/CLAUDE.md).
@@ -32,7 +33,7 @@ const ENFORCE_FLOOR = new Date(2026, 10, 23); // 2026-11-23 0시
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** 막지 않고 열어 둔 이유(막는 날이 지났는데도). */
-export type Hold = "payment_pending" | "card_unavailable";
+export type Hold = "payment_pending" | "card_unavailable" | "nothing_to_pay";
 
 export type ServiceAccess =
   /** 정상 이용 중(끝나려면 WARN_DAYS보다 많이 남음) */
@@ -48,10 +49,12 @@ export type ServiceAccess =
   /** 판단할 수 없음(날짜 값 깨짐) — 막지 않는다 */
   | { kind: "unknown" };
 
-let lastWarned = "";
+// 같은 경고는 서버가 켜진 동안 한 번만(요청마다 쌓이지 않게 — 검수 경미 8). 회사별 경고가 번갈아 반복되지 않게 여러 개를 기억한다.
+const warned = new Set<string>();
 function warnOnce(key: string, msg: string): void {
-  if (lastWarned === key) return; // 요청마다 같은 오류가 쌓이지 않게(검수 경미 8)
-  lastWarned = key;
+  if (warned.has(key)) return;
+  if (warned.size > 500) warned.clear(); // 무한히 커지지 않게
+  warned.add(key);
   console.error(msg);
 }
 
@@ -125,6 +128,7 @@ async function holdReason(companyId: string): Promise<Hold | null> {
   const pending = await prisma.pgOrder.count({ where: { companyId, status: { in: ["check", "cancel_check"] } } });
   if (pending > 0) return "payment_pending";
   const q = await quoteForCompany(companyId);
+  if (q.kind === "none") return "nothing_to_pay"; // 요금 대상 0명 — 결제가 거절되니 막지 않는다(재확인 중간 1)
   const max = readKispgConfig().maxAmount ?? KIS_MAX_TOTAL;
   if (q.kind === "quote" || (q.kind === "tier" && q.total > max)) {
     warnOnce(`card:${companyId}`, `[service-access] [운영자 확인 필요] 회사 ${companyId.slice(0, 8)} — 카드로 결제할 수 없는 규모인데 이용 기간이 끝나 차단 보류 중`);
