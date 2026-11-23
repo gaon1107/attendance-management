@@ -241,10 +241,14 @@ export default async function SubscriptionPage() {
                 <>
                   {access?.kind === "blocked" ? (
                     <> <strong>지금 직원의 새 출근·외출 기록이 멈춰 있습니다.</strong> 결제하시면 바로 풀립니다.</>
+                  ) : access?.kind === "grace" && access.hold === "payment_pending" ? (
+                    <> 결제를 확인하고 있어 직원 출근은 막지 않고 있습니다.</>
+                  ) : access?.kind === "grace" && access.hold === "card_unavailable" ? (
+                    <> 카드로 결제할 수 없는 규모라 고객센터에서 따로 안내드립니다. 그동안 직원 출근은 막지 않습니다.</>
                   ) : access?.kind === "grace" && access.blockAt ? (
                     <> <strong>{formatKoreanDate(access.blockAt)}</strong>부터 직원의 새 출근·외출 기록이 멈춥니다.</>
                   ) : (
-                    <> 지금은 모든 기능을 그대로 쓰실 수 있습니다(결제 개시 전).</>
+                    <> 지금은 직원 출퇴근을 막지 않고 있습니다.</>
                   )}{" "}
                   관리자 기능과 근로기록 조회·엑셀은 결제 여부와 상관없이 계속 쓰실 수 있습니다. 계속 이용하시려면 위 [결제]에서 카드로 결제해 주세요.
                 </>

@@ -7,72 +7,130 @@
 //  · 막지 않는 것: 관리자의 모든 기능, 직원의 휴가·정정 신청과 조회, 근로기록 조회·엑셀(3년 보존은 사업주의 법적 의무).
 //  · 유예 3일(11-23). 시연 회사(isDemo)는 막지 않는다. PC 프로그램(PC-OFF)은 출퇴근 기록을 만들지 않아 대상이 아니다.
 //
-// 🔴 안전장치 — **결제 개시 전에는 아무도 막지 않는다.** 서버 설정 BILLING_ENFORCE_FROM(결제 개시일 YYYY-MM-DD)이 있어야만 작동한다.
-//    8/9 결정의 이유 그대로: 결제 수단 없이 막으면 고객이 돈을 낼 방법도 없이 회사 근태가 통째로 멈춘다.
-//    이미 기간이 끝난 회사도 "결제 개시일 + 3일"까지는 막지 않는다 — 개시일 아침에 갑자기 막히지 않게.
+// 🔴 안전장치 — "돈 낼 방법이 없거나, 돈을 냈는지 모를 때는 막지 않는다"(8/9 결정의 이유: 결제 수단 없이 막으면 회사 근태가 통째로 멈춘다).
+//  ① 결제 개시일(BILLING_ENFORCE_FROM, YYYY-MM-DD)이 있고 **카드 결제 설정(KIS)도 살아 있을 때만** 작동(5단계 검수 중간 1-a).
+//  ② 개시일이 ENFORCE_FLOOR보다 이르면 오타로 보고 끈다 — 과거 날짜를 잘못 넣으면 유예 없이 전 회사가 즉시 막힌다(검수 중간 1-b).
+//  ③ 이미 기간이 끝난 회사도 "결제 개시일 + 3일"까지는 막지 않는다 — 개시일 아침에 갑자기 막히지 않게.
+//  ④ **확인 중인 결제(돈이 빠졌는지 모름 · 환불 진행 중)가 있으면 막지 않는다**(검수 치명 1) — 결제 직후 결과 모름이면 이용 기간이
+//     안 늘어난 채 다시 결제도 막혀(확인 중 결제가 있으면 새 결제 거절) 스스로 풀 방법이 없었다.
+//  ⑤ **카드로 결제할 수 없는 회사는 막지 않는다**(검수 중간 2) — 요금표를 넘는 규모(별도 협의)·카드 1회 한도 초과. 운영자가 처리한다.
+//  ⑥ 판단이 실패하면(DB 오류·날짜 값 깨짐) 막지 않는다.
 //
 // 순수 계산(computeServiceAccess)과 DB 읽기를 나눈 이유: 테스트 러너가 없어 임시 라우트로 경계값을 검증한다(webapp/CLAUDE.md).
 import { prisma } from "@/lib/db";
 import { trialStatus } from "@/lib/trial";
+import { readKispgConfig } from "@/lib/kispg-config";
+import { quoteForCompany } from "@/lib/pricing-server";
+import { KIS_MAX_TOTAL } from "@/lib/pricing";
 
 /** 이용 기간이 끝난 뒤 직원 출퇴근을 막기까지의 유예 일수(사장님 결정 11-23). 화면 문구도 이 값을 쓴다. */
 export const GRACE_DAYS = 3;
 /** 관리자 첫 화면에 "곧 끝남" 띠를 띄우기 시작하는 날 수. */
 export const WARN_DAYS = 7;
+/** 결제 개시일로 받는 가장 이른 날 — 이보다 이르면 오타로 보고 차단을 끈다(5단계를 만든 날). */
+const ENFORCE_FLOOR = new Date(2026, 10, 23); // 2026-11-23 0시
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** 막지 않고 열어 둔 이유(막는 날이 지났는데도). */
+export type Hold = "payment_pending" | "card_unavailable";
 
 export type ServiceAccess =
   /** 정상 이용 중(끝나려면 WARN_DAYS보다 많이 남음) */
   | { kind: "ok"; usableUntil: Date; enforced: boolean }
-  /** 곧 끝남(WARN_DAYS 이내) — 아직 아무것도 막지 않는다 */
-  | { kind: "ending"; usableUntil: Date; daysLeft: number; enforced: boolean }
-  /** 이용 기간은 끝났지만 유예 중(막는 날 전) — enforced=false면 결제 개시 전이라 막는 날이 정해지지 않음 */
-  | { kind: "grace"; usableUntil: Date; blockAt: Date | null; enforced: boolean }
+  /** 곧 끝남(WARN_DAYS 이내) — 아직 아무것도 막지 않는다. blockAt = 결제 없을 때 막을 날(차단이 꺼져 있으면 null) */
+  | { kind: "ending"; usableUntil: Date; daysLeft: number; blockAt: Date | null; enforced: boolean }
+  /** 이용 기간은 끝났지만 막지 않는 중 — 유예 중(blockAt 앞)이거나, 차단 꺼짐(blockAt null), 또는 hold(확인 중 결제·카드 결제 불가) */
+  | { kind: "grace"; usableUntil: Date; blockAt: Date | null; enforced: boolean; hold: Hold | null }
   /** 막힘 — 직원의 새 출근·외출 시작 불가 */
   | { kind: "blocked"; usableUntil: Date; blockAt: Date; enforced: true }
   /** 시연 회사 — 막지 않는다 */
-  | { kind: "demo" };
+  | { kind: "demo" }
+  /** 판단할 수 없음(날짜 값 깨짐) — 막지 않는다 */
+  | { kind: "unknown" };
 
-/** 결제 개시일(그날 0시, 한국 시각). 없거나 형식이 틀리면 null — 그러면 아무도 막지 않는다. */
+let lastWarned = "";
+function warnOnce(key: string, msg: string): void {
+  if (lastWarned === key) return; // 요청마다 같은 오류가 쌓이지 않게(검수 경미 8)
+  lastWarned = key;
+  console.error(msg);
+}
+
+/** 결제 개시일(그날 0시, 한국 시각). 없거나 형식이 틀리거나 ENFORCE_FLOOR보다 이르면 null — 그러면 아무도 막지 않는다. */
 export function readEnforceFrom(raw: string | undefined = process.env.BILLING_ENFORCE_FROM): Date | null {
   const v = (raw ?? "").trim();
   if (!v) return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
   if (!m) {
-    console.error("[service-access] BILLING_ENFORCE_FROM 형식이 틀립니다(YYYY-MM-DD). 미납 차단을 끈 상태로 둡니다.");
+    warnOnce(v, "[service-access] BILLING_ENFORCE_FROM 형식이 틀립니다(YYYY-MM-DD). 미납 차단을 끈 상태로 둡니다.");
     return null;
   }
   const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   if (d.getFullYear() !== Number(m[1]) || d.getMonth() !== Number(m[2]) - 1 || d.getDate() !== Number(m[3])) {
-    console.error("[service-access] BILLING_ENFORCE_FROM이 없는 날짜입니다. 미납 차단을 끈 상태로 둡니다.");
+    warnOnce(v, "[service-access] BILLING_ENFORCE_FROM이 없는 날짜입니다. 미납 차단을 끈 상태로 둡니다.");
+    return null;
+  }
+  if (d.getTime() < ENFORCE_FLOOR.getTime()) {
+    warnOnce(v, `[service-access] BILLING_ENFORCE_FROM(${v})이 너무 이른 날짜라 오타로 보고 미납 차단을 끈 상태로 둡니다(${ENFORCE_FLOOR.toLocaleDateString("ko-KR")} 이후만).`);
     return null;
   }
   return d;
 }
 
+const bad = (d: Date | null | undefined) => d instanceof Date && Number.isNaN(d.getTime());
+
 /**
  * 순수 계산. 이용 가능 끝 = max(무료 기간 끝, 결제한 기간 끝). 막는 날 = max(이용 가능 끝, 결제 개시일) + 유예 3일.
  *  · 모든 경계는 0시(끝 시각은 "그 시각 **전까지** 이용"). 막는 날 0시부터 막는다.
+ *  · hold: 막는 날이 지났어도 막지 않을 이유(확인 중 결제·카드 결제 불가) — 있으면 grace로 돌려준다.
  */
 export function computeServiceAccess(
   c: { createdAt: Date; trialLastDate: Date | null; paidUntil: Date | null; isDemo: boolean },
   now: Date,
-  enforceFrom: Date | null
+  enforceFrom: Date | null,
+  hold: Hold | null = null
 ): ServiceAccess {
   if (c.isDemo) return { kind: "demo" };
+  if (bad(c.createdAt) || bad(c.trialLastDate) || bad(c.paidUntil) || bad(enforceFrom) || bad(now)) return { kind: "unknown" };
   const trialEnd = trialStatus(c.createdAt, now, c.trialLastDate).endsAt;
+  if (bad(trialEnd)) return { kind: "unknown" };
   const usableUntil = c.paidUntil && c.paidUntil.getTime() > trialEnd.getTime() ? c.paidUntil : trialEnd;
   const enforced = enforceFrom !== null;
+  let blockAt: Date | null = null;
+  if (enforceFrom) {
+    blockAt = new Date(Math.max(usableUntil.getTime(), enforceFrom.getTime()));
+    blockAt.setDate(blockAt.getDate() + GRACE_DAYS); // 날짜 단위로 더한다(서머타임 없는 한국 시각 — 0시 유지)
+  }
   if (now.getTime() < usableUntil.getTime()) {
     const daysLeft = Math.ceil((usableUntil.getTime() - now.getTime()) / DAY_MS);
-    return daysLeft <= WARN_DAYS ? { kind: "ending", usableUntil, daysLeft, enforced } : { kind: "ok", usableUntil, enforced };
+    return daysLeft <= WARN_DAYS ? { kind: "ending", usableUntil, daysLeft, blockAt, enforced } : { kind: "ok", usableUntil, enforced };
   }
-  if (!enforceFrom) return { kind: "grace", usableUntil, blockAt: null, enforced: false };
-  const start = Math.max(usableUntil.getTime(), enforceFrom.getTime());
-  const blockAt = new Date(start);
-  blockAt.setDate(blockAt.getDate() + GRACE_DAYS); // 날짜 단위로 더한다(서머타임 없는 한국 시각 — 0시 유지)
-  if (now.getTime() < blockAt.getTime()) return { kind: "grace", usableUntil, blockAt, enforced: true };
+  if (!blockAt || now.getTime() < blockAt.getTime()) return { kind: "grace", usableUntil, blockAt, enforced, hold: null };
+  if (hold) return { kind: "grace", usableUntil, blockAt, enforced: true, hold };
   return { kind: "blocked", usableUntil, blockAt, enforced: true };
+}
+
+/** 지금 서버에서 차단이 켜져 있는가(결제 개시일 + 카드 결제 설정 둘 다). 켜져 있으면 개시일, 아니면 null. */
+export function activeEnforceFrom(): Date | null {
+  const from = readEnforceFrom();
+  if (!from) return null;
+  if (!readKispgConfig().normal) {
+    warnOnce("no-kis", "[service-access] BILLING_ENFORCE_FROM은 있지만 카드 결제 설정(KISPG_*)이 없어 미납 차단을 끈 상태로 둡니다.");
+    return null;
+  }
+  return from;
+}
+
+/** 막는 날이 지났을 때만 부른다 — 막지 않을 이유가 있는가(확인 중 결제 · 카드로 낼 수 없는 회사). */
+async function holdReason(companyId: string): Promise<Hold | null> {
+  const pending = await prisma.pgOrder.count({ where: { companyId, status: { in: ["check", "cancel_check"] } } });
+  if (pending > 0) return "payment_pending";
+  const q = await quoteForCompany(companyId);
+  const max = readKispgConfig().maxAmount ?? KIS_MAX_TOTAL;
+  if (q.kind === "quote" || (q.kind === "tier" && q.total > max)) {
+    warnOnce(`card:${companyId}`, `[service-access] [운영자 확인 필요] 회사 ${companyId.slice(0, 8)} — 카드로 결제할 수 없는 규모인데 이용 기간이 끝나 차단 보류 중`);
+    return "card_unavailable";
+  }
+  return null;
 }
 
 /** 이 회사의 지금 이용 상태(화면·차단 공용). 회사가 없으면 null. */
@@ -82,7 +140,10 @@ export async function getServiceAccess(companyId: string, now: Date = new Date()
     select: { createdAt: true, trialLastDate: true, paidUntil: true, isDemo: true },
   });
   if (!c) return null;
-  return computeServiceAccess(c, now, readEnforceFrom());
+  const from = activeEnforceFrom();
+  const first = computeServiceAccess(c, now, from);
+  if (first.kind !== "blocked") return first;
+  return computeServiceAccess(c, now, from, await holdReason(companyId));
 }
 
 /** 직원 화면·서버 동작에 보일 안내(막혔을 때). */

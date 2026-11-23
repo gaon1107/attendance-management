@@ -218,7 +218,10 @@ export async function startBreak(formData: FormData): Promise<void> {
   // 🔒 회사 계정은 사람이 아니다 — 출퇴근을 찍으면 법정 근로시간 기록에 유령 근로자가 생긴다(검수 9).
   if (me.isOwner) return;
   // 🔒 미납 차단(결제 5단계) — 외출 **시작**은 막는다(복귀는 막지 않는다). 화면도 막힌 회사에는 [외출] 버튼을 그리지 않는다.
-  if (await clockStartBlockReason(me.companyId)) return;
+  if (await clockStartBlockReason(me.companyId)) {
+    revalidatePath("/attendance"); // 열어 둔 화면이 옛 상태면 새로 그려 막힘 안내를 보이게(검수 경미 4)
+    return;
+  }
 
   // 지금 근무 중인 기록에만 외출을 붙인다 — 며칠 전 미퇴근 기록에 오늘 외출이 붙으면
   // 나중에 그날을 정정할 때 외출 시간이 음수가 되는 등 계산이 꼬인다(후속 검수 지적).

@@ -216,7 +216,7 @@ export default async function AttendancePage() {
             <b>퇴근 기록이 없는 날이 있어요.</b>
             <br />
             {staleOpen.clockIn.toLocaleDateString("ko-KR", { month: "long", day: "numeric" })} 출근 기록에 퇴근 시각이
-            비어 있습니다. <b>[근태 정정]</b>에서 그날 퇴근 시각을 신청해주세요. (오늘 출근·퇴근은 그대로 하시면 됩니다)
+            비어 있습니다. <b>[근태 정정]</b>에서 그날 퇴근 시각을 신청해주세요.{clockBlocked ? "" : " (오늘 출근·퇴근은 그대로 하시면 됩니다)"}
           </div>
         )}
 

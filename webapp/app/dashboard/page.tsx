@@ -16,7 +16,8 @@ import { toISODate } from "@/lib/period";
 import { countUncheckedAnomalies } from "@/lib/anomaly";
 import { purgeWorkRecordsDaily } from "@/lib/work-record-retention";
 import { trialStatus, trialLastDay, formatKoreanDate } from "@/lib/trial";
-import { getServiceAccess, GRACE_DAYS } from "@/lib/service-access";
+import { getServiceAccess } from "@/lib/service-access";
+import { readKispgConfig } from "@/lib/kispg-config";
 import { loadAwayDays } from "@/lib/away-server";
 import { ownerRecoveryState } from "@/lib/owner-recovery";
 import { smsConfigured } from "@/lib/sms";
@@ -348,17 +349,21 @@ export default async function DashboardPage() {
   //    결제한 회사에 "무료 기간이 끝났습니다"가 뜨던 것(2단계 뒤)도 함께 고쳤다. 결제 기간이 넉넉하면 띠를 띄우지 않는다.
   const trial = company ? trialStatus(company.createdAt, new Date(), company.trialLastDate) : null;
   let access: Awaited<ReturnType<typeof getServiceAccess>> = null;
+  let autoPayOn = false;
   try {
     access = await getServiceAccess(me.companyId);
+    autoPayOn = (await prisma.pgBillingKey.count({ where: { companyId: me.companyId, status: "active" } })) > 0;
   } catch (e) {
     console.warn("[dashboard] 이용 상태 확인 실패(띠 생략):", e instanceof Error ? e.name : "unknown");
   }
-  const inTrial = !!trial && !trial.expired && (!access || access.kind === "demo" || access.usableUntil.getTime() <= trial.endsAt.getTime());
+  const inTrial = !!trial && !trial.expired && (!access || access.kind === "demo" || access.kind === "unknown" || access.usableUntil.getTime() <= trial.endsAt.getTime());
+  // 카드 결제를 받을 수 있는가 — 차단이 꺼져 있어도 결제는 될 수 있다(그때 "결제 안내 준비 중"이라고 쓰지 않는다, 검수 경미 2).
+  const payReady = !!readKispgConfig().normal;
   const band: { tone: { bg: string; border: string; fg: string }; body: React.ReactNode; pay: boolean } | null = (() => {
     const red = { bg: "#FEF2F2", border: "#FECACA", fg: "#991B1B" };
     const orange = { bg: "#FFF7ED", border: "#FED7AA", fg: "#9A3412" };
     const blue = { bg: "#EFF6FF", border: "#BFDBFE", fg: "#1E40AF" };
-    if (!access || access.kind === "demo") return null;
+    if (!access || access.kind === "demo" || access.kind === "unknown") return null;
     const lastDay = formatKoreanDate(trialLastDay(access.usableUntil));
     const what = inTrial ? "무료 이용 기간" : "이용 기간";
     if (access.kind === "blocked") {
@@ -368,21 +373,42 @@ export default async function DashboardPage() {
       };
     }
     if (access.kind === "grace") {
+      if (access.hold === "payment_pending") {
+        // 막는 날이 지났지만 확인 중인 결제가 있어 열어 둔다(lib/service-access ④ — 검수 치명 1).
+        return { tone: orange, pay: true, body: <><strong>{what}이 {lastDay}에 끝났습니다.</strong>{" 결제를 확인하고 있어 직원 출근은 막지 않고 있습니다. 결제 내역에서 결과를 확인해 주세요. "}</> };
+      }
+      if (access.hold === "card_unavailable") {
+        return { tone: orange, pay: false, body: <><strong>{what}이 {lastDay}에 끝났습니다.</strong>{" 카드로 결제할 수 없는 규모라 고객센터에서 따로 안내드립니다. 그동안 직원 출근은 막지 않습니다."}</> };
+      }
       return access.blockAt
         ? {
             tone: red, pay: true,
             body: <><strong>{what}이 {lastDay}에 끝났습니다.</strong>{` ${formatKoreanDate(access.blockAt)}부터 직원의 새 출근·외출 기록이 멈춥니다(퇴근·관리자 기능·기록 조회는 그대로). `}</>,
           }
-        : {
-            // 결제 개시 전(BILLING_ENFORCE_FROM 없음) — 아무것도 막지 않는다. 예전 문구 그대로.
-            tone: red, pay: false,
-            body: <><strong>{what}이 끝났습니다.</strong>{" 결제 안내를 준비 중이며, 그때까지는 그대로 사용하실 수 있습니다."}</>,
-          };
+        : payReady
+          ? {
+              // 차단은 아직 꺼져 있지만 결제는 된다.
+              tone: red, pay: true,
+              body: <><strong>{what}이 끝났습니다.</strong>{" 계속 이용하시려면 결제해 주세요(지금은 직원 출근을 막지 않습니다). "}</>,
+            }
+          : {
+              // 결제 개시 전 — 아무것도 막지 않는다. 예전 문구 그대로.
+              tone: red, pay: false,
+              body: <><strong>{what}이 끝났습니다.</strong>{" 결제 안내를 준비 중이며, 그때까지는 그대로 사용하실 수 있습니다."}</>,
+            };
     }
     if (access.kind === "ending") {
+      // 자동결제를 쓰는 회사는 결제일에 자동으로 결제되므로 "미리 결제하라"고 재촉하지 않는다(검수 경미 1).
+      const autoOn = autoPayOn;
       return {
-        tone: orange, pay: !inTrial || access.enforced,
-        body: <><strong>{`${what}: ${lastDay}까지`}</strong>{` (${access.daysLeft}일 남음)${access.enforced ? ` — 끝나고 ${GRACE_DAYS}일 뒤부터 직원의 새 출근이 멈춥니다. 결제나 자동결제를 미리 해 두세요. ` : ""}`}</>,
+        tone: orange, pay: payReady && !autoOn,
+        body: <><strong>{`${what}: ${lastDay}까지`}</strong>{` (${access.daysLeft}일 남음)`}{
+          autoOn
+            ? " — 자동결제로 결제될 예정입니다."
+            : access.blockAt
+              ? ` — 결제가 없으면 ${formatKoreanDate(access.blockAt)}부터 직원의 새 출근이 멈춥니다. 결제나 자동결제를 미리 해 두세요. `
+              : payReady ? " — 계속 이용하시려면 결제해 주세요. " : ""
+        }</>,
       };
     }
     // 넉넉함 — 무료 기간 중일 때만 알린다(결제 기간이 넉넉하면 띠를 띄우지 않는다).

@@ -266,7 +266,8 @@ export function FaceClockPanel({ action, minPercent = 30 }: { action: "in" | "ou
         setMsg({ type: "ok", text: res.message });
         router.refresh();
       } else {
-        setMsg({ type: "err", text: `${res.message} (다시 촬영하거나 아래 일반 방식을 이용하세요)` });
+        // 미납 차단으로 거절된 것은 다시 찍거나 일반 방식으로 해도 같다 — 덧붙이지 않는다(결제 5단계 검수 경미 5).
+        setMsg({ type: "err", text: res.message.includes("서비스 이용 기간") ? res.message : `${res.message} (다시 촬영하거나 아래 일반 방식을 이용하세요)` });
       }
     } catch {
       setMsg({ type: "err", text: "확인 중 오류가 발생했습니다. 다시 시도해 주세요." });

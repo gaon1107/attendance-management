@@ -128,7 +128,7 @@ export default async function OperatorCompanyPage({ params }: { params: Promise<
 
             <h2 style={{ ...h2, marginTop: 28 }}>시험용 회사 표시</h2>
             <p style={{ fontSize: 13, color: "var(--text-sub)", margin: "0 0 12px", lineHeight: 1.6, wordBreak: "keep-all" }}>
-              시험용으로 표시하면 홈페이지 공개 통계와 이 화면의 고객 수에서 빠집니다. 근태 기능에는 영향이 없습니다.
+              시험용으로 표시하면 홈페이지 공개 통계와 이 화면의 고객 수에서 빠지고, <b>미납 차단에서도 빠집니다</b>(결제가 없어도 직원 출근이 막히지 않음). 시험용 표시를 끄면 그 즉시 차단 대상이 됩니다.
               <br />
               <b style={{ color: "var(--danger)" }}>실제 고객 회사에는 켜지 마세요.</b> 시험용 회사는 데모 정리 작업에서 지워질 수 있습니다.
             </p>

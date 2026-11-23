@@ -5,7 +5,9 @@
 // 🔴 바꿀 때마다 운영자 기록(AccessEvent)을 남긴다 — 누가·언제·어느 회사의·무엇을(이전→이후).
 //    기록은 companyId=null + actorName "운영자 이름"으로 남긴다(app/actions/operator.ts의 로그인 기록과 같은 방식).
 //    고객사의 [보안]-[접속기록]에는 섞이지 않고, 운영자 화면 [운영자 접속 기록]에서만 본다.
-// ⚠️ 값만 바꾸고 아무것도 막지 않는다(만료 차단은 결제 화면과 한 세트 — lib/trial.ts 머리말).
+// ⚠️ 2026-11-23 결제 5단계부터 **무료 마지막 날·시험용 표시는 미납 차단에 바로 영향을 준다**(lib/service-access.ts —
+//    결제 개시일 설정이 켜진 뒤). 무료 기간을 과거로 당기거나 기본값으로 되돌리면 그 회사 직원 출근이 곧 막힐 수 있어,
+//    바꾼 뒤 막는 날을 결과 문구에 함께 알린다. 비상 해제 = 무료 마지막 날을 늘려 주기.
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
@@ -14,6 +16,7 @@ import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { companyNameMatches } from "@/lib/company-name";
 import { restoreBlockedReason } from "@/lib/company-termination";
 import { markCompanyCardsForDeletion, rescheduleCompanyCards } from "@/lib/billing-auto";
+import { getServiceAccess } from "@/lib/service-access";
 
 export type OperatorActionResult = { ok: boolean; message: string } | null;
 
@@ -98,11 +101,21 @@ export async function setCompanyTrial(_prev: OperatorActionResult, formData: For
     console.error(`[operator] [운영자 확인 필요] 자동결제 결제일 다시 계산 실패(ID ${company.id.slice(0, 8)}):`, e instanceof Error ? e.name : "unknown");
   }
 
+  // 미납 차단이 켜져 있으면 바꾼 결과로 언제 막히는지 함께 알린다(검수 중간 3 — 실수로 당기면 경고 없이 막혔다).
+  let warn = "";
+  try {
+    const a = await getServiceAccess(company.id);
+    if (a?.kind === "blocked") warn = " ⚠️ 이 회사는 지금 직원의 새 출근이 막힌 상태가 됩니다.";
+    else if ((a?.kind === "grace" || a?.kind === "ending") && a.blockAt) warn = ` ⚠️ 결제가 없으면 ${ymd(a.blockAt)}부터 직원의 새 출근이 막힙니다.`;
+  } catch {
+    warn = "";
+  }
+
   revalidatePath("/operator");
   revalidatePath(`/operator/companies/${company.id}`);
   return {
     ok: true,
-    message: next ? `무료 이용 마지막 날을 ${after}로 정했습니다.` : "무료 이용 기간을 기본값(가입일부터 30일)으로 되돌렸습니다.",
+    message: (next ? `무료 이용 마지막 날을 ${after}로 정했습니다.` : "무료 이용 기간을 기본값(가입일부터 30일)으로 되돌렸습니다.") + warn,
   };
 }
 
