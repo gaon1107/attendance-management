@@ -26,6 +26,8 @@ export default async function PayResultPage({ searchParams }: { searchParams: SP
     o?.status === "paid" ? { color: "var(--success, #15803D)", title: "결제가 완료되었습니다" }
     : o?.status === "check" || o?.status === "cancel_check" ? { color: "var(--warning)", title: "결제를 확인하고 있습니다" }
     : o?.status === "cancelled" ? { color: "var(--text-sub)", title: "결제가 취소되었습니다" }
+    // ready = 승인 요청을 아직 보내지 않은 상태(같은 결과가 동시에 두 번 왔거나 다른 결제가 처리 중). 실패로 단정하지 않는다.
+    : o?.status === "ready" ? { color: "var(--warning)", title: "결제가 아직 처리되지 않았습니다" }
     : { color: "var(--danger)", title: o ? "결제가 완료되지 않았습니다" : "결제 정보를 찾을 수 없습니다" };
 
   return (
@@ -48,6 +50,11 @@ export default async function PayResultPage({ searchParams }: { searchParams: SP
               <p style={{ color: "var(--text-sub)", margin: "8px 0 0" }}>
                 {o.status === "cancel_check" ? "결제를 자동으로 취소(환불)하는 중입니다." : "카드사 응답을 확인하는 중입니다."}{" "}
                 보통 10분 안에, 길게는 1시간쯤 뒤 [구독·요금]의 결제 내역에 결과가 나옵니다. 두 번 결제하지 않도록 그동안 다시 결제하지 마세요.
+              </p>
+            ) : null}
+            {o.status === "ready" ? (
+              <p style={{ color: "var(--text-sub)", margin: "8px 0 0" }}>
+                결제가 처리 중이거나 완료되지 않았습니다. 잠시 뒤 [구독·요금]의 결제 내역을 확인해 주세요. 내역에 없으면 카드에서 돈이 빠지지 않은 것입니다.
               </p>
             ) : null}
             {o.status === "failed" ? (

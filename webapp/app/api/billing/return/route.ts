@@ -27,7 +27,9 @@ const MAX_BODY_BYTES = 16 * 1024;
 
 export async function POST(req: Request) {
   const body: Record<string, unknown> = {};
-  const len = Number(req.headers.get("content-length") ?? "0");
+  // 길이 머리말이 없는 요청(chunked)은 크기를 미리 알 수 없어 받지 않는다 — 브라우저 form POST는 늘 길이를 보낸다(재검수 경미 3).
+  const rawLen = req.headers.get("content-length");
+  const len = rawLen === null ? NaN : Number(rawLen);
   if (!Number.isFinite(len) || len > MAX_BODY_BYTES) {
     return NextResponse.redirect(new URL("/subscription/result", siteOrigin(req)), 303);
   }
