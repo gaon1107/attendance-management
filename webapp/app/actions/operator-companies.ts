@@ -13,7 +13,7 @@ import { getCurrentOperator } from "@/lib/operator-session";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { companyNameMatches } from "@/lib/company-name";
 import { restoreBlockedReason } from "@/lib/company-termination";
-import { markCompanyCardsForDeletion } from "@/lib/billing-auto";
+import { markCompanyCardsForDeletion, rescheduleCompanyCards } from "@/lib/billing-auto";
 
 export type OperatorActionResult = { ok: boolean; message: string } | null;
 
@@ -90,6 +90,13 @@ export async function setCompanyTrial(_prev: OperatorActionResult, formData: For
   });
   if (changed.count === 0) return { ok: false, message: "그사이 다른 사람이 값을 바꿨습니다. 화면을 새로 고친 뒤 다시 해 주세요." };
   await logOperatorChange(me, `operator_trial_set:${company.name} (${before}→${after})`);
+  // 자동결제 카드의 다음 결제일을 새 무료 기간에 맞춘다(2026-11-23 결제 3단계 검수 중간 6) — 무료 기간을 줄였는데 옛 결제일을
+  //  기다리면 그사이 이용 기간이 빈다. 실패해도 무료 기간 변경은 이미 끝났으므로 기록만 남긴다(정기 청구가 늦게라도 바로잡지 못하는 경우만 운영자 확인).
+  try {
+    await rescheduleCompanyCards(company.id);
+  } catch (e) {
+    console.error(`[operator] [운영자 확인 필요] 자동결제 결제일 다시 계산 실패(ID ${company.id.slice(0, 8)}):`, e instanceof Error ? e.name : "unknown");
+  }
 
   revalidatePath("/operator");
   revalidatePath(`/operator/companies/${company.id}`);

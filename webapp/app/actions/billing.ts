@@ -19,13 +19,13 @@ export async function startCardPayment(): Promise<CreateOrderResult> {
   }
 }
 
-/** [자동결제 신청] — 동의 체크(consent)를 서버가 다시 확인한다. 금액은 서버가 그 순간 인원으로 정한다. */
-export async function startAutoPayRegistration(consent: boolean): Promise<StartRegResult> {
+/** [자동결제 신청] — 동의 체크(consent)와 관리자가 본 구간(seenTierIndex)을 서버가 다시 확인한다. 금액은 서버가 정한다. */
+export async function startAutoPayRegistration(consent: boolean, seenTierIndex: number): Promise<StartRegResult> {
   const me = await getCurrentUser();
   if (!me) return { ok: false, error: "로그인이 풀렸습니다. 다시 로그인해 주세요." };
   if (me.role !== "admin") return { ok: false, error: "관리자만 자동결제를 신청할 수 있습니다." };
   try {
-    return await startCardRegistration({ companyId: me.companyId, userId: me.id, consent: consent === true });
+    return await startCardRegistration({ companyId: me.companyId, userId: me.id, consent: consent === true, seenTierIndex: Number(seenTierIndex) });
   } catch (e) {
     console.error("[billing] 자동결제 신청 시작 실패:", e instanceof Error ? e.name : "unknown");
     return { ok: false, error: "자동결제 신청을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요." };

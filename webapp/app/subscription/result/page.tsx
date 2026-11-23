@@ -122,7 +122,9 @@ async function CardResult({ me, regNo }: { me: Me; regNo: string }) {
                     : ""}
                 </>
               ) : k.firstCharge.status === "failed" ? (
-                <strong style={{ color: "var(--danger)" }}>승인되지 않음 — 내일 같은 시각에 다시 시도합니다</strong>
+                <strong style={{ color: "var(--danger)" }}>
+                  승인되지 않음{k.firstCharge.pgResultMsg ? `(${k.firstCharge.pgResultMsg})` : ""} — 내일 오전 10시 이후에 다시 시도합니다. 카드를 바꾸시거나 직접 결제하셔도 됩니다
+                </strong>
               ) : k.firstCharge.status === "cancelled" ? (
                 <strong>자동 취소됨 — [구독·요금]에서 확인해 주세요</strong>
               ) : (
@@ -138,7 +140,7 @@ async function CardResult({ me, regNo }: { me: Me; regNo: string }) {
           ) : null}
           {k?.status === "reg_check" || k?.status === "registering" ? (
             <p style={{ color: "var(--text-sub)", margin: "4px 0 0" }}>
-              카드사 응답을 확인하는 중입니다. 보통 10분 안에, 길게는 1시간쯤 뒤 [구독·요금]에 결과가 나옵니다. 그동안 다시 신청하지 마세요.
+              카드사 응답을 확인하는 중입니다. 1시간쯤 뒤 [구독·요금]에 결과가 나옵니다. 그동안 다시 신청하지 마세요.
             </p>
           ) : null}
           {k?.status === "failed" ? (

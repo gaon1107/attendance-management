@@ -246,7 +246,7 @@ export default async function SubscriptionPage() {
                 <strong>{formatKoreanDate(trialLastDay(trial.endsAt))}</strong>까지 무료입니다(가입일부터 {TRIAL_DAYS}일
                 기준, 회사별로 따로 정한 경우는 그 날짜까지).{" "}
                 {autoOn
-                  ? "자동결제를 신청하셔서 무료 기간이 끝나기 3일 전에 첫 결제가 됩니다."
+                  ? "자동결제를 신청하셔서 이용 기간(무료 기간 또는 이미 결제한 기간)이 끝나기 3일 전에 자동으로 결제됩니다."
                   : "자동결제를 신청하지 않으면 무료 기간이 끝나도 자동으로 결제되지 않습니다."}
               </p>
             </>
@@ -429,7 +429,7 @@ function buildAutoView(
   const offer =
     q.kind === "tier"
       ? {
-          label: q.label, monthlyText: formatWon(q.monthly), vatText: formatWon(q.vat), totalText: formatWon(q.total),
+          tierIndex: q.tierIndex, label: q.label, monthlyText: formatWon(q.monthly), vatText: formatWon(q.vat), totalText: formatWon(q.total),
           firstChargeText: formatKoreanDate(auto.firstChargeDate),
           chargeNow: auto.firstChargeDate.getTime() <= today.getTime(),
           startText: formatKoreanDate(auto.periodStart),

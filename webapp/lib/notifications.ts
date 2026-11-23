@@ -129,7 +129,7 @@ export const listAdminNotifications = cache(async (companyId: string): Promise<{
   } else if (autoPayFailing > 0) {
     autoPayItems.push({
       key: "autopay-failing", title: "자동결제 실패",
-      detail: "카드 결제가 승인되지 않았습니다. 내일 같은 시각에 다시 시도하며, 3번 실패하면 자동결제가 멈춥니다. 카드 한도·유효기간을 확인해 주세요.",
+      detail: "카드 결제가 승인되지 않았습니다. 다음 날 오전 10시 이후에 다시 시도하며, 3번 실패하면 자동결제가 멈춥니다. 카드 한도·유효기간을 확인해 주세요.",
       count: 1, countLabel: `${autoPayFailing}번 실패`, href: "/subscription", cta: "확인", severity: "warning",
     });
   }

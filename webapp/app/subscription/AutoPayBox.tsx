@@ -15,7 +15,7 @@ export type AutoPayView = {
   deleting: boolean;
   card: { cardName: string | null; cardNoMasked: string | null; nextChargeText: string | null; failCount: number; lastFailReason: string | null } | null;
   /** 신청 안내에 쓸 값 — 지금 인원 기준. null이면 신청할 금액이 없다(noAmountReason). */
-  offer: { label: string; monthlyText: string; vatText: string; totalText: string; firstChargeText: string; chargeNow: boolean; startText: string } | null;
+  offer: { tierIndex: number; label: string; monthlyText: string; vatText: string; totalText: string; firstChargeText: string; chargeNow: boolean; startText: string } | null;
   noAmountReason: string | null;
   /** 사용 중 카드의 다음 결제 예상 — 동의 구간에 막혀 지금 구간보다 낮게 청구되면 capped */
   next: { totalText: string; label: string; capped: boolean; currentTotalText: string | null; currentLabel: string | null; currentTierIndex: number | null } | null;
@@ -48,7 +48,8 @@ export function AutoPayBox({ v }: { v: AutoPayView }) {
     setBusy(true);
     let r: Awaited<ReturnType<typeof startAutoPayRegistration>>;
     try {
-      r = await startAutoPayRegistration(true);
+      // 체크한 금액의 구간을 함께 보낸다 — 그사이 인원이 바뀌었으면 서버가 거절한다(검수 중간 1).
+      r = await startAutoPayRegistration(true, v.offer?.tierIndex ?? -1);
     } catch {
       setBusy(false);
       setError("서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.");
@@ -134,8 +135,11 @@ export function AutoPayBox({ v }: { v: AutoPayView }) {
           )}{" "}
           그다음부터는 매달 이용 기간이 끝나기 3일 전에 결제됩니다.
         </li>
-        <li>요금은 결제일의 인원으로 정합니다. 인원이 줄면 낮은 요금으로 결제되고, 늘어서 요금이 오르면 새 금액에 따로 동의하시기 전까지는 이 금액을 넘지 않습니다.</li>
-        <li>결제가 안 되면 다음 날 같은 시각에 다시 시도하고, 3번 실패하면 자동결제를 멈춥니다(이 화면과 알림에 표시).</li>
+        <li>
+          요금은 결제일의 인원으로 정합니다. 인원이 줄면 낮은 요금으로 결제되고, 늘어서 요금이 오르면 새 금액에 따로 동의하시기 전까지는 이 금액을 넘지 않습니다.
+          요금표가 바뀌어 이 금액보다 많아지면 결제하지 않고 자동결제를 멈춘 뒤 다시 동의를 받습니다. 인원이 요금표를 넘으면(별도 협의 규모) 자동결제를 멈춥니다.
+        </li>
+        <li>결제가 안 되면 다음 날 오전 10시 이후에 다시 시도하고, 3번 실패하면 자동결제를 멈춥니다(이 화면과 알림에 표시).</li>
         <li>해지는 이 화면에서 언제든 할 수 있습니다. 이미 결제한 이용 기간은 환불되지 않으며 끝까지 쓰실 수 있습니다.</li>
         <li>카드 등록 창에서는 돈이 빠지지 않습니다{v.offer.chargeNow ? "(첫 결제는 등록이 끝난 직후에 따로 됩니다)" : ""}.</li>
       </ul>
@@ -167,7 +171,7 @@ export function AutoPayBox({ v }: { v: AutoPayView }) {
   if (v.state === "reg_checking") {
     return (
       <p style={{ ...note, margin: 0 }}>
-        <strong>카드 등록 결과를 확인하고 있습니다.</strong> 보통 10분 안에, 길게는 1시간쯤 뒤 이 화면에 결과가 나옵니다. 그동안 다시 신청하지 마세요.
+        <strong>카드 등록 결과를 확인하고 있습니다.</strong> 카드사 확인에 1시간쯤 걸립니다. 그동안 다시 신청하지 마세요. 하루가 지나도 이대로면 고객센터로 연락해 주세요.
       </p>
     );
   }
@@ -214,7 +218,7 @@ export function AutoPayBox({ v }: { v: AutoPayView }) {
           <div style={{ marginTop: 8, padding: "10px 14px", borderLeft: "4px solid var(--warning)", background: "#FFFBEB", borderRadius: 6 }}>
             <p style={{ ...note, margin: 0, color: "var(--text)" }}>
               <strong>결제가 {v.card.failCount}번 승인되지 않았습니다.</strong> {v.card.lastFailReason ? `(${v.card.lastFailReason}) ` : ""}
-              다음 결제일에 다시 시도하며, 3번 실패하면 자동결제를 멈춥니다. 카드 한도·유효기간을 확인하시거나 카드를 바꿔 주세요.
+              다음 날 오전 10시 이후에 다시 시도하며, 3번 실패하면 자동결제를 멈춥니다. 카드 한도·유효기간을 확인하시거나 카드를 바꿔 주세요.
             </p>
           </div>
         ) : null}

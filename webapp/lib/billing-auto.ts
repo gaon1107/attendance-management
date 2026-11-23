@@ -35,6 +35,8 @@ export const CHARGE_DAYS_BEFORE = 3;
 const ABANDONED_REG_MS = 24 * 60 * 60 * 1000;
 /** 등록 결과 모름(reg_check)은 이 시간이 지나야 KIS 조회 "결제 없음"을 믿고 실패로 닫는다(일반 결제와 같은 60분). */
 const REG_CHECK_GRACE_MS = 60 * 60 * 1000;
+/** 등록 결과 모름이 이만큼 지나도 확인이 안 되면 닫는다(그 회사의 새 등록·파기가 영원히 막히지 않게 — 3단계 검수 중간 4). */
+const REG_CHECK_GIVE_UP_MS = 7 * 24 * 60 * 60 * 1000;
 /** KIS 지우기 재시도 간격·운영자 경고 기준. */
 const DELETE_RETRY_MS = 10 * 60 * 1000;
 const DELETE_WARN_TRIES = 20;
@@ -192,7 +194,7 @@ export async function cardForCompany(companyId: string, regNo: string) {
   const firstCharge = await prisma.pgOrder.findFirst({
     where: { companyId, billingKeyId: k.id, orderType: "billing_auto" },
     orderBy: { createdAt: "asc" },
-    select: { status: true, totalAmount: true, periodStart: true, periodEnd: true },
+    select: { status: true, totalAmount: true, periodStart: true, periodEnd: true, pgResultMsg: true },
   });
   const { id: _id, ...view } = k;
   void _id;
@@ -208,7 +210,7 @@ export type StartRegResult =
   | { ok: false; error: string };
 
 export async function startCardRegistration(
-  input: { companyId: string; userId: string; consent: boolean },
+  input: { companyId: string; userId: string; consent: boolean; seenTierIndex: number },
   now: Date = new Date()
 ): Promise<StartRegResult> {
   const cfg = billingMerchant();
@@ -231,6 +233,11 @@ export async function startCardRegistration(
   const q = quoteFor(billableCount(heads.employees, heads.admins));
   if (q.kind === "none") return { ok: false, error: "요금 대상 인원이 없어 자동결제를 신청할 금액이 없습니다." };
   if (q.kind === "quote") return { ok: false, error: "요금표를 넘는 인원이라 별도 협의가 필요합니다. 고객센터로 연락해 주세요." };
+  // 🔴 관리자가 체크한 금액(화면을 띄울 때의 구간)과 지금 서버 계산이 같아야 한다 — 그사이 인원이 늘어 윗구간이 됐으면
+  //    보지 않은 금액에 동의시키지 않는다(3단계 검수 중간 1). 새로 고쳐 바뀐 금액을 보고 다시 체크하게 한다.
+  if (!Number.isInteger(input.seenTierIndex) || input.seenTierIndex !== q.tierIndex) {
+    return { ok: false, error: "그사이 인원이 바뀌어 금액이 달라졌습니다. 화면을 새로 고쳐 금액을 다시 확인해 주세요." };
+  }
   const max = readKispgConfig().maxAmount ?? KIS_MAX_TOTAL;
   if (q.total > max) return { ok: false, error: "카드 1회 결제 한도를 넘는 금액입니다. 고객센터로 연락해 주세요." };
 
@@ -468,11 +475,34 @@ export async function markCompanyCardsForDeletion(companyId: string, reason: str
   return started.length;
 }
 
-/** [자동결제 해지] — 관리자. 회사·기록은 그대로, 카드만 지운다. */
+/**
+ * [자동결제 해지] — 관리자. 회사·기록은 그대로, 카드만 지운다.
+ *  🔴 회사 결제 선점(payClaimUntil)을 잡고 한다(3단계 검수 중간 3) — 정기 청구가 KIS 응답을 기다리는 사이에 해지하면
+ *     "해지했습니다" 직후 결제가 승인돼 돈이 빠질 수 있다. 청구가 진행 중이면 해지하지 않고 잠시 뒤 다시 하게 한다.
+ */
 export async function cancelAutoPay(companyId: string): Promise<{ ok: boolean; message: string }> {
-  const n = await markCompanyCardsForDeletion(companyId, "관리자가 자동결제를 해지");
-  if (n === 0) return { ok: false, message: "해지할 자동결제 카드가 없습니다." };
-  return { ok: true, message: "자동결제를 해지했습니다. 앞으로 자동으로 결제되지 않으며, 이미 결제한 이용 기간은 끝까지 쓰실 수 있습니다." };
+  const token = await claimCompany(companyId, new Date());
+  if (!token) return { ok: false, message: "지금 결제를 처리하고 있습니다. 1~2분 뒤 다시 해지해 주세요." };
+  try {
+    const regChecking = await prisma.pgBillingKey.count({ where: { companyId, status: "reg_check" } });
+    const live = await prisma.pgBillingKey.count({ where: { companyId, status: { in: ["active", "paused", "registering"] } } });
+    if (live === 0) {
+      return regChecking > 0
+        ? { ok: false, message: "카드 등록 결과를 확인하고 있어 지금은 해지할 수 없습니다. 1시간쯤 뒤 다시 해 주세요." }
+        : { ok: false, message: "해지할 자동결제 카드가 없습니다." };
+    }
+    await markCompanyCardsForDeletion(companyId, "관리자가 자동결제를 해지");
+    // 이미 보낸 결제의 결과를 모르는 것이 있으면, 그 결제는 결과에 따라 이용 기간에 반영된다(취소하지 않는다 — 이미 낸 결제).
+    const pending = await prisma.pgOrder.count({ where: { companyId, orderType: "billing_auto", status: { in: ["check", "cancel_check"] } } });
+    return {
+      ok: true,
+      message:
+        "자동결제를 해지했습니다. 앞으로 자동으로 결제되지 않으며, 이미 결제한 이용 기간은 끝까지 쓰실 수 있습니다." +
+        (pending > 0 ? " 다만 해지 전에 진행된 결제 1건은 카드사 확인 결과에 따라 결제 내역에 반영됩니다." : ""),
+    };
+  } finally {
+    await releaseCompany(companyId, token);
+  }
 }
 
 /** KIS 지우기를 기다리지 않고 뒤에서 시작한다. 끊기면 deleting 그대로 남아 10분 정리가 다시 지운다. */
@@ -544,6 +574,13 @@ export async function settleBillingKeys(limit = 20, now: Date = new Date()): Pro
         const cfg = configForMid(k.pgMid);
         if (!cfg || !k.pgTid || k.consentTotal === null) {
           console.error(`[billing-auto] [운영자 확인 필요] 카드 등록 결과 모름 ${k.regNo} — 조회할 수 없음(설정·거래번호 없음)`);
+          // 조회할 수 없는 채로 7일이 지나면 닫는다 — 그 회사의 새 등록·파기가 영원히 막히지 않게(3단계 검수 중간 4).
+          if (now.getTime() - k.createdAt.getTime() > REG_CHECK_GIVE_UP_MS) {
+            await moveKey(prisma, k.id, ["reg_check"], "failed", {
+              lastFailReason: "카드 등록 결과를 확인하지 못해 닫았습니다. 다시 신청해 주세요(문제가 있으면 고객센터).",
+            });
+            continue;
+          }
           await prisma.pgBillingKey.updateMany({ where: { id: k.id, status: "reg_check" }, data: { lastCheckedAt: new Date(), retryCount: { increment: 1 } } });
           continue;
         }
@@ -558,7 +595,18 @@ export async function settleBillingKeys(limit = 20, now: Date = new Date()): Pro
           console.warn(`[billing-auto] 카드 등록 결과 모름 → 실패로 닫음 ${k.regNo}. 등록이 됐을 수 있으니 KIS 상점관리자 확인`);
           await moveKey(prisma, k.id, ["reg_check"], "failed", { lastFailReason: "카드 등록 결과를 확인하지 못했습니다. 다시 신청해 주세요." });
         } else if (found.status === "approved") {
-          console.error(`[billing-auto] [운영자 확인 필요] 카드 등록 ${k.regNo} — KIS 조회상 승인(돈이 빠짐). 상점관리자에서 취소 확인`);
+          // 카드 등록 중 **결제가 승인됐다**(등록 대신 결제) — 이 승인을 어느 취소 주소로 되돌려야 하는지 실제 시험 전에는 모른다.
+          //  자동 환불은 하지 않고 실패로 닫아 새 등록을 풀어 준 뒤 운영자가 KIS 상점관리자에서 취소한다(3단계 검수 중간 4).
+          //  (예전엔 reg_check에 머물러 매시간 같은 경고만 남기고, 그 회사는 새 카드 등록·파기가 영원히 막혔다)
+          console.error(`[billing-auto] [운영자 확인 필요] 카드 등록 ${k.regNo} — KIS 조회상 승인(돈이 빠짐 ${found.amt ?? "?"}원). 상점관리자에서 취소(환불)할 것`);
+          await moveKey(prisma, k.id, ["reg_check"], "failed", {
+            lastFailReason: "카드 등록 중 결제가 승인되어 등록을 멈췄습니다. 고객센터에서 확인 후 환불해 드립니다.",
+          });
+        } else if (now.getTime() - k.createdAt.getTime() > REG_CHECK_GIVE_UP_MS) {
+          console.error(`[billing-auto] [운영자 확인 필요] 카드 등록 결과 모름 ${k.regNo} — 7일 넘게 확인 안 돼 닫음. KIS 상점관리자에서 등록 카드·결제 확인`);
+          await moveKey(prisma, k.id, ["reg_check"], "failed", {
+            lastFailReason: "카드 등록 결과를 확인하지 못해 닫았습니다. 다시 신청해 주세요(문제가 있으면 고객센터).",
+          });
         } else if (k.retryCount + 1 >= DELETE_WARN_TRIES) {
           console.error(`[billing-auto] [운영자 확인 필요] 카드 등록 결과 모름 ${k.regNo} — ${k.retryCount + 1}회 조회에도 확인 안 됨`);
         }
@@ -633,7 +681,8 @@ async function postponeKey(keyId: string, now: Date, reason?: string): Promise<v
   });
 }
 /** 실패 1회를 센다 — 3번째면 멈춤, 아니면 내일 다시. 사용 중 카드만(해지·변경·멈춤이면 아무것도 안 함). */
-async function recordFailure(keyId: string, now: Date, reason: string, resultCode?: string | null): Promise<void> {
+async function recordFailure(keyId: string, attemptAt: Date, reason: string, resultCode?: string | null): Promise<void> {
+  const now = attemptAt; // "내일"은 결과가 닫힌 때가 아니라 **시도한 날** 기준(자정 넘어 닫혀도 하루가 빠지지 않게 — 검수 경미 2)
   const k = await prisma.pgBillingKey.findUnique({ where: { id: keyId }, select: { status: true, failCount: true, companyId: true } });
   if (!k || k.status !== "active") return;
   const n = k.failCount + 1;
@@ -740,6 +789,13 @@ export async function chargeKey(keyId: string): Promise<ChargeOutcome> {
       await pauseKey(key.id, key.companyId, "동의하신 금액 정보가 없어 자동결제를 멈췄습니다 — 카드를 다시 등록해 주세요.");
       return "paused";
     }
+    // 🔴 동의한 **금액**보다 많으면 청구하지 않는다(3단계 검수 중간 2). 구간 번호만 보면, 요금표 가격을 올리거나 구간을 다시 나눠
+    //    배포했을 때 자동결제 고객 전원에게 동의 없이 오른 금액이 빠진다(1단계 검수 M7·전자상거래법 제13조 ⑥ 취지).
+    //    멈춤 → 관리자가 [카드 다시 등록하기]에서 새 금액을 보고 다시 동의한다.
+    if (key.consentTotal === null || amount.total > key.consentTotal) {
+      await pauseKey(key.id, key.companyId, "요금이 바뀌어 동의하신 금액보다 많아 자동결제를 멈췄습니다 — 새 금액을 확인하고 카드를 다시 등록해 주세요.");
+      return "paused";
+    }
     const max = readKispgConfig().maxAmount ?? KIS_MAX_TOTAL;
     if (amount.total > max) {
       await pauseKey(key.id, key.companyId, "카드 1회 결제 한도를 넘는 금액이라 자동결제를 멈췄습니다 — 고객센터로 연락해 주세요.");
@@ -819,7 +875,21 @@ async function settleAutoCharge(orderId: string, cfg: KisMerchant, paid: Billing
     await billingCancelCheck(orderId, cfg, paid.amt ?? null, "승인 금액이 주문 금액과 달라 자동 취소");
     return;
   }
-  // 결과 모름·확정 실패 — check로 두고 10분 정리가 조회로 닫는다.
+  // 확정 거절(카드 한도 초과 등 — 돈이 빠지지 않았다고 KIS가 답함)이면 **바로 한 번 조회**해서 "결제 없음"이면 즉시 실패로 닫는다
+  //  (3단계 검수 중간 5 — 일반 결제 settleApprove와 같은 규칙). 예전엔 60분 동안 "확인 중"으로 남아 거절 사유도 안 보이고 직접 결제도 막혔다.
+  if (!paid.uncertain && !paid.mayBeCharged) {
+    const o = await prisma.pgOrder.findUnique({ where: { id: orderId }, select: { orderNo: true, totalAmount: true, pgTid: true } });
+    if (o) {
+      const r = await kispg.inquire({ config: cfg, tid: o.pgTid ?? undefined, ordNo: o.orderNo, goodsAmt: o.totalAmount });
+      if (r.status === "not_found") {
+        await moveOrder(prisma, orderId, ["check"], "failed", {
+          failReason: kisText(paid.error ?? "승인되지 않았습니다."), pgResultCode: kisText(paid.resultCd, 20), pgResultMsg: kisText(paid.resultMsg),
+        });
+        return;
+      }
+    }
+  }
+  // 결과 모름(또는 거절인데 조회가 결제 없음이 아님) — check로 두고 10분 정리가 조회로 닫는다.
   await prisma.pgOrder.updateMany({
     where: { id: orderId, status: "check" },
     data: {
@@ -878,7 +948,7 @@ export async function followUpAutoChargeOrders(limit = 50): Promise<number> {
   const orders = await prisma.pgOrder.findMany({
     where: { orderType: "billing_auto", status: { in: ["paid", "failed", "cancelled"] }, followedUpAt: null },
     orderBy: { createdAt: "asc" }, take: limit,
-    select: { id: true, status: true, billingKeyId: true, companyId: true, failReason: true, pgResultMsg: true, pgResultCode: true },
+    select: { id: true, status: true, billingKeyId: true, companyId: true, failReason: true, pgResultMsg: true, pgResultCode: true, approveRequestedAt: true, createdAt: true },
   });
   let n = 0;
   for (const o of orders) {
@@ -895,13 +965,16 @@ export async function followUpAutoChargeOrders(limit = 50): Promise<number> {
           data: { failCount: 0, lastFailReason: null, lastResultCode: kisText(o.pgResultCode, 20), nextChargeDate: nextChargeDateFor(periodBase(c, now), now) },
         });
       } else if (o.status === "failed") {
-        await recordFailure(o.billingKeyId, now, o.pgResultMsg || o.failReason || "카드 결제가 승인되지 않았습니다.", o.pgResultCode);
+        // 화면·알림에 보이는 사유는 KIS가 준 거절 문구만(예: 잔액 부족). "결과 모름 — 응답 시간 초과" 같은 내부 문구는 보이지 않는다(검수 경미 8).
+        await recordFailure(o.billingKeyId, o.approveRequestedAt ?? o.createdAt, o.pgResultMsg || "카드 결제가 승인되지 않았습니다.", o.pgResultCode);
       } else {
         // 취소된 회차를 다음 날 또 청구하지 않게 멈춘다(관리자가 확인 후 카드를 다시 등록하거나 직접 결제).
         await pauseKey(o.billingKeyId, o.companyId, `결제가 자동으로 취소되어 자동결제를 멈췄습니다${o.failReason ? ` — ${o.failReason}` : ""}`);
       }
     } catch (e) {
-      console.error(`[billing-auto] 자동결제 후속 처리 오류 — 주문 ${o.id}: ${errCode(e)}`);
+      console.error(`[billing-auto] 자동결제 후속 처리 오류(다음 정리 때 다시) — 주문 ${o.id}: ${errCode(e)}`);
+      // 표시만 찍고 처리를 못 했으면 실패 횟수가 영원히 안 센다(검수 경미 3) → 표시를 되돌려 다시 처리하게 한다.
+      await prisma.pgOrder.updateMany({ where: { id: o.id }, data: { followedUpAt: null } }).catch(() => undefined);
     }
   }
   return n;
@@ -994,13 +1067,18 @@ export async function reconcileAutoChargeOrders(limit = 20, now: Date = new Date
  * 동의하지 않는다(보지 않은 금액에 동의시키지 않는다). 동의 근거는 사용 중 카드 행에 새로 남긴다.
  */
 export async function approveCurrentTier(companyId: string, seenTierIndex: number): Promise<{ ok: boolean; message: string }> {
-  const card = await prisma.pgBillingKey.findFirst({ where: { companyId, status: { in: ["active", "paused"] } }, select: { id: true } });
+  const card = await prisma.pgBillingKey.findFirst({ where: { companyId, status: { in: ["active", "paused"] } }, select: { id: true, status: true } });
   if (!card) return { ok: false, message: "사용 중인 자동결제 카드가 없습니다." };
+  // 멈춘 카드는 동의해도 결제되지 않는다 — 거짓 안내를 하지 않게 카드 다시 등록으로 보낸다(검수 경미 5).
+  if (card.status === "paused") return { ok: false, message: "자동결제가 멈춰 있습니다. [카드 다시 등록하기]에서 새 금액으로 신청해 주세요." };
   const heads = await countHeads(companyId);
   const q = quoteFor(billableCount(heads.employees, heads.admins));
   if (q.kind !== "tier") return { ok: false, message: "지금은 동의할 요금이 없습니다." };
   if (!Number.isInteger(seenTierIndex) || q.tierIndex !== seenTierIndex) {
     return { ok: false, message: "그사이 인원이 바뀌어 금액이 달라졌습니다. 화면을 새로 고쳐 금액을 다시 확인해 주세요." };
+  }
+  if (q.total > (readKispgConfig().maxAmount ?? KIS_MAX_TOTAL)) {
+    return { ok: false, message: "카드 1회 결제 한도를 넘는 금액이라 자동결제로 받을 수 없습니다. 고객센터로 연락해 주세요." };
   }
   const now = new Date();
   await prisma.$transaction([
@@ -1008,4 +1086,18 @@ export async function approveCurrentTier(companyId: string, seenTierIndex: numbe
     prisma.pgBillingKey.update({ where: { id: card.id }, data: { consentTierIndex: q.tierIndex, consentTotal: q.total, consentedAt: now } }),
   ]);
   return { ok: true, message: `동의하셨습니다. 다음 자동결제부터 월 ${q.total.toLocaleString("ko-KR")}원(부가세 포함)으로 결제됩니다.` };
+}
+
+/**
+ * 이 회사의 사용 중 카드 결제일을 지금 이용 기간 기준으로 다시 잡는다(3단계 검수 중간 6).
+ *  · 결제일은 등록·결제 성공 때만 계산되므로, 운영자가 무료 기간을 **줄이면** 옛 결제일까지 청구되지 않아 기간이 빈다.
+ *  · 운영자 무료 기간 변경(app/actions/operator-companies.ts)이 부른다. ⏳ 6단계 운영자 결제 취소로 paidUntil을 되돌릴 때도 부를 것.
+ */
+export async function rescheduleCompanyCards(companyId: string, now: Date = new Date()): Promise<void> {
+  const c = await prisma.company.findUnique({ where: { id: companyId }, select: { createdAt: true, trialLastDate: true, paidUntil: true } });
+  if (!c) return;
+  await prisma.pgBillingKey.updateMany({
+    where: { companyId, status: "active" },
+    data: { nextChargeDate: nextChargeDateFor(periodBase(c, now), now) },
+  });
 }
