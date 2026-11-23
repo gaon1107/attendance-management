@@ -395,7 +395,7 @@ async function activateIssued(keyId: string, cfg: KisMerchant, issued: IssueBill
       if (!key || key.status !== "reg_check") throw new Error("등록 확정 중 상태가 아님");
       const c = await tx.company.findUnique({
         where: { id: key.companyId },
-        select: { createdAt: true, trialLastDate: true, paidUntil: true, terminatedAt: true },
+        select: { createdAt: true, trialLastDate: true, paidUntil: true, terminatedAt: true, approvedTierIndex: true },
       });
       const now = new Date();
       if (!c || c.terminatedAt) {
@@ -417,8 +417,20 @@ async function activateIssued(keyId: string, cfg: KisMerchant, issued: IssueBill
         key.companyId
       );
       if (!ok) throw new Error("사용 시작 실패");
-      // 동의한 구간 = 이 카드를 신청하며 본 금액의 구간(머리말 · 1단계 검수 M7).
-      await tx.company.update({ where: { id: key.companyId }, data: { approvedTierIndex: key.consentTierIndex } });
+      // 동의한 구간 = 이 카드를 신청하며 본 금액의 구간(머리말 · 1단계 검수 M7). 🔴 단 **올리기만** 한다(4단계 검수 중간 1):
+      //  초대 링크를 만들며 이미 더 높은 구간에 동의했으면(아직 가입 안 한 사람 포함) 그 동의를 내리지 않고, 새 카드의 동의
+      //  근거에도 이어 붙인다 — 안 그러면 그 사람이 가입한 뒤 결제일에 "동의 금액보다 많음"으로 멈추거나 덜 청구된다.
+      //  화면은 신청 안내에 그 앞선 동의 금액을 함께 보여 준다(AutoPayBox offer.priorText).
+      const approved = Math.max(c.approvedTierIndex ?? -1, key.consentTierIndex ?? -1);
+      if (approved >= 0 && approved < PRICE_TIERS.length) {
+        await tx.company.update({ where: { id: key.companyId }, data: { approvedTierIndex: approved } });
+        if (key.consentTierIndex !== null && approved > key.consentTierIndex) {
+          await tx.pgBillingKey.update({
+            where: { id: keyId },
+            data: { consentTierIndex: approved, consentTotal: withVat(PRICE_TIERS[approved].monthly).total },
+          });
+        }
+      }
       activated = true;
     });
   } catch (e) {
@@ -1081,9 +1093,16 @@ export async function approveCurrentTier(companyId: string, seenTierIndex: numbe
     return { ok: false, message: "카드 1회 결제 한도를 넘는 금액이라 자동결제로 받을 수 없습니다. 고객센터로 연락해 주세요." };
   }
   const now = new Date();
+  // 올리기만 한다(4단계 검수 중간 1) — 그사이 다른 관리자가 초대 링크로 더 높게 동의했으면 낮추지 않는다.
   await prisma.$transaction([
-    prisma.company.update({ where: { id: companyId }, data: { approvedTierIndex: q.tierIndex } }),
-    prisma.pgBillingKey.update({ where: { id: card.id }, data: { consentTierIndex: q.tierIndex, consentTotal: q.total, consentedAt: now } }),
+    prisma.company.updateMany({
+      where: { id: companyId, OR: [{ approvedTierIndex: null }, { approvedTierIndex: { lt: q.tierIndex } }] },
+      data: { approvedTierIndex: q.tierIndex },
+    }),
+    prisma.pgBillingKey.updateMany({
+      where: { id: card.id, OR: [{ consentTierIndex: null }, { consentTierIndex: { lt: q.tierIndex } }] },
+      data: { consentTierIndex: q.tierIndex, consentTotal: q.total, consentedAt: now },
+    }),
   ]);
   return { ok: true, message: `동의하셨습니다. 다음 자동결제부터 월 ${q.total.toLocaleString("ko-KR")}원(부가세 포함)으로 결제됩니다.` };
 }

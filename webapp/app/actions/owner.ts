@@ -36,6 +36,7 @@ export async function setAdminRole(
   // 2026-11-23 결제 4단계: 관리자는 1명까지 요금에서 빠진다 → **해제**하면 요금 대상이 1명 늘 수 있다(관리자 1명뿐일 때).
   //  구간이 오르면 해제 전에 새 금액 동의(lib/seat-consent.ts). 지정(올리기)은 늘지 않으니 묻지 않는다. 저장은 성공 뒤.
   let commitConsent: () => Promise<void> = async () => {};
+  let releaseConsent: () => void = () => {};
   if (!makeAdmin) {
     const t = await prisma.user.findFirst({
       where: { id, companyId: me.companyId },
@@ -45,6 +46,7 @@ export async function setAdminRole(
       const gate = await checkSeatConsent(me, { employees: 1, admins: -1 }, formData.get("seatConsent"));
       if (!gate.ok) return { seatConsent: gate.preview };
       commitConsent = gate.commit;
+      releaseConsent = gate.release;
     }
   }
 
@@ -98,6 +100,7 @@ export async function setAdminRole(
     console.warn("[owner] 관리자 권한 변경 실패:", e);
     return { error: "권한을 바꾸지 못했습니다. 잠시 후 다시 시도해주세요." };
   } finally {
+    releaseConsent(); // 회사별 인원 변경 잠금 풀기(4단계 검수 중간 2)
     revalidatePath("/employees");
     if (id) revalidatePath(`/employees/${id}`);
   }

@@ -7,8 +7,9 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Modal } from "@/app/components/Modal";
 import type { SeatPreview } from "@/lib/seat-consent";
+import { QUOTE_OVER } from "@/lib/pricing";
 
-const QUOTE_FROM = 151; // 공개 요금표 다음 인원(lib/pricing.ts QUOTE_OVER + 1) — 화면 문구용
+const QUOTE_FROM = QUOTE_OVER + 1; // 공개 요금표 다음 인원 — 요금표 한 곳(lib/pricing.ts)에서 가져온다(4단계 검수 경미 8)
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
 /**
@@ -30,12 +31,25 @@ export function useSeatConsent(
     if (tokenRef.current) tokenRef.current.value = "";
   }, [state]);
 
+  const [oldBrowser, setOldBrowser] = useState(false);
   const confirm = () => {
-    if (!preview || !preview.needsConsent || !tokenRef.current) return;
+    const form = formRef.current;
+    if (!preview || !preview.needsConsent || !tokenRef.current || !form) return;
+    // requestSubmit이 없는 오래된 브라우저(사파리 16 미만)는 다시 보낼 수 없다 — 표시를 세우기 **전에** 막는다
+    //  (세운 채 실패하면 다음 [관리자 해제]·[복직]이 "할까요?" 확인 없이 남은 동의 값으로 통과한다 — 4단계 검수 경미 2).
+    if (typeof form.requestSubmit !== "function") {
+      setOldBrowser(true);
+      return;
+    }
     tokenRef.current.value = preview.token;
     resubmitRef.current = true;
     setClosedFor(state ?? null);
-    formRef.current?.requestSubmit();
+    try {
+      form.requestSubmit();
+    } catch {
+      resubmitRef.current = false;
+      tokenRef.current.value = "";
+    }
   };
   const cancel = () => setClosedFor(state ?? null);
 
@@ -56,6 +70,11 @@ export function useSeatConsent(
               오릅니다(부가세 포함).
             </p>
           )}
+          {oldBrowser ? (
+            <p role="alert" style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: "var(--danger)" }}>
+              이 브라우저에서는 진행할 수 없습니다. 크롬·엣지 최신 버전에서 다시 해 주세요.
+            </p>
+          ) : null}
           <ul style={{ margin: "0 0 16px", paddingLeft: 18, fontSize: 13, color: "var(--text-sub)" }}>
             <li>새 금액은 다음 결제부터 적용되며, 이미 결제한 기간의 차액은 받지 않습니다.</li>
             <li>아직 가입하지 않은 초대 링크도 인원에 넣어 계산합니다.</li>

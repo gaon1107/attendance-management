@@ -253,11 +253,9 @@ export default async function SubscriptionPage() {
           )}
         </div>
 
-        {/* 🔴 "금액을 먼저 보여 드리고 동의를 받습니다"라고 쓰지 않는다(검수 치명 1).
-            그 절차(인상 동의 화면)도, 알림 발송 수단도, 결제도 **아직 없다.** 이 화면은 조회 전용이다.
-            고객이 이 문구를 캡처해 두면, 결제를 붙인 뒤 요금이 오른 달에 그대로 분쟁 자료가 된다
-            (1단계에서 홈화면의 "미리 알려드립니다"를 뺀 것과 같은 이유 — 지킬 주체가 없는 약속).
-            → 지금 사실만 적는다. 동의 절차는 실제로 만드는 단계에서 그 화면과 함께 적는다. */}
+        {/* 2026-11-20 검수 치명 1: 동의 화면이 없을 때는 "금액을 먼저 보여 드리고 동의를 받습니다"를 쓰지 않았다.
+            2026-11-23 결제 4단계에서 그 화면이 생겼다(lib/seat-consent.ts — 초대·직원 추가·복직·관리자 해제) → 이제 그 약속을 적는다.
+            ⚠️ 동의 화면을 없애거나 우회 경로를 만들면 이 문구도 함께 고칠 것. */}
         <div style={cardPad}>
           <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>직원이 늘면</div>
           {q.kind === "tier" && q.next ? (
@@ -267,7 +265,7 @@ export default async function SubscriptionPage() {
               <strong>{formatWon(q.next.monthly)}</strong>(카드 {formatWon(withVat(q.next.monthly).total)})이 됩니다.{" "}
               {/* 2026-11-23 결제 4단계: 동의 화면이 생겼다(초대 링크·직원 추가·복직·관리자 해제 — lib/seat-consent.ts) → 이제 약속할 수 있다. */}
               구간을 넘게 직원을 늘릴 때는 [직원관리]에서 새 금액을 먼저 보여 드리고 동의를 받습니다. 새 금액은 다음 결제부터
-              적용되며, 이미 결제한 기간의 차액은 받지 않습니다.
+              적용되며, 이미 결제한 기간의 차액은 받지 않습니다. 자동결제는 동의하신 금액까지만 결제됩니다.
             </p>
           ) : q.kind === "tier" ? (
             <p style={{ ...noteText, margin: 0 }}>
@@ -429,6 +427,11 @@ function buildAutoView(
   const offer =
     q.kind === "tier"
       ? {
+          // 초대 링크 동의 등으로 지금 구간보다 높게 이미 동의했으면 그 금액을 함께 알린다(4단계 검수 중간 1 — 카드 등록 때 이어 붙는다).
+          priorText:
+            auto.approvedTierIndex !== null && auto.approvedTierIndex > q.tierIndex && auto.approvedTierIndex < PRICE_TIERS.length
+              ? `${formatWon(withVat(PRICE_TIERS[auto.approvedTierIndex].monthly).total)}(부가세 포함, ${tierLabel(auto.approvedTierIndex) ?? ""} 구간)`
+              : null,
           tierIndex: q.tierIndex, label: q.label, monthlyText: formatWon(q.monthly), vatText: formatWon(q.vat), totalText: formatWon(q.total),
           firstChargeText: formatKoreanDate(auto.firstChargeDate),
           chargeNow: auto.firstChargeDate.getTime() <= today.getTime(),

@@ -11,8 +11,12 @@
 // 쓰는 법(서버 액션):
 //   const gate = await checkSeatConsent(me, delta, formData.get("seatConsent"));
 //   if (!gate.ok) return { seatConsent: gate.preview };   // 화면이 확인 창을 띄운다
-//   ...실제 등록...
-//   await gate.commit();                                  // 등록이 **성공한 뒤에만** 동의를 저장한다
+//   try {
+//     ...실제 등록...
+//     await gate.commit();                                // 등록이 **성공한 뒤에만** 동의를 저장한다
+//   } finally {
+//     gate.release();                                     // 🔴 회사별 잠금을 반드시 푼다(4단계 검수 중간 2)
+//   }
 // ⚠️ 서버 전용.
 import { prisma } from "@/lib/db";
 import { countHeads, billableCount } from "@/lib/pricing-server";
@@ -28,7 +32,8 @@ export type SeatPreview =
   | {
       needsConsent: true;
       quote: false;
-      /** 화면이 다시 보낼 동의 값(=새 구간 번호). 서버 계산과 다르면 진행하지 않는다. */
+      /** 화면이 다시 보낼 동의 값(= "새 구간 번호:부가세 포함 금액"). 서버 계산과 다르면 진행하지 않는다 —
+       *  금액까지 묶어, 창을 띄운 뒤 요금표가 바뀌어도 보지 않은 금액이 "동의"로 통과하지 않게(4단계 검수 경미 1). */
       token: string;
       projected: number;
       fromLabel: string;
@@ -74,16 +79,42 @@ async function plan(companyId: string, delta: SeatDelta): Promise<Plan> {
   const fromTotal = withVat(PRICE_TIERS[baseline].monthly).total;
   return {
     preview: {
-      needsConsent: true, quote: false, token: String(next.tierIndex), projected: nextCount,
+      needsConsent: true, quote: false, token: `${next.tierIndex}:${next.total}`, projected: nextCount,
       fromLabel, fromTotal, toLabel: next.label, toTotal: next.total,
     },
     toTierIndex: next.tierIndex, toTotal: next.total, fromLabel, fromTotal,
   };
 }
 
-/** 화면용 — 이 변경에 동의가 필요한지 미리 본다(아무것도 저장하지 않는다). */
-export async function previewSeatConsent(companyId: string, delta: SeatDelta): Promise<SeatPreview> {
-  return (await plan(companyId, delta)).preview;
+// ─────────────────────────────────────────────────────────────────────────────
+// 회사별 잠금(4단계 검수 중간 2) — "인원 세기 → 동의 판단 → 실제 등록 → 동의 저장"을 같은 회사끼리 한 줄로 세운다.
+//  · 없으면 관리자 둘(또는 탭 두 개)이 거의 동시에 직원 추가·초대를 눌러 둘 다 "구간 안"으로 판정받고, 합쳐서 동의 없이 구간을 넘는다.
+//  · 서버는 상자 1개(프로세스 1개)로 돈다 — 그래서 메모리 잠금으로 충분하다. ⚠️ 서버를 여러 대로 늘리면 DB 잠금으로 바꿀 것.
+//  · 등록 중 예외로 풀지 못해도 SEAT_LOCK_MAX_MS 뒤 저절로 풀린다(영구 잠김 없음).
+// ─────────────────────────────────────────────────────────────────────────────
+const SEAT_LOCK_MAX_MS = 15_000;
+const seatLocks = new Map<string, Promise<void>>();
+
+async function acquireSeatLock(companyId: string): Promise<() => void> {
+  const prev = seatLocks.get(companyId) ?? Promise.resolve();
+  let open!: () => void;
+  const mine = new Promise<void>((r) => {
+    open = r;
+  });
+  const tail = prev.then(() => mine);
+  seatLocks.set(companyId, tail);
+  await prev;
+  let done = false;
+  const release = () => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    open();
+    if (seatLocks.get(companyId) === tail) seatLocks.delete(companyId);
+  };
+  const timer = setTimeout(release, SEAT_LOCK_MAX_MS);
+  timer.unref?.();
+  return release;
 }
 
 /**
@@ -95,31 +126,44 @@ export async function checkSeatConsent(
   me: Actor,
   delta: SeatDelta,
   consentValue: FormDataEntryValue | null
-): Promise<{ ok: true; commit: () => Promise<void> } | { ok: false; preview: SeatPreview }> {
-  const p = await plan(me.companyId, delta);
-  if (!p.preview.needsConsent) return { ok: true, commit: async () => {} };
-  if (typeof consentValue !== "string" || consentValue !== p.preview.token) return { ok: false, preview: p.preview };
+): Promise<{ ok: true; commit: () => Promise<void>; release: () => void } | { ok: false; preview: SeatPreview }> {
+  const release = await acquireSeatLock(me.companyId);
+  let p: Plan;
+  try {
+    p = await plan(me.companyId, delta);
+  } catch (e) {
+    release();
+    throw e;
+  }
+  if (!p.preview.needsConsent) return { ok: true, commit: async () => {}, release };
+  if (typeof consentValue !== "string" || consentValue !== p.preview.token) {
+    release();
+    return { ok: false, preview: p.preview };
+  }
   const preview = p.preview;
   return {
     ok: true,
+    release,
     commit: async () => {
       try {
         if (!preview.quote && p.toTierIndex !== null && p.toTotal !== null) {
           const to = p.toTierIndex;
           const now = new Date();
-          // 동의 구간은 **올리기만** 한다(다른 관리자가 그사이 더 높게 동의했으면 그대로).
-          await prisma.company.updateMany({
-            where: { id: me.companyId, OR: [{ approvedTierIndex: null }, { approvedTierIndex: { lt: to } }] },
-            data: { approvedTierIndex: to },
-          });
-          // 자동결제 카드가 있으면 동의 근거도 새 금액으로 — 3단계의 "동의 금액보다 많으면 멈춤"을 통과하게.
-          await prisma.pgBillingKey.updateMany({
-            where: {
-              companyId: me.companyId, status: { in: ["active", "paused"] },
-              OR: [{ consentTierIndex: null }, { consentTierIndex: { lt: to } }],
-            },
-            data: { consentTierIndex: to, consentTotal: p.toTotal, consentedAt: now },
-          });
+          // 🔴 회사 동의 구간과 카드 동의 금액을 **한 묶음**으로(4단계 검수 중간 3) — 하나만 저장되면, 동의했는데도
+          //    결제일에 "동의 금액보다 많음"으로 자동결제가 멈춘다. 둘 다 **올리기만** 한다(더 높게 동의돼 있으면 그대로).
+          await prisma.$transaction([
+            prisma.company.updateMany({
+              where: { id: me.companyId, OR: [{ approvedTierIndex: null }, { approvedTierIndex: { lt: to } }] },
+              data: { approvedTierIndex: to },
+            }),
+            prisma.pgBillingKey.updateMany({
+              where: {
+                companyId: me.companyId, status: { in: ["active", "paused"] },
+                OR: [{ consentTierIndex: null }, { consentTierIndex: { lt: to } }],
+              },
+              data: { consentTierIndex: to, consentTotal: p.toTotal, consentedAt: now },
+            }),
+          ]);
         }
         // 동의 증거 — 누가·언제·얼마→얼마(관리자 기록, 2년 보관). 금액은 부가세 포함 카드 청구액.
         const what = preview.quote

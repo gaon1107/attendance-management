@@ -58,6 +58,7 @@ export async function addEmployee(
   const gate = await checkSeatConsent(me, { employees: 1, admins: 0 }, formData.get("seatConsent"));
   if (!gate.ok) return { seatConsent: gate.preview };
 
+  try {
   await prisma.user.create({
     data: {
       companyId: me.companyId, // 관리자와 같은 회사로
@@ -82,6 +83,9 @@ export async function addEmployee(
   //    ⚠️ 이름만 남긴다. 비밀번호 값은 절대 넣지 않는다(lib/audit.ts 규약).
   await logAdminAction(me, "config", `employee_add:${name}`);
   await gate.commit();
+  } finally {
+    gate.release(); // 회사별 인원 변경 잠금 풀기(4단계 검수 중간 2)
+  }
 
   revalidatePath("/employees");
   // 평문 임시 비번은 여기서만 나간다 — 관리자가 직원에게 전달해야 하므로 한 번은 보여줘야 한다.
@@ -334,11 +338,15 @@ export async function reactivateEmployee(_prev: ReactivateState, formData: FormD
   const gate = await checkSeatConsent(me, adds, formData.get("seatConsent"));
   if (!gate.ok) return { seatConsent: gate.preview };
 
-  await prisma.user.update({
-    where: { id: target.id },
-    data: { deactivatedAt: null, failedLoginCount: 0, lockedUntil: null },
-  });
-  await gate.commit();
+  try {
+    await prisma.user.update({
+      where: { id: target.id },
+      data: { deactivatedAt: null, failedLoginCount: 0, lockedUntil: null },
+    });
+    await gate.commit();
+  } finally {
+    gate.release(); // 회사별 인원 변경 잠금 풀기(4단계 검수 중간 2)
+  }
 
   revalidatePath(`/employees/${id}`);
   revalidatePath("/employees");

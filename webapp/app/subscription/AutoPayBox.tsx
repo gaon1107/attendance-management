@@ -15,7 +15,7 @@ export type AutoPayView = {
   deleting: boolean;
   card: { cardName: string | null; cardNoMasked: string | null; nextChargeText: string | null; failCount: number; lastFailReason: string | null } | null;
   /** 신청 안내에 쓸 값 — 지금 인원 기준. null이면 신청할 금액이 없다(noAmountReason). */
-  offer: { tierIndex: number; label: string; monthlyText: string; vatText: string; totalText: string; firstChargeText: string; chargeNow: boolean; startText: string } | null;
+  offer: { priorText: string | null; tierIndex: number; label: string; monthlyText: string; vatText: string; totalText: string; firstChargeText: string; chargeNow: boolean; startText: string } | null;
   noAmountReason: string | null;
   /** 사용 중 카드의 다음 결제 예상 — 동의 구간에 막혀 지금 구간보다 낮게 청구되면 capped */
   next: { totalText: string; label: string; capped: boolean; currentTotalText: string | null; currentLabel: string | null; currentTierIndex: number | null } | null;
@@ -135,6 +135,11 @@ export function AutoPayBox({ v }: { v: AutoPayView }) {
           )}{" "}
           그다음부터는 매달 이용 기간이 끝나기 3일 전에 결제됩니다.
         </li>
+        {v.offer.priorText ? (
+          <li>
+            직원을 초대하며 이미 <strong>월 {v.offer.priorText}</strong>에 동의하셨습니다. 초대한 직원이 가입해 인원이 늘면 그 금액까지 결제됩니다.
+          </li>
+        ) : null}
         <li>
           요금은 결제일의 인원으로 정합니다. 인원이 줄면 낮은 요금으로 결제되고, 늘어서 요금이 오르면 새 금액에 따로 동의하시기 전까지는 이 금액을 넘지 않습니다.
           요금표가 바뀌어 이 금액보다 많아지면 결제하지 않고 자동결제를 멈춘 뒤 다시 동의를 받습니다. 인원이 요금표를 넘으면(별도 협의 규모) 자동결제를 멈춥니다.

@@ -153,6 +153,8 @@ function baseMetaLabel(meta: string): string {
     temp_password_expired: "임시 비밀번호 기한 만료",
     password_reset: "관리자 비밀번호 재설정",
     employee_add: "직원 추가",
+    // 결제 4단계(lib/seat-consent.ts) — 요금 구간이 오르는 인원 변경에 관리자가 동의한 증거(분쟁 때 찾는 기록)
+    price_consent: "요금 인상 동의(인원 증가)",
     deactivate_employee: "직원 비활성화(퇴사)",
     outing_reasons: "외출 사유 목록 변경",
     login_ip_throttled: "로그인 시도 차단(같은 IP 과다 실패)",

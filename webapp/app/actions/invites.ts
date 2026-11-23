@@ -33,14 +33,18 @@ export async function createInvite(_prev: CreateInviteState, formData: FormData)
   if (!gate.ok) return { seatConsent: gate.preview };
 
   const token = randomBytes(24).toString("hex");
-  await prisma.invite.create({
-    data: {
-      companyId: me.companyId,
-      token,
-      expiresAt: new Date(Date.now() + SEVEN_DAYS_MS),
-    },
-  });
-  await gate.commit();
+  try {
+    await prisma.invite.create({
+      data: {
+        companyId: me.companyId,
+        token,
+        expiresAt: new Date(Date.now() + SEVEN_DAYS_MS),
+      },
+    });
+    await gate.commit();
+  } finally {
+    gate.release(); // 회사별 인원 변경 잠금 풀기(4단계 검수 중간 2)
+  }
   revalidatePath("/employees");
   return { ok: true };
 }
