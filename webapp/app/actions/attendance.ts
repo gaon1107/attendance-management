@@ -6,6 +6,7 @@ import { evaluateOfficeLocation } from "@/lib/location";
 import { getClientIp, ipMatches } from "@/lib/ip";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { clockStartBlockReason } from "@/lib/service-access";
 import { after } from "next/server";
 import { recordAccess, readClientMeta } from "@/lib/access-log";
 import { parseOutingReasons } from "@/lib/outing-reasons";
@@ -66,6 +67,12 @@ export async function clockIn(
   if (!me) return { ok: false, reason: "로그인이 풀렸습니다. 다시 로그인해주세요." };
   // 🔒 회사 계정은 사람이 아니다 — 출퇴근을 찍으면 법정 근로시간 기록에 유령 근로자가 생긴다(검수 9).
   if (me.isOwner) return { ok: false, reason: "회사 계정은 출퇴근을 기록하지 않습니다." };
+  // 🔒 미납 차단(2026-11-23 결제 5단계) — 이용 기간 + 유예 3일이 지나면 **새 출근**을 막는다(결제 개시 전에는 막지 않음).
+  //    퇴근·복귀는 막지 않는다(사장님 결정 11-23). 얼굴 출근도 이 함수를 거치므로 함께 막힌다(lib/service-access.ts).
+  {
+    const blocked = await clockStartBlockReason(me.companyId);
+    if (blocked) return { ok: false, reason: blocked };
+  }
 
   // 이미 근무 중(24시간 안에 시작한 열린 기록이 있음)이면 중복 생성 안 함.
   const since = openSessionSince();
@@ -210,6 +217,8 @@ export async function startBreak(formData: FormData): Promise<void> {
   if (!me) return;
   // 🔒 회사 계정은 사람이 아니다 — 출퇴근을 찍으면 법정 근로시간 기록에 유령 근로자가 생긴다(검수 9).
   if (me.isOwner) return;
+  // 🔒 미납 차단(결제 5단계) — 외출 **시작**은 막는다(복귀는 막지 않는다). 화면도 막힌 회사에는 [외출] 버튼을 그리지 않는다.
+  if (await clockStartBlockReason(me.companyId)) return;
 
   // 지금 근무 중인 기록에만 외출을 붙인다 — 며칠 전 미퇴근 기록에 오늘 외출이 붙으면
   // 나중에 그날을 정정할 때 외출 시간이 음수가 되는 등 계산이 꼬인다(후속 검수 지적).

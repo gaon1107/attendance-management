@@ -2,6 +2,7 @@
 // 얼굴 등록/삭제 — 본인(직원)만. 얼굴인증 동의자에 한함.
 // FaceId=본인 id, Group=본인 회사 id(회사별 격리). 얼굴 원본은 우리 DB에 저장 안 함(얼굴서버에만).
 // 예외(확정 2026-07-11): 출퇴근 촬영 사진은 암호화해 90일 보관(동의 화면에 명시) — 관리자 재검토용.
+import { clockStartBlockReason } from "@/lib/service-access";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { revalidatePath } from "next/cache";
@@ -309,6 +310,12 @@ export async function faceClockIn(formData: FormData): Promise<ActionResult> {
   if (!me) return { ok: false, message: "로그인이 필요합니다." };
   // 🔒 회사 계정은 사람이 아니다 — 얼굴이 등록되면 [생체정보] 목록에 안 떠 파기할 수 없다(검수 2차 3).
   if (me.isOwner) return { ok: false, message: "회사 계정은 이 기능을 사용할 수 없습니다." };
+  // 🔒 미납 차단(2026-11-23 결제 5단계) — 얼굴 확인 **전에** 막는다. 아래 clockIn도 막지만, 거기까지 가면 얼굴 확인과
+  //    출근 사진 저장(생체정보)이 이미 일어난다 — 쓰지도 않을 사진을 남기지 않는다.
+  {
+    const blocked = await clockStartBlockReason(me.companyId);
+    if (blocked) return { ok: false, message: blocked };
+  }
 
   const verified = await verifyMyFace(me, formData);
   if (!verified.ok) return { ok: false, message: verified.message };
