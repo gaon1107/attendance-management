@@ -102,9 +102,10 @@ export default async function OperatorPaymentsPage({ searchParams }: { searchPar
                     주문 {o.orderNo} · 거래번호 {o.tidTail ?? "없음"} · 주문 {ymdhm(o.createdAt)}
                     {o.operatorCancelAt && ` · 운영자 취소 요청 ${ymdhm(o.operatorCancelAt)}`}
                     {o.failReason && ` · ${o.failReason}`}
+                    {o.kisMsg && o.kinds.includes("cancel_rejected") && <span style={{ color: "var(--danger)", fontWeight: 700 }}> · {o.kisMsg}</span>}
                   </div>
                 </div>
-                <OrderAttentionActions orderId={o.id} status={o.status} kinds={o.kinds} />
+                <OrderAttentionActions orderId={o.id} status={o.status} kinds={o.kinds} wasPaid={!!o.paidAt && !!o.operatorCancelAt} />
               </div>
             ))}
             {attention.cards.map((k) => (

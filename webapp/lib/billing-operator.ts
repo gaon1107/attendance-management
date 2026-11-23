@@ -13,9 +13,10 @@ import { getServiceAccess, type ServiceAccess } from "@/lib/service-access";
 import * as kispg from "@newgaon/kispg";
 import type { KispgConfig as KisMerchant } from "@newgaon/kispg";
 import { moveOrder, kisText } from "@/lib/pg-state";
+import { revertPaidCancel, confirmCancelled, CANCEL_REJECT_PREFIX } from "@/lib/billing-revert";
 import { claimCompany, releaseCompany, runNormalCancelFor, applyPaidOrder } from "@/lib/billing-pay";
 import {
-  markCompanyCardsForDeletion, rescheduleCompanyCards, runBillingCancelFor, autoPayReady, followUpAutoChargeOrders,
+  markCompanyCardsForDeletion, runBillingCancelFor, autoPayReady, followUpAutoChargeOrders,
 } from "@/lib/billing-auto";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -80,7 +81,7 @@ const ORDER_SELECT = {
   id: true, companyId: true, orderNo: true, orderType: true, productName: true, employees: true, totalAmount: true, pgAmount: true,
   status: true, paidAt: true, cancelledAt: true, periodStart: true, periodEnd: true, cardName: true, cardNoMasked: true,
   buyerName: true, buyerBizRegNo: true, failReason: true, createdAt: true, pgTid: true, pgMid: true,
-  operatorCancelBy: true, operatorCancelAt: true, periodRevertedAt: true, retryCount: true, lastCheckedAt: true, prevPaidUntil: true,
+  operatorCancelBy: true, operatorCancelAt: true, periodRevertedAt: true, retryCount: true, lastCheckedAt: true, prevPaidUntil: true, pgResultMsg: true,
 } as const;
 
 export type OperatorOrderRow = {
@@ -106,6 +107,7 @@ export type OperatorOrderRow = {
   operatorCancelBy: string | null;
   operatorCancelAt: Date | null;
   periodRevertedAt: Date | null;
+  kisMsg: string | null; // KIS가 준 결과 문구(취소 거절 사유 등)
 };
 
 type RawOrder = {
@@ -113,7 +115,7 @@ type RawOrder = {
   status: string; paidAt: Date | null; cancelledAt: Date | null; periodStart: Date | null; periodEnd: Date | null;
   cardName: string | null; cardNoMasked: string | null; buyerName: string | null; buyerBizRegNo: string | null;
   failReason: string | null; createdAt: Date; pgTid: string | null; operatorCancelBy: string | null; operatorCancelAt: Date | null;
-  periodRevertedAt: Date | null; prevPaidUntil: Date | null;
+  periodRevertedAt: Date | null; prevPaidUntil: Date | null; pgResultMsg: string | null;
 };
 
 /** 주문 목록에 회사 이름을 붙인다 — 외래키가 없어(5년 보관) 회사 이름은 한 번에 따로 찾는다(N+1 없음). */
@@ -132,6 +134,7 @@ async function withCompanyNames(rows: RawOrder[]): Promise<OperatorOrderRow[]> {
     card: [r.cardName, r.cardNoMasked].filter(Boolean).join(" ") || null,
     buyerBizRegNo: r.buyerBizRegNo, failReason: r.failReason, createdAt: r.createdAt, tidTail: tidTail(r.pgTid),
     operatorCancelBy: r.operatorCancelBy, operatorCancelAt: r.operatorCancelAt, periodRevertedAt: r.periodRevertedAt,
+    kisMsg: r.pgResultMsg,
   }));
 }
 
@@ -174,12 +177,13 @@ export async function listOperatorPayments(opts: { q: string; filter: PayFilter;
 // 확인 필요 — 지금까지 서버 기록([운영자 확인 필요])에만 남던 것들을 화면에 모은다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type AttentionKind = "stuck" | "apply_retry" | "mid_mismatch" | "not_reverted";
+export type AttentionKind = "stuck" | "apply_retry" | "mid_mismatch" | "not_reverted" | "cancel_rejected";
 export const ATTENTION_LABEL: Record<AttentionKind, string> = {
   stuck: `${STUCK_DAYS}일 넘게 안 닫힘(자동 정리 멈춤)`,
   apply_retry: "돈은 빠졌는데 이용 기간이 안 늘어남(반영 재시도 중)",
   mid_mismatch: "상점ID가 지금 설정과 달라 조회 못 함",
   not_reverted: "취소됐지만 이용 기간을 되돌리지 못함",
+  cancel_rejected: "KIS가 취소를 거절함(환불 안 됨)",
 };
 
 export type AttentionOrder = OperatorOrderRow & { kinds: AttentionKind[] };
@@ -194,15 +198,21 @@ export type Attention = { orders: AttentionOrder[]; cards: AttentionCard[]; tota
  *  · stuck: 확인 중·취소 중이 7일 넘음. 운영자 취소 건은 **취소를 누른 시각부터** 7일(한 달 전 결제를 취소해도 바로 뜨지 않게).
  *  · apply_retry: 확인 중 + "반영 재시도 중" 문구 + 승인 요청 뒤 1시간 넘음.
  *  · mid_mismatch: 확인 중·취소 중인데 주문의 상점ID가 지금 설정(일반·빌링)에 없다 → 자동 정리가 손을 못 댄다.
- *  · not_reverted: 결제 완료였다가 취소 확정됐는데(paidAt 있음) 이용 기간을 되돌리지 못한 것(10분 정리가 다시 시도 중이거나 뒤에 다른 결제가 있음).
+ *  · not_reverted: 결제 완료였다가 취소 확정됐는데(paidAt 있음) 이용 기간을 되돌리지 못한 것(뒤에 다른 결제가 있음).
+ *    취소 확정과 되돌리기는 한 묶음이라(lib/billing-revert.ts) 잠깐 뜨는 일이 없다 — 뜨면 바로 운영자 확인 대상.
+ *  · cancel_rejected: 취소 중인데 KIS가 취소를 확정 거절한 것(돈이 돌아가지 않음, 검수 중간 2) — 날짜와 상관없이 바로.
  *  · 카드: 등록 중 결제가 승인된 카드(KIS 상점관리자에서 환불할 대상) 중 [환불함 표시]를 아직 안 한 것.
  */
 export async function getAttention(now: Date = new Date()): Promise<Attention> {
   const stuckBefore = new Date(now.getTime() - STUCK_DAYS * DAY_MS);
   const cfg = readKispgConfig();
-  const mids = [cfg.normal?.mid, cfg.billing?.mid].filter((m): m is string => !!m);
+  // 상점ID 비교는 주문 종류별로(검수 경미 5) — 빌링 주문은 빌링 상점이 **쓸 수 있을 때**(autoPayReady: 암호화 열쇠·결과 주소)만 맞는 것으로 본다.
+  //  그렇지 않으면 자동결제 정리가 조용히 아무것도 안 하는데 7일 뒤에야 뜨기 때문.
+  const normalMids = cfg.normal ? [cfg.normal.mid] : [];
+  const billingMids = cfg.billing && autoPayReady() ? [cfg.billing.mid] : [];
+  const anyConfig = !!(cfg.normal || cfg.billing);
   const openStatus = { in: ["check", "cancel_check"] };
-  const [stuck, retry, mismatch, notReverted, cards] = await Promise.all([
+  const [stuck, retry, mismatch, notReverted, cards, rejected] = await Promise.all([
     prisma.pgOrder.findMany({
       where: {
         status: openStatus,
@@ -224,17 +234,30 @@ export async function getAttention(now: Date = new Date()): Promise<Attention> {
       select: ORDER_SELECT, take: 100, orderBy: { createdAt: "asc" },
     }),
     // 결제 설정이 하나도 없으면(KIS 승인 전) 상점ID 비교가 뜻이 없다 — 그때는 모든 열린 주문이 "다름"으로 뜨므로 건너뛴다.
-    mids.length
-      ? prisma.pgOrder.findMany({ where: { status: openStatus, pgMid: { notIn: mids } }, select: ORDER_SELECT, take: 100, orderBy: { createdAt: "asc" } })
+    anyConfig
+      ? prisma.pgOrder.findMany({
+          where: {
+            status: openStatus,
+            OR: [
+              { orderType: "normal", pgMid: { notIn: normalMids } },
+              { orderType: { not: "normal" }, pgMid: { notIn: billingMids } },
+            ],
+          },
+          select: ORDER_SELECT, take: 100, orderBy: { createdAt: "asc" },
+        })
       : Promise.resolve([]),
     prisma.pgOrder.findMany({
-      where: { status: "cancelled", paidAt: { not: null }, periodRevertedAt: null, cancelledAt: { lt: new Date(now.getTime() - 15 * 60 * 1000) } },
+      where: { status: "cancelled", paidAt: { not: null }, periodRevertedAt: null },
       select: ORDER_SELECT, take: 100, orderBy: { createdAt: "asc" },
     }),
     prisma.pgBillingKey.findMany({
       where: { status: "failed", lastFailReason: { startsWith: REG_CHARGED_PREFIX }, refundMarkedAt: null },
       select: { id: true, companyId: true, regNo: true, cardName: true, cardNoMasked: true, lastFailReason: true, createdAt: true, consentTotal: true },
       take: 100, orderBy: { createdAt: "asc" },
+    }),
+    prisma.pgOrder.findMany({
+      where: { status: "cancel_check", pgResultMsg: { startsWith: CANCEL_REJECT_PREFIX } },
+      select: ORDER_SELECT, take: 100, orderBy: { createdAt: "asc" },
     }),
   ]);
 
@@ -252,6 +275,7 @@ export async function getAttention(now: Date = new Date()): Promise<Attention> {
   add(retry, "apply_retry");
   add(mismatch, "mid_mismatch");
   add(notReverted, "not_reverted");
+  add(rejected, "cancel_rejected");
   const named = await withCompanyNames([...rawById.values()]);
   const orders = named
     .map((o) => ({ ...o, kinds: [...(kindsById.get(o.id) ?? [])] }))
@@ -365,6 +389,8 @@ export async function getCompanyBilling(companyId: string, now: Date = new Date(
 export type CancelResult = { ok: boolean; message: string; orderNo?: string; companyName?: string; amount?: number };
 
 const CANCEL_REASON_MAX = 100;
+/** 운영자 취소 주문의 failReason — KIS 취소 요청 문구(canMsg)로도 나간다. 사유는 넣지 않는다(검수 경미 7). */
+export const OPERATOR_CANCEL_MSG = "가온 운영자 취소(환불)";
 
 /** "2026-12-31까지" — 이용 기간 끝(자정) 표시. 값이 없으면(첫 결제를 취소) 무료 기간으로 돌아간다. */
 function untilText(end: Date | null): string {
@@ -405,11 +431,14 @@ export async function operatorCancelOrder(input: {
     if (!canSend) return { ok: false, message: "이 결제를 보낸 상점 설정이 지금 서버에 없어 취소 요청을 보낼 수 없습니다. KIS 상점관리자에서 처리해 주세요." };
 
     const now = new Date();
-    const by = `${input.operator.name} <${input.operator.email}>`.slice(0, 120);
+    // 사유는 우리 DB(이 칸·운영자 기록)에만 둔다. failReason은 KIS 취소 요청의 canMsg로도 나가므로 고정 문구만(검수 경미 7 —
+    //  운영자가 적은 사유에 고객 정보·내부 평가가 들어가면 PG사로 넘어간다).
+    const by = `${input.operator.name} <${input.operator.email}> · 사유: ${reason}`.slice(0, 240);
     const moved = await moveOrder(prisma, o.id, ["paid"], "cancel_check", {
-      failReason: kisText(`운영자 취소: ${reason}`),
+      failReason: OPERATOR_CANCEL_MSG,
       operatorCancelBy: by,
       operatorCancelAt: now,
+      pgResultMsg: null, // 예전 거절 표시가 남아 있지 않게
       // 방금 만진 주문 — 10분 정리가 같은 순간 같은 주문을 또 취소하러 오지 않게(조회 잠금 120초와 같은 칸).
       lastCheckedAt: now,
     });
@@ -419,29 +448,45 @@ export async function operatorCancelOrder(input: {
     let cardsStopped = 0;
     if (input.stopAutoPay) {
       try {
-        cardsStopped = await markCompanyCardsForDeletion(o.companyId, `운영자가 결제를 취소하며 자동결제 해지 — ${reason}`);
+        cardsStopped = await markCompanyCardsForDeletion(o.companyId, "운영자가 결제를 취소하며 자동결제 해지");
       } catch (e) {
         console.error(`[billing-operator] [운영자 확인 필요] 결제 취소 중 자동결제 해지 실패 — 주문 ${o.orderNo}: ${e instanceof Error ? e.name : "unknown"}`);
       }
     }
 
-    // KIS 취소 1회. 실패·결과 모름이면 cancel_check로 남아 10분 정리가 다시 한다.
+    // KIS 취소 1회. 확정되면 그 자리에서(같은 묶음으로) 기간까지 되돌린다(lib/billing-revert.ts confirmCancelled).
+    //  실패·결과 모름이면 cancel_check로 남아 10분 정리가 다시 한다.
     try {
       if (o.orderType === "normal") await runNormalCancelFor(o.id);
       else await runBillingCancelFor(o.id);
     } catch (e) {
       console.error(`[billing-operator] 운영자 취소 요청 오류(10분 정리가 다시 시도) — 주문 ${o.orderNo}: ${e instanceof Error ? e.name : "unknown"}`);
     }
-    const after = await prisma.pgOrder.findUnique({ where: { id: o.id }, select: { status: true } });
+    const after = await prisma.pgOrder.findUnique({ where: { id: o.id }, select: { status: true, periodRevertedAt: true, pgResultMsg: true } });
     const stopText = input.stopAutoPay ? (cardsStopped > 0 ? " 자동결제도 해지했습니다." : " (해지할 자동결제 카드는 없었습니다.)") : "";
     const amount = o.pgAmount ?? o.totalAmount;
     const base = { orderNo: o.orderNo, companyName: company.name, amount };
     if (after?.status === "cancelled") {
-      const r = await revertOne(o.id);
-      const periodText = r === "reverted"
+      const periodText = after.periodRevertedAt
         ? ` 이용 기간을 ${untilText(o.prevPaidUntil)}로 되돌렸습니다.`
         : " ⚠️ 이용 기간은 되돌리지 못했습니다 — [결제] 확인 필요 칸을 봐 주세요.";
-      return { ok: true, message: `${amount.toLocaleString("ko-KR")}원을 취소(환불)했습니다.${periodText}${stopText}`, ...base };
+      // 카드를 남겼으면 언제 다시 결제되는지 알린다(검수 경미 1 — 환불 직후 곧바로 다시 결제될 수 있다).
+      let nextText = "";
+      if (!input.stopAutoPay) {
+        const live = await prisma.pgBillingKey.findFirst({ where: { companyId: o.companyId, status: "active" }, select: { nextChargeDate: true } });
+        if (live?.nextChargeDate) nextText = ` 자동결제 카드는 남아 있어 ${ymdText(live.nextChargeDate)} 오전 10시 이후 다시 자동 결제됩니다.`;
+      }
+      return { ok: true, message: `${amount.toLocaleString("ko-KR")}원을 취소(환불)했습니다.${periodText}${stopText}${nextText}`, ...base };
+    }
+    if (after?.status === "cancel_check" && after.pgResultMsg?.startsWith(CANCEL_REJECT_PREFIX)) {
+      // KIS가 확정 거절(검수 중간 2) — 돈은 돌아가지 않았다. 운영자가 알아야 한다.
+      return {
+        ok: false,
+        message: `KIS가 취소를 거절했습니다(${after.pgResultMsg.slice(CANCEL_REJECT_PREFIX.length + 2)}). 돈은 환불되지 않았고 이용 기간도 그대로입니다. ` +
+          `KIS 상점관리자에서 확인한 뒤 [결제] 확인 필요 칸에서 '취소 안 됨 → 결제 완료로 되돌리기' 또는 '취소(환불)됨'으로 정리해 주세요.` +
+          (cardsStopped > 0 ? " 자동결제 카드는 이미 해지됐습니다 — 필요하면 고객에게 다시 등록을 안내해 주세요." : ""),
+        ...base,
+      };
     }
     return {
       ok: true,
@@ -453,46 +498,12 @@ export async function operatorCancelOrder(input: {
   }
 }
 
-/**
- * 결제 완료였다가 취소가 **확정된** 주문 하나의 이용 기간을 되돌린다(paidUntil = prevPaidUntil).
- *  · 회사의 지금 이용 기간 끝이 이 주문의 끝과 같을 때만(그 뒤에 다른 결제가 붙었으면 손대지 않고 운영자 확인 목록에 남긴다).
- *  · 회사 행이 없으면(파기) 되돌릴 것이 없으니 끝난 것으로 표시한다.
- *  · 되돌린 뒤 자동결제 카드의 다음 결제일을 다시 계산한다(3단계에서 넘긴 일).
- */
-async function revertOne(orderId: string): Promise<"reverted" | "gone" | "mismatch" | "skip"> {
-  const r = await prisma.$transaction(async (tx) => {
-    const o = await tx.pgOrder.findUnique({
-      where: { id: orderId },
-      select: { id: true, companyId: true, status: true, paidAt: true, periodEnd: true, prevPaidUntil: true, periodRevertedAt: true, orderNo: true },
-    });
-    if (!o || o.status !== "cancelled" || !o.paidAt || o.periodRevertedAt) return { kind: "skip" as const };
-    const c = await tx.company.findUnique({ where: { id: o.companyId }, select: { paidUntil: true } });
-    const now = new Date();
-    if (!c) {
-      await tx.pgOrder.updateMany({ where: { id: o.id, periodRevertedAt: null }, data: { periodRevertedAt: now } });
-      return { kind: "gone" as const };
-    }
-    if (!o.periodEnd || !c.paidUntil || c.paidUntil.getTime() !== o.periodEnd.getTime()) return { kind: "mismatch" as const, orderNo: o.orderNo };
-    // 읽은 값 그대로일 때만(그사이 다른 결제가 기간을 늘렸으면 손대지 않는다).
-    const changed = await tx.company.updateMany({ where: { id: o.companyId, paidUntil: o.periodEnd }, data: { paidUntil: o.prevPaidUntil } });
-    if (changed.count !== 1) return { kind: "mismatch" as const, orderNo: o.orderNo };
-    await tx.pgOrder.updateMany({ where: { id: o.id, periodRevertedAt: null }, data: { periodRevertedAt: now } });
-    return { kind: "reverted" as const, companyId: o.companyId };
-  });
-  if (r.kind === "mismatch") {
-    warnOnce(`revert:${orderId}`, `[billing-operator] [운영자 확인 필요] 취소된 결제 ${r.orderNo}의 이용 기간을 되돌리지 못함 — 뒤에 다른 결제가 있거나 기간이 바뀜`);
-  }
-  if (r.kind === "reverted") {
-    try {
-      await rescheduleCompanyCards(r.companyId);
-    } catch (e) {
-      console.error(`[billing-operator] [운영자 확인 필요] 기간 되돌린 뒤 자동결제 결제일 다시 계산 실패(ID ${r.companyId.slice(0, 8)}): ${e instanceof Error ? e.name : "unknown"}`);
-    }
-  }
-  return r.kind;
+/** "2026-12-31" */
+function ymdText(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-// 되돌리지 못한 건은 10분마다 다시 보는데, 같은 경고를 서버가 켜진 동안 한 번만 남긴다(기록이 쌓이지 않게).
+// 같은 경고는 서버가 켜진 동안 한 번만(10분마다 쌓이지 않게).
 const warned = new Set<string>();
 function warnOnce(key: string, msg: string): void {
   if (warned.has(key)) return;
@@ -501,16 +512,25 @@ function warnOnce(key: string, msg: string): void {
   console.error(msg);
 }
 
-/** 취소가 확정됐는데 아직 기간을 되돌리지 않은 주문을 처리한다(10분 정리·운영자 처리에서 부른다). */
-export async function revertCancelledPeriods(limit = 20): Promise<number> {
+/** 정리 작업이 기간 되돌리기를 다시 보는 범위 — 최근에 취소 확정된 것만(검수 중간 4). */
+const REVERT_SWEEP_MS = 2 * DAY_MS;
+
+/**
+ * 취소가 확정됐는데 아직 기간을 되돌리지 않은 주문을 다시 처리한다(10분 정리의 안전망).
+ *  · 취소 확정과 되돌리기는 이제 한 묶음(lib/billing-revert.ts)이라 보통은 할 일이 없다. 묶음 뒤 일시 오류·옛 데이터용.
+ *  · 🔴 **최근 2일 안에 확정된 것만, 최근 것부터** 본다(검수 중간 4) — "뒤에 다른 결제가 있어 못 되돌리는 건"은 운영자가
+ *    [직접 처리함]을 누를 때까지 조건에 계속 맞는다. 오래된 것부터 20칸을 보면 그런 건이 쌓여 새 건을 영영 못 본다.
+ *    못 되돌린 건은 [결제] 확인 필요 칸에 날짜와 상관없이 뜬다.
+ */
+export async function revertCancelledPeriods(limit = 20, now: Date = new Date()): Promise<number> {
   const list = await prisma.pgOrder.findMany({
-    where: { status: "cancelled", paidAt: { not: null }, periodRevertedAt: null },
-    orderBy: { cancelledAt: "asc" }, take: limit, select: { id: true },
+    where: { status: "cancelled", paidAt: { not: null }, periodRevertedAt: null, cancelledAt: { gte: new Date(now.getTime() - REVERT_SWEEP_MS) } },
+    orderBy: { cancelledAt: "desc" }, take: limit, select: { id: true },
   });
   let n = 0;
   for (const o of list) {
     try {
-      if ((await revertOne(o.id)) === "reverted") n++;
+      if ((await revertPaidCancel(o.id)) === "reverted") n++;
     } catch (e) {
       console.error(`[billing-operator] 이용 기간 되돌리기 오류(다음 정리 때 다시) — 주문 ${o.id}: ${e instanceof Error ? e.name : "unknown"}`);
     }
@@ -591,7 +611,7 @@ export async function operatorRecheckOrder(orderId: string): Promise<OpResult> {
   const meta = `${o.orderNo} ${o.totalAmount}원`;
 
   if (o.status === "cancelled") {
-    const r = await revertOne(o.id);
+    const r = await revertPaidCancel(o.id);
     if (r === "reverted") return { ok: true, message: "이용 기간을 되돌렸습니다.", meta: `${meta} 기간 되돌림` };
     if (r === "gone") return { ok: true, message: "회사가 파기돼 되돌릴 이용 기간이 없습니다. 목록에서 뺐습니다.", meta: `${meta} 회사 없음` };
     if (r === "mismatch") return { ok: false, message: "이 결제 뒤에 다른 결제가 붙어 있어 자동으로 되돌릴 수 없습니다. 고객과 상의해 처리한 뒤 [직접 처리함]을 눌러 주세요.", meta: `${meta} 되돌리기 불가` };
@@ -616,12 +636,16 @@ export async function operatorRecheckOrder(orderId: string): Promise<OpResult> {
 
   if (o.status === "cancel_check") {
     await sendCancel(o);
-    const now = await statusLine(o.id);
-    if (now === ORDER_STATUS_LABEL.cancelled) {
-      const r = await revertOne(o.id);
-      return { ok: true, message: `취소가 확정됐습니다.${r === "reverted" ? " 이용 기간도 되돌렸습니다." : ""}`, meta: `${meta} 취소 확정` };
+    // 취소가 확정되면 기간 되돌리기도 같은 묶음으로 끝나 있다(lib/billing-revert.ts confirmCancelled).
+    const a = await prisma.pgOrder.findUnique({ where: { id: o.id }, select: { status: true, paidAt: true, periodRevertedAt: true, pgResultMsg: true } });
+    if (a?.status === "cancelled") {
+      const revText = a.paidAt ? (a.periodRevertedAt ? " 이용 기간도 되돌렸습니다." : " ⚠️ 이용 기간은 되돌리지 못했습니다(뒤에 다른 결제).") : "";
+      return { ok: true, message: `취소가 확정됐습니다.${revText}`, meta: `${meta} 취소 확정` };
     }
-    return { ok: false, message: `KIS 취소가 아직 끝나지 않았습니다(지금: ${now}). KIS 상점관리자에서 확인해 주세요.`, meta: `${meta} 취소 미확정` };
+    if (a?.pgResultMsg?.startsWith(CANCEL_REJECT_PREFIX)) {
+      return { ok: false, message: `KIS가 취소를 거절했습니다(${a.pgResultMsg.slice(CANCEL_REJECT_PREFIX.length + 2)}). 돈은 환불되지 않았습니다. KIS 상점관리자에서 확인한 뒤 [확인한 대로 닫기]로 정리해 주세요.`, meta: `${meta} KIS 취소 거절` };
+    }
+    return { ok: false, message: `KIS 취소가 아직 끝나지 않았습니다(지금: ${await statusLine(o.id)}). KIS 상점관리자에서 확인해 주세요.`, meta: `${meta} 취소 미확정` };
   }
 
   // check — KIS 조회
@@ -672,34 +696,65 @@ export async function operatorRecheckOrder(orderId: string): Promise<OpResult> {
   return { ok: false, message: "KIS도 아직 결과를 모릅니다. KIS 상점관리자에서 거래를 확인해 주세요.", meta: `${meta} KIS 모름(${r.resultCd || r.error || "-"})` };
 }
 
-export type CloseOutcome = "no_payment" | "refunded";
+export type CloseOutcome = "no_payment" | "refunded" | "restore_paid";
+const CLOSE_LABEL: Record<CloseOutcome, string> = { no_payment: "결제 없음", refunded: "취소(환불)됨", restore_paid: "취소 안 됨 → 결제 완료로 되돌림" };
 
 /**
  * [KIS 상점관리자에서 확인한 대로 닫기] — 자동으로 닫을 수 없는 주문을 운영자가 확인한 결과로 닫는다(사유 필수).
- *  · no_payment: 확인 중 → 실패(돈이 빠지지 않음).
+ *  · no_payment: 확인 중 → 실패(돈이 빠지지 않음). 🔴 "반영 재시도 중"(KIS 승인이 확인된 주문)에는 쓸 수 없다(검수 중간 3).
  *  · refunded:  확인 중·취소 중 → 취소됨(돈이 빠졌다가 상점관리자에서 취소됨). 결제 완료였다가 취소된 것이면 기간도 되돌린다.
+ *  · restore_paid: 운영자 취소가 KIS에서 **안 된** 결제(취소 중, 결제 완료였던 것) → 결제 완료로 되돌린다(검수 중간 2).
+ *    기간은 아직 되돌리지 않았으므로 그대로 맞다. 고객 화면의 "결제 취소" 안내도 사라진다.
  *  ⚠️ "승인됨(기간 반영)"으로 닫는 길은 두지 않는다 — 조회 없이 기간을 늘리면 돈 없이 이용이 늘 수 있다. 그런 건은 [KIS에 다시 조회].
  */
 export async function operatorCloseOrder(orderId: string, outcome: CloseOutcome, reason: string): Promise<OpResult> {
   const why = reason.replace(/\s+/g, " ").trim().slice(0, 100);
   if (why.length < 2) return { ok: false, message: "확인한 내용(사유)을 2글자 이상 적어 주세요.", meta: "사유 없음" };
-  const o = await prisma.pgOrder.findUnique({ where: { id: orderId }, select: { id: true, orderNo: true, totalAmount: true, status: true, orderType: true, failReason: true } });
+  const o = await prisma.pgOrder.findUnique({
+    where: { id: orderId },
+    select: { id: true, orderNo: true, totalAmount: true, status: true, orderType: true, failReason: true, paidAt: true, operatorCancelAt: true, lastCheckedAt: true },
+  });
   if (!o) return { ok: false, message: "결제를 찾을 수 없습니다. 화면을 새로 고쳐 주세요.", meta: "없음" };
-  const meta = `${o.orderNo} ${o.totalAmount}원 · ${outcome === "no_payment" ? "결제 없음" : "취소(환불)됨"} · ${why}`;
-  const note = kisText(`운영자 확인(KIS 상점관리자): ${outcome === "no_payment" ? "결제 없음" : "취소(환불)됨"} — ${why}`);
+  const meta = `${o.orderNo} ${o.totalAmount}원 · ${CLOSE_LABEL[outcome]} · ${why}`;
+  const note = kisText(`운영자 확인(KIS 상점관리자): ${CLOSE_LABEL[outcome]} — ${why}`);
+  if (outcome === "restore_paid") {
+    if (o.status !== "cancel_check" || !o.paidAt || !o.operatorCancelAt) {
+      return { ok: false, message: "'결제 완료로 되돌리기'는 운영자가 취소를 요청한 결제 완료 건(취소 중)에만 쓸 수 있습니다.", meta };
+    }
+    // 10분 정리가 같은 순간 취소를 다시 보내지 않게 조회 잠금 칸을 먼저 잡는다(방금 정리가 봤으면 잠시 뒤 — 그 사이 취소가 됐을 수 있다).
+    const locked = await prisma.pgOrder.updateMany({
+      where: { id: o.id, status: "cancel_check", lastCheckedAt: o.lastCheckedAt, OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: new Date(Date.now() - 120 * 1000) } }] },
+      data: { lastCheckedAt: new Date() },
+    });
+    if (locked.count !== 1) {
+      return { ok: false, message: "방금(2분 안) 이 결제의 취소를 KIS에 보냈습니다. 2분쯤 뒤 KIS 상점관리자에서 다시 확인하고 해 주세요.", meta: `${meta} 잠김` };
+    }
+    const ok = await moveOrder(prisma, o.id, ["cancel_check"], "paid", {
+      failReason: null, operatorCancelAt: null, pgResultMsg: note, lastCheckedAt: new Date(),
+    });
+    if (!ok) return { ok: false, message: "그사이 상태가 바뀌었습니다. 화면을 새로 고쳐 주세요.", meta };
+    return { ok: true, message: "결제 완료로 되돌렸습니다(취소 안 됨). 이용 기간은 그대로입니다. 자동결제를 함께 해지했다면 카드는 고객이 다시 등록해야 합니다.", meta };
+  }
   if (outcome === "no_payment") {
     if (o.status !== "check") return { ok: false, message: "'결제 없음'은 확인 중인 결제에만 쓸 수 있습니다.", meta };
+    if (o.failReason === APPLY_RETRY_REASON) {
+      return { ok: false, message: "이 결제는 KIS 승인이 확인된 결제(돈이 빠짐)라 '결제 없음'으로 닫을 수 없습니다. [KIS에 다시 조회]로 기간을 반영하거나, 상점관리자에서 취소한 뒤 '취소(환불)됨'으로 닫아 주세요.", meta };
+    }
     const ok = await moveOrder(prisma, o.id, ["check"], "failed", { failReason: note });
     if (!ok) return { ok: false, message: "그사이 상태가 바뀌었습니다. 화면을 새로 고쳐 주세요.", meta };
     if (o.orderType !== "normal") await followUpAutoChargeOrders().catch(() => 0);
     return { ok: true, message: "'실패(돈 안 빠짐)'로 닫았습니다.", meta };
   }
   if (o.status !== "check" && o.status !== "cancel_check") return { ok: false, message: "'취소(환불)됨'은 확인 중·취소 중인 결제에만 쓸 수 있습니다.", meta };
-  const ok = await moveOrder(prisma, o.id, [o.status as "check" | "cancel_check"], "cancelled", { cancelledAt: new Date(), failReason: note });
+  // 취소 중(결제 완료였을 수 있음)은 취소 확정과 기간 되돌리기를 한 묶음으로(검수 중간 1). 확인 중은 기간을 늘린 적이 없다.
+  const ok = o.status === "cancel_check"
+    ? await confirmCancelled(o.id, { cancelledAt: new Date(), failReason: note })
+    : await moveOrder(prisma, o.id, ["check"], "cancelled", { cancelledAt: new Date(), failReason: note });
   if (!ok) return { ok: false, message: "그사이 상태가 바뀌었습니다. 화면을 새로 고쳐 주세요.", meta };
   if (o.orderType !== "normal") await followUpAutoChargeOrders().catch(() => 0);
-  const r = await revertOne(o.id);
-  return { ok: true, message: `'취소됨'으로 닫았습니다.${r === "reverted" ? " 이 결제로 늘어난 이용 기간도 되돌렸습니다." : r === "mismatch" ? " ⚠️ 이용 기간은 되돌리지 못했습니다(뒤에 다른 결제)." : ""}`, meta };
+  const a = await prisma.pgOrder.findUnique({ where: { id: o.id }, select: { paidAt: true, periodRevertedAt: true } });
+  const revText = a?.paidAt ? (a.periodRevertedAt ? " 이 결제로 늘어난 이용 기간도 되돌렸습니다." : " ⚠️ 이용 기간은 되돌리지 못했습니다(뒤에 다른 결제).") : "";
+  return { ok: true, message: `'취소됨'으로 닫았습니다.${revText}`, meta };
 }
 
 /** [직접 처리함] — 취소됐지만 기간을 자동으로 되돌릴 수 없는 결제를 운영자가 고객과 따로 처리했다고 표시(목록에서 빠짐). */

@@ -49,7 +49,13 @@ export default async function OperatorCompanyPage({ params }: { params: Promise<
   if (!c) notFound();
   // 접속 현황(합계·날짜만 — 개별 로그인 기록은 보여주지 않는다. lib/operator-companies.ts 주석)
   const acc = await getCompanyAccessSummary(c.id);
-  const billing = await getCompanyBilling(c.id);
+  // 결제 칸이 실패해도 해지·무료 기간 같은 기존 운영 기능 화면은 떠야 한다(검수 경미 4) — 결제 칸만 숨긴다.
+  let billing: Awaited<ReturnType<typeof getCompanyBilling>> = null;
+  try {
+    billing = await getCompanyBilling(c.id);
+  } catch (e) {
+    console.error(`[operator] 회사 결제 칸 조회 실패(ID ${c.id.slice(0, 8)}):`, e instanceof Error ? e.name : "unknown");
+  }
 
   const { ip, userAgent } = readClientMeta(await headers());
   await recordAccess({

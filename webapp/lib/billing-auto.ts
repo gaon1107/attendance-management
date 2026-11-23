@@ -24,6 +24,7 @@ import { countHeads, billableCount } from "@/lib/pricing-server";
 import { quoteFor, KIS_MAX_TOTAL, PRICE_TIERS, tierLabel, withVat, type Quote } from "@/lib/pricing";
 import { periodBase, phoneDigits, fitBytes, makeOrderNo, applyPaidOrder, claimCompany, releaseCompany } from "@/lib/billing-pay";
 import { moveKey, moveOrder, kisText } from "@/lib/pg-state";
+import { confirmCancelled, CANCEL_REJECT_PREFIX } from "@/lib/billing-revert";
 import { toISODate } from "@/lib/period";
 import type { BillingPayResult } from "@newgaon/kispg";
 
@@ -929,12 +930,12 @@ async function runBillingCancel(orderId: string, cfg: KisMerchant): Promise<void
   if (!tid || canAmt === null) {
     const r = await kispg.inquire({ config: cfg, tid: tid ?? undefined, ordNo: o.orderNo, goodsAmt: o.totalAmount });
     if (r.status === "cancelled") {
-      await moveOrder(prisma, o.id, ["cancel_check"], "cancelled", { cancelledAt: new Date() });
+      await confirmCancelled(o.id, { cancelledAt: new Date() });
       return;
     }
     if (r.status === "not_found") {
       if (Date.now() - (o.approveRequestedAt ?? o.createdAt).getTime() <= NOT_FOUND_GRACE_MS) return;
-      await moveOrder(prisma, o.id, ["cancel_check"], "cancelled", { cancelledAt: new Date(), failReason: kisText(`${o.failReason ?? ""} / 조회 결과 결제 없음`) });
+      await confirmCancelled(o.id, { cancelledAt: new Date(), failReason: kisText(`${o.failReason ?? ""} / 조회 결과 결제 없음`) });
       return;
     }
     if (r.status !== "approved" || r.amt === null || !kisText(r.tid, 40)) return; // 모르면 다음 정리 때
@@ -945,9 +946,16 @@ async function runBillingCancel(orderId: string, cfg: KisMerchant): Promise<void
   if (!tid || canAmt === null) return;
   const c = await kispg.billingCancel({ config: cfg, tid, canAmt, canMsg: o.failReason ?? "자동 취소", ordNo: o.orderNo });
   if (c.ok || c.alreadyCancelled) {
-    await moveOrder(prisma, o.id, ["cancel_check"], "cancelled", { cancelledAt: new Date() });
+    await confirmCancelled(o.id, { cancelledAt: new Date() });
   } else {
     console.warn(`[billing-auto] 자동결제 취소가 끝나지 않음(정리 작업이 다시 시도) — 주문 ${o.orderNo}: ${c.error ?? ""}`);
+    // KIS 확정 거절이면 이유를 주문에 남긴다(billing-pay runCancel과 같은 규칙, 6단계 검수 중간 2).
+    if (!c.uncertain) {
+      await prisma.pgOrder.updateMany({
+        where: { id: o.id, status: "cancel_check" },
+        data: { pgResultMsg: kisText(`${CANCEL_REJECT_PREFIX}: ${c.resultCd} ${c.resultMsg || c.error || ""}`) },
+      });
+    }
   }
 }
 

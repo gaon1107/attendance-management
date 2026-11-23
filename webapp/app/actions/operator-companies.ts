@@ -121,7 +121,8 @@ export async function setCompanyTrial(_prev: OperatorActionResult, formData: For
   //  무료 기간을 결제 기간 끝까지(또는 넘어) 늘리면 고객이 낸 기간이 무료에 묻히고, 그보다 짧게 늘리면 결제 기간 끝까지는 달라지는 것이 없다.
   //  막지는 않는다(운영자가 일부러 보상할 수도 있다) — 결과 문구로 알린다.
   let paidWarn = "";
-  if (company.paidUntil) {
+  // 이미 끝난 결제 기간(예: 작년 결제)은 겹칠 것이 없다 — 지금 남아 있는 결제 기간만 본다(검수 경미 3).
+  if (company.paidUntil && company.paidUntil.getTime() > Date.now()) {
     const newEnd = trialStatus(company.createdAt, new Date(), next).endsAt;
     const oldEnd = trialStatus(company.createdAt, new Date(), company.trialLastDate).endsAt;
     const paidLast = ymd(new Date(company.paidUntil.getTime() - 1));

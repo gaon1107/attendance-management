@@ -140,20 +140,24 @@ export const listAdminNotifications = cache(async (companyId: string): Promise<{
   //  · 부가기능 — 실패해도 알림센터 본체는 뜬다.
   try {
     const since = new Date(Date.now() - REFUND_ALERT_DAYS * 24 * 60 * 60 * 1000);
-    const refunds = await prisma.pgOrder.groupBy({
-      by: ["status"],
+    const refunds = await prisma.pgOrder.findMany({
       where: { companyId, operatorCancelAt: { gte: since }, status: { in: ["cancel_check", "cancelled"] } },
-      _count: { _all: true },
+      select: { status: true, periodRevertedAt: true },
+      take: 20,
     });
-    const done = refunds.find((r) => r.status === "cancelled")?._count._all ?? 0;
-    const going = refunds.find((r) => r.status === "cancel_check")?._count._all ?? 0;
+    const done = refunds.filter((r) => r.status === "cancelled").length;
+    const going = refunds.filter((r) => r.status === "cancel_check").length;
+    // 기간을 아직 못 되돌린 취소(뒤에 다른 결제 — 운영자 확인 중)가 있으면 "되돌아갔습니다"라고 말하지 않는다(검수 경미 2).
+    const notReverted = refunds.some((r) => r.status === "cancelled" && !r.periodRevertedAt);
     if (done + going > 0) {
       autoPayItems.push({
         key: "payment-refunded",
         title: going > 0 ? "결제 취소(환불) 진행 중" : "결제가 취소(환불)되었습니다",
         detail: going > 0
           ? "가온 고객센터에서 결제 취소를 요청했습니다. 카드사 처리가 끝나면 취소로 바뀌고, 그 결제로 늘어났던 이용 기간이 되돌아갑니다."
-          : "가온 고객센터에서 결제를 취소(환불)했습니다. 그 결제로 늘어났던 이용 기간이 되돌아갔습니다. [구독·요금]에서 이용 기간을 확인해 주세요.",
+          : notReverted
+            ? "가온 고객센터에서 결제를 취소(환불)했습니다. 이용 기간은 고객센터에서 확인해 안내해 드립니다. [구독·요금]에서 결제 내역을 확인해 주세요."
+            : "가온 고객센터에서 결제를 취소(환불)했습니다. 그 결제로 늘어났던 이용 기간이 되돌아갔습니다. [구독·요금]에서 이용 기간을 확인해 주세요.",
         count: done + going, countLabel: `${done + going}건`, href: "/subscription", cta: "확인", severity: "primary",
       });
     }

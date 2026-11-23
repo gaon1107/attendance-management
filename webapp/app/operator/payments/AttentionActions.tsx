@@ -38,14 +38,17 @@ function useAttention(): Ctx {
 }
 
 /** 확인 중·취소 중·기간 못 되돌림 결제 한 줄의 버튼. */
-export function OrderAttentionActions({ orderId, status, kinds }: { orderId: string; status: string; kinds: AttentionKind[] }) {
+export function OrderAttentionActions({ orderId, status, kinds, wasPaid }: { orderId: string; status: string; kinds: AttentionKind[]; wasPaid: boolean }) {
   const { action, pending } = useAttention();
   const [open, setOpen] = useState(false);
   const notReverted = status === "cancelled" && kinds.includes("not_reverted");
-  // 닫기 결과 고르기: 확인 중이면 결제 없음/취소됨 둘 다, 취소 중이면 취소됨만.
-  const [outcome, setOutcome] = useState<"close_no_payment" | "close_refunded" | "ack_revert">(
-    notReverted ? "ack_revert" : status === "check" ? "close_no_payment" : "close_refunded",
-  );
+  // 닫기 결과는 **운영자가 직접 고른다**(미리 골라 두지 않음 — 검수 중간 3: '결제 없음'이 기본이면 돈이 빠진 결제를 실패로 닫기 쉽다).
+  //  · '결제 없음'은 확인 중이면서 KIS 승인이 확인되지 않은 건만(반영 재시도 중 = 승인 확인됨 → 숨김, 서버도 거절).
+  //  · '결제 완료로 되돌리기'는 운영자가 취소를 요청한 결제 완료 건이 취소 중일 때만(KIS가 취소를 거절한 경우 — 검수 중간 2).
+  type Outcome = "close_no_payment" | "close_refunded" | "close_restore_paid" | "ack_revert";
+  const [outcome, setOutcome] = useState<Outcome | null>(notReverted ? "ack_revert" : null);
+  const canNoPayment = status === "check" && !kinds.includes("apply_retry");
+  const canRestore = status === "cancel_check" && wasPaid;
   const [reason, setReason] = useState("");
 
   return (
@@ -63,7 +66,7 @@ export function OrderAttentionActions({ orderId, status, kinds }: { orderId: str
       {open && (
         <form action={action} style={{ width: "100%", background: "#F9FAFB", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px" }}>
           <input type="hidden" name="id" value={orderId} />
-          <input type="hidden" name="op" value={outcome} />
+          <input type="hidden" name="op" value={outcome ?? ""} />
           {notReverted ? (
             <div style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 8, wordBreak: "keep-all" }}>
               이 결제는 취소됐지만 뒤에 다른 결제가 있어 이용 기간을 자동으로 되돌리지 못했습니다. 고객과 상의해 처리했다면 어떻게 했는지 적어 주세요(목록에서 빠집니다).
@@ -72,7 +75,7 @@ export function OrderAttentionActions({ orderId, status, kinds }: { orderId: str
             <div style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 8, wordBreak: "keep-all" }}>
               <b>KIS 상점관리자에서 이 거래를 직접 확인한 뒤에만</b> 쓰세요. 확인한 결과:
               <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
-                {status === "check" && (
+                {canNoPayment && (
                   <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     <input type="radio" checked={outcome === "close_no_payment"} onChange={() => setOutcome("close_no_payment")} />
                     결제 없음(돈이 빠지지 않음) → 실패로 닫기
@@ -80,14 +83,20 @@ export function OrderAttentionActions({ orderId, status, kinds }: { orderId: str
                 )}
                 <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <input type="radio" checked={outcome === "close_refunded"} onChange={() => setOutcome("close_refunded")} />
-                  취소(환불)됨 → 취소로 닫기{status === "cancel_check" ? "(결제 완료였던 건이면 기간도 되돌림)" : ""}
+                  취소(환불)됨 → 취소로 닫기{wasPaid ? "(이 결제로 늘어난 기간도 되돌림)" : ""}
                 </label>
+                {canRestore && (
+                  <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input type="radio" checked={outcome === "close_restore_paid"} onChange={() => setOutcome("close_restore_paid")} />
+                    취소 안 됨(돈이 그대로 있음) → 결제 완료로 되돌리기
+                  </label>
+                )}
               </div>
             </div>
           )}
           <input name="reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={100} placeholder="확인한 내용(필수) 예: 상점관리자 조회 — 거래 없음" style={input} />
           <div style={{ display: "flex", gap: 6, marginTop: 8, justifyContent: "flex-end" }}>
-            <button type="submit" disabled={pending || reason.trim().length < 2} style={{ ...btn, border: 0, background: "var(--danger)", color: "#fff", opacity: pending || reason.trim().length < 2 ? 0.5 : 1 }}>
+            <button type="submit" disabled={pending || !outcome || reason.trim().length < 2} style={{ ...btn, border: 0, background: "var(--danger)", color: "#fff", opacity: pending || !outcome || reason.trim().length < 2 ? 0.5 : 1 }}>
               이대로 닫기
             </button>
           </div>

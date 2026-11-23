@@ -34,7 +34,18 @@ export async function cancelPaymentAction(_prev: OperatorBillingResult, formData
   if (!ID_RE.test(orderId) || !ID_RE.test(companyId)) return { ok: false, message: "요청이 올바르지 않습니다." };
   if (reason.length > 300) return { ok: false, message: "취소 사유는 100자 안으로 적어 주세요." };
 
-  const r = await operatorCancelOrder({ orderId, companyId, reason, stopAutoPay, operator: { name: me.name, email: me.email } });
+  // 🔴 예외가 나도 운영자 기록은 남긴다(검수 중간 5) — KIS 취소는 이미 됐는데 뒤에서 오류가 나면, 기록 없이 "실패"만 보여
+  //    운영자가 다시 시도하거나 상점관리자에서 또 처리하려 할 수 있다. 주문 상태는 [결제] 목록에서 확인하게 안내한다.
+  let r: Awaited<ReturnType<typeof operatorCancelOrder>>;
+  try {
+    r = await operatorCancelOrder({ orderId, companyId, reason, stopAutoPay, operator: { name: me.name, email: me.email } });
+  } catch (e) {
+    console.error(`[operator-billing] 운영자 취소 처리 오류 — 주문 ${orderId.slice(0, 8)}:`, e instanceof Error ? e.message : String(e));
+    r = {
+      ok: false,
+      message: "처리 중 오류가 났습니다. 취소 요청이 이미 KIS로 나갔을 수 있으니, 다시 누르지 말고 [결제] 목록에서 이 결제의 상태를 먼저 확인해 주세요.",
+    };
+  }
   await logOperatorBilling(
     me, r.ok,
     `operator_payment_cancel:${r.companyName ?? `ID ${companyId.slice(0, 8)}`} (${r.orderNo ?? orderId.slice(0, 8)} · ${r.amount !== undefined ? `${r.amount}원` : "-"} · 자동결제 해지 ${stopAutoPay ? "예" : "아니오"} · ${r.ok ? "요청함" : "거절"}) 사유: ${reason.replace(/\s+/g, " ").trim().slice(0, 100)}`,
@@ -46,7 +57,7 @@ export async function cancelPaymentAction(_prev: OperatorBillingResult, formData
 
 /**
  * [결제] 확인 필요 칸의 처리 버튼(6-3) — op 하나로 나눈다.
- *  recheck(KIS에 다시 조회) · close_no_payment / close_refunded(KIS 상점관리자에서 확인한 대로 닫기, 사유 필수) ·
+ *  recheck(KIS에 다시 조회) · close_no_payment / close_refunded / close_restore_paid(KIS 상점관리자에서 확인한 대로 닫기, 사유 필수) ·
  *  ack_revert(직접 처리함, 사유 필수) · refund_mark(카드 등록 중 승인 건 — KIS에서 환불함 표시)
  */
 export async function attentionAction(_prev: OperatorBillingResult, formData: FormData): Promise<OperatorBillingResult> {
@@ -63,6 +74,7 @@ export async function attentionAction(_prev: OperatorBillingResult, formData: Fo
     if (op === "recheck") r = await operatorRecheckOrder(id);
     else if (op === "close_no_payment") r = await operatorCloseOrder(id, "no_payment", reason);
     else if (op === "close_refunded") r = await operatorCloseOrder(id, "refunded", reason);
+    else if (op === "close_restore_paid") r = await operatorCloseOrder(id, "restore_paid", reason);
     else if (op === "ack_revert") r = await operatorAckRevert(id, reason);
     else if (op === "refund_mark") r = await markRegChargeRefunded(id, { name: me.name, email: me.email });
     else return { ok: false, message: "요청이 올바르지 않습니다." };

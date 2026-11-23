@@ -23,6 +23,7 @@ import { countHeads, billableCount } from "@/lib/pricing-server";
 import { quoteFor, KIS_MAX_TOTAL } from "@/lib/pricing";
 import { trialStatus } from "@/lib/trial";
 import { moveOrder, kisText } from "@/lib/pg-state";
+import { confirmCancelled, CANCEL_REJECT_PREFIX } from "@/lib/billing-revert";
 
 /** 우리 주문번호 형식 — "HR-" + 한국 시각 14자리 + 난수 6자리(16진수). 결과 받기에서 이 모양이 아니면 아예 찾지 않는다. */
 export const ORDER_NO_RE = /^HR-\d{14}-[0-9a-f]{6}$/;
@@ -500,13 +501,13 @@ async function runCancel(orderId: string, cfg: KisMerchant): Promise<void> {
   if (canAmt === null) {
     const r = await kispg.inquire({ config: cfg, tid: o.pgTid, ordNo: o.orderNo, goodsAmt: o.totalAmount });
     if (r.status === "cancelled") {
-      await moveOrder(prisma, o.id, ["cancel_check"], "cancelled", { cancelledAt: new Date() });
+      await confirmCancelled(o.id, { cancelledAt: new Date() });
       return;
     }
     if (r.status === "not_found") {
       // 취소하려던 결제가 KIS에 없다 — 돈이 빠지지 않은 것. 단 KIS 반영이 늦을 수 있어 **승인 요청 60분 뒤에만** 닫는다(2단계 검수 중간 3).
       if (Date.now() - (o.approveRequestedAt ?? o.createdAt).getTime() <= NOT_FOUND_GRACE_MS) return;
-      await moveOrder(prisma, o.id, ["cancel_check"], "cancelled", { cancelledAt: new Date(), failReason: kisText(`${o.failReason ?? ""} / 조회 결과 결제 없음`) });
+      await confirmCancelled(o.id, { cancelledAt: new Date(), failReason: kisText(`${o.failReason ?? ""} / 조회 결과 결제 없음`) });
       return;
     }
     if (r.amt === null) return; // 금액을 모르면 다음 정리 때
@@ -518,9 +519,17 @@ async function runCancel(orderId: string, cfg: KisMerchant): Promise<void> {
     canMsg: o.failReason ?? "자동 취소", ordNo: o.orderNo,
   });
   if (c.ok || c.alreadyCancelled) {
-    await moveOrder(prisma, o.id, ["cancel_check"], "cancelled", { cancelledAt: new Date() });
+    await confirmCancelled(o.id, { cancelledAt: new Date() });
   } else {
     console.warn(`[billing-pay] 자동 취소가 끝나지 않음(정리 작업이 다시 시도) — 주문 ${o.orderNo}: ${c.error ?? ""}`);
+    // KIS가 **확정 거절**했으면(결과 모름이 아님) 이유를 주문에 남긴다 — 운영자 화면이 "취소 거절"을 알려 주고
+    //  [결제 완료로 되돌리기]를 보이게(2026-11-23 결제 6단계 검수 중간 2). 상태는 그대로(cancel_check).
+    if (!c.uncertain) {
+      await prisma.pgOrder.updateMany({
+        where: { id: o.id, status: "cancel_check" },
+        data: { pgResultMsg: kisText(`${CANCEL_REJECT_PREFIX}: ${c.resultCd} ${c.resultMsg || c.error || ""}`) },
+      });
+    }
   }
 }
 
