@@ -5,8 +5,9 @@
 //   · 처리방침 제2조 — 회사명·대표자·관리자 정보 = "이용계약 종료 후 30일". 개인정보보호법 제21조 "지체 없이 파기".
 //   1단계(해지 표시·차단)는 데이터를 지우지 않았다. 이 파일이 실제로 지운다.
 //
-// 무엇을 지우나 — 그 회사의 **모든 것**(아래 TABLES 36개 표 + 회사 행 + 디스크 파일 + 얼굴서버)
+// 무엇을 지우나 — 그 회사의 **모든 것**(아래 TABLES 37개 표 + 회사 행 + 디스크 파일 + 얼굴서버)
 //   ※ 남기는 것: AccessEvent(접속기록) — 처리방침에 "2년"으로 따로 공개(2026-11-22 사장님 결정 ①). 기존 2년 자동 파기가 지운다.
+//               PgOrder(결제 주문) — 대금결제 기록 5년 보관(2026-11-23 결제 1단계).
 //
 // 순서(회사 1곳) — 순서 자체가 안전장치다. 바꾸지 말 것.
 //   ① purgeStartedAt 표시 → 이때부터 [되살리기] 거부(lib/company-termination.ts). 반쯤 지운 회사가 되살아나지 않게.
@@ -201,6 +202,12 @@ const TABLES: Table[] = [
     count: (c) => prisma.companyHoliday.count({ where: { companyId: c } }),
     pick: (c, take) => prisma.companyHoliday.findMany({ where: { companyId: c }, select: { id: true }, take }),
     del: (ids) => prisma.companyHoliday.deleteMany({ where: { id: { in: ids } } }) },
+  // 자동결제 카드(2026-11-23 결제 1단계). ⚠️ 이 행에 닿기 전에 purgeOne이 "KIS에 빌키가 남은 카드"가 있으면 보류한다(아래 ①-2).
+  //   여기까지 왔다면 남은 행은 전부 bid가 지워진 기록(deleted·failed)뿐이다.
+  { model: "PgBillingKey", cat: "other",
+    count: (c) => prisma.pgBillingKey.count({ where: { companyId: c } }),
+    pick: (c, take) => prisma.pgBillingKey.findMany({ where: { companyId: c }, select: { id: true }, take }),
+    del: (ids) => prisma.pgBillingKey.deleteMany({ where: { id: { in: ids } } }) },
   { model: "CompanyDocument", cat: "other",
     count: (c) => prisma.companyDocument.count({ where: { companyId: c } }),
     pick: (c, take) => prisma.companyDocument.findMany({ where: { companyId: c }, select: { id: true }, take }),
@@ -229,6 +236,8 @@ const TABLES: Table[] = [
 const KEPT_MODELS = new Set<string>([
   "AccessEvent",     // 접속기록 — 처리방침 "2년" 별도 공개(사장님 결정 ①). 기존 2년 자동 파기가 지운다.
   "CompanyPurgeLog", // 이 파기의 대장 자체
+  "PgOrder",         // 결제 주문(2026-11-23) — 대금결제 기록 5년 보관(전자상거래법 시행령 제6조·국세기본법). 이름·전화번호 없음.
+                     //   ⏳ 5년 지난 결제 기록 파기는 결제 운영 시작 뒤 별도 과제(plan-근태결제-개발.md).
 ]);
 
 /**
@@ -333,6 +342,16 @@ async function purgeOne(companyId: string, now: Date, unenroll: typeof unenrollF
     data: { purgeStartedAt: c.purgeStartedAt ?? now },
   });
   if (marked.count === 0) return { companyId: cid, status: "skipped", counts, note: "그사이 상태가 바뀜" };
+
+  // ── ①-2 자동결제 카드 — KIS에 빌키가 남아 있으면 보류(2026-11-23 결제 1단계) ──
+  //  우리 DB 행만 지우면 KIS에는 카드 대신 쓰는 결제용 번호(빌키)가 영원히 남는다. 그건 파기가 아니다.
+  //  해지할 때 카드를 지우는(deleting → KIS 삭제 → bid null) 처리는 결제 3단계에서 붙인다 — 그 전까지는 카드가 생길 수 없다.
+  const liveKeys = await prisma.pgBillingKey.count({ where: { companyId: cid, bid: { not: null } } });
+  if (liveKeys > 0) {
+    const note = `자동결제 카드 ${liveKeys}장이 KIS에 남아 있어 보류 — 카드 삭제가 끝나면 다음 회차에 다시 시도`;
+    await writeLog(cid, terminatedAt, "held", counts, note);
+    return { companyId: cid, status: "held", counts, note };
+  }
 
   // ── ② 얼굴서버 — 직원 행이 남아 있는 동안에 한다 ──
   const users = await prisma.user.findMany({

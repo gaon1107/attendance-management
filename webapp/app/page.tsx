@@ -1053,7 +1053,8 @@ export default async function Home() {
                 ⚠️ 구간 초과 시 "먼저 보여 주고 동의를 받는다"는 **약속이다.** 3단계에서 그 동의 화면을
                    만들기 전에는 요금을 올려 청구하지 않는다(plan-구독결제-요금제.md 3장). */}
             <p style={{ marginTop: 14, marginBottom: 0, textAlign: "center", fontSize: 13, color: "var(--text-sub)", lineHeight: 1.7 }}>
-              재직 중인 직원 수로 계산합니다(관리자·회사 대표계정·퇴사 처리된 계정은 빼고 셉니다)
+              {/* 2026-11-23: 관리자는 1명까지만 뺀다(lib/pricing-server.ts FREE_ADMIN_COUNT) — 숫자를 바꾸면 이 문장도. */}
+              재직 중인 직원 수로 계산합니다(관리자 1명·회사 대표계정·퇴사 처리된 계정은 빼고 셉니다)
               <br />
               직원이 늘어 구간을 넘으면 올라가는 금액을 먼저 보여 드리고 동의를 받은 뒤에만 적용합니다
               <br />

@@ -199,6 +199,13 @@ model Company {
    *  add-only(nullable) — 기존 회사는 전부 null = 지금과 동일.
    */
   purgeStartedAt DateTime?
+  /**
+   * 유료 이용 만료 시각 — 이 시각 **전까지** 유료로 쓸 수 있다(2026-11-23 결제 1단계, plan-근태결제-개발.md).
+   *  · 결제가 승인되면 "늦은 쪽(지금 만료 시각, 지금) + 1개월"로 민다(학원관리 applyPaid와 같은 규칙).
+   *  · 실제 이용 가능 = max(무료 체험 끝 lib/trial.ts, 이 값) + 유예 3일 — 차단은 5단계에서 붙인다.
+   *  · add-only(nullable) — 기존 회사 전부 null = 결제한 적 없음(무료 체험만). 지금은 아무것도 막지 않는다.
+   */
+  paidUntil DateTime?
 }
 
 // 해지 회사 파기 대장 — "어느 회사를(id) 언제 해지했고 언제 무엇을 몇 건 지웠는지"의 증명 기록(2026-11-22 해지 2단계).
@@ -1279,4 +1286,96 @@ model SmsTemplate {
   //    (목록에서 어느 것인지 구분이 안 되고, 3-2b에서 이름으로 고를 때 혼란). 위반하면 P2002로 돌아온다.
   @@unique([companyId, name])
   @@index([companyId, createdAt])
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  구독 결제(KIS) — 2026-11-23 결제 1단계. 계획서: plan-근태결제-개발.md / 요금 규칙: plan-구독결제-요금제.md
+//  상태값·안전장치는 학원관리 연결부(newgaon-LMS backend/services/subscriptionPayService.js, pg_orders 표)를 본떴다.
+//  결제 도구(KIS 규격)는 학원관리 공용 모듈 @newgaon/kispg를 그대로 쓴다(2단계에서 설치).
+// ════════════════════════════════════════════════════════════════════════════
+
+// 결제 주문서 — 결제창을 띄우기 **전에** 서버가 먼저 만든다. 금액·회사는 언제나 이 행에서 꺼낸다(브라우저 값을 믿지 않는다).
+//  🔴 **회사 해지 파기에서 지우지 않는다 — 5년 보관**(전자상거래법 시행령 제6조 대금결제 기록, 국세기본법 장부).
+//     그래서 Company와 외래키로 묶지 않고 companyId 값만 둔다(회사 행이 지워진 뒤에도 남아야 한다).
+//     이름·전화번호는 저장하지 않는다(KIS 결제창에 보내기만). 카드번호는 KIS가 돌려준 가린 값만.
+//     ⏳ 5년 지난 결제 기록 자동 파기는 결제 운영 시작 뒤 별도 과제.
+//  상태(status): ready(결제창 대기) → check(인증 받음·승인 중/결과 모름) → paid(승인·기간 반영) | failed(돈 안 빠짐 확정)
+//               | cancel_check(취소 중/결과 모름) → cancelled(취소 확정)
+//  🔴 상태 변경은 언제나 "지금 상태가 X일 때만"(updateMany 조건) — 두 요청이 같은 주문을 두 번 승인·반영하지 않게.
+model PgOrder {
+  id           String   @id @default(cuid())
+  companyId    String   // 회사 id(값만 — 위 주석)
+  userId       String?  // 주문한 관리자 id(값만). 자동결제 회차는 null
+  orderNo      String   @unique // 우리 주문번호 = KIS ordNo. "HR-YYYYMMDDHHMMSS-난수"(자동결제 카드 등록은 PgBillingKey.regNo "HRB-")
+  orderType    String   // "normal"(일반 결제) | "billing_first"(자동결제 신청하며 첫 결제) | "billing_auto"(정기 결제 회차)
+  billingKeyId String?  // 자동결제 카드(PgBillingKey.id). 일반 결제는 null
+  pgMid        String   // 이 주문을 보낸 상점ID — 취소·조회는 반드시 이 상점으로(일반·빌링 상점이 다르다)
+  // 정기 결제 회차 중복 방지 열쇠 = "회사id:결제 전 만료일(YYYY-MM-DD)". 살아 있는 회차에만 값, 실패 확정되면 null로 비운다.
+  // SQLite 유일 조건은 null을 여러 개 허용하므로 "살아 있는 것끼리만 유일"이 된다(학원관리 cycle_live_key와 같은 목적).
+  cycleKey     String?  @unique
+  productName  String   // 결제창·영수증에 보이는 상품명(예: "가온 근태관리 1개월 (6~10명)")
+  employees    Int      // 주문 시점 과금 인원(lib/pricing-server.ts) — 분쟁 근거
+  tierIndex    Int      // 주문 시점 요금 구간 번호(lib/pricing.ts)
+  termMonths   Int      @default(1) // 결제 단위 — 2026-11-23 사장님 결정: 1개월만
+  payMethod    String   @default("CARD") // 지금은 카드만(가상계좌는 추후 협의)
+  supplyAmount Int      // 공급가
+  vatAmount    Int      // 부가세
+  totalAmount  Int      // 실제로 빠지는 금액(공급가 + 부가세). KIS에는 이 값을 보낸다
+  status       String   @default("ready")
+  pgTid        String?  @unique // KIS 거래번호 — 한 거래번호는 한 주문에만(같은 인증 결과 재사용 차단)
+  pgAmount     Int?     // KIS가 실제로 승인한 금액(주문 금액과 다르면 즉시 취소)
+  pgAppNo      String?  // 카드 승인번호
+  pgResultCode String?
+  pgResultMsg  String?
+  cardName     String?
+  cardNoMasked String?  // KIS가 가린 카드번호만
+  paidAt       DateTime?
+  cancelledAt  DateTime?
+  prevPaidUntil DateTime? // 반영 직전의 Company.paidUntil — 취소 시 되돌리기 근거
+  periodStart  DateTime?  // 이 결제로 늘어난 이용 기간
+  periodEnd    DateTime?
+  retryCount   Int      @default(0) // 결과 모름 조회 횟수
+  lastCheckedAt DateTime? // 마지막 조회 시각 — 동시 조회 잠금(학원관리 120초)
+  failReason   String?
+  followedUpAt DateTime? // 정기 결제 후속 처리(실패 횟수 등)를 한 번만 하게
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([companyId, createdAt])
+  @@index([status, lastCheckedAt]) // 결과 모름 정리(10분마다)가 check·cancel_check만 훑는다
+}
+
+// 자동결제 카드(KIS 빌키) — 회사당 사용 중인 카드는 1장.
+//  🔴 빌키(bid)는 카드 대신 쓰는 결제용 번호다. 화면·로그·응답에 절대 내보내지 않는다.
+//  🔴 회사 해지 파기 대상이지만, **KIS에 등록된 빌키를 먼저 지워야** 한다 → 파기 엔진은 bid가 남은 카드가 있으면 보류한다
+//     (lib/company-purge.ts). 해지 시 카드 삭제는 3단계에서 붙인다.
+//  상태(status): registering(등록 창 대기) → reg_check(등록 확정 중) → active(사용 중) | paused(3회 실패로 멈춤)
+//               → deleting(KIS 삭제 중) → deleted | failed(등록 실패 확정)
+model PgBillingKey {
+  id           String   @id @default(cuid())
+  companyId    String   // 값만(PgOrder와 같은 관례). 파기는 company-purge가 companyId로 찾는다
+  userId       String?  // 등록한 관리자 id(값만)
+  regNo        String   @unique // 카드 등록 주문번호 "HRB-…"
+  pgMid        String   // 빌링 상점ID(일반 결제와 다르다 — KIS 회신 4번)
+  pgTid        String?  @unique
+  bid          String?  @unique // 빌키 — 지우면 null
+  cardName     String?
+  cardNoMasked String?
+  status       String   @default("registering")
+  // 회사당 살아 있는 카드 1장 열쇠 = companyId. registering·reg_check·active·paused·deleting일 때만 값, deleted·failed면 null.
+  liveKey      String?  @unique
+  nextChargeDate DateTime? // 다음 자동 결제일(이용 만료 3일 전, 학원관리와 같은 규칙)
+  failCount    Int      @default(0) // 연속 실패 — 3번째에 paused
+  lastResultCode String?
+  lastFailReason String?
+  retryCount   Int      @default(0)
+  lastCheckedAt DateTime?
+  registeredAt DateTime?
+  pausedAt     DateTime?
+  deletedAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([status, nextChargeDate]) // 매일 정기 결제가 active 중 오늘 결제일인 카드만 고른다
 }

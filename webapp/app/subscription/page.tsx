@@ -68,13 +68,10 @@ export default async function SubscriptionPage() {
     <AppShell user={me} active="subscription" title="구독·요금" subtitle={`${me.company.name} · 관리자 ${me.name}`}>
       {/* ── 1. 지금 요금 ───────────────────────────────────────────── */}
       <div className="kpi-grid" style={{ marginBottom: 16 }}>
-        {/* ⚠️ 보조문구에 "관리자는 세지 않습니다"를 쓰지 않는다(검수 치명 2).
-            과금 기준이 `role: "employee"`인데 관리자 지정에는 수 제한이 없어, 그 설명이 그대로
-            **요금을 0원으로 만드는 방법**이 된다(전원을 관리자로 지정 → 요금 대상 0명).
-            지금은 결제가 없어 돈이 새지 않지만, 고객이 이 화면을 보는 순간부터 그 안내가 기준이 된다.
-            → 거짓이 아닌 범위에서 "퇴사한 직원은 제외"까지만 말한다. 기준 자체(관리자 상한 등)는
-              결제를 붙이기 전에 사장님이 결정할 사항으로 올려 두었다. */}
-        <Kpi label="요금 대상 직원" value={employees.toLocaleString("ko-KR")} unit="명" sub="퇴사한 직원은 제외" />
+        {/* 2026-11-23 과금 규칙 변경(관리자 1명까지만 제외 — lib/pricing-server.ts FREE_ADMIN_COUNT).
+            예전엔 관리자를 전부 빼서 "관리자는 세지 않는다"가 곧 0원 회피법이라 화면에 쓰지 못했다(검수 치명 2).
+            이제 2명째 관리자부터 세므로 회피법이 아니라 정책이다 → 그대로 적는다. 숫자를 바꾸면 이 문구도 함께. */}
+        <Kpi label="요금 대상 인원" value={employees.toLocaleString("ko-KR")} unit="명" sub="관리자 1명·퇴사자 제외" />
         <Kpi
           label="현재 구간"
           value={q.kind === "tier" ? q.label : q.kind === "quote" ? `${QUOTE_OVER + 1}명 이상` : "—"}
@@ -105,14 +102,10 @@ export default async function SubscriptionPage() {
       {/* 금액을 보여줄 수 없는 두 경우는 각각 다른 안내가 필요하다. */}
       {q.kind === "none" ? (
         <div style={{ ...cardPad, marginBottom: 16, borderLeft: "4px solid var(--warning)" }}>
-          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>요금 대상 직원이 없습니다</div>
-          {/* ⚠️ "관리자 계정만 있는 지금은"이라고 쓰지 않는다(검수 치명 2, 재확인에서 발견).
-              **이 분기가 바로 회피 상태 그 자체다** — 전원을 관리자로 지정한 회사가 정확히 이 카드를
-              보게 되는데, 화면이 "관리자만 있으면 낼 금액이 없다"고 확인해 주는 셈이 된다.
-              (KPI 보조문구와 기준 블록에서 관리자 언급을 지운 효과를 이 한 줄이 상쇄한다.)
-              퇴사자 계정이 남은 회사에서는 사실도 아니다. */}
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>요금 대상 인원이 없습니다</div>
+          {/* 2026-11-23부터 이 분기는 "직원 0명 + 사람 관리자 1명 이하"일 때만 나온다(관리자 2명째부터 과금). */}
           <p style={{ ...noteText, margin: 0 }}>
-            요금은 재직 중인 <strong>직원</strong> 수로 정해집니다. 지금은 요금 대상 직원이 없어 계산할
+            요금은 재직 중인 <strong>직원</strong> 수(관리자는 1명까지 제외)로 정해집니다. 지금은 요금 대상 인원이 없어 계산할
             금액이 없습니다. <Link href="/employees" style={{ color: "var(--primary)", fontWeight: 700 }}>직원관리</Link>에서
             직원을 등록하시면 이 화면에 금액이 표시됩니다.
           </p>
@@ -297,7 +290,7 @@ export default async function SubscriptionPage() {
         <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 14 }}>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>유료 전환 시 적용될 요금 기준</div>
           <ul style={{ ...noteText, margin: 0, paddingLeft: 18 }}>
-            <li>재직 중인 <strong>직원</strong> 수로 셉니다. 퇴사한 직원은 세지 않습니다.</li>
+            <li>재직 중인 <strong>직원</strong> 수로 셉니다. <strong>관리자는 1명까지</strong> 세지 않고, 2명째부터는 직원처럼 셉니다. 퇴사한 사람은 세지 않습니다.</li>
             <li>요금은 결제일의 인원으로 정하고, 월 중간에 들어오거나 나간 사람은 날짜로 쪼개 계산하지 않을 예정입니다.</li>
             <li>직원이 줄어 낮은 구간이 되면 <strong>다음 결제분부터</strong> 낮은 요금을 적용할 예정입니다.</li>
             <li>모든 금액은 부가세 별도입니다.</li>
