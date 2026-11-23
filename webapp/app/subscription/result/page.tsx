@@ -46,7 +46,8 @@ export default async function PayResultPage({ searchParams }: { searchParams: SP
             ) : null}
             {o.status === "check" || o.status === "cancel_check" ? (
               <p style={{ color: "var(--text-sub)", margin: "8px 0 0" }}>
-                카드사 응답을 확인하는 중입니다. 10분쯤 뒤 [구독·요금]의 결제 내역에서 결과를 확인해 주세요. 두 번 결제하지 않도록 그동안 다시 결제하지 마세요.
+                {o.status === "cancel_check" ? "결제를 자동으로 취소(환불)하는 중입니다." : "카드사 응답을 확인하는 중입니다."}{" "}
+                보통 10분 안에, 길게는 1시간쯤 뒤 [구독·요금]의 결제 내역에 결과가 나옵니다. 두 번 결제하지 않도록 그동안 다시 결제하지 마세요.
               </p>
             ) : null}
             {o.status === "failed" ? (

@@ -22,8 +22,15 @@ function siteOrigin(req: Request): string {
   return new URL(req.url).origin;
 }
 
+/** 결제창 결과는 몇백 바이트다. 로그인 없는 주소라 큰 본문은 읽기 전에 거른다(2단계 검수 경미 7). */
+const MAX_BODY_BYTES = 16 * 1024;
+
 export async function POST(req: Request) {
   const body: Record<string, unknown> = {};
+  const len = Number(req.headers.get("content-length") ?? "0");
+  if (!Number.isFinite(len) || len > MAX_BODY_BYTES) {
+    return NextResponse.redirect(new URL("/subscription/result", siteOrigin(req)), 303);
+  }
   try {
     const form = await req.formData();
     form.forEach((v, k) => {

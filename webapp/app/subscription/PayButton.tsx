@@ -58,7 +58,7 @@ function readKisMessage(raw: unknown): { empty: true } | { empty?: false; messag
   return { message: m, data: data && typeof data === "object" ? (data as Record<string, unknown>) : null };
 }
 
-export function PayButton({ ready, totalText }: { ready: boolean; totalText: string }) {
+export function PayButton({ ready, totalText, label }: { ready: boolean; totalText: string; label?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -66,7 +66,7 @@ export function PayButton({ ready, totalText }: { ready: boolean; totalText: str
   // 화면을 떠나면 덮개·쪽지 받기를 지운다(예전 쪽지 받기가 남아 결과를 두 번 보내지 않게).
   useEffect(() => () => cleanupRef.current?.(), []);
 
-  function openKis(action: string, fields: Record<string, string>) {
+  function openKis(action: string, fields: Record<string, string>, orderNo: string) {
     const actionOrigin = new URL(action).origin;
     const returnUrl = fields.returnUrl;
     const trusted = (origin: string) =>
@@ -106,7 +106,8 @@ export function PayButton({ ready, totalText }: { ready: boolean; totalText: str
       if (notice) setError(notice);
     };
     function onMessage(event: MessageEvent) {
-      if (!trusted(event.origin)) return;
+      // 출처(KIS 주소)뿐 아니라 **우리가 연 그 결제창**에서 온 쪽지인지도 본다(2단계 검수 경미 6).
+      if (!trusted(event.origin) || event.source !== frame.contentWindow) return;
       const read = readKisMessage(event.data);
       if (read && read.empty) {
         closeWithoutPayment("");
@@ -123,6 +124,7 @@ export function PayButton({ ready, totalText }: { ready: boolean; totalText: str
         closeWithoutPayment(`결제가 진행되지 않았습니다.${why}`);
         return;
       }
+      if (ordNo !== orderNo) return; // 지금 연 주문의 결과가 아니면 넘기지 않는다(서버도 주문서로 다시 확인한다)
       cleanup();
       try {
         postForm(returnUrl, data, "_self");
@@ -139,14 +141,22 @@ export function PayButton({ ready, totalText }: { ready: boolean; totalText: str
   async function onClick() {
     setError(null);
     setBusy(true);
-    const r = await startCardPayment();
+    let r: Awaited<ReturnType<typeof startCardPayment>>;
+    try {
+      r = await startCardPayment();
+    } catch {
+      // 네트워크가 끊겨도 버튼이 "여는 중…"에서 멈추지 않게(2단계 검수 경미 6).
+      setBusy(false);
+      setError("서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
     if (!r.ok) {
       setBusy(false);
       setError(r.error);
       return;
     }
     try {
-      openKis(r.action, r.fields);
+      openKis(r.action, r.fields, r.orderNo);
     } catch (e) {
       setBusy(false);
       setError(e instanceof Error ? e.message : "결제창을 열 수 없습니다.");
@@ -171,7 +181,7 @@ export function PayButton({ ready, totalText }: { ready: boolean; totalText: str
           fontSize: 15, fontWeight: 700, fontFamily: "inherit", cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1,
         }}
       >
-        {busy ? "결제창 여는 중…" : `카드로 1개월 결제하기 (${totalText})`}
+        {busy ? "결제창 여는 중…" : `${label ?? "카드로 1개월 결제하기"} (${totalText})`}
       </button>
       <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 8, lineHeight: 1.6, wordBreak: "keep-all" }}>
         카드사 인증 창이 뜨지 않으면 주소창 오른쪽의 팝업 차단 표시를 눌러 &quot;항상 허용&quot;을 고른 뒤 다시 결제해 주세요.

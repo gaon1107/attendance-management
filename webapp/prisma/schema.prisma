@@ -1357,6 +1357,9 @@ model PgOrder {
   prevPaidUntil DateTime? // 반영 직전의 Company.paidUntil — 취소 시 되돌리기 근거
   periodStart  DateTime?  // 이 결제로 늘어난 이용 기간
   periodEnd    DateTime?
+  // 승인을 요청한 시각(ready → check로 옮긴 때). "결제 없음 60분 유예"는 주문 생성이 아니라 **이 시각부터** 센다
+  //  — 결제창을 50분 열어 둔 뒤 승인한 주문이 곧바로 "결제 없음"으로 닫히지 않게(2단계 검수 중간 3).
+  approveRequestedAt DateTime?
   retryCount   Int      @default(0) // 결과 모름 조회 횟수
   lastCheckedAt DateTime? // 마지막 조회 시각 — 동시 조회 잠금(학원관리 120초)
   failReason   String?

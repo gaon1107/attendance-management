@@ -2,7 +2,7 @@
 // 쓰는 법: node scripts/fake-kis.cjs  → http://localhost:4599
 //   개발 .env에 임시로: KISPG_MID=fakekis00m / KISPG_MERCHANT_KEY=fake-merchant-key / KISPG_API_URL=http://localhost:4599
 //                      KISPG_RETURN_URL=http://localhost:3000/api/billing/return   (시험 뒤 반드시 지운다)
-//   동작 바꾸기: http://localhost:4599/__mode?approve=ok|mismatch|drop|reject&inquire=approved|not_found|cancelled
+//   동작 바꾸기: http://localhost:4599/__mode?approve=ok|slow|mismatch|drop|reject&inquire=approved|not_found|cancelled
 // 가짜 KIS 서버(개발 검증 전용) — http://localhost:4599
 //  /v2/auth   (form POST)  가짜 결제창 HTML: [승인]·[취소] → window.parent.postMessage({resultCode, data})
 //  /v2/payment·/v2/order·/v2/cancel (JSON) 승인·조회·취소 — 동작은 /__mode?approve=ok|mismatch|drop|reject&inquire=approved|not_found|cancelled 로 바꾼다
@@ -48,6 +48,7 @@ document.getElementById("no").onclick=()=>parent.postMessage(${JSON.stringify(JS
     log.push(`approve ${b.tid} ${b.goodsAmt} mode=${mode.approve} encOk=${b.encData === enc(b.mid, b.ediDate, b.goodsAmt)}`);
     if (mode.approve === "drop") { t.status = "approved"; tx.set(b.tid, t); req.socket.destroy(); return; } // 승인은 됐는데 응답이 끊김
     if (mode.approve === "reject") return json(res, { resultCd: "9999", resultMsg: "한도 초과(가짜)", tid: b.tid });
+    if (mode.approve === "slow") await new Promise((r) => setTimeout(r, 4000)); // 승인은 되지만 응답이 4초 늦음
     const amt = mode.approve === "mismatch" ? String(Number(b.goodsAmt) + 100) : b.goodsAmt;
     t.status = "approved"; t.amt = amt; tx.set(b.tid, t);
     return json(res, { resultCd: "3001", resultMsg: "카드 결제 성공", payMethod: "CARD", tid: b.tid, ordNo: t.ordNo, amt, appNo: "12345678", fnNm: "가짜카드", cardNo: "1234-****-****-5678", cardType: "01" });

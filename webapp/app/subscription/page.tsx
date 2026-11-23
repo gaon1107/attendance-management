@@ -154,7 +154,12 @@ export default async function SubscriptionPage() {
             이용 기간이 넉넉히 남아 있습니다. <strong>{formatKoreanDate(pay.canPayFrom)}</strong>부터 다음 달 이용료를 결제하실 수 있습니다.
           </p>
         ) : (
-          <PayButton ready={!!pay?.ready} totalText={formatWon(q.total)} />
+          <PayButton
+            ready={!!pay?.ready}
+            totalText={formatWon(q.total)}
+            // 이용 기간이 남아 있는데 "1개월 결제하기"만 보이면 방금 결제한 것을 다시 내라는 것처럼 읽힌다(2단계 검수 치명 1 덧붙임).
+            label={paidActive ? "다음 달 이용료 미리 결제하기" : undefined}
+          />
         )}
 
         {payments.length > 0 ? (
@@ -187,7 +192,7 @@ export default async function SubscriptionPage() {
                       {formatWon(p.totalAmount)}
                     </td>
                     <td style={{ padding: "8px", whiteSpace: "nowrap", fontWeight: 700, color: p.status === "paid" ? "var(--success, #15803D)" : p.status === "cancelled" ? "var(--text-sub)" : "var(--warning)" }}>
-                      {p.status === "paid" ? "결제 완료" : p.status === "cancelled" ? "취소" : "확인 중"}
+                      {p.status === "paid" ? "결제 완료" : p.status === "cancelled" ? "취소" : p.status === "cancel_check" ? "환불 진행 중" : "확인 중"}
                     </td>
                   </tr>
                 ))}
@@ -204,8 +209,14 @@ export default async function SubscriptionPage() {
           {trial.expired ? (
             <p style={{ ...noteText, margin: 0 }}>
               무료 기간이 <strong>{formatKoreanDate(trialLastDay(trial.endsAt))}</strong>에 끝났습니다.
-              지금도 모든 기능을 그대로 쓰실 수 있습니다 — 아직 아무것도 막지 않습니다.
-              계속 이용하시려면 위 [결제]에서 카드로 결제해 주세요.
+              {paidActive ? (
+                <> 지금은 유료 이용 기간입니다(위 [결제] 참고).</>
+              ) : (
+                <>
+                  {" "}지금도 모든 기능을 그대로 쓰실 수 있습니다 — 아직 아무것도 막지 않습니다.
+                  계속 이용하시려면 위 [결제]에서 카드로 결제해 주세요.
+                </>
+              )}
             </p>
           ) : (
             <>

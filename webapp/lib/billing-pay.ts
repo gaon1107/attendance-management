@@ -52,14 +52,20 @@ export type CreateOrderResult =
 // 날짜·글자 도우미
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 한 달 뒤(달력 기준). 1월 31일 + 1개월 = 2월 28(29)일 — 다음 달에 그 날이 없으면 마지막 날로. 서버 TZ=Asia/Seoul. */
+/**
+ * 1개월 뒤의 **끝 시각(이 시각 전까지 이용)**. 서버 TZ=Asia/Seoul.
+ *  · 1월 15일 0시 시작 → 2월 15일 0시(= 2월 14일까지).
+ *  · 다음 달에 같은 날이 없으면 **그 달 말일까지** 쓰게 한다 — 1월 31일 시작 → 3월 1일 0시(= 2월 28일까지).
+ *    민법 제160조 ③(해당일이 없으면 그 월의 말일로 만료). 예전엔 2월 28일 0시라 하루를 덜 줬다(2단계 검수 경미 3).
+ */
 export function addOneMonth(d: Date): Date {
   const r = new Date(d);
   const day = r.getDate();
   r.setDate(1);
   r.setMonth(r.getMonth() + 1);
   const last = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
-  r.setDate(Math.min(day, last));
+  if (day > last) r.setMonth(r.getMonth() + 1, 1); // 다음 달 말일까지 쓰고, 그다음 달 1일 0시에 끝
+  else r.setDate(day);
   return r;
 }
 
@@ -70,8 +76,9 @@ export function addOneMonth(d: Date): Date {
  */
 export function periodBase(c: { createdAt: Date; trialLastDate: Date | null; paidUntil: Date | null }, now: Date): Date {
   const trialEnd = trialStatus(c.createdAt, now, c.trialLastDate).endsAt;
-  // 지금 시작하는 경우는 **오늘 0시**부터 센다 — 시각이 섞이면 "○일까지" 표시가 하루 짧아지고(고객 손해로 보임),
-  // 체험 끝·이용 기간 끝은 언제나 자정이라 0시로 맞춰야 이어 붙인 기간도 계속 자정에 끝난다. 오늘 몇 시간은 고객에게 유리한 쪽.
+  // 지금 시작하는 경우는 **오늘 0시**부터 센다 — 체험 끝·이용 기간 끝이 언제나 자정이라, 0시로 맞춰야 이어 붙인 기간도
+  // 계속 자정에 끝나고 "○일까지" 표시가 정확하다. ⚠️ 결제한 날은 하루로 친다(밤늦게 결제하면 그날 몇 시간만 쓴 셈 —
+  // 회사 쪽에 유리한 셈법이다. 2단계 검수 경미 2로 바로잡은 설명. 바꾸려면 사업 결정).
   const today = new Date(now);
   today.setHours(0, 0, 0, 0);
   let base = today.getTime();
@@ -197,8 +204,19 @@ export async function createPayOrder(input: { companyId: string; userId: string 
   if (!company || company.terminatedAt) return { ok: false, error: "결제할 수 없는 회사입니다." };
 
   // 확인 중인 결제가 있으면 새로 받지 않는다 — 돈이 빠졌는지 모르는 결제 위에 또 결제하면 두 번 낼 수 있다.
-  const pending = await prisma.pgOrder.count({ where: { companyId: input.companyId, status: { in: ["check", "cancel_check"] } } });
-  if (pending > 0) return { ok: false, error: "확인 중인 결제가 있습니다. 10분쯤 뒤 결제 내역을 확인한 다음 다시 시도해 주세요." };
+  //  7일이 넘도록 닫히지 않은 건은 자동으로 닫히지 않으므로(사람 확인 대상) "기다리라"가 아니라 연락 안내(2단계 검수 중간 2).
+  const pendingOrder = await prisma.pgOrder.findFirst({
+    where: { companyId: input.companyId, status: { in: ["check", "cancel_check"] } },
+    orderBy: { createdAt: "asc" }, select: { createdAt: true },
+  });
+  if (pendingOrder) {
+    return {
+      ok: false,
+      error: now.getTime() - pendingOrder.createdAt.getTime() > GIVE_UP_MS
+        ? "확인이 끝나지 않은 결제가 있어 새 결제를 받을 수 없습니다. 고객센터로 연락해 주세요."
+        : "확인 중인 결제가 있습니다. 결제 내역에서 결과가 나온 뒤(길게는 1시간쯤) 다시 시도해 주세요.",
+    };
+  }
   const recentPaid = await prisma.pgOrder.count({
     where: { companyId: input.companyId, status: "paid", paidAt: { gt: new Date(now.getTime() - RECENT_PAID_MS) } },
   });
@@ -257,7 +275,7 @@ export async function createPayOrder(input: { companyId: string; userId: string 
  * 결제창이 건넨 결과를 처리한다. 무엇이 와도 예외를 던지지 않는다.
  * @returns 결과 화면에 보낼 주문번호(모르면 null)
  */
-export async function handlePayReturn(body: Record<string, unknown>, now: Date = new Date()): Promise<string | null> {
+export async function handlePayReturn(body: Record<string, unknown>): Promise<string | null> {
   const auth = kispg.parseAuthResult(body);
   if (!ORDER_NO_RE.test(auth.ordNo)) return null;
   const order = await prisma.pgOrder.findUnique({ where: { orderNo: auth.ordNo } });
@@ -278,6 +296,11 @@ export async function handlePayReturn(body: Record<string, unknown>, now: Date =
     await fail(auth.resultMsg || "카드 인증이 끝나지 않았습니다.");
     return order.orderNo;
   }
+  // 결제수단은 암호값에 들어가지 않아 화면에서 바꿀 수 있다 — 카드가 아니면 승인하지 않는다(지금은 카드만, 2단계 검수 경미 4).
+  if (auth.payMethod && auth.payMethod !== "CARD") {
+    await fail("카드 결제만 받습니다.");
+    return order.orderNo;
+  }
   if (Number(auth.amt) !== order.totalAmount) {
     await fail("인증 금액이 주문 금액과 달라 승인하지 않았습니다.");
     return order.orderNo;
@@ -287,14 +310,26 @@ export async function handlePayReturn(body: Record<string, unknown>, now: Date =
     console.warn(`[billing-pay] 인증 결과 암호값 불일치(기록만) — 주문 ${order.orderNo}`);
   }
 
-  const token = await claimCompany(order.companyId, now);
+  const token = await claimCompany(order.companyId, new Date());
   if (!token) {
-    await fail("같은 회사의 다른 결제가 진행 중이라 승인하지 않았습니다.");
+    // 같은 회사의 다른 결제(또는 같은 결과의 동시 재전송)가 처리 중이다. 이 주문은 **건드리지 않는다**(ready 그대로 —
+    //  승인하지 않았으므로 돈은 빠지지 않고, 1시간 뒤 정리가 닫는다). 예전엔 failed로 닫아, 같은 결과가 동시에 두 번 오면
+    //  먼저 온 요청이 처리 중인 주문을 실패로 덮을 수 있었다(2단계 검수 경미 8).
     return order.orderNo;
   }
   try {
+    // 🔴 승인 직전 재검사(2단계 검수 치명 1) — 주문서를 만들 때 한 검사만으로는 부족하다.
+    //    탭 두 개·관리자 두 명이 주문서 두 장을 만든 뒤 차례로 결제창을 끝내면, 두 번째도 승인돼 두 번 청구·2개월 연장된다.
+    //    그래서 선점을 잡은 **뒤**(다른 결제가 끼어들 수 없을 때) 같은 회사 상태를 다시 보고, 걸리면 승인 요청 자체를 보내지 않는다.
+    const why = await blockReasonBeforeApprove(order.id, order.companyId, order.createdAt);
+    if (why) {
+      await fail(why);
+      return order.orderNo;
+    }
     try {
-      const moved = await moveOrder(prisma, order.id, ["ready"], "check", { pgTid: auth.tid, lastCheckedAt: now });
+      const moved = await moveOrder(prisma, order.id, ["ready"], "check", {
+        pgTid: auth.tid, lastCheckedAt: new Date(), approveRequestedAt: new Date(),
+      });
       if (!moved) return order.orderNo; // 다른 요청이 먼저 가져감
     } catch (e) {
       // 같은 거래번호가 이미 다른 주문에 쓰였다(재전송·조작) — 승인하지 않는다.
@@ -313,6 +348,33 @@ export async function handlePayReturn(body: Record<string, unknown>, now: Date =
     await releaseCompany(order.companyId, token);
   }
   return order.orderNo;
+}
+
+/**
+ * 승인 요청을 보내면 안 되는 이유(없으면 null). 선점을 잡은 뒤에 부른다(2단계 검수 치명 1·경미 5).
+ *  ① 해지된 회사 — 승인했다가 환불하는 일을 만들지 않는다.
+ *  ② 같은 회사의 다른 주문이 확인 중(check·cancel_check) — 그 주문의 돈이 빠졌을 수 있다.
+ *  ③ 이 주문을 만든 **뒤에** 다른 결제가 끝났다 — 탭 두 개로 이어서 결제한 경우.
+ *  ④ 이용 기간이 35일 넘게 남았다 — 주문서를 만든 뒤 다른 결제로 기간이 늘어난 경우.
+ */
+async function blockReasonBeforeApprove(orderId: string, companyId: string, orderCreatedAt: Date): Promise<string | null> {
+  const now = new Date();
+  const c = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { createdAt: true, trialLastDate: true, paidUntil: true, terminatedAt: true },
+  });
+  if (!c || c.terminatedAt) return "해지된 회사라 승인하지 않았습니다.";
+  const other = await prisma.pgOrder.count({
+    where: {
+      companyId, id: { not: orderId },
+      OR: [{ status: { in: ["check", "cancel_check"] } }, { status: "paid", paidAt: { gt: orderCreatedAt } }],
+    },
+  });
+  if (other > 0) return "같은 회사의 다른 결제가 먼저 끝났거나 확인 중이라 승인하지 않았습니다(두 번 결제 방지).";
+  if (periodBase(c, now).getTime() - now.getTime() > PREPAY_WINDOW_DAYS * DAY_MS) {
+    return `이용 기간이 ${PREPAY_WINDOW_DAYS}일 넘게 남아 승인하지 않았습니다.`;
+  }
+  return null;
 }
 
 /** 승인 응답을 정리한다(돌아온 직후·10분 정리 공통). 주문은 check 상태여야 한다. */
@@ -356,9 +418,15 @@ type PaidInfo = {
   amt: number; appNo?: string; payMethod?: string; cardNo?: string; cardType?: string; cardName?: string; code?: string; msg?: string;
 };
 
+/** 반영하면 안 되는 **확정된** 이유(회사 없음·해지) — 이것만 즉시 취소한다. 그 밖의 예외는 일시적일 수 있어 다시 시도한다. */
+class ApplyBlocked extends Error {}
+
 /**
- * 승인된 결제를 반영한다(주문 paid + 회사 이용 기간 1개월 연장, 한 묶음). 반영이 실패하면 즉시 취소한다.
- *  ⚠️ 실패했을 때 바로 취소하지 않고 주문을 **다시 읽는다** — 다른 요청이 이미 paid로 반영했다면 정상 결제를 환불하는 사고가 된다.
+ * 승인된 결제를 반영한다(주문 paid + 회사 이용 기간 1개월 연장, 한 묶음).
+ *  · 회사가 없거나 해지됐으면(확정 사유) **즉시 취소**한다.
+ *  · 그 밖의 예외(SQLite 잠김·트랜잭션 시간 초과 등 일시적 오류)는 **취소하지 않고** check로 둔다 — 10분 정리가 조회(승인 확인)
+ *    → 선점 → 반영을 다시 한다. 예전엔 일시 오류에도 정상 결제를 환불했다(2단계 검수 중간 1).
+ *  ⚠️ 취소 전에 주문을 **다시 읽는다** — 다른 요청이 이미 paid로 반영했다면 정상 결제를 환불하는 사고가 된다.
  */
 async function applyOrCancel(orderId: string, cfg: KisMerchant, info: PaidInfo): Promise<void> {
   try {
@@ -369,8 +437,8 @@ async function applyOrCancel(orderId: string, cfg: KisMerchant, info: PaidInfo):
         where: { id: o.companyId },
         select: { createdAt: true, trialLastDate: true, paidUntil: true, terminatedAt: true },
       });
-      if (!c) throw new Error("회사가 없음(해지 파기됨)");
-      if (c.terminatedAt) throw new Error("해지된 회사");
+      if (!c) throw new ApplyBlocked("회사 해지·파기로 자동 취소");
+      if (c.terminatedAt) throw new ApplyBlocked("회사 해지로 자동 취소");
       const now = new Date();
       const start = periodBase(c, now);
       const end = addOneMonth(start);
@@ -387,8 +455,14 @@ async function applyOrCancel(orderId: string, cfg: KisMerchant, info: PaidInfo):
     const msg = e instanceof Error ? e.message : String(e);
     const now = await prisma.pgOrder.findUnique({ where: { id: orderId }, select: { status: true, orderNo: true } });
     if (!now || now.status !== "check") return; // 이미 반영(또는 정리)됨 — 취소하면 안 된다
-    console.error(`[billing-pay] 이용 기간 반영 실패 → 자동 취소 — 주문 ${now.orderNo}: ${msg}`);
-    await cancelCheck(orderId, cfg, info.amt, `이용 기간 반영 실패로 자동 취소(${msg})`);
+    if (!(e instanceof ApplyBlocked)) {
+      // 일시적일 수 있는 오류 — 취소하지 않는다. 원문은 서버 기록에만(화면·KIS로 보내지 않음, 2단계 검수 경미 9).
+      console.error(`[billing-pay] 이용 기간 반영 오류(10분 정리가 다시 시도) — 주문 ${now.orderNo}: ${msg}`);
+      await prisma.pgOrder.updateMany({ where: { id: orderId, status: "check" }, data: { failReason: "승인됨 — 이용 기간 반영 재시도 중" } });
+      return;
+    }
+    console.error(`[billing-pay] 반영할 수 없는 결제 → 자동 취소 — 주문 ${now.orderNo}: ${msg}`);
+    await cancelCheck(orderId, cfg, info.amt, msg); // msg는 ApplyBlocked의 짧은 고정 문구
   }
 }
 
@@ -416,7 +490,8 @@ async function runCancel(orderId: string, cfg: KisMerchant): Promise<void> {
       return;
     }
     if (r.status === "not_found") {
-      // 취소하려던 결제가 KIS에 없다 — 돈이 빠지지 않은 것. 취소 완료로 닫는다.
+      // 취소하려던 결제가 KIS에 없다 — 돈이 빠지지 않은 것. 단 KIS 반영이 늦을 수 있어 **승인 요청 60분 뒤에만** 닫는다(2단계 검수 중간 3).
+      if (Date.now() - (o.approveRequestedAt ?? o.createdAt).getTime() <= NOT_FOUND_GRACE_MS) return;
       await moveOrder(prisma, o.id, ["cancel_check"], "cancelled", { cancelledAt: new Date(), failReason: kisText(`${o.failReason ?? ""} / 조회 결과 결제 없음`) });
       return;
     }
@@ -424,7 +499,10 @@ async function runCancel(orderId: string, cfg: KisMerchant): Promise<void> {
     canAmt = r.amt;
     await prisma.pgOrder.update({ where: { id: o.id }, data: { pgAmount: canAmt } });
   }
-  const c = await kispg.cancel({ config: cfg, tid: o.pgTid, payMethod: "CARD", canAmt, canMsg: o.failReason ?? "자동 취소", ordNo: o.orderNo });
+  const c = await kispg.cancel({
+    config: cfg, tid: o.pgTid, payMethod: o.pgPayMethod || o.payMethod || "CARD", canAmt,
+    canMsg: o.failReason ?? "자동 취소", ordNo: o.orderNo,
+  });
   if (c.ok || c.alreadyCancelled) {
     await moveOrder(prisma, o.id, ["cancel_check"], "cancelled", { cancelledAt: new Date() });
   } else {
@@ -456,35 +534,49 @@ export async function reconcilePayOrders(limit = 20, now: Date = new Date()): Pr
     if (!cfg) return { expired, checked: 0 };
 
     // (나) 결과 모름·취소 중 — KIS 조회·취소로 닫는다.
+    //  🔴 7일 넘은 건·느린 주기(1시간) 건은 **조회 조건에서 뺀다**(2단계 검수 중간 2) — 반복문에서 건너뛰기만 하면 20칸 앞자리를
+    //     계속 차지해, 그런 건이 20개 쌓이는 순간 새 결과 모름 주문이 영원히 조회되지 않는다.
+    //  · 오래 안 본 것부터(lastCheckedAt 오름차순 — SQLite는 null이 먼저라 한 번도 안 본 건이 맨 앞).
     const lockBefore = new Date(now.getTime() - CHECK_LOCK_MS);
+    const giveUpBefore = new Date(now.getTime() - GIVE_UP_MS);
+    const stuck = await prisma.pgOrder.count({
+      where: { status: { in: ["check", "cancel_check"] }, orderType: "normal", createdAt: { lt: giveUpBefore } },
+    });
+    if (stuck > 0) console.error(`[billing-pay] [운영자 확인 필요] 7일이 넘도록 닫히지 않은 결제 ${stuck}건 — 자동 정리를 멈췄습니다`);
     const pending = await prisma.pgOrder.findMany({
       where: {
         status: { in: ["check", "cancel_check"] },
         orderType: "normal",
-        OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: lockBefore } }],
+        createdAt: { gte: giveUpBefore },
+        AND: [
+          { OR: [{ lastCheckedAt: null }, { lastCheckedAt: { lt: lockBefore } }] },
+          { OR: [{ retryCount: { lt: FAST_RETRIES } }, { lastCheckedAt: { lt: new Date(now.getTime() - SLOW_INTERVAL_MS) } }] },
+        ],
       },
-      orderBy: { createdAt: "asc" },
+      orderBy: { lastCheckedAt: "asc" },
       take: limit,
     });
     let checked = 0;
     for (const o of pending) {
       const age = now.getTime() - o.createdAt.getTime();
-      if (o.retryCount >= FAST_RETRIES && o.lastCheckedAt && now.getTime() - o.lastCheckedAt.getTime() < SLOW_INTERVAL_MS) continue;
+      // "결제 없음" 유예는 **승인을 요청한 시각부터**(주문 생성이 아니다 — 2단계 검수 중간 3).
+      const sinceApprove = now.getTime() - (o.approveRequestedAt ?? o.createdAt).getTime();
       if (o.pgMid !== cfg.mid) {
         console.error(`[billing-pay] [운영자 확인 필요] 주문 ${o.orderNo}의 상점ID가 지금 설정과 달라 조회하지 못함`);
         continue;
       }
       // 조회 잠금 — 읽은 lastCheckedAt 그대로일 때만(두 서버·두 회차가 같은 주문을 동시에 만지지 않게)
+      // ⚠️ 잠금·선점 시각은 회차 시작(now)이 아니라 **지금** 시각으로 — 한 회차에 20건 × 최대 30초라 뒤쪽 건에서 now는
+      //    몇 분 지난 값이 되어 선점(3분)이 이미 만료된 채로 잡힌다(2단계 검수 중간 4).
       const locked = await prisma.pgOrder.updateMany({
         where: { id: o.id, status: o.status, lastCheckedAt: o.lastCheckedAt },
-        data: { lastCheckedAt: now, retryCount: { increment: 1 } },
+        data: { lastCheckedAt: new Date(), retryCount: { increment: 1 } },
       });
       if (locked.count !== 1) continue;
       checked++;
       if (o.retryCount + 1 >= FAST_RETRIES || age > 6 * DAY_MS) {
         console.error(`[billing-pay] [운영자 확인 필요] 주문 ${o.orderNo} ${o.status} — ${o.retryCount + 1}번째 확인`);
       }
-      if (age > GIVE_UP_MS) continue; // 7일이 지나면 자동으로 닫지 않는다(운영자 화면 6단계에서 사람이 판단)
       try {
         if (o.status === "cancel_check") {
           await runCancel(o.id, cfg);
@@ -493,7 +585,7 @@ export async function reconcilePayOrders(limit = 20, now: Date = new Date()): Pr
         if (!o.pgTid) continue;
         const r = await kispg.inquire({ config: cfg, tid: o.pgTid, ordNo: o.orderNo, goodsAmt: o.totalAmount });
         if (r.status === "approved" && !r.uncertain && !r.amountMismatch) {
-          const token = await claimCompany(o.companyId, now);
+          const token = await claimCompany(o.companyId, new Date());
           // 회사 행이 없으면(파기) 선점이 안 된다 → applyOrCancel이 "회사 없음"으로 취소한다. 선점이 다른 결제에 잡혀 있으면 다음 회차에.
           const companyExists = (await prisma.company.count({ where: { id: o.companyId } })) > 0;
           if (!token && companyExists) continue;
@@ -505,8 +597,8 @@ export async function reconcilePayOrders(limit = 20, now: Date = new Date()): Pr
         } else if (r.status === "approved" && r.amountMismatch) {
           await cancelCheck(o.id, cfg, r.amt, "승인 금액이 주문 금액과 달라 자동 취소");
         } else if (r.status === "cancelled") {
-          await moveOrder(prisma, o.id, ["check"], "cancelled", { cancelledAt: now, failReason: kisText("KIS 조회 결과 취소된 결제") });
-        } else if (r.status === "not_found" && age > NOT_FOUND_GRACE_MS) {
+          await moveOrder(prisma, o.id, ["check"], "cancelled", { cancelledAt: new Date(), failReason: kisText("KIS 조회 결과 취소된 결제") });
+        } else if (r.status === "not_found" && sinceApprove > NOT_FOUND_GRACE_MS) {
           await moveOrder(prisma, o.id, ["check"], "failed", { failReason: kisText(`KIS 조회 결과 결제 없음 — ${o.failReason ?? ""}`) });
         }
       } catch (e) {
